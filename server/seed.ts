@@ -17,6 +17,9 @@ export async function seedDatabase() {
       certifications: ["Master Electrician", "OSHA 30", "NFPA 70E", "Siemens High Voltage Certified", "Arc Flash Safety"],
       available: true,
       bio: "Specialized in high-voltage power distribution systems for Tier III and IV data centers. Led electrical teams on 12+ hyperscale builds.",
+      walletBalance: 125000,
+      pendingPayout: 45000,
+      totalHoursWorked: 1847,
     },
     {
       name: "Sarah Chen",
@@ -29,6 +32,9 @@ export async function seedDatabase() {
       certifications: ["EPA 608 Universal", "ASHRAE Certified", "LEED AP", "Carrier Chiller Specialist", "BMS Controls Pro"],
       available: false,
       bio: "Expert in precision cooling systems and hot/cold aisle containment for high-density compute environments.",
+      walletBalance: 89500,
+      pendingPayout: 32000,
+      totalHoursWorked: 1420,
     },
     {
       name: "James Okafor",
@@ -41,6 +47,9 @@ export async function seedDatabase() {
       certifications: ["PMP", "CDCMP", "Six Sigma Black Belt", "OSHA 500 Trainer", "Uptime Institute ATD"],
       available: true,
       bio: "Managed construction of 8 data centers across North America totaling over 200MW of critical IT capacity.",
+      walletBalance: 215000,
+      pendingPayout: 78000,
+      totalHoursWorked: 2640,
     },
     {
       name: "Elena Vasquez",
@@ -53,6 +62,9 @@ export async function seedDatabase() {
       certifications: ["BICSI RCDD", "Cisco CCNP", "CDCDP", "Fiber Optic Pro", "Corning Certified Installer"],
       available: true,
       bio: "Designs and deploys structured cabling and fiber optic infrastructure for hyperscale campus environments.",
+      walletBalance: 64200,
+      pendingPayout: 18500,
+      totalHoursWorked: 960,
     },
     {
       name: "Robert Kim",
@@ -65,6 +77,9 @@ export async function seedDatabase() {
       certifications: ["CDCEP", "AEE CEM", "Uptime Tier Designer", "Schneider Electric Certified", "Generator Systems Pro"],
       available: false,
       bio: "Oversees critical infrastructure operations including UPS, generators, and BMS for multi-site portfolios.",
+      walletBalance: 178300,
+      pendingPayout: 52000,
+      totalHoursWorked: 2180,
     },
   ]).returning();
 

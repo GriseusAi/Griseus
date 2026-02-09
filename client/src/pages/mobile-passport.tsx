@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { usePageMeta } from "@/hooks/use-page-meta";
 import {
   Shield, Award, MapPin, Mail, Phone, Briefcase, Star, CheckCircle2,
-  Clock, FileText, ChevronRight, Zap
+  Clock, FileText, ChevronRight, Zap, Wallet, DollarSign, Timer
 } from "lucide-react";
 
 const CURRENT_WORKER_ID_KEY = "flux_current_worker_id";
@@ -165,6 +165,44 @@ export default function MobilePassport() {
               {worker.bio && (
                 <p className="text-sm text-muted-foreground mt-3 pt-3 border-t">{worker.bio}</p>
               )}
+            </CardContent>
+          </Card>
+
+          <Card data-testid="card-wallet-stats">
+            <CardContent className="p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Wallet className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Wallet & Stats</h3>
+              </div>
+              <div className="grid grid-cols-3 gap-3">
+                <div className="text-center">
+                  <div className="flex items-center justify-center h-9 w-9 rounded-md bg-emerald-500/10 mx-auto mb-1.5">
+                    <DollarSign className="h-4 w-4 text-emerald-500" />
+                  </div>
+                  <p className="text-lg font-bold text-emerald-500" data-testid="text-wallet-balance">
+                    ${(worker.walletBalance / 100).toLocaleString()}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Current Balance</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center h-9 w-9 rounded-md bg-amber-500/10 mx-auto mb-1.5">
+                    <Clock className="h-4 w-4 text-amber-500" />
+                  </div>
+                  <p className="text-lg font-bold" data-testid="text-pending-payout">
+                    ${(worker.pendingPayout / 100).toLocaleString()}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Pending Payout</p>
+                </div>
+                <div className="text-center">
+                  <div className="flex items-center justify-center h-9 w-9 rounded-md bg-primary/10 mx-auto mb-1.5">
+                    <Timer className="h-4 w-4 text-primary" />
+                  </div>
+                  <p className="text-lg font-bold" data-testid="text-total-hours">
+                    {worker.totalHoursWorked.toLocaleString()}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground leading-tight">Hours Worked</p>
+                </div>
+              </div>
             </CardContent>
           </Card>
 

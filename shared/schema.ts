@@ -30,6 +30,9 @@ export const workers = pgTable("workers", {
   certifications: text("certifications").array().default(sql`'{}'::text[]`),
   available: boolean("available").notNull().default(true),
   bio: text("bio"),
+  walletBalance: integer("wallet_balance").notNull().default(0),
+  pendingPayout: integer("pending_payout").notNull().default(0),
+  totalHoursWorked: integer("total_hours_worked").notNull().default(0),
 });
 
 export const insertWorkerSchema = createInsertSchema(workers).omit({ id: true });
