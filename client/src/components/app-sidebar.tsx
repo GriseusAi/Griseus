@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Settings } from "lucide-react";
+import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Settings, Smartphone } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
@@ -67,10 +67,10 @@ export function AppSidebar() {
       <SidebarFooter className="p-4">
         <SidebarMenu>
           <SidebarMenuItem>
-            <SidebarMenuButton asChild data-testid="nav-settings">
-              <Link href="/settings">
-                <Settings className="h-4 w-4" />
-                <span>Settings</span>
+            <SidebarMenuButton asChild data-testid="nav-mobile-app">
+              <Link href="/mobile">
+                <Smartphone className="h-4 w-4" />
+                <span>Worker App</span>
               </Link>
             </SidebarMenuButton>
           </SidebarMenuItem>

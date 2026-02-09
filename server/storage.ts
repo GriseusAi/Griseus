@@ -3,10 +3,13 @@ import {
   type Worker, type InsertWorker,
   type Project, type InsertProject,
   type WorkOrder, type InsertWorkOrder,
-  users, workers, projects, workOrders,
+  type JobApplication, type InsertJobApplication,
+  type ProjectAssignment, type InsertProjectAssignment,
+  type ChatMessage, type InsertChatMessage,
+  users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -25,6 +28,16 @@ export interface IStorage {
   getWorkOrder(id: string): Promise<WorkOrder | undefined>;
   createWorkOrder(workOrder: InsertWorkOrder): Promise<WorkOrder>;
   updateWorkOrderStatus(id: string, status: string): Promise<WorkOrder | undefined>;
+
+  getJobApplicationsByWorker(workerId: string): Promise<JobApplication[]>;
+  createJobApplication(application: InsertJobApplication): Promise<JobApplication>;
+
+  getProjectAssignmentsByProject(projectId: string): Promise<ProjectAssignment[]>;
+  getProjectAssignmentsByWorker(workerId: string): Promise<ProjectAssignment[]>;
+  createProjectAssignment(assignment: InsertProjectAssignment): Promise<ProjectAssignment>;
+
+  getChatMessagesByProject(projectId: string): Promise<ChatMessage[]>;
+  createChatMessage(message: InsertChatMessage): Promise<ChatMessage>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -92,6 +105,39 @@ export class DatabaseStorage implements IStorage {
       .where(eq(workOrders.id, id))
       .returning();
     return updated;
+  }
+
+  async getJobApplicationsByWorker(workerId: string): Promise<JobApplication[]> {
+    return db.select().from(jobApplications).where(eq(jobApplications.workerId, workerId));
+  }
+
+  async createJobApplication(application: InsertJobApplication): Promise<JobApplication> {
+    const [created] = await db.insert(jobApplications).values(application).returning();
+    return created;
+  }
+
+  async getProjectAssignmentsByProject(projectId: string): Promise<ProjectAssignment[]> {
+    return db.select().from(projectAssignments).where(eq(projectAssignments.projectId, projectId));
+  }
+
+  async getProjectAssignmentsByWorker(workerId: string): Promise<ProjectAssignment[]> {
+    return db.select().from(projectAssignments).where(eq(projectAssignments.workerId, workerId));
+  }
+
+  async createProjectAssignment(assignment: InsertProjectAssignment): Promise<ProjectAssignment> {
+    const [created] = await db.insert(projectAssignments).values(assignment).returning();
+    return created;
+  }
+
+  async getChatMessagesByProject(projectId: string): Promise<ChatMessage[]> {
+    return db.select().from(chatMessages)
+      .where(eq(chatMessages.projectId, projectId))
+      .orderBy(chatMessages.createdAt);
+  }
+
+  async createChatMessage(message: InsertChatMessage): Promise<ChatMessage> {
+    const [created] = await db.insert(chatMessages).values(message).returning();
+    return created;
   }
 }
 

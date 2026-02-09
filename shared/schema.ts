@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -49,6 +49,10 @@ export const projects = pgTable("projects", {
   powerCapacity: text("power_capacity"),
   tier: text("tier"),
   imageUrl: text("image_url"),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  tradesNeeded: text("trades_needed").array().default(sql`'{}'::text[]`),
+  hourlyRate: text("hourly_rate"),
 });
 
 export const insertProjectSchema = createInsertSchema(projects).omit({ id: true });
@@ -71,3 +75,38 @@ export const workOrders = pgTable("work_orders", {
 export const insertWorkOrderSchema = createInsertSchema(workOrders).omit({ id: true, createdAt: true });
 export type InsertWorkOrder = z.infer<typeof insertWorkOrderSchema>;
 export type WorkOrder = typeof workOrders.$inferSelect;
+
+export const jobApplications = pgTable("job_applications", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull(),
+  projectId: varchar("project_id").notNull(),
+  status: text("status").notNull().default("pending"),
+  appliedAt: timestamp("applied_at").defaultNow(),
+});
+
+export const insertJobApplicationSchema = createInsertSchema(jobApplications).omit({ id: true, appliedAt: true });
+export type InsertJobApplication = z.infer<typeof insertJobApplicationSchema>;
+export type JobApplication = typeof jobApplications.$inferSelect;
+
+export const projectAssignments = pgTable("project_assignments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  workerId: varchar("worker_id").notNull(),
+  projectId: varchar("project_id").notNull(),
+  role: text("role").notNull().default("crew"),
+});
+
+export const insertProjectAssignmentSchema = createInsertSchema(projectAssignments).omit({ id: true });
+export type InsertProjectAssignment = z.infer<typeof insertProjectAssignmentSchema>;
+export type ProjectAssignment = typeof projectAssignments.$inferSelect;
+
+export const chatMessages = pgTable("chat_messages", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectId: varchar("project_id").notNull(),
+  senderId: varchar("sender_id").notNull(),
+  content: text("content").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertChatMessageSchema = createInsertSchema(chatMessages).omit({ id: true, createdAt: true });
+export type InsertChatMessage = z.infer<typeof insertChatMessageSchema>;
+export type ChatMessage = typeof chatMessages.$inferSelect;

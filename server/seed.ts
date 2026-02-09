@@ -1,5 +1,5 @@
 import { db } from "./db";
-import { workers, projects, workOrders } from "@shared/schema";
+import { workers, projects, workOrders, projectAssignments, chatMessages } from "@shared/schema";
 
 export async function seedDatabase() {
   const existingProjects = await db.select().from(projects);
@@ -14,7 +14,7 @@ export async function seedDatabase() {
       phone: "+1 (602) 555-0142",
       location: "Phoenix, AZ",
       experience: 14,
-      certifications: ["Master Electrician", "OSHA 30", "NFPA 70E"],
+      certifications: ["Master Electrician", "OSHA 30", "NFPA 70E", "Siemens High Voltage Certified", "Arc Flash Safety"],
       available: true,
       bio: "Specialized in high-voltage power distribution systems for Tier III and IV data centers. Led electrical teams on 12+ hyperscale builds.",
     },
@@ -26,7 +26,7 @@ export async function seedDatabase() {
       phone: "+1 (972) 555-0198",
       location: "Dallas, TX",
       experience: 11,
-      certifications: ["EPA 608 Universal", "ASHRAE Certified", "LEED AP"],
+      certifications: ["EPA 608 Universal", "ASHRAE Certified", "LEED AP", "Carrier Chiller Specialist", "BMS Controls Pro"],
       available: false,
       bio: "Expert in precision cooling systems and hot/cold aisle containment for high-density compute environments.",
     },
@@ -38,7 +38,7 @@ export async function seedDatabase() {
       phone: "+1 (703) 555-0267",
       location: "Ashburn, VA",
       experience: 18,
-      certifications: ["PMP", "CDCMP", "Six Sigma Black Belt"],
+      certifications: ["PMP", "CDCMP", "Six Sigma Black Belt", "OSHA 500 Trainer", "Uptime Institute ATD"],
       available: true,
       bio: "Managed construction of 8 data centers across North America totaling over 200MW of critical IT capacity.",
     },
@@ -50,7 +50,7 @@ export async function seedDatabase() {
       phone: "+1 (503) 555-0314",
       location: "Hillsboro, OR",
       experience: 9,
-      certifications: ["BICSI RCDD", "Cisco CCNP", "CDCDP"],
+      certifications: ["BICSI RCDD", "Cisco CCNP", "CDCDP", "Fiber Optic Pro", "Corning Certified Installer"],
       available: true,
       bio: "Designs and deploys structured cabling and fiber optic infrastructure for hyperscale campus environments.",
     },
@@ -62,7 +62,7 @@ export async function seedDatabase() {
       phone: "+1 (408) 555-0421",
       location: "Santa Clara, CA",
       experience: 15,
-      certifications: ["CDCEP", "AEE CEM", "Uptime Tier Designer"],
+      certifications: ["CDCEP", "AEE CEM", "Uptime Tier Designer", "Schneider Electric Certified", "Generator Systems Pro"],
       available: false,
       bio: "Oversees critical infrastructure operations including UPS, generators, and BMS for multi-site portfolios.",
     },
@@ -80,6 +80,10 @@ export async function seedDatabase() {
       progress: 42,
       powerCapacity: "60MW",
       tier: "tier_4",
+      latitude: 33.4484,
+      longitude: -112.0740,
+      tradesNeeded: ["Electrician", "HVAC Technician", "General Labor"],
+      hourlyRate: "$55-85/hr",
     },
     {
       name: "Dallas Metro Edge Campus",
@@ -92,6 +96,10 @@ export async function seedDatabase() {
       progress: 68,
       powerCapacity: "25MW",
       tier: "tier_3",
+      latitude: 32.7767,
+      longitude: -96.7970,
+      tradesNeeded: ["HVAC Technician", "Network Technician", "Fire Protection"],
+      hourlyRate: "$50-75/hr",
     },
     {
       name: "Ashburn Data Hall Expansion",
@@ -104,6 +112,10 @@ export async function seedDatabase() {
       progress: 8,
       powerCapacity: "40MW",
       tier: "tier_3",
+      latitude: 39.0438,
+      longitude: -77.4874,
+      tradesNeeded: ["Electrician", "Project Manager", "Facility Engineer"],
+      hourlyRate: "$60-90/hr",
     },
     {
       name: "Hillsboro Network Hub",
@@ -116,6 +128,10 @@ export async function seedDatabase() {
       progress: 100,
       powerCapacity: "15MW",
       tier: "tier_3",
+      latitude: 45.5231,
+      longitude: -122.9898,
+      tradesNeeded: ["Network Technician"],
+      hourlyRate: "$45-70/hr",
     },
     {
       name: "Santa Clara AI Compute Center",
@@ -128,6 +144,10 @@ export async function seedDatabase() {
       progress: 35,
       powerCapacity: "80MW",
       tier: "tier_4",
+      latitude: 37.3541,
+      longitude: -121.9552,
+      tradesNeeded: ["Electrician", "HVAC Technician", "Facility Engineer", "Network Technician"],
+      hourlyRate: "$65-95/hr",
     },
   ]).returning();
 
@@ -210,6 +230,24 @@ export async function seedDatabase() {
       trade: "Mechanical",
       dueDate: "2026-01-15",
     },
+  ]);
+
+  await db.insert(projectAssignments).values([
+    { workerId: createdWorkers[0].id, projectId: createdProjects[0].id, role: "lead" },
+    { workerId: createdWorkers[1].id, projectId: createdProjects[1].id, role: "lead" },
+    { workerId: createdWorkers[2].id, projectId: createdProjects[0].id, role: "foreman" },
+    { workerId: createdWorkers[2].id, projectId: createdProjects[2].id, role: "foreman" },
+    { workerId: createdWorkers[3].id, projectId: createdProjects[0].id, role: "crew" },
+    { workerId: createdWorkers[4].id, projectId: createdProjects[4].id, role: "lead" },
+    { workerId: createdWorkers[0].id, projectId: createdProjects[4].id, role: "crew" },
+  ]);
+
+  await db.insert(chatMessages).values([
+    { projectId: createdProjects[0].id, senderId: createdWorkers[2].id, content: "Team meeting at 7AM tomorrow at the main switchgear room. Bring your PPE." },
+    { projectId: createdProjects[0].id, senderId: createdWorkers[0].id, content: "Copy that. I'll have the bus duct specs printed out for everyone." },
+    { projectId: createdProjects[0].id, senderId: createdWorkers[3].id, content: "Should I bring fiber testing equipment too? Want to get a head start on backbone runs." },
+    { projectId: createdProjects[0].id, senderId: createdWorkers[2].id, content: "Yes, good thinking Elena. We'll do fiber pulls after the electrical walkthrough." },
+    { projectId: createdProjects[1].id, senderId: createdWorkers[1].id, content: "CRAH units 1-4 are commissioned and running. Moving to units 5-8 today." },
   ]);
 
   console.log("Database seeded successfully with realistic data center data.");
