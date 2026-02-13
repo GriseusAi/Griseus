@@ -11,7 +11,7 @@ import { usePageMeta } from "@/hooks/use-page-meta";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Users, Send, Crown, Wrench, HardHat, MapPin, MessageCircle } from "lucide-react";
 
-const CURRENT_WORKER_ID_KEY = "flux_current_worker_id";
+const CURRENT_WORKER_ID_KEY = "griseus_current_worker_id";
 
 const roleIcons: Record<string, typeof Crown> = {
   foreman: Crown,
@@ -26,7 +26,7 @@ const roleLabels: Record<string, string> = {
 };
 
 export default function MobileSquad() {
-  usePageMeta("My Squad | Flux", "View your team and communicate with your project squad.");
+  usePageMeta("My Squad | Griseus", "View your team and communicate with your project squad.");
 
   const { data: workers } = useQuery<Worker[]>({ queryKey: ["/api/workers"] });
   const { data: projects } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
@@ -131,7 +131,7 @@ export default function MobileSquad() {
 
   return (
     <div className="flex flex-col h-full" data-testid="mobile-squad">
-      <div className="px-4 pt-4 pb-3 border-b">
+      <div className="px-4 pt-4 pb-3 border-b sticky top-0 z-10 bg-card/90 backdrop-blur-md">
         <div className="flex items-center gap-2 mb-3">
           <Users className="h-5 w-5 text-primary" />
           <h1 className="text-xl font-bold" data-testid="text-squad-title">My Squad</h1>
@@ -180,6 +180,7 @@ export default function MobileSquad() {
                       {member.name.split(" ").map((n) => n[0]).join("")}
                     </AvatarFallback>
                   </Avatar>
+                  <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-success border-2 border-card" />
                   <div className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-card border flex items-center justify-center">
                     <RoleIcon className="h-3 w-3 text-muted-foreground" />
                   </div>
@@ -223,10 +224,10 @@ export default function MobileSquad() {
                     {!isMe && (
                       <p className="text-[11px] text-muted-foreground font-medium mb-0.5 px-1">{sender?.name.split(" ")[0] || "Unknown"}</p>
                     )}
-                    <div className={`rounded-2xl px-3 py-2 text-sm ${
+                    <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                       isMe
-                        ? "bg-primary text-primary-foreground rounded-br-md"
-                        : "bg-muted rounded-bl-md"
+                        ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-br-sm"
+                        : "bg-muted rounded-bl-sm"
                     }`}>
                       {msg.content}
                     </div>
@@ -247,7 +248,7 @@ export default function MobileSquad() {
         )}
       </div>
 
-      <div className="border-t p-3 bg-card" data-testid="chat-input-area">
+      <div className="border-t p-3 bg-card/90 backdrop-blur-md" data-testid="chat-input-area">
         <div className="flex items-center gap-2">
           <input
             ref={inputRef}
@@ -266,6 +267,7 @@ export default function MobileSquad() {
           />
           <Button
             size="icon"
+            className="rounded-full h-10 w-10"
             onClick={handleSend}
             disabled={!newMessage.trim() || sendMutation.isPending}
             data-testid="button-send-message"

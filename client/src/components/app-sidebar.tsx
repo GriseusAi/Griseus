@@ -1,5 +1,6 @@
 import { useLocation, Link } from "wouter";
-import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Settings, Smartphone } from "lucide-react";
+import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone } from "lucide-react";
+import { Separator } from "@/components/ui/separator";
 import {
   Sidebar,
   SidebarContent,
@@ -28,15 +29,16 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/" data-testid="link-home">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-md bg-primary">
+            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-2 shadow-md glow-primary">
               <Zap className="h-5 w-5 text-primary-foreground" />
             </div>
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">Flux</h1>
-              <p className="text-[11px] text-muted-foreground leading-none">Data Center Workforce</p>
+              <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">Griseus</h1>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">Data Center Ops</p>
             </div>
           </div>
         </Link>
+        <Separator className="mt-3 bg-sidebar-border" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
@@ -65,16 +67,18 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4">
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild data-testid="nav-mobile-app">
-              <Link href="/mobile">
-                <Smartphone className="h-4 w-4" />
-                <span>Worker App</span>
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+        <div className="rounded-lg border border-dashed border-sidebar-border p-1">
+          <SidebarMenu>
+            <SidebarMenuItem>
+              <SidebarMenuButton asChild data-testid="nav-mobile-app">
+                <Link href="/mobile">
+                  <Smartphone className="h-4 w-4" />
+                  <span>Worker App</span>
+                </Link>
+              </SidebarMenuButton>
+            </SidebarMenuItem>
+          </SidebarMenu>
+        </div>
       </SidebarFooter>
     </Sidebar>
   );

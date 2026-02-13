@@ -2,7 +2,7 @@ import { useEffect } from "react";
 
 export function usePageMeta(title: string, description?: string) {
   useEffect(() => {
-    document.title = `${title} | Flux`;
+    document.title = `${title} | Griseus`;
 
     let metaDesc = document.querySelector('meta[name="description"]');
     if (description) {
@@ -20,7 +20,7 @@ export function usePageMeta(title: string, description?: string) {
       ogTitle.setAttribute("property", "og:title");
       document.head.appendChild(ogTitle);
     }
-    ogTitle.setAttribute("content", `${title} | Flux`);
+    ogTitle.setAttribute("content", `${title} | Griseus`);
 
     let ogDesc = document.querySelector('meta[property="og:description"]');
     if (description) {

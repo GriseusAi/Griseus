@@ -15,7 +15,7 @@ const ThemeContext = createContext<ThemeContextType>({
 export function ThemeProvider({ children }: { children: React.ReactNode }) {
   const [theme, setTheme] = useState<Theme>(() => {
     if (typeof window !== "undefined") {
-      return (localStorage.getItem("flux-theme") as Theme) || "dark";
+      return (localStorage.getItem("griseus-theme") as Theme) || "dark";
     }
     return "dark";
   });
@@ -27,7 +27,7 @@ export function ThemeProvider({ children }: { children: React.ReactNode }) {
     } else {
       root.classList.remove("dark");
     }
-    localStorage.setItem("flux-theme", theme);
+    localStorage.setItem("griseus-theme", theme);
   }, [theme]);
 
   const toggleTheme = () => {

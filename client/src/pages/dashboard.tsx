@@ -6,6 +6,8 @@ import { Button } from "@/components/ui/button";
 import { usePageMeta } from "@/hooks/use-page-meta";
 import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
+import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
+import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
 import {
   FolderKanban,
   ClipboardList,
@@ -16,8 +18,16 @@ import {
   CheckCircle2,
   Clock,
   TrendingUp,
+  Activity,
 } from "lucide-react";
 import type { Project, WorkOrder, Worker } from "@shared/schema";
+
+const iconBgColors: Record<string, string> = {
+  "stat-active-projects": "bg-primary/10 text-primary",
+  "stat-open-orders": "bg-warning/10 text-warning",
+  "stat-available-workers": "bg-success/10 text-success",
+  "stat-completion-rate": "bg-info/10 text-info",
+};
 
 function StatCard({
   title,
@@ -25,21 +35,25 @@ function StatCard({
   icon: Icon,
   description,
   testId,
+  index,
 }: {
   title: string;
   value: string | number;
   icon: React.ElementType;
   description: string;
   testId: string;
+  index: number;
 }) {
   return (
-    <Card data-testid={testId}>
+    <Card className="card-accent-top" data-testid={testId} style={{ animationDelay: `${index * 80}ms` }}>
       <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0 pb-2">
         <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <Icon className="h-4 w-4 text-muted-foreground" />
+        <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${iconBgColors[testId] || "bg-muted"}`}>
+          <Icon className="h-4 w-4" />
+        </div>
       </CardHeader>
       <CardContent>
-        <div className="text-2xl font-bold" data-testid={`${testId}-value`}>{value}</div>
+        <div className="text-3xl font-bold tracking-tight" data-testid={`${testId}-value`}>{value}</div>
         <p className="text-xs text-muted-foreground mt-1">{description}</p>
       </CardContent>
     </Card>
@@ -48,15 +62,15 @@ function StatCard({
 
 function ProjectRow({ project }: { project: Project }) {
   const statusColors: Record<string, string> = {
-    planning: "bg-chart-4/15 text-chart-4",
+    planning: "bg-warning/15 text-warning",
     active: "bg-primary/15 text-primary",
-    completed: "bg-chart-3/15 text-chart-3",
+    completed: "bg-success/15 text-success",
     on_hold: "bg-destructive/15 text-destructive",
   };
 
   return (
     <div
-      className="flex items-center gap-4 py-3 px-1"
+      className="flex items-center gap-4 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors"
       data-testid={`project-row-${project.id}`}
     >
       <div className="flex-1 min-w-0">
@@ -87,15 +101,15 @@ function WorkOrderRow({ workOrder }: { workOrder: WorkOrder }) {
   };
   const priorityColor: Record<string, string> = {
     urgent: "text-destructive",
-    high: "text-chart-4",
+    high: "text-warning",
     medium: "text-muted-foreground",
-    low: "text-chart-3",
+    low: "text-success",
   };
   const PIcon = priorityIcon[workOrder.priority] || Clock;
 
   return (
     <div
-      className="flex items-center gap-3 py-3 px-1"
+      className="flex items-center gap-3 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors"
       data-testid={`workorder-row-${workOrder.id}`}
     >
       <PIcon className={`h-4 w-4 flex-shrink-0 ${priorityColor[workOrder.priority] || ""}`} />
@@ -107,6 +121,13 @@ function WorkOrderRow({ workOrder }: { workOrder: WorkOrder }) {
     </div>
   );
 }
+
+const chartConfig = {
+  open: { label: "Open", color: "hsl(var(--warning))" },
+  in_progress: { label: "In Progress", color: "hsl(var(--primary))" },
+  completed: { label: "Completed", color: "hsl(var(--success))" },
+  cancelled: { label: "Cancelled", color: "hsl(var(--muted-foreground))" },
+};
 
 export default function Dashboard() {
   usePageMeta("Dashboard", "Your command center for data center construction projects, work orders, and team management.");
@@ -128,24 +149,41 @@ export default function Dashboard() {
 
   const isLoading = loadingProjects || loadingOrders || loadingWorkers;
 
+  // Chart data
+  const chartData = workOrders
+    ? [
+        { status: "Open", count: workOrders.filter((o) => o.status === "open").length, fill: "hsl(var(--warning))" },
+        { status: "In Progress", count: workOrders.filter((o) => o.status === "in_progress").length, fill: "hsl(var(--primary))" },
+        { status: "Completed", count: workOrders.filter((o) => o.status === "completed").length, fill: "hsl(var(--success))" },
+        { status: "Cancelled", count: workOrders.filter((o) => o.status === "cancelled").length, fill: "hsl(var(--muted-foreground))" },
+      ]
+    : [];
+
+  const today = new Date().toLocaleDateString("en-US", {
+    weekday: "long",
+    year: "numeric",
+    month: "long",
+    day: "numeric",
+  });
+
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
-      <div className="relative rounded-md overflow-hidden mb-8">
-        <img
-          src="/images/hero-datacenter.png"
-          alt="Data center facility"
-          className="w-full h-48 object-cover"
-        />
-        <div className="absolute inset-0 bg-gradient-to-r from-black/80 via-black/50 to-transparent" />
-        <div className="absolute inset-0 flex items-center p-8">
-          <div>
-            <div className="flex items-center gap-2 mb-2">
-              <Zap className="h-6 w-6 text-primary" />
-              <h1 className="text-2xl font-bold text-white">Welcome to Flux</h1>
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
+      {/* Gradient Header */}
+      <div className="relative rounded-xl overflow-hidden gradient-header noise-subtle border">
+        <div className="relative z-10 p-8">
+          <div className="flex items-center gap-2 mb-2">
+            <Zap className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold">Welcome to Griseus</h1>
+          </div>
+          <p className="text-sm text-muted-foreground max-w-md">
+            Your command center for data center construction. Manage projects, coordinate teams, and track work orders across all your sites.
+          </p>
+          <div className="flex items-center gap-4 mt-4">
+            <span className="text-xs text-muted-foreground">{today}</span>
+            <div className="flex items-center gap-1.5">
+              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
+              <span className="text-xs text-success font-medium">All systems operational</span>
             </div>
-            <p className="text-sm text-gray-300 max-w-md">
-              Your command center for data center construction. Manage projects, coordinate teams, and track work orders across all your sites.
-            </p>
           </div>
         </div>
       </div>
@@ -172,6 +210,7 @@ export default function Dashboard() {
             icon={FolderKanban}
             description={`${projects?.length || 0} total projects`}
             testId="stat-active-projects"
+            index={0}
           />
           <StatCard
             title="Open Work Orders"
@@ -179,6 +218,7 @@ export default function Dashboard() {
             icon={ClipboardList}
             description={`${urgentOrders} high priority`}
             testId="stat-open-orders"
+            index={1}
           />
           <StatCard
             title="Available Workers"
@@ -186,6 +226,7 @@ export default function Dashboard() {
             icon={Users}
             description={`${workers?.length || 0} total team members`}
             testId="stat-available-workers"
+            index={2}
           />
           <StatCard
             title="Completion Rate"
@@ -193,11 +234,40 @@ export default function Dashboard() {
             icon={TrendingUp}
             description="Across all projects"
             testId="stat-completion-rate"
+            index={3}
           />
         </div>
       )}
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* Chart */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary" />
+              Work Order Status
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            {loadingOrders ? (
+              <Skeleton className="h-[200px] w-full" />
+            ) : chartData.length > 0 ? (
+              <ChartContainer config={chartConfig} className="h-[200px] w-full">
+                <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
+                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
+                  <XAxis dataKey="status" tick={{ fontSize: 11 }} className="text-muted-foreground" />
+                  <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" allowDecimals={false} />
+                  <ChartTooltip content={<ChartTooltipContent />} />
+                  <Bar dataKey="count" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ChartContainer>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-8">No data available</p>
+            )}
+          </CardContent>
+        </Card>
+
+        {/* Recent Projects */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
             <CardTitle className="text-base font-semibold">Recent Projects</CardTitle>
@@ -230,6 +300,7 @@ export default function Dashboard() {
           </CardContent>
         </Card>
 
+        {/* Recent Work Orders */}
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
             <CardTitle className="text-base font-semibold">Recent Work Orders</CardTitle>

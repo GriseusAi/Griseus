@@ -81,10 +81,10 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
           {messages.map((msg, i) => (
             <div key={i} className={`flex ${msg.role === "user" ? "justify-end" : "justify-start"}`}>
               <div
-                className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-primary text-primary-foreground"
-                    : "bg-muted"
+                    ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-br-sm"
+                    : "bg-muted rounded-bl-sm"
                 }`}
                 data-testid={`ai-message-${i}`}
               >
@@ -94,7 +94,7 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
           ))}
           {isTyping && (
             <div className="flex justify-start">
-              <div className="bg-muted rounded-lg px-4 py-2.5 text-sm">
+              <div className="bg-muted rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm">
                 <span className="inline-flex gap-1 items-center">
                   <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:0ms]" />
                   <span className="h-1.5 w-1.5 rounded-full bg-muted-foreground/60 animate-bounce [animation-delay:150ms]" />
@@ -136,7 +136,7 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex flex-col h-screen w-full bg-background" data-testid="mobile-layout">
-      <main className="flex-1 overflow-auto">
+      <main className="flex-1 h-0 overflow-auto">
         {children}
       </main>
 
@@ -145,7 +145,7 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="fixed z-[100] bottom-20 right-4 h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95"
+          className="fixed z-[100] bottom-20 right-4 h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ring-4 ring-violet-500/20"
           style={{
             background: "linear-gradient(135deg, hsl(270 80% 60%), hsl(290 85% 55%))",
             boxShadow: "0 0 18px 4px hsla(280, 80%, 60%, 0.45), 0 4px 12px rgba(0,0,0,0.2)",
@@ -156,7 +156,7 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
         </button>
       )}
 
-      <nav className="border-t bg-card sticky bottom-0 z-50 safe-area-bottom" data-testid="mobile-tab-bar">
+      <nav className="border-t bg-card/90 backdrop-blur-md sticky bottom-0 z-50 safe-area-bottom" data-testid="mobile-tab-bar">
         <div className="flex items-center justify-around gap-1 px-2 py-2">
           {tabs.map((tab) => {
             const isActive = location === tab.url || (tab.url !== "/mobile" && location.startsWith(tab.url));
@@ -165,15 +165,16 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
             return (
               <Link key={tab.title} href={tab.url}>
                 <button
-                  className={`flex flex-col items-center justify-center gap-1 px-4 py-2 rounded-md transition-colors min-w-[72px] ${
+                  className={`flex flex-col items-center justify-center gap-0.5 px-4 py-1.5 rounded-xl transition-all min-w-[72px] ${
                     active
-                      ? "text-primary"
+                      ? "bg-primary/10 text-primary"
                       : "text-muted-foreground"
                   }`}
                   data-testid={`mobile-tab-${tab.title.toLowerCase()}`}
                 >
-                  <tab.icon className={`h-6 w-6 ${active ? "stroke-[2.5px]" : ""}`} />
-                  <span className={`text-xs font-medium ${active ? "font-semibold" : ""}`}>{tab.title}</span>
+                  <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
+                  <span className={`text-[10px] font-medium ${active ? "font-semibold" : ""}`}>{tab.title}</span>
+                  {active && <div className="h-1 w-1 rounded-full bg-primary mt-0.5" />}
                 </button>
               </Link>
             );

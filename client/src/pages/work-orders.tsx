@@ -54,17 +54,17 @@ const trades = [
   "General",
 ];
 
-const priorityConfig: Record<string, { icon: React.ElementType; color: string; bg: string }> = {
-  urgent: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/15 text-destructive" },
-  high: { icon: AlertTriangle, color: "text-chart-4", bg: "bg-chart-4/15 text-chart-4" },
-  medium: { icon: Clock, color: "text-muted-foreground", bg: "bg-muted text-muted-foreground" },
-  low: { icon: CheckCircle2, color: "text-chart-3", bg: "bg-chart-3/15 text-chart-3" },
+const priorityConfig: Record<string, { icon: React.ElementType; color: string; bg: string; accent: string }> = {
+  urgent: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/15 text-destructive", accent: "bg-destructive" },
+  high: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning/15 text-warning", accent: "bg-warning" },
+  medium: { icon: Clock, color: "text-muted-foreground", bg: "bg-muted text-muted-foreground", accent: "bg-success" },
+  low: { icon: CheckCircle2, color: "text-success", bg: "bg-success/15 text-success", accent: "bg-muted-foreground" },
 };
 
 const statusConfig: Record<string, { icon: React.ElementType; color: string }> = {
-  open: { icon: CircleDot, color: "bg-chart-4/15 text-chart-4" },
+  open: { icon: CircleDot, color: "bg-warning/15 text-warning" },
   in_progress: { icon: Clock, color: "bg-primary/15 text-primary" },
-  completed: { icon: CheckCircle2, color: "bg-chart-3/15 text-chart-3" },
+  completed: { icon: CheckCircle2, color: "bg-success/15 text-success" },
   cancelled: { icon: AlertTriangle, color: "bg-destructive/15 text-destructive" },
 };
 
@@ -150,7 +150,7 @@ export default function WorkOrders() {
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -374,42 +374,45 @@ export default function WorkOrders() {
             const assigneeName = getWorkerName(wo.assigneeId);
 
             return (
-              <Card key={wo.id} className="hover-elevate" data-testid={`card-wo-${wo.id}`}>
-                <CardContent className="p-4">
-                  <div className="flex items-center gap-3">
-                    <PIcon className={`h-4 w-4 flex-shrink-0 ${pConfig.color}`} />
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <p className="font-medium text-sm" data-testid={`text-wo-title-${wo.id}`}>{wo.title}</p>
-                        <Badge variant="secondary" className={`text-[10px] ${pConfig.bg}`}>
-                          {wo.priority}
-                        </Badge>
+              <Card key={wo.id} className="hover:shadow-md hover:border-primary/20 transition-all overflow-hidden" data-testid={`card-wo-${wo.id}`}>
+                <CardContent className="p-0">
+                  <div className="flex">
+                    <div className={`w-1 flex-shrink-0 ${pConfig.accent}`} />
+                    <div className="flex items-center gap-3 p-4 flex-1 min-w-0">
+                      <PIcon className={`h-4 w-4 flex-shrink-0 ${pConfig.color}`} />
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="font-medium text-sm" data-testid={`text-wo-title-${wo.id}`}>{wo.title}</p>
+                          <Badge variant="secondary" className={`text-[10px] ${pConfig.bg}`}>
+                            {wo.priority}
+                          </Badge>
+                        </div>
+                        <div className="flex items-center gap-3 mt-1 flex-wrap">
+                          <span className="text-xs text-muted-foreground">{getProjectName(wo.projectId)}</span>
+                          <span className="text-xs text-muted-foreground">{wo.trade}</span>
+                          {assigneeName && (
+                            <span className="text-xs text-muted-foreground">{assigneeName}</span>
+                          )}
+                          {wo.dueDate && (
+                            <span className="text-xs text-muted-foreground">Due: {wo.dueDate}</span>
+                          )}
+                        </div>
                       </div>
-                      <div className="flex items-center gap-3 mt-1 flex-wrap">
-                        <span className="text-xs text-muted-foreground">{getProjectName(wo.projectId)}</span>
-                        <span className="text-xs text-muted-foreground">{wo.trade}</span>
-                        {assigneeName && (
-                          <span className="text-xs text-muted-foreground">{assigneeName}</span>
-                        )}
-                        {wo.dueDate && (
-                          <span className="text-xs text-muted-foreground">Due: {wo.dueDate}</span>
-                        )}
-                      </div>
+                      <Select
+                        value={wo.status}
+                        onValueChange={(val) => updateStatusMutation.mutate({ id: wo.id, status: val })}
+                      >
+                        <SelectTrigger className="w-[130px]" data-testid={`select-status-${wo.id}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="open">Open</SelectItem>
+                          <SelectItem value="in_progress">In Progress</SelectItem>
+                          <SelectItem value="completed">Completed</SelectItem>
+                          <SelectItem value="cancelled">Cancelled</SelectItem>
+                        </SelectContent>
+                      </Select>
                     </div>
-                    <Select
-                      value={wo.status}
-                      onValueChange={(val) => updateStatusMutation.mutate({ id: wo.id, status: val })}
-                    >
-                      <SelectTrigger className="w-[130px]" data-testid={`select-status-${wo.id}`}>
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="open">Open</SelectItem>
-                        <SelectItem value="in_progress">In Progress</SelectItem>
-                        <SelectItem value="completed">Completed</SelectItem>
-                        <SelectItem value="cancelled">Cancelled</SelectItem>
-                      </SelectContent>
-                    </Select>
                   </div>
                 </CardContent>
               </Card>

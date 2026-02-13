@@ -13,7 +13,7 @@ import {
   Clock, FileText, ChevronRight, Zap, Wallet, DollarSign, Timer
 } from "lucide-react";
 
-const CURRENT_WORKER_ID_KEY = "flux_current_worker_id";
+const CURRENT_WORKER_ID_KEY = "griseus_current_worker_id";
 
 const certBadgeStyles: Record<string, { bg: string; icon: typeof Award }> = {
   "Master Electrician": { bg: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: Zap },
@@ -48,7 +48,7 @@ function getCertStyle(certName: string) {
 }
 
 export default function MobilePassport() {
-  usePageMeta("Digital Passport | Flux", "Your verified professional profile with certifications and skills.");
+  usePageMeta("Digital Passport | Griseus", "Your verified professional profile with certifications and skills.");
 
   const { data: workers, isLoading: workersLoading } = useQuery<Worker[]>({ queryKey: ["/api/workers"] });
   const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
@@ -118,30 +118,33 @@ export default function MobilePassport() {
 
       {worker && (
         <div className="px-4 pb-6 space-y-4">
-          <Card data-testid="card-worker-profile">
-            <CardContent className="p-5">
-              <div className="flex items-center gap-4 mb-4">
-                <Avatar className="h-16 w-16 border-2 border-primary">
-                  <AvatarFallback className="text-lg font-bold bg-primary/10 text-primary">
+          <Card data-testid="card-worker-profile" className="overflow-hidden">
+            {/* Gradient banner */}
+            <div className="h-20 bg-gradient-to-br from-primary to-chart-2 relative">
+              <div className="absolute -bottom-8 left-5">
+                <Avatar className="h-16 w-16 bg-gradient-to-br from-primary to-chart-2 text-white border-4 border-card shadow-lg">
+                  <AvatarFallback className="text-lg font-bold bg-gradient-to-br from-primary to-chart-2 text-white">
                     {worker.name.split(" ").map((n) => n[0]).join("")}
                   </AvatarFallback>
                 </Avatar>
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold truncate" data-testid="text-worker-name">{worker.name}</h2>
-                  <p className="text-sm text-muted-foreground" data-testid="text-worker-title">{worker.title}</p>
-                  <div className="flex items-center gap-2 mt-1 flex-wrap">
-                    <Badge variant={worker.available ? "default" : "secondary"}>
-                      {worker.available ? "Available" : "On Assignment"}
-                    </Badge>
-                    <span className="text-xs text-muted-foreground flex items-center gap-1">
-                      <Star className="h-3 w-3" />
-                      {worker.experience} yrs
-                    </span>
-                  </div>
+              </div>
+            </div>
+            <CardContent className="pt-12 p-5">
+              <div className="flex-1 min-w-0">
+                <h2 className="text-xl font-bold truncate" data-testid="text-worker-name">{worker.name}</h2>
+                <p className="text-sm text-muted-foreground" data-testid="text-worker-title">{worker.title}</p>
+                <div className="flex items-center gap-2 mt-1 flex-wrap">
+                  <Badge variant={worker.available ? "default" : "secondary"}>
+                    {worker.available ? "Available" : "On Assignment"}
+                  </Badge>
+                  <span className="text-xs text-muted-foreground flex items-center gap-1">
+                    <Star className="h-3 w-3" />
+                    {worker.experience} yrs
+                  </span>
                 </div>
               </div>
 
-              <div className="space-y-2 text-sm">
+              <div className="space-y-2 text-sm mt-4">
                 <div className="flex items-center gap-2 text-muted-foreground">
                   <MapPin className="h-4 w-4 flex-shrink-0" />
                   <span>{worker.location}</span>
@@ -175,7 +178,7 @@ export default function MobilePassport() {
                 <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Wallet & Stats</h3>
               </div>
               <div className="grid grid-cols-3 gap-3">
-                <div className="text-center">
+                <div className="text-center p-2 rounded-lg bg-success/5 border border-success/10">
                   <div className="flex items-center justify-center h-9 w-9 rounded-md bg-emerald-500/10 mx-auto mb-1.5">
                     <DollarSign className="h-4 w-4 text-emerald-500" />
                   </div>
@@ -184,7 +187,7 @@ export default function MobilePassport() {
                   </p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Current Balance</p>
                 </div>
-                <div className="text-center">
+                <div className="text-center p-2 rounded-lg bg-warning/5 border border-warning/10">
                   <div className="flex items-center justify-center h-9 w-9 rounded-md bg-amber-500/10 mx-auto mb-1.5">
                     <Clock className="h-4 w-4 text-amber-500" />
                   </div>
@@ -193,7 +196,7 @@ export default function MobilePassport() {
                   </p>
                   <p className="text-[11px] text-muted-foreground leading-tight">Pending Payout</p>
                 </div>
-                <div className="text-center">
+                <div className="text-center p-2 rounded-lg bg-primary/5 border border-primary/10">
                   <div className="flex items-center justify-center h-9 w-9 rounded-md bg-primary/10 mx-auto mb-1.5">
                     <Timer className="h-4 w-4 text-primary" />
                   </div>

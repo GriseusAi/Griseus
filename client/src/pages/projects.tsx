@@ -56,9 +56,9 @@ const statusFilters = [
 ];
 
 const statusColors: Record<string, string> = {
-  planning: "bg-chart-4/15 text-chart-4",
+  planning: "bg-warning/15 text-warning",
   active: "bg-primary/15 text-primary",
-  completed: "bg-chart-3/15 text-chart-3",
+  completed: "bg-success/15 text-success",
   on_hold: "bg-destructive/15 text-destructive",
 };
 
@@ -123,7 +123,7 @@ export default function Projects() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -294,7 +294,7 @@ export default function Projects() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover-elevate cursor-pointer h-full" data-testid={`card-project-${project.id}`}>
+              <Card className="hover:shadow-md hover:border-primary/20 transition-all cursor-pointer h-full" data-testid={`card-project-${project.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-2 mb-3">
                     <h3 className="font-semibold text-sm leading-tight" data-testid={`text-project-name-${project.id}`}>

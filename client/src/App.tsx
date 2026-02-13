@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { MobileLayout } from "@/components/mobile-layout";
 import { ThemeProvider } from "@/lib/theme";
 import { ThemeToggle } from "@/components/theme-toggle";
+import { motion, AnimatePresence } from "framer-motion";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
@@ -19,15 +20,27 @@ import MobilePassport from "@/pages/mobile-passport";
 import MobileSquad from "@/pages/mobile-squad";
 
 function DesktopRouter() {
+  const [location] = useLocation();
+
   return (
-    <Switch>
-      <Route path="/" component={Dashboard} />
-      <Route path="/projects" component={Projects} />
-      <Route path="/projects/:id" component={ProjectDetail} />
-      <Route path="/work-orders" component={WorkOrders} />
-      <Route path="/team" component={Team} />
-      <Route component={NotFound} />
-    </Switch>
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <Switch>
+          <Route path="/" component={Dashboard} />
+          <Route path="/projects" component={Projects} />
+          <Route path="/projects/:id" component={ProjectDetail} />
+          <Route path="/work-orders" component={WorkOrders} />
+          <Route path="/team" component={Team} />
+          <Route component={NotFound} />
+        </Switch>
+      </motion.div>
+    </AnimatePresence>
   );
 }
 
@@ -55,7 +68,7 @@ function DesktopLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 flex-wrap p-2 border-b sticky top-0 z-50 bg-background">
+          <header className="flex items-center justify-between gap-2 flex-wrap p-2 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <ThemeToggle />
           </header>

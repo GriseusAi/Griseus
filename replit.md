@@ -1,7 +1,7 @@
-# Flux - Data Center Workforce Platform
+# Griseus - Data Center Workforce Platform
 
 ## Overview
-Flux is a two-sided marketplace platform connecting blue-collar professionals (electricians, technicians, facility engineers, project managers) working in data center construction and maintenance. It provides:
+Griseus is a two-sided marketplace platform connecting blue-collar professionals (electricians, technicians, facility engineers, project managers) working in data center construction and maintenance. It provides:
 - **Manager Dashboard** (desktop): Project management, work order tracking, team directory
 - **Worker Mobile App** (/mobile): Job discovery map, digital passport with certifications, squad chat
 
@@ -48,7 +48,7 @@ Flux is a two-sided marketplace platform connecting blue-collar professionals (e
 ## Routing
 - Desktop manager view: `/`, `/projects`, `/projects/:id`, `/work-orders`, `/team`
 - Mobile worker view: `/mobile` (Jobs), `/mobile/passport`, `/mobile/squad`
-- Worker identity stored in localStorage (key: `flux_current_worker_id`)
+- Worker identity stored in localStorage (key: `griseus_current_worker_id`)
 
 ## Design Tokens
 - Primary: teal (190 75% 42%)

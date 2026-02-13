@@ -21,9 +21,9 @@ import {
 import type { Project, WorkOrder } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
-  planning: "bg-chart-4/15 text-chart-4",
+  planning: "bg-warning/15 text-warning",
   active: "bg-primary/15 text-primary",
-  completed: "bg-chart-3/15 text-chart-3",
+  completed: "bg-success/15 text-success",
   on_hold: "bg-destructive/15 text-destructive",
 };
 
@@ -83,21 +83,26 @@ export default function ProjectDetail() {
   }
 
   return (
-    <div className="p-6 space-y-6 max-w-5xl mx-auto">
-      <div className="flex items-center gap-2">
-        <Link href="/projects">
-          <Button variant="ghost" size="icon" data-testid="button-back-projects">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-        </Link>
-        <div className="flex-1">
-          <div className="flex items-center gap-3 flex-wrap">
-            <h1 className="text-2xl font-bold" data-testid="text-project-detail-name">{project.name}</h1>
-            <Badge variant="secondary" className={statusColors[project.status] || ""}>
-              {project.status.replace("_", " ")}
-            </Badge>
+    <div className="p-6 space-y-6 max-w-5xl mx-auto animate-fade-in">
+      {/* Gradient header banner */}
+      <div className="relative rounded-xl overflow-hidden gradient-header noise-subtle border">
+        <div className="relative z-10 p-6">
+          <div className="flex items-center gap-2 mb-4">
+            <Link href="/projects">
+              <Button variant="ghost" size="icon" data-testid="button-back-projects">
+                <ArrowLeft className="h-4 w-4" />
+              </Button>
+            </Link>
+            <div className="flex-1">
+              <div className="flex items-center gap-3 flex-wrap">
+                <h1 className="text-2xl font-bold" data-testid="text-project-detail-name">{project.name}</h1>
+                <Badge variant="secondary" className={statusColors[project.status] || ""}>
+                  {project.status.replace("_", " ")}
+                </Badge>
+              </div>
+              <p className="text-sm text-muted-foreground mt-1">{project.client}</p>
+            </div>
           </div>
-          <p className="text-sm text-muted-foreground mt-1">{project.client}</p>
         </div>
       </div>
 
@@ -157,10 +162,10 @@ export default function ProjectDetail() {
       </Card>
 
       <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card>
+        <Card className="card-accent-top">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-chart-4/15 flex items-center justify-center">
-              <AlertTriangle className="h-5 w-5 text-chart-4" />
+            <div className="h-10 w-10 rounded-md bg-warning/15 flex items-center justify-center">
+              <AlertTriangle className="h-5 w-5 text-warning" />
             </div>
             <div>
               <p className="text-2xl font-bold">{openCount}</p>
@@ -168,7 +173,7 @@ export default function ProjectDetail() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-accent-top">
           <CardContent className="p-4 flex items-center gap-3">
             <div className="h-10 w-10 rounded-md bg-primary/15 flex items-center justify-center">
               <Clock className="h-5 w-5 text-primary" />
@@ -179,10 +184,10 @@ export default function ProjectDetail() {
             </div>
           </CardContent>
         </Card>
-        <Card>
+        <Card className="card-accent-top">
           <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-chart-3/15 flex items-center justify-center">
-              <CheckCircle2 className="h-5 w-5 text-chart-3" />
+            <div className="h-10 w-10 rounded-md bg-success/15 flex items-center justify-center">
+              <CheckCircle2 className="h-5 w-5 text-success" />
             </div>
             <div>
               <p className="text-2xl font-bold">{completedCount}</p>
@@ -210,15 +215,15 @@ export default function ProjectDetail() {
               {projectOrders.map((wo) => {
                 const priorityColor: Record<string, string> = {
                   urgent: "text-destructive",
-                  high: "text-chart-4",
+                  high: "text-warning",
                   medium: "text-muted-foreground",
-                  low: "text-chart-3",
+                  low: "text-success",
                 };
                 return (
-                  <div key={wo.id} className="flex items-center gap-3 py-3" data-testid={`detail-wo-${wo.id}`}>
+                  <div key={wo.id} className="flex items-center gap-3 py-3 hover:bg-muted/50 rounded-md transition-colors px-2" data-testid={`detail-wo-${wo.id}`}>
                     <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                      wo.priority === "urgent" || wo.priority === "high" ? "bg-chart-4" :
-                      wo.priority === "medium" ? "bg-primary" : "bg-chart-3"
+                      wo.priority === "urgent" || wo.priority === "high" ? "bg-warning" :
+                      wo.priority === "medium" ? "bg-primary" : "bg-success"
                     }`} />
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium truncate">{wo.title}</p>

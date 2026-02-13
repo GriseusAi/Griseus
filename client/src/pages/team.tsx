@@ -60,16 +60,16 @@ const tradeOptions = [
 ];
 
 const tradeColors: Record<string, string> = {
-  Electrician: "bg-chart-4/15 text-chart-4",
+  Electrician: "bg-warning/15 text-warning",
   "HVAC Technician": "bg-primary/15 text-primary",
   "Mechanical Engineer": "bg-chart-2/15 text-chart-2",
-  "Network Technician": "bg-chart-3/15 text-chart-3",
+  "Network Technician": "bg-success/15 text-success",
   "Fire Protection Specialist": "bg-destructive/15 text-destructive",
   "Project Manager": "bg-chart-5/15 text-chart-5",
   "Facility Engineer": "bg-chart-1/15 text-chart-1",
   "Structural Engineer": "bg-chart-2/15 text-chart-2",
   "General Contractor": "bg-muted text-muted-foreground",
-  "Safety Officer": "bg-chart-4/15 text-chart-4",
+  "Safety Officer": "bg-warning/15 text-warning",
 };
 
 function getInitials(name: string) {
@@ -150,7 +150,7 @@ export default function Team() {
   });
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto">
+    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
@@ -362,10 +362,10 @@ export default function Team() {
       ) : filtered && filtered.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((worker) => (
-            <Card key={worker.id} className="hover-elevate" data-testid={`card-worker-${worker.id}`}>
+            <Card key={worker.id} className="hover:shadow-md hover:border-primary/20 transition-all" data-testid={`card-worker-${worker.id}`}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
-                  <Avatar className="h-12 w-12">
+                  <Avatar className={`h-12 w-12 ${worker.available ? "ring-2 ring-success ring-offset-2 ring-offset-card" : ""}`}>
                     <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">
                       {getInitials(worker.name)}
                     </AvatarFallback>
@@ -375,7 +375,9 @@ export default function Team() {
                       <h3 className="font-semibold text-sm" data-testid={`text-worker-name-${worker.id}`}>
                         {worker.name}
                       </h3>
-                      <div className={`h-2 w-2 rounded-full flex-shrink-0 ${worker.available ? "bg-status-online" : "bg-status-busy"}`} />
+                      <Badge variant={worker.available ? "default" : "secondary"} className={`text-[10px] ${worker.available ? "bg-success/15 text-success" : ""}`}>
+                        {worker.available ? "Available" : "On Assignment"}
+                      </Badge>
                     </div>
                     <p className="text-xs text-muted-foreground mt-0.5">{worker.title}</p>
                     <Badge variant="secondary" className={`mt-2 text-[10px] ${tradeColors[worker.trade] || ""}`}>
