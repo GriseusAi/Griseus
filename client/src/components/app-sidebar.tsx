@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -30,9 +30,7 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/dashboard" data-testid="link-home">
           <div className="flex items-center gap-2">
-            <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-2 shadow-md glow-primary">
-              <Zap className="h-5 w-5 text-primary-foreground" />
-            </div>
+            <img src="/favicon.svg" alt="Griseus" className="h-9 w-9 rounded-lg shadow-md" />
             <div>
               <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">Griseus</h1>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">Data Center Ops</p>
