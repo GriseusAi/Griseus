@@ -7,9 +7,11 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { MobileLayout } from "@/components/mobile-layout";
 import { ThemeProvider } from "@/lib/theme";
-import { ThemeToggle } from "@/components/theme-toggle";
+import { ProtectedRoute } from "@/lib/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import NotFound from "@/pages/not-found";
+import LandingPage from "@/pages/landing";
+import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
@@ -32,7 +34,7 @@ function DesktopRouter() {
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
         <Switch>
-          <Route path="/" component={Dashboard} />
+          <Route path="/dashboard" component={Dashboard} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/work-orders" component={WorkOrders} />
@@ -68,9 +70,8 @@ function DesktopLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center justify-between gap-2 flex-wrap p-2 border-b sticky top-0 z-50 bg-background/80 backdrop-blur-md">
+          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-white/5 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
-            <ThemeToggle />
           </header>
           <main className="flex-1 overflow-auto">
             <DesktopRouter />
@@ -83,13 +84,24 @@ function DesktopLayout() {
 
 function AppContent() {
   const [location] = useLocation();
-  const isMobile = location.startsWith("/mobile");
 
-  if (isMobile) {
+  if (location === "/") {
+    return <LandingPage />;
+  }
+
+  if (location === "/login") {
+    return <LoginPage />;
+  }
+
+  if (location.startsWith("/mobile")) {
     return <MobileRouter />;
   }
 
-  return <DesktopLayout />;
+  return (
+    <ProtectedRoute>
+      <DesktopLayout />
+    </ProtectedRoute>
+  );
 }
 
 function App() {

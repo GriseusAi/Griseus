@@ -1,6 +1,7 @@
 import { useLocation, Link } from "wouter";
-import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone } from "lucide-react";
+import { Zap, LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
   Sidebar,
   SidebarContent,
@@ -15,19 +16,19 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/", icon: LayoutDashboard },
+  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", url: "/projects", icon: FolderKanban },
   { title: "Work Orders", url: "/work-orders", icon: ClipboardList },
   { title: "Team", url: "/team", icon: Users },
 ];
 
 export function AppSidebar() {
-  const [location] = useLocation();
+  const [location, setLocation] = useLocation();
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/" data-testid="link-home">
+        <Link href="/dashboard" data-testid="link-home">
           <div className="flex items-center gap-2">
             <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-primary to-chart-2 shadow-md glow-primary">
               <Zap className="h-5 w-5 text-primary-foreground" />
@@ -46,7 +47,7 @@ export function AppSidebar() {
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location === item.url || (item.url !== "/" && location.startsWith(item.url));
+                const isActive = location === item.url || location.startsWith(item.url + "/");
                 return (
                   <SidebarMenuItem key={item.title}>
                     <SidebarMenuButton
@@ -66,7 +67,7 @@ export function AppSidebar() {
           </SidebarGroupContent>
         </SidebarGroup>
       </SidebarContent>
-      <SidebarFooter className="p-4">
+      <SidebarFooter className="p-4 space-y-2">
         <div className="rounded-lg border border-dashed border-sidebar-border p-1">
           <SidebarMenu>
             <SidebarMenuItem>
@@ -79,6 +80,22 @@ export function AppSidebar() {
             </SidebarMenuItem>
           </SidebarMenu>
         </div>
+        <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              data-testid="button-logout"
+              onClick={async () => {
+                await apiRequest("POST", "/api/logout");
+                queryClient.clear();
+                setLocation("/");
+              }}
+              className="text-muted-foreground hover:text-destructive"
+            >
+              <LogOut className="h-4 w-4" />
+              <span>Logout</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
+        </SidebarMenu>
       </SidebarFooter>
     </Sidebar>
   );

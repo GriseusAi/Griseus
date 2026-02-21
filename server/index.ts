@@ -2,6 +2,12 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
+import session from "express-session";
+import createMemoryStore from "memorystore";
+import passport from "passport";
+import { Strategy as LocalStrategy } from "passport-local";
+import { storage } from "./storage";
+import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 
 const app = express();
 const httpServer = createServer(app);
@@ -21,6 +27,66 @@ app.use(
 );
 
 app.use(express.urlencoded({ extended: false }));
+
+// Session setup
+const MemoryStore = createMemoryStore(session);
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET || "griseus-dev-secret-change-in-prod",
+    resave: false,
+    saveUninitialized: false,
+    store: new MemoryStore({ checkPeriod: 86400000 }),
+    cookie: { maxAge: 24 * 60 * 60 * 1000 },
+  }),
+);
+
+// Passport setup
+export async function hashPassword(password: string): Promise<string> {
+  const salt = randomBytes(16).toString("hex");
+  return new Promise((resolve, reject) => {
+    scrypt(password, salt, 64, (err, buf) => {
+      if (err) reject(err);
+      resolve(`${buf.toString("hex")}.${salt}`);
+    });
+  });
+}
+
+export async function comparePasswords(supplied: string, stored: string): Promise<boolean> {
+  const [hashed, salt] = stored.split(".");
+  return new Promise((resolve, reject) => {
+    scrypt(supplied, salt, 64, (err, buf) => {
+      if (err) reject(err);
+      resolve(timingSafeEqual(Buffer.from(hashed, "hex"), buf));
+    });
+  });
+}
+
+passport.use(
+  new LocalStrategy(async (username, password, done) => {
+    try {
+      const user = await storage.getUserByUsername(username);
+      if (!user) return done(null, false, { message: "Invalid username or password" });
+      const match = await comparePasswords(password, user.password);
+      if (!match) return done(null, false, { message: "Invalid username or password" });
+      return done(null, user);
+    } catch (err) {
+      return done(err);
+    }
+  }),
+);
+
+passport.serializeUser((user: any, done) => done(null, user.id));
+passport.deserializeUser(async (id: string, done) => {
+  try {
+    const user = await storage.getUser(id);
+    done(null, user || false);
+  } catch (err) {
+    done(err);
+  }
+});
+
+app.use(passport.initialize());
+app.use(passport.session());
 
 export function log(message: string, source = "express") {
   const formattedTime = new Date().toLocaleTimeString("en-US", {
@@ -91,7 +157,7 @@ app.use((req, res, next) => {
   // Other ports are firewalled. Default to 5000 if not specified.
   // this serves both the API and the client.
   // It is the only port that is not firewalled.
-  const port = parseInt(process.env.PORT || "5000", 10);
+  const port = parseInt(process.env.PORT || "3000", 10);
   httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
   });

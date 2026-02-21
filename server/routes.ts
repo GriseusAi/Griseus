@@ -1,13 +1,63 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
-import { insertProjectSchema, insertWorkerSchema, insertWorkOrderSchema, insertJobApplicationSchema, insertChatMessageSchema } from "@shared/schema";
+import { insertProjectSchema, insertWorkerSchema, insertWorkOrderSchema, insertJobApplicationSchema, insertChatMessageSchema, insertUserSchema } from "@shared/schema";
 import { z } from "zod";
+import passport from "passport";
+import { hashPassword } from "./index";
 
 export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // Auth routes
+  app.post("/api/register", async (req, res, next) => {
+    try {
+      const { username, password } = insertUserSchema.parse(req.body);
+      const existing = await storage.getUserByUsername(username);
+      if (existing) {
+        return res.status(400).json({ message: "Username already exists" });
+      }
+      const hashed = await hashPassword(password);
+      const user = await storage.createUser({ username, password: hashed });
+      req.login(user, (err) => {
+        if (err) return next(err);
+        const { password: _, ...safeUser } = user;
+        return res.status(201).json(safeUser);
+      });
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors.map(e => e.message).join(", ") });
+      }
+      next(error);
+    }
+  });
+
+  app.post("/api/login", (req, res, next) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
+      req.login(user, (err) => {
+        if (err) return next(err);
+        const { password: _, ...safeUser } = user;
+        return res.json(safeUser);
+      });
+    })(req, res, next);
+  });
+
+  app.post("/api/logout", (req, res, next) => {
+    req.logout((err) => {
+      if (err) return next(err);
+      res.sendStatus(200);
+    });
+  });
+
+  app.get("/api/user", (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const { password: _, ...safeUser } = req.user as any;
+    res.json(safeUser);
+  });
+
   app.get("/api/projects", async (_req, res) => {
     const projects = await storage.getProjects();
     res.json(projects);
