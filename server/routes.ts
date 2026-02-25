@@ -187,5 +187,58 @@ export async function registerRoutes(
     }
   });
 
+  // AI Chat endpoint
+  app.post("/api/ai/chat", async (req, res) => {
+    try {
+      const { messages } = req.body;
+
+      if (!Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ message: "messages array is required" });
+      }
+
+      const apiKey = process.env.ANTHROPIC_API_KEY;
+      if (!apiKey) {
+        return res.json({
+          response: "Site AI is currently unavailable. Please configure the ANTHROPIC_API_KEY to enable AI features.",
+        });
+      }
+
+      const Anthropic = (await import("@anthropic-ai/sdk")).default;
+      const client = new Anthropic({ apiKey });
+
+      const result = await client.messages.create({
+        model: "claude-haiku-4-5-20251001",
+        max_tokens: 1024,
+        system: "You are Griseus Site AI, a data center workforce assistant. Help workers with safety protocols, certification requirements, translation, job matching, and site-specific questions. Keep answers concise and practical. Respond in the same language the user writes in.",
+        messages: messages.map((m: { role: string; content: string }) => ({
+          role: m.role as "user" | "assistant",
+          content: m.content,
+        })),
+      });
+
+      const textBlock = result.content.find((block: any) => block.type === "text");
+      const responseText = textBlock ? textBlock.text : "I could not generate a response. Please try again.";
+
+      return res.json({ response: responseText });
+    } catch (error: any) {
+      const errorMsg = error?.message || String(error);
+      console.error("AI Chat error:", errorMsg);
+
+      if (errorMsg.includes("credit balance is too low")) {
+        return res.json({
+          response: "Site AI is temporarily unavailable — API credit balance needs to be topped up. Please contact your administrator.",
+        });
+      }
+      if (errorMsg.includes("authentication") || errorMsg.includes("invalid x-api-key") || errorMsg.includes("Invalid API Key")) {
+        return res.json({
+          response: "Site AI is misconfigured — the API key is invalid. Please contact your administrator.",
+        });
+      }
+      return res.json({
+        response: "I'm having trouble connecting right now. Please try again in a moment.",
+      });
+    }
+  });
+
   return httpServer;
 }

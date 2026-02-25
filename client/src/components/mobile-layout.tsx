@@ -3,6 +3,7 @@ import { useLocation, Link } from "wouter";
 import { MapPin, Shield, Users, Sparkles, X, Send, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
+import { apiRequest } from "@/lib/queryClient";
 
 const tabs = [
   { title: "Jobs", url: "/mobile", icon: MapPin },
@@ -20,23 +21,6 @@ const WELCOME_MESSAGE: ChatMessage = {
   content: "Hello Marcus. I am your Site AI. Ask me about safety protocols or translation.",
 };
 
-const DEMO_RESPONSES: Record<string, string> = {
-  safety: "Always wear your PPE including hard hat, safety glasses, and high-visibility vest on site. Check in with your foreman before entering any active electrical zone.",
-  translation: "I can help translate safety signs and instructions between English, Spanish, and Mandarin. Just share the text you need translated.",
-  default: "I'm currently in demo mode. In the full version, I'll be able to help with safety protocols, translate documents, check certification requirements, and more.",
-};
-
-function getResponse(input: string): string {
-  const lower = input.toLowerCase();
-  if (lower.includes("safety") || lower.includes("ppe") || lower.includes("protocol") || lower.includes("hazard")) {
-    return DEMO_RESPONSES.safety;
-  }
-  if (lower.includes("translat") || lower.includes("spanish") || lower.includes("language")) {
-    return DEMO_RESPONSES.translation;
-  }
-  return DEMO_RESPONSES.default;
-}
-
 function AIChatOverlay({ onClose }: { onClose: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
   const [input, setInput] = useState("");
@@ -47,16 +31,30 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages, isTyping]);
 
-  const handleSend = () => {
+  const handleSend = async () => {
     const text = input.trim();
-    if (!text) return;
-    setMessages((prev) => [...prev, { role: "user", content: text }]);
+    if (!text || isTyping) return;
+
+    const userMessage: ChatMessage = { role: "user", content: text };
+    const updatedMessages = [...messages, userMessage];
+    setMessages(updatedMessages);
     setInput("");
     setIsTyping(true);
-    setTimeout(() => {
-      setMessages((prev) => [...prev, { role: "assistant", content: getResponse(text) }]);
+
+    try {
+      const res = await apiRequest("POST", "/api/ai/chat", {
+        messages: updatedMessages.map((m) => ({ role: m.role, content: m.content })),
+      });
+      const data = await res.json();
+      setMessages((prev) => [...prev, { role: "assistant", content: data.response }]);
+    } catch {
+      setMessages((prev) => [
+        ...prev,
+        { role: "assistant", content: "I'm having trouble connecting right now. Please try again." },
+      ]);
+    } finally {
       setIsTyping(false);
-    }, 1200);
+    }
   };
 
   return (
