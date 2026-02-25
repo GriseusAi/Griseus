@@ -191,63 +191,29 @@ export async function registerRoutes(
   app.post("/api/ai/chat", async (req, res) => {
     try {
       const { messages } = req.body;
-
-      if (!Array.isArray(messages) || messages.length === 0) {
-        return res.status(400).json({ message: "messages array is required" });
-      }
-
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
-        return res.json({
-          response: "Site AI is currently unavailable. Please configure the ANTHROPIC_API_KEY to enable AI features.",
-        });
+        return res.json({ response: "Site AI is currently unavailable." });
       }
-
       const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
+          "content-type": "application/json",
           "x-api-key": apiKey,
           "anthropic-version": "2023-06-01",
-          "content-type": "application/json",
         },
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 1024,
-          system: "You are Griseus Site AI, a data center workforce assistant. Help workers with safety protocols, certification requirements, translation, job matching, and site-specific questions. Keep answers concise and practical. Respond in the same language the user writes in. Never use markdown formatting like **, ##, *, or bullet points with asterisks. Use plain text only. Use newlines to separate each item, point, or question onto its own line for readability.",
-          messages: messages.map((m: { role: string; content: string }) => ({
-            role: m.role as "user" | "assistant",
-            content: m.content,
-          })),
+          system: "You are Griseus Site AI, a data center workforce assistant. Keep answers concise. Use plain text only, no markdown. Use newlines to separate points. Respond in the same language the user writes in.",
+          messages: messages.map((m: any) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })),
         }),
       });
-
       const result = await apiResponse.json();
-
-      if (!apiResponse.ok) {
-        console.error("[AI Chat] API error:", JSON.stringify(result));
-        const errMsg = result?.error?.message || "";
-        if (errMsg.includes("credit balance is too low")) {
-          return res.json({
-            response: "Site AI is temporarily unavailable — API credit balance needs to be topped up. Please contact your administrator.",
-          });
-        }
-        if (errMsg.includes("invalid x-api-key") || errMsg.includes("Invalid API Key")) {
-          return res.json({
-            response: "Site AI is misconfigured — the API key is invalid. Please contact your administrator.",
-          });
-        }
-        throw new Error(errMsg || "Anthropic API error");
-      }
-
-      const textBlock = result.content?.find((block: any) => block.type === "text");
-      const responseText = textBlock ? textBlock.text : "I could not generate a response. Please try again.";
-
-      return res.json({ response: responseText });
-    } catch (error: any) {
-      console.error("[AI Chat] Error:", error?.message || error);
-      return res.json({
-        response: "I'm having trouble connecting right now. Please try again in a moment.",
-      });
+      const text = result.content?.[0]?.text || "I could not generate a response.";
+      return res.json({ response: text });
+    } catch (error) {
+      return res.json({ response: "I'm having trouble connecting right now." });
     }
   });
 
