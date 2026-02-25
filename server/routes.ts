@@ -209,7 +209,7 @@ export async function registerRoutes(
       const result = await client.messages.create({
         model: "claude-haiku-4-5-20251001",
         max_tokens: 1024,
-        system: "You are Griseus Site AI, a data center workforce assistant. Help workers with safety protocols, certification requirements, translation, job matching, and site-specific questions. Keep answers concise and practical. Respond in the same language the user writes in.",
+        system: "You are Griseus Site AI, a data center workforce assistant. Help workers with safety protocols, certification requirements, translation, job matching, and site-specific questions. Keep answers concise and practical. Respond in the same language the user writes in. Never use markdown formatting like *, ##, or bullet points with asterisks. Use plain text only.",
         messages: messages.map((m: { role: string; content: string }) => ({
           role: m.role as "user" | "assistant",
           content: m.content,
