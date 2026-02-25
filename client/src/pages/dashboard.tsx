@@ -230,9 +230,9 @@ export default function Dashboard() {
           />
           <StatCard
             title="Completion Rate"
-            value={`${projects?.length ? Math.round((projects.filter((p) => p.status === "completed").length / projects.length) * 100) : 0}%`}
+            value={`${workOrders?.length ? Math.round((workOrders.filter((o) => o.status === "completed").length / workOrders.length) * 100) : 0}%`}
             icon={TrendingUp}
-            description="Across all projects"
+            description="Across all work orders"
             testId="stat-completion-rate"
             index={3}
           />
