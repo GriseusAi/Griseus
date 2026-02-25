@@ -86,7 +86,12 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
                 }`}
                 data-testid={`ai-message-${i}`}
               >
-                {msg.content}
+                {msg.content.split("\n").map((line, j) => (
+                  <span key={j}>
+                    {j > 0 && <br />}
+                    {line}
+                  </span>
+                ))}
               </div>
             </div>
           ))}
