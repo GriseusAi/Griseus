@@ -418,17 +418,6 @@ export async function registerRoutes(
     }
   });
 
-  // Temporary: one-shot ontology seed trigger
-  app.get("/api/admin/seed-ontology", async (_req, res) => {
-    try {
-      const { seedOntology } = await import("./seed-ontology");
-      await seedOntology();
-      res.json({ message: "Ontology seed complete" });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
   // AI Chat endpoint
   app.post("/api/ai/chat", async (req, res) => {
     try {
