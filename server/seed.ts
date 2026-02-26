@@ -953,4 +953,8 @@ export async function seedDatabase() {
   ]);
 
   console.log("Database seeded successfully with realistic data center data.");
+
+  // Seed ontology tables
+  const { seedOntology } = await import("./seed-ontology");
+  await seedOntology();
 }
