@@ -19,7 +19,7 @@ import {
   workerSkills, workerCertifications,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, asc } from "drizzle-orm";
+import { eq, asc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -80,6 +80,11 @@ export interface IStorage {
 
   getWorkerCertifications(workerId: string): Promise<WorkerCertification[]>;
   createWorkerCertification(wc: InsertWorkerCertification): Promise<WorkerCertification>;
+
+  // Matching engine helpers
+  getTradeByName(name: string): Promise<Trade | undefined>;
+  getWorkersByTrade(trade: string): Promise<Worker[]>;
+  getActiveProjects(): Promise<Project[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -305,6 +310,23 @@ export class DatabaseStorage implements IStorage {
   async createWorkerCertification(wc: InsertWorkerCertification): Promise<WorkerCertification> {
     const [created] = await db.insert(workerCertifications).values(wc).returning();
     return created;
+  }
+
+  // ── Matching Engine Helpers ───────────────────────────────────────────
+
+  async getTradeByName(name: string): Promise<Trade | undefined> {
+    const [trade] = await db.select().from(trades).where(eq(trades.name, name));
+    return trade;
+  }
+
+  async getWorkersByTrade(trade: string): Promise<Worker[]> {
+    return db.select().from(workers).where(eq(workers.trade, trade));
+  }
+
+  async getActiveProjects(): Promise<Project[]> {
+    return db.select().from(projects).where(
+      or(eq(projects.status, "active"), eq(projects.status, "planning"))
+    );
   }
 }
 

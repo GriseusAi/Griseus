@@ -10,6 +10,7 @@ import {
 import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
+import { findWorkersForProject, findJobsForWorker } from "./matching";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -392,6 +393,28 @@ export async function registerRoutes(
         return res.status(400).json({ message: error.errors.map(e => e.message).join(", ") });
       }
       throw error;
+    }
+  });
+
+  // ── Matching Engine ──────────────────────────────────────────────────
+
+  app.post("/api/matching/workers-for-project", async (req, res) => {
+    try {
+      const { projectId } = req.body;
+      if (!projectId) return res.status(400).json({ message: "projectId is required" });
+      const results = await findWorkersForProject(projectId);
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/matching/jobs-for-worker/:workerId", async (req, res) => {
+    try {
+      const results = await findJobsForWorker(req.params.workerId);
+      res.json(results);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
