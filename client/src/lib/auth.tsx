@@ -17,5 +17,13 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/login" />;
   }
 
+  if (!user.role) {
+    return <Redirect to="/select-role" />;
+  }
+
+  if (user.role === "worker") {
+    return <Redirect to="/mobile" />;
+  }
+
   return <>{children}</>;
 }

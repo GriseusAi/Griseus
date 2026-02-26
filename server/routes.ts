@@ -64,6 +64,23 @@ export async function registerRoutes(
     res.json(safeUser);
   });
 
+  app.patch("/api/user/role", async (req, res, next) => {
+    try {
+      if (!req.isAuthenticated()) return res.sendStatus(401);
+      const { role } = req.body;
+      if (role !== "company" && role !== "worker") {
+        return res.status(400).json({ message: "Role must be 'company' or 'worker'" });
+      }
+      const user = req.user as any;
+      const updated = await storage.updateUserRole(user.id, role);
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { password: _, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      next(error);
+    }
+  });
+
   app.get("/api/projects", async (_req, res) => {
     const projects = await storage.getProjects();
     res.json(projects);
