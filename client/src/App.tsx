@@ -14,6 +14,9 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
+import OnboardingPage from "@/pages/onboarding";
+import WorkerQuiz from "@/pages/quiz-worker";
+import CompanyQuiz from "@/pages/quiz-company";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
@@ -104,7 +107,15 @@ function AppContent() {
   const [location] = useLocation();
 
   if (location === "/") {
-    return <LandingPage />;
+    return <OnboardingPage />;
+  }
+
+  if (location === "/onboarding/worker") {
+    return <WorkerQuiz />;
+  }
+
+  if (location === "/onboarding/company") {
+    return <CompanyQuiz />;
   }
 
   if (location === "/login") {
