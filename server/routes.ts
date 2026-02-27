@@ -68,8 +68,8 @@ export async function registerRoutes(
     try {
       if (!req.isAuthenticated()) return res.sendStatus(401);
       const { role } = req.body;
-      if (role !== "company" && role !== "worker") {
-        return res.status(400).json({ message: "Role must be 'company' or 'worker'" });
+      if (role !== null && role !== "company" && role !== "worker") {
+        return res.status(400).json({ message: "Role must be 'company', 'worker', or null" });
       }
       const user = req.user as any;
       const updated = await storage.updateUserRole(user.id, role);

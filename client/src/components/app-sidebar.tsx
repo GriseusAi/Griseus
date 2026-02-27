@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut, ArrowLeftRight } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -79,6 +79,20 @@ export function AppSidebar() {
           </SidebarMenu>
         </div>
         <SidebarMenu>
+          <SidebarMenuItem>
+            <SidebarMenuButton
+              data-testid="button-switch-role"
+              onClick={async () => {
+                await apiRequest("PATCH", "/api/user/role", { role: null });
+                await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
+                setLocation("/select-role");
+              }}
+              className="text-muted-foreground hover:text-foreground"
+            >
+              <ArrowLeftRight className="h-4 w-4" />
+              <span>Switch Role</span>
+            </SidebarMenuButton>
+          </SidebarMenuItem>
           <SidebarMenuItem>
             <SidebarMenuButton
               data-testid="button-logout"

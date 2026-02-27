@@ -2,8 +2,7 @@ import { useEffect, useState } from "react";
 import { useLocation } from "wouter";
 import { Building2, HardHat } from "lucide-react";
 import { useUser } from "@/hooks/use-user";
-import { apiRequest } from "@/lib/queryClient";
-import { queryClient } from "@/lib/queryClient";
+import { apiRequest, queryClient } from "@/lib/queryClient";
 
 export default function SelectRolePage() {
   const [, setLocation] = useLocation();
@@ -73,6 +72,17 @@ export default function SelectRolePage() {
           )}
         </button>
       </div>
+
+      <button
+        onClick={async () => {
+          await apiRequest("POST", "/api/logout");
+          queryClient.clear();
+          setLocation("/");
+        }}
+        className="relative z-10 mt-8 text-sm text-gray-500 hover:text-gray-300 transition-colors"
+      >
+        Log out
+      </button>
     </div>
   );
 }
