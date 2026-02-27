@@ -34,10 +34,10 @@ interface WorkerMatchResult {
 }
 
 const statusColors: Record<string, string> = {
-  planning: "bg-warning/15 text-warning",
-  active: "bg-primary/15 text-primary",
-  completed: "bg-success/15 text-success",
-  on_hold: "bg-destructive/15 text-destructive",
+  planning: "bg-amber-100 text-amber-800 font-semibold",
+  active: "bg-[#92ABBB] text-white font-semibold",
+  completed: "bg-emerald-100 text-emerald-800 font-semibold",
+  on_hold: "bg-red-100 text-red-800 font-semibold",
 };
 
 function getInitials(name: string) {
@@ -152,7 +152,7 @@ export default function ProjectDetail() {
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
                 <h1
-                  className="text-2xl font-bold"
+                  className="text-3xl font-extrabold tracking-tight"
                   data-testid="text-project-detail-name"
                 >
                   {project.name}
@@ -221,11 +221,11 @@ export default function ProjectDetail() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Overall Progress</span>
-              <span className="text-sm font-bold text-primary">
+              <span className="text-2xl font-extrabold text-primary">
                 {project.progress}%
               </span>
             </div>
-            <Progress value={project.progress} className="h-2" />
+            <Progress value={project.progress} className="h-3" />
           </div>
         </CardContent>
       </Card>

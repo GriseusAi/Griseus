@@ -29,6 +29,8 @@ export default function LandingPage() {
 
   return (
     <div className="landing font-sans text-[#5A5A5A] antialiased overflow-x-hidden" style={{ backgroundColor: "#EEE7DD" }}>
+      {/* Accent bar */}
+      <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#92ABBB] via-[#CEB298] to-[#9F6C52] z-[60]" />
       {/* Nav */}
       <nav className="fixed top-0 w-full z-50 border-b border-[#CEB298]/20 bg-[#EEE7DD]/80 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
@@ -39,7 +41,7 @@ export default function LandingPage() {
             <Link href="/login" className="text-sm text-[#5A5A5A] hover:text-[#2D2D2D] transition-colors">
               Login
             </Link>
-            <Link href="/" className="text-sm px-4 py-1.5 rounded-lg bg-[#92ABBB] hover:bg-[#839dae] text-white transition-colors">
+            <Link href="/" className="text-sm px-5 py-2 rounded-full bg-[#92ABBB] hover:bg-[#839dae] text-white font-medium transition-colors">
               Sign Up
             </Link>
           </div>
@@ -56,7 +58,7 @@ export default function LandingPage() {
           </div>
 
           {/* Heading */}
-          <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-bold text-[#2D2D2D] leading-[1.1] tracking-tight mb-6">
+          <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold text-[#1A1A1A] leading-[1.1] tracking-tight mb-6">
             Data Center<br />
             <span className="text-[#92ABBB]">Workforce Marketplace</span>
           </h1>
@@ -83,8 +85,8 @@ export default function LandingPage() {
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-6 py-3 rounded-xl bg-[#92ABBB] hover:bg-[#839dae] text-white text-sm font-medium
-                           transition-all hover:shadow-lg hover:shadow-[#92ABBB]/20 active:scale-[0.98]
+                className="px-6 py-3 rounded-full bg-[#92ABBB] hover:bg-[#839dae] text-white text-sm font-semibold
+                           transition-all shadow-lg hover:shadow-xl hover:shadow-[#92ABBB]/20 active:scale-[0.98]
                            whitespace-nowrap disabled:opacity-50"
               >
                 {submitting ? "Joining..." : "Join Waitlist"}
@@ -101,17 +103,17 @@ export default function LandingPage() {
           {/* Stats */}
           <div className="landing-fade-in landing-fade-in-delay-4 flex items-center justify-center gap-8 sm:gap-12 mt-16 pt-8 border-t border-[#CEB298]/20">
             <div className="text-center">
-              <div className="text-2xl font-bold text-[#2D2D2D] font-mono">500+</div>
+              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">500+</div>
               <div className="text-xs text-[#5A5A5A] mt-1">Workers Ready</div>
             </div>
             <div className="w-px h-8 bg-[#CEB298]/30"></div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-[#2D2D2D] font-mono">12</div>
+              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">12</div>
               <div className="text-xs text-[#5A5A5A] mt-1">Markets</div>
             </div>
             <div className="w-px h-8 bg-[#CEB298]/30"></div>
             <div className="text-center">
-              <div className="text-2xl font-bold text-[#2D2D2D] font-mono">48h</div>
+              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">48h</div>
               <div className="text-xs text-[#5A5A5A] mt-1">Avg. Placement</div>
             </div>
           </div>
@@ -163,7 +165,7 @@ export default function LandingPage() {
                 desc: "Real-time analytics on workforce utilization, project timelines, and cost tracking. Make data-driven staffing decisions across your portfolio.",
               },
             ].map((feature) => (
-              <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-[#CEB298]/20 bg-white">
+              <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-[#CEB298]/20 bg-white shadow-md">
                 <div className="w-10 h-10 rounded-xl bg-[#92ABBB]/10 border border-[#92ABBB]/20 flex items-center justify-center mb-4 group-hover:border-[#92ABBB]/40 transition-colors">
                   <svg className="w-5 h-5 text-[#92ABBB]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     {feature.icon}

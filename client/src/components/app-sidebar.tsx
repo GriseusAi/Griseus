@@ -29,14 +29,14 @@ export function AppSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/dashboard" data-testid="link-home">
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="Griseus" className="h-9 w-9 rounded-lg shadow-md" />
+            <img src="/favicon.svg" alt="Griseus" className="h-10 w-10 rounded-lg shadow-md" />
             <div>
-              <h1 className="text-lg font-bold tracking-tight text-sidebar-foreground">Griseus</h1>
+              <h1 className="text-xl font-bold tracking-tight text-sidebar-foreground">Griseus</h1>
               <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">Data Center Ops</p>
             </div>
           </div>
         </Link>
-        <Separator className="mt-3 bg-sidebar-border" />
+        <Separator className="mt-4 bg-sidebar-border" />
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>

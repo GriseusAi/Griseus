@@ -89,20 +89,20 @@ export default function Dashboard() {
   const selectedProject = projects?.find((p) => p.id === selectedProjectId);
 
   const statusColors: Record<string, string> = {
-    planning: "bg-warning/15 text-warning",
-    active: "bg-primary/15 text-primary",
-    completed: "bg-success/15 text-success",
-    on_hold: "bg-destructive/15 text-destructive",
+    planning: "bg-amber-100 text-amber-800 font-semibold",
+    active: "bg-[#92ABBB] text-white font-semibold",
+    completed: "bg-emerald-100 text-emerald-800 font-semibold",
+    on_hold: "bg-red-100 text-red-800 font-semibold",
   };
 
   return (
-    <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
+    <div className="p-6 space-y-8 max-w-7xl mx-auto animate-fade-in">
       {/* Hero Section */}
       <div className="relative rounded-xl overflow-hidden gradient-header noise-subtle border">
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
               Find Skilled Workers for Your Data Center Project
             </h1>
           </div>
@@ -111,39 +111,21 @@ export default function Dashboard() {
             professionals
           </p>
           {!isLoading && (
-            <div className="flex items-center gap-4 mt-6">
-              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
-                <FolderKanban className="h-4 w-4 text-primary" />
-                <div>
-                  <p className="text-lg font-bold leading-none">
-                    {projects?.length || 0}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Total Projects
-                  </p>
-                </div>
+            <div className="grid grid-cols-3 gap-4 mt-8">
+              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-[#92ABBB]">
+                <FolderKanban className="h-5 w-5 text-[#92ABBB] mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{projects?.length || 0}</p>
+                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Total Projects</p>
               </div>
-              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
-                <Users className="h-4 w-4 text-emerald-600" />
-                <div>
-                  <p className="text-lg font-bold leading-none">
-                    {availableWorkers}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Available Workers
-                  </p>
-                </div>
+              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500">
+                <Users className="h-5 w-5 text-emerald-500 mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{availableWorkers}</p>
+                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Available Workers</p>
               </div>
-              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
-                <Sparkles className="h-4 w-4 text-amber-600" />
-                <div>
-                  <p className="text-lg font-bold leading-none">
-                    {projects?.filter((p) => p.status === "active").length || 0}
-                  </p>
-                  <p className="text-[10px] text-muted-foreground">
-                    Active Matches
-                  </p>
-                </div>
+              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-amber-500">
+                <Sparkles className="h-5 w-5 text-amber-500 mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{projects?.filter((p) => p.status === "active").length || 0}</p>
+                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Active Matches</p>
               </div>
             </div>
           )}
@@ -152,7 +134,7 @@ export default function Dashboard() {
 
       {/* Quick-Start: Select a Project */}
       <div>
-        <h2 className="text-lg font-semibold mb-3">Select a Project to Match Workers</h2>
+        <h2 className="text-xl font-bold tracking-tight mb-3">Select a Project to Match Workers</h2>
         {loadingProjects ? (
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
             {[...Array(3)].map((_, i) => (
@@ -170,7 +152,7 @@ export default function Dashboard() {
             {projects.map((project) => (
               <Card
                 key={project.id}
-                className={`cursor-pointer transition-all hover:border-primary/50 ${
+                className={`cursor-pointer shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200 ${
                   selectedProjectId === project.id
                     ? "border-primary ring-1 ring-primary/30"
                     : ""
@@ -180,7 +162,7 @@ export default function Dashboard() {
               >
                 <CardContent className="p-4">
                   <div className="flex items-center justify-between mb-1">
-                    <p className="font-medium text-sm truncate">{project.name}</p>
+                    <p className="font-semibold text-base truncate">{project.name}</p>
                     <Badge
                       variant="secondary"
                       className={`text-[10px] ${statusColors[project.status] || ""}`}
@@ -194,13 +176,12 @@ export default function Dashboard() {
                   {project.tradesNeeded && project.tradesNeeded.length > 0 && (
                     <div className="flex flex-wrap gap-1">
                       {project.tradesNeeded.map((trade) => (
-                        <Badge
+                        <span
                           key={trade}
-                          variant="outline"
-                          className="text-[10px] px-1.5 py-0"
+                          className="bg-[#92ABBB] text-white text-[10px] px-2 py-0.5 rounded-full font-medium"
                         >
                           {trade}
-                        </Badge>
+                        </span>
                       ))}
                     </div>
                   )}
@@ -301,7 +282,7 @@ export default function Dashboard() {
                   onClick={() => setLocation(`/projects/${project.id}`)}
                 >
                   <div className="flex-1 min-w-0">
-                    <p className="font-medium text-sm truncate">{project.name}</p>
+                    <p className="font-semibold text-base truncate">{project.name}</p>
                     <p className="text-xs text-muted-foreground truncate">
                       {project.client} &middot; {project.location}
                     </p>
@@ -309,13 +290,12 @@ export default function Dashboard() {
                   <div className="flex flex-wrap gap-1 justify-end">
                     {project.tradesNeeded && project.tradesNeeded.length > 0 ? (
                       project.tradesNeeded.map((trade) => (
-                        <Badge
+                        <span
                           key={trade}
-                          variant="secondary"
-                          className="text-[10px] px-1.5 py-0"
+                          className="bg-[#92ABBB] text-white text-[10px] px-2 py-0.5 rounded-full font-medium"
                         >
                           {trade}
-                        </Badge>
+                        </span>
                       ))
                     ) : (
                       <span className="text-xs text-muted-foreground italic">

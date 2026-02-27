@@ -56,10 +56,10 @@ const statusFilters = [
 ];
 
 const statusColors: Record<string, string> = {
-  planning: "bg-warning/15 text-warning",
-  active: "bg-primary/15 text-primary",
-  completed: "bg-success/15 text-success",
-  on_hold: "bg-destructive/15 text-destructive",
+  planning: "bg-amber-100 text-amber-800 font-semibold",
+  active: "bg-[#92ABBB] text-white font-semibold",
+  completed: "bg-emerald-100 text-emerald-800 font-semibold",
+  on_hold: "bg-red-100 text-red-800 font-semibold",
 };
 
 export default function Projects() {
@@ -126,7 +126,7 @@ export default function Projects() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
             <FolderKanban className="h-6 w-6 text-primary" />
             Projects
           </h1>
@@ -294,10 +294,10 @@ export default function Projects() {
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((project) => (
             <Link key={project.id} href={`/projects/${project.id}`}>
-              <Card className="hover:shadow-md hover:border-primary/20 transition-all cursor-pointer h-full" data-testid={`card-project-${project.id}`}>
+              <Card className="shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200 cursor-pointer h-full" data-testid={`card-project-${project.id}`}>
                 <CardContent className="p-5">
                   <div className="flex items-start justify-between gap-2 mb-3">
-                    <h3 className="font-semibold text-sm leading-tight" data-testid={`text-project-name-${project.id}`}>
+                    <h3 className="font-bold text-base leading-tight" data-testid={`text-project-name-${project.id}`}>
                       {project.name}
                     </h3>
                     <Badge variant="secondary" className={`flex-shrink-0 ${statusColors[project.status] || ""}`}>
@@ -331,7 +331,7 @@ export default function Projects() {
                       <span className="text-xs text-muted-foreground">Progress</span>
                       <span className="text-xs font-medium">{project.progress}%</span>
                     </div>
-                    <Progress value={project.progress} className="h-1.5" />
+                    <Progress value={project.progress} className="h-2.5 rounded-full" />
                   </div>
                 </CardContent>
               </Card>

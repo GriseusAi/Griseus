@@ -153,7 +153,7 @@ export default function Team() {
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
       <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2">
+          <h1 className="text-3xl font-extrabold tracking-tight flex items-center gap-2">
             <Users className="h-6 w-6 text-primary" />
             Team Directory
           </h1>
@@ -362,7 +362,7 @@ export default function Team() {
       ) : filtered && filtered.length > 0 ? (
         <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
           {filtered.map((worker) => (
-            <Card key={worker.id} className="hover:shadow-md hover:border-primary/20 transition-all" data-testid={`card-worker-${worker.id}`}>
+            <Card key={worker.id} className="shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200" data-testid={`card-worker-${worker.id}`}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
                   <Avatar className={`h-12 w-12 ${worker.available ? "ring-2 ring-success ring-offset-2 ring-offset-card" : ""}`}>
@@ -372,7 +372,7 @@ export default function Team() {
                   </Avatar>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <h3 className="font-semibold text-sm" data-testid={`text-worker-name-${worker.id}`}>
+                      <h3 className="font-bold text-base" data-testid={`text-worker-name-${worker.id}`}>
                         {worker.name}
                       </h3>
                       <Badge variant={worker.available ? "default" : "secondary"} className={`text-[10px] ${worker.available ? "bg-success/15 text-success" : ""}`}>

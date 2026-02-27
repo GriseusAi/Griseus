@@ -11,16 +11,16 @@
   --elevate-2: rgba(0,0,0, .08);
   /* bg: #EEE7DD cream */
   --background: 35 33% 90%;
-  /* foreground: #2D2D2D near-black */
-  --foreground: 0 0% 18%;
+  /* foreground: #1A1A1A near-black */
+  --foreground: 0 0% 10%;
   /* border: #CEB298 sand — lightened for default */
   --border: 29 25% 82%;
   /* card: white */
   --card: 0 0% 100%;
   --card-foreground: 0 0% 18%;
   --card-border: 29 25% 85%;
-  /* sidebar: light cream */
-  --sidebar: 33 30% 93%;
+  /* sidebar: pure white */
+  --sidebar: 0 0% 100%;
   --sidebar-foreground: 0 0% 18%;
   --sidebar-border: 29 25% 82%;
   /* sidebar active: warm brown #9F6C52 */
@@ -69,11 +69,11 @@
   --radius: .5rem;
   --shadow-2xs: 0px 1px 2px 0px hsl(210 5% 50% / 0.05);
   --shadow-xs: 0px 1px 3px 0px hsl(210 5% 50% / 0.08);
-  --shadow-sm: 0px 1px 2px 0px hsl(210 5% 50% / 0.06), 0px 1px 3px -1px hsl(210 5% 50% / 0.10);
-  --shadow: 0px 2px 4px 0px hsl(210 5% 50% / 0.08), 0px 1px 3px -1px hsl(210 5% 50% / 0.12);
-  --shadow-md: 0px 4px 6px -1px hsl(210 5% 50% / 0.10), 0px 2px 4px -2px hsl(210 5% 50% / 0.15);
-  --shadow-lg: 0px 10px 15px -3px hsl(210 5% 50% / 0.10), 0px 4px 6px -4px hsl(210 5% 50% / 0.20);
-  --shadow-xl: 0px 20px 25px -5px hsl(210 5% 50% / 0.12), 0px 8px 10px -6px hsl(210 5% 50% / 0.25);
+  --shadow-sm: 0px 1px 3px 0px hsl(210 5% 50% / 0.10), 0px 1px 2px -1px hsl(210 5% 50% / 0.15);
+  --shadow: 0px 2px 6px 0px hsl(210 5% 50% / 0.12), 0px 1px 4px -1px hsl(210 5% 50% / 0.18);
+  --shadow-md: 0px 4px 8px -1px hsl(210 5% 50% / 0.14), 0px 2px 6px -2px hsl(210 5% 50% / 0.20);
+  --shadow-lg: 0px 10px 20px -3px hsl(210 5% 50% / 0.15), 0px 4px 8px -4px hsl(210 5% 50% / 0.25);
+  --shadow-xl: 0px 20px 30px -5px hsl(210 5% 50% / 0.18), 0px 8px 12px -6px hsl(210 5% 50% / 0.30);
   --shadow-2xl: 0px 25px 50px -12px hsl(210 5% 50% / 0.25);
   --tracking-normal: 0em;
   --spacing: 0.25rem;
@@ -268,7 +268,7 @@
 
   /* Gradient header banner */
   .gradient-header {
-    background: linear-gradient(135deg, hsl(var(--primary) / 0.12) 0%, hsl(var(--chart-2) / 0.08) 50%, hsl(var(--chart-3) / 0.06) 100%);
+    background: linear-gradient(135deg, hsl(var(--primary) / 0.18) 0%, hsl(var(--chart-2) / 0.12) 50%, hsl(var(--chart-3) / 0.08) 100%);
     position: relative;
   }
   /* removed dark variant — light only */
@@ -283,6 +283,16 @@
     pointer-events: none;
     z-index: 0;
   }
+}
+
+/* Sidebar active state — left border accent */
+[data-sidebar="menu-button"][data-active="true"] {
+  background: transparent !important;
+  border-left: 3px solid hsl(203 23% 65%);
+  border-radius: 0;
+  padding-left: 12px;
+  font-weight: 600;
+  color: hsl(0 0% 10%);
 }
 
 @keyframes pulse {
