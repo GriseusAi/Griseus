@@ -1,3 +1,4 @@
+import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useRoute, Link } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -7,18 +8,30 @@ import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Separator } from "@/components/ui/separator";
 import { usePageMeta } from "@/hooks/use-page-meta";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import {
   ArrowLeft,
   MapPin,
   Building2,
   Calendar,
   Zap,
-  ClipboardList,
-  AlertTriangle,
+  Wrench,
+  Sparkles,
+  UserCheck,
   Clock,
-  CheckCircle2,
+  Award,
 } from "lucide-react";
-import type { Project, WorkOrder } from "@shared/schema";
+import type { Project, Worker } from "@shared/schema";
+
+interface WorkerMatchResult {
+  worker: Worker;
+  score: { total: number };
+  matchedTrade: string;
+  alreadyAssigned: boolean;
+  skillDetails: { tradeSkillCount: number; workerMatchedSkills: number; avgProficiency: number };
+  certDetails: { requiredCertCount: number; validCerts: number; expiredCerts: number; missingCerts: number };
+}
 
 const statusColors: Record<string, string> = {
   planning: "bg-warning/15 text-warning",
@@ -27,27 +40,68 @@ const statusColors: Record<string, string> = {
   on_hold: "bg-destructive/15 text-destructive",
 };
 
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const color =
+    score > 75
+      ? "bg-emerald-500/15 text-emerald-400"
+      : score >= 50
+        ? "bg-amber-500/15 text-amber-400"
+        : "bg-red-500/15 text-red-400";
+  return (
+    <Badge variant="secondary" className={`text-xs font-bold ${color}`}>
+      {score}%
+    </Badge>
+  );
+}
+
 export default function ProjectDetail() {
   const [, params] = useRoute("/projects/:id");
   const projectId = params?.id;
+  const { toast } = useToast();
 
   const { data: project, isLoading } = useQuery<Project>({
     queryKey: ["/api/projects", projectId],
     enabled: !!projectId,
   });
 
-  const { data: workOrders } = useQuery<WorkOrder[]>({
-    queryKey: ["/api/work-orders"],
-  });
+  const [matchResults, setMatchResults] = useState<WorkerMatchResult[]>([]);
+  const [matchLoading, setMatchLoading] = useState(false);
 
-  const projectOrders = workOrders?.filter((wo) => wo.projectId === projectId) || [];
-  const openCount = projectOrders.filter((wo) => wo.status === "open").length;
-  const inProgressCount = projectOrders.filter((wo) => wo.status === "in_progress").length;
-  const completedCount = projectOrders.filter((wo) => wo.status === "completed").length;
+  useEffect(() => {
+    if (!projectId) return;
+    let cancelled = false;
+    async function fetchMatches() {
+      setMatchLoading(true);
+      try {
+        const res = await apiRequest("POST", "/api/matching/workers-for-project", {
+          projectId,
+        });
+        const data = await res.json();
+        if (!cancelled) setMatchResults(data);
+      } catch {
+        if (!cancelled) setMatchResults([]);
+      } finally {
+        if (!cancelled) setMatchLoading(false);
+      }
+    }
+    fetchMatches();
+    return () => { cancelled = true; };
+  }, [projectId]);
 
   usePageMeta(
     project ? project.name : "Project Details",
-    project ? `${project.client} - ${project.location}. ${project.description || ""}` : "View project details"
+    project
+      ? `${project.client} - ${project.location}. ${project.description || ""}`
+      : "View project details"
   );
 
   if (isLoading) {
@@ -75,7 +129,9 @@ export default function ProjectDetail() {
         <Card className="mt-4">
           <CardContent className="flex flex-col items-center justify-center py-16">
             <h3 className="font-semibold mb-1">Project not found</h3>
-            <p className="text-sm text-muted-foreground">This project may have been removed.</p>
+            <p className="text-sm text-muted-foreground">
+              This project may have been removed.
+            </p>
           </CardContent>
         </Card>
       </div>
@@ -95,8 +151,16 @@ export default function ProjectDetail() {
             </Link>
             <div className="flex-1">
               <div className="flex items-center gap-3 flex-wrap">
-                <h1 className="text-2xl font-bold" data-testid="text-project-detail-name">{project.name}</h1>
-                <Badge variant="secondary" className={statusColors[project.status] || ""}>
+                <h1
+                  className="text-2xl font-bold"
+                  data-testid="text-project-detail-name"
+                >
+                  {project.name}
+                </h1>
+                <Badge
+                  variant="secondary"
+                  className={statusColors[project.status] || ""}
+                >
                   {project.status.replace("_", " ")}
                 </Badge>
               </div>
@@ -106,6 +170,7 @@ export default function ProjectDetail() {
         </div>
       </div>
 
+      {/* Project Info */}
       <Card>
         <CardContent className="p-6">
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
@@ -130,7 +195,9 @@ export default function ProjectDetail() {
                 <Building2 className="h-4 w-4 text-muted-foreground mt-0.5" />
                 <div>
                   <p className="text-xs text-muted-foreground">Tier</p>
-                  <p className="text-sm font-medium">{project.tier.replace("_", " ").toUpperCase()}</p>
+                  <p className="text-sm font-medium">
+                    {project.tier.replace("_", " ").toUpperCase()}
+                  </p>
                 </div>
               </div>
             )}
@@ -154,92 +221,138 @@ export default function ProjectDetail() {
           <div>
             <div className="flex items-center justify-between mb-2">
               <span className="text-sm font-medium">Overall Progress</span>
-              <span className="text-sm font-bold text-primary">{project.progress}%</span>
+              <span className="text-sm font-bold text-primary">
+                {project.progress}%
+              </span>
             </div>
             <Progress value={project.progress} className="h-2" />
           </div>
         </CardContent>
       </Card>
 
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-        <Card className="card-accent-top">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-warning/15 flex items-center justify-center">
-              <AlertTriangle className="h-5 w-5 text-warning" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{openCount}</p>
-              <p className="text-xs text-muted-foreground">Open</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="card-accent-top">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-primary/15 flex items-center justify-center">
-              <Clock className="h-5 w-5 text-primary" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{inProgressCount}</p>
-              <p className="text-xs text-muted-foreground">In Progress</p>
-            </div>
-          </CardContent>
-        </Card>
-        <Card className="card-accent-top">
-          <CardContent className="p-4 flex items-center gap-3">
-            <div className="h-10 w-10 rounded-md bg-success/15 flex items-center justify-center">
-              <CheckCircle2 className="h-5 w-5 text-success" />
-            </div>
-            <div>
-              <p className="text-2xl font-bold">{completedCount}</p>
-              <p className="text-xs text-muted-foreground">Completed</p>
-            </div>
-          </CardContent>
-        </Card>
-      </div>
-
+      {/* Workforce Needs */}
       <Card>
-        <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
+        <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
-            <ClipboardList className="h-4 w-4" />
-            Work Orders ({projectOrders.length})
+            <Wrench className="h-4 w-4" />
+            Workforce Needs
           </CardTitle>
-          <Link href="/work-orders">
-            <Button variant="outline" size="sm" data-testid="link-manage-orders">
-              Manage
-            </Button>
-          </Link>
         </CardHeader>
         <CardContent>
-          {projectOrders.length > 0 ? (
-            <div className="divide-y divide-border">
-              {projectOrders.map((wo) => {
-                const priorityColor: Record<string, string> = {
-                  urgent: "text-destructive",
-                  high: "text-warning",
-                  medium: "text-muted-foreground",
-                  low: "text-success",
-                };
-                return (
-                  <div key={wo.id} className="flex items-center gap-3 py-3 hover:bg-muted/50 rounded-md transition-colors px-2" data-testid={`detail-wo-${wo.id}`}>
-                    <div className={`h-2 w-2 rounded-full flex-shrink-0 ${
-                      wo.priority === "urgent" || wo.priority === "high" ? "bg-warning" :
-                      wo.priority === "medium" ? "bg-primary" : "bg-success"
-                    }`} />
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{wo.title}</p>
-                      <p className="text-xs text-muted-foreground">{wo.trade}</p>
+          {project.tradesNeeded && project.tradesNeeded.length > 0 ? (
+            <div className="flex flex-wrap gap-2">
+              {project.tradesNeeded.map((trade) => (
+                <div
+                  key={trade}
+                  className="flex items-center gap-2 rounded-lg border px-3 py-2 bg-muted/30"
+                >
+                  <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+                  <span className="text-sm font-medium">{trade}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <p className="text-sm text-muted-foreground text-center py-4">
+              No trades specified for this project yet.
+            </p>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* AI Recommended Workers */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base font-semibold flex items-center gap-2">
+            <Sparkles className="h-4 w-4 text-primary" />
+            AI Recommended Workers
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          {matchLoading ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {[...Array(4)].map((_, i) => (
+                <div key={i} className="rounded-lg border p-4 space-y-3">
+                  <div className="flex items-center gap-3">
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <div className="space-y-1.5">
+                      <Skeleton className="h-4 w-28" />
+                      <Skeleton className="h-3 w-20" />
                     </div>
-                    <Badge variant="outline" className="text-xs">{wo.status.replace("_", " ")}</Badge>
-                    <span className={`text-xs font-medium ${priorityColor[wo.priority] || ""}`}>
-                      {wo.priority}
-                    </span>
                   </div>
-                );
-              })}
+                  <div className="flex gap-2">
+                    <Skeleton className="h-5 w-16" />
+                    <Skeleton className="h-5 w-20" />
+                  </div>
+                </div>
+              ))}
+            </div>
+          ) : matchResults.length > 0 ? (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              {matchResults.slice(0, 10).map((result) => (
+                <div
+                  key={result.worker.id}
+                  className="rounded-lg border p-4 hover:bg-muted/50 transition-colors"
+                >
+                  <div className="flex items-start justify-between mb-3">
+                    <div className="flex items-center gap-3">
+                      <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center text-sm font-bold text-primary">
+                        {getInitials(result.worker.name)}
+                      </div>
+                      <div>
+                        <p className="font-medium text-sm">{result.worker.name}</p>
+                        <p className="text-xs text-muted-foreground">
+                          {result.worker.title}
+                        </p>
+                      </div>
+                    </div>
+                    <ScoreBadge score={result.score.total} />
+                  </div>
+                  <div className="flex flex-wrap gap-2 mb-3">
+                    <Badge variant="outline" className="text-[10px]">
+                      {result.matchedTrade}
+                    </Badge>
+                    <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                      <Clock className="h-3 w-3" />
+                      {result.worker.experience} yrs
+                    </span>
+                    <Badge
+                      variant="secondary"
+                      className={`text-[10px] ${
+                        result.alreadyAssigned
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-emerald-500/15 text-emerald-400"
+                      }`}
+                    >
+                      {result.alreadyAssigned ? "On Assignment" : "Available"}
+                    </Badge>
+                    {result.worker.certifications &&
+                      result.worker.certifications.length > 0 && (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <Award className="h-3 w-3" />
+                          {result.worker.certifications.length} certs
+                        </span>
+                      )}
+                  </div>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="w-full"
+                    onClick={() =>
+                      toast({
+                        title: "Request submitted",
+                        description: `Request submitted for ${result.worker.name}`,
+                      })
+                    }
+                  >
+                    <UserCheck className="h-3.5 w-3.5 mr-1.5" />
+                    Request Worker
+                  </Button>
+                </div>
+              ))}
             </div>
           ) : (
             <p className="text-sm text-muted-foreground text-center py-8">
-              No work orders for this project yet
+              No matching workers found. Try adding more trades to your project.
             </p>
           )}
         </CardContent>

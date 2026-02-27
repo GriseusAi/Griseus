@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, FolderKanban, ClipboardList, Users, Smartphone, LogOut } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, LogOut } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -18,8 +18,7 @@ import {
 const navItems = [
   { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
   { title: "Projects", url: "/projects", icon: FolderKanban },
-  { title: "Work Orders", url: "/work-orders", icon: ClipboardList },
-  { title: "Team", url: "/team", icon: Users },
+  { title: "My Team", url: "/team", icon: Users },
 ];
 
 export function AppSidebar() {
@@ -66,18 +65,6 @@ export function AppSidebar() {
         </SidebarGroup>
       </SidebarContent>
       <SidebarFooter className="p-4 space-y-2">
-        <div className="rounded-lg border border-dashed border-sidebar-border p-1">
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild data-testid="nav-mobile-app">
-                <Link href="/mobile">
-                  <Smartphone className="h-4 w-4" />
-                  <span>Worker App</span>
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </div>
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton

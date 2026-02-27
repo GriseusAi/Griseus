@@ -1,66 +1,93 @@
+import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { usePageMeta } from "@/hooks/use-page-meta";
-import { Progress } from "@/components/ui/progress";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ChartContainer, ChartTooltip, ChartTooltipContent } from "@/components/ui/chart";
-import { BarChart, Bar, XAxis, YAxis, CartesianGrid } from "recharts";
+import { usePageMeta } from "@/hooks/use-page-meta";
+import { apiRequest } from "@/lib/queryClient";
 import {
-  FolderKanban,
-  ClipboardList,
-  Users,
   Zap,
+  FolderKanban,
+  Users,
+  Sparkles,
   ArrowRight,
-  AlertTriangle,
-  CheckCircle2,
-  Clock,
-  TrendingUp,
-  Activity,
+  MapPin,
+  Wrench,
 } from "lucide-react";
-import type { Project, WorkOrder, Worker } from "@shared/schema";
+import type { Project, Worker } from "@shared/schema";
 
-const iconBgColors: Record<string, string> = {
-  "stat-active-projects": "bg-primary/10 text-primary",
-  "stat-open-orders": "bg-warning/10 text-warning",
-  "stat-available-workers": "bg-success/10 text-success",
-  "stat-completion-rate": "bg-info/10 text-info",
-};
+interface WorkerMatchResult {
+  worker: Worker;
+  score: { total: number };
+  matchedTrade: string;
+  alreadyAssigned: boolean;
+}
 
-function StatCard({
-  title,
-  value,
-  icon: Icon,
-  description,
-  testId,
-  index,
-}: {
-  title: string;
-  value: string | number;
-  icon: React.ElementType;
-  description: string;
-  testId: string;
-  index: number;
-}) {
+function getInitials(name: string) {
+  return name
+    .split(" ")
+    .map((n) => n[0])
+    .join("")
+    .toUpperCase()
+    .slice(0, 2);
+}
+
+function ScoreBadge({ score }: { score: number }) {
+  const color =
+    score > 75
+      ? "bg-emerald-500/15 text-emerald-400"
+      : score >= 50
+        ? "bg-amber-500/15 text-amber-400"
+        : "bg-red-500/15 text-red-400";
   return (
-    <Card className="card-accent-top" data-testid={testId} style={{ animationDelay: `${index * 80}ms` }}>
-      <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`h-8 w-8 rounded-lg flex items-center justify-center ${iconBgColors[testId] || "bg-muted"}`}>
-          <Icon className="h-4 w-4" />
-        </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold tracking-tight" data-testid={`${testId}-value`}>{value}</div>
-        <p className="text-xs text-muted-foreground mt-1">{description}</p>
-      </CardContent>
-    </Card>
+    <Badge variant="secondary" className={color}>
+      {score}% match
+    </Badge>
   );
 }
 
-function ProjectRow({ project }: { project: Project }) {
+export default function Dashboard() {
+  usePageMeta(
+    "Dashboard",
+    "Find skilled workers for your data center projects with AI-powered matching."
+  );
+
+  const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
+  const [matchResults, setMatchResults] = useState<WorkerMatchResult[] | null>(null);
+  const [matchLoading, setMatchLoading] = useState(false);
+  const [, setLocation] = useLocation();
+
+  const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+  });
+  const { data: workers, isLoading: loadingWorkers } = useQuery<Worker[]>({
+    queryKey: ["/api/workers"],
+  });
+
+  const isLoading = loadingProjects || loadingWorkers;
+  const availableWorkers = workers?.filter((w) => w.available).length || 0;
+
+  async function handleSelectProject(projectId: string) {
+    setSelectedProjectId(projectId);
+    setMatchLoading(true);
+    setMatchResults(null);
+    try {
+      const res = await apiRequest("POST", "/api/matching/workers-for-project", {
+        projectId,
+      });
+      const data = await res.json();
+      setMatchResults(data);
+    } catch {
+      setMatchResults([]);
+    } finally {
+      setMatchLoading(false);
+    }
+  }
+
+  const selectedProject = projects?.find((p) => p.id === selectedProjectId);
+
   const statusColors: Record<string, string> = {
     planning: "bg-warning/15 text-warning",
     active: "bg-primary/15 text-primary",
@@ -69,270 +96,239 @@ function ProjectRow({ project }: { project: Project }) {
   };
 
   return (
-    <div
-      className="flex items-center gap-4 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors"
-      data-testid={`project-row-${project.id}`}
-    >
-      <div className="flex-1 min-w-0">
-        <Link href={`/projects/${project.id}`}>
-          <span className="font-medium text-sm hover:underline cursor-pointer" data-testid={`text-project-name-${project.id}`}>
-            {project.name}
-          </span>
-        </Link>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate">{project.client} &middot; {project.location}</p>
-      </div>
-      <Badge variant="secondary" className={statusColors[project.status] || ""}>
-        {project.status.replace("_", " ")}
-      </Badge>
-      <div className="w-24 hidden sm:block">
-        <Progress value={project.progress} className="h-1.5" />
-      </div>
-      <span className="text-xs text-muted-foreground w-8 text-right">{project.progress}%</span>
-    </div>
-  );
-}
-
-function WorkOrderRow({ workOrder }: { workOrder: WorkOrder }) {
-  const priorityIcon: Record<string, React.ElementType> = {
-    high: AlertTriangle,
-    urgent: AlertTriangle,
-    medium: Clock,
-    low: CheckCircle2,
-  };
-  const priorityColor: Record<string, string> = {
-    urgent: "text-destructive",
-    high: "text-warning",
-    medium: "text-muted-foreground",
-    low: "text-success",
-  };
-  const PIcon = priorityIcon[workOrder.priority] || Clock;
-
-  return (
-    <div
-      className="flex items-center gap-3 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors"
-      data-testid={`workorder-row-${workOrder.id}`}
-    >
-      <PIcon className={`h-4 w-4 flex-shrink-0 ${priorityColor[workOrder.priority] || ""}`} />
-      <div className="flex-1 min-w-0">
-        <p className="font-medium text-sm truncate" data-testid={`text-wo-title-${workOrder.id}`}>{workOrder.title}</p>
-        <p className="text-xs text-muted-foreground mt-0.5 truncate">{workOrder.trade}</p>
-      </div>
-      <Badge variant="outline" className="text-xs">{workOrder.status}</Badge>
-    </div>
-  );
-}
-
-const chartConfig = {
-  open: { label: "Open", color: "hsl(var(--warning))" },
-  in_progress: { label: "In Progress", color: "hsl(var(--primary))" },
-  completed: { label: "Completed", color: "hsl(var(--success))" },
-  cancelled: { label: "Cancelled", color: "hsl(var(--muted-foreground))" },
-};
-
-export default function Dashboard() {
-  usePageMeta("Dashboard", "Your command center for data center construction projects, work orders, and team management.");
-
-  const { data: projects, isLoading: loadingProjects } = useQuery<Project[]>({
-    queryKey: ["/api/projects"],
-  });
-  const { data: workOrders, isLoading: loadingOrders } = useQuery<WorkOrder[]>({
-    queryKey: ["/api/work-orders"],
-  });
-  const { data: workers, isLoading: loadingWorkers } = useQuery<Worker[]>({
-    queryKey: ["/api/workers"],
-  });
-
-  const activeProjects = projects?.filter((p) => p.status === "active").length || 0;
-  const openOrders = workOrders?.filter((o) => o.status === "open" || o.status === "in_progress").length || 0;
-  const urgentOrders = workOrders?.filter((o) => o.priority === "urgent" || o.priority === "high").length || 0;
-  const availableWorkers = workers?.filter((w) => w.available).length || 0;
-
-  const isLoading = loadingProjects || loadingOrders || loadingWorkers;
-
-  // Chart data
-  const chartData = workOrders
-    ? [
-        { status: "Open", count: workOrders.filter((o) => o.status === "open").length, fill: "hsl(var(--warning))" },
-        { status: "In Progress", count: workOrders.filter((o) => o.status === "in_progress").length, fill: "hsl(var(--primary))" },
-        { status: "Completed", count: workOrders.filter((o) => o.status === "completed").length, fill: "hsl(var(--success))" },
-        { status: "Cancelled", count: workOrders.filter((o) => o.status === "cancelled").length, fill: "hsl(var(--muted-foreground))" },
-      ]
-    : [];
-
-  const today = new Date().toLocaleDateString("en-US", {
-    weekday: "long",
-    year: "numeric",
-    month: "long",
-    day: "numeric",
-  });
-
-  return (
     <div className="p-6 space-y-6 max-w-7xl mx-auto animate-fade-in">
-      {/* Gradient Header */}
+      {/* Hero Section */}
       <div className="relative rounded-xl overflow-hidden gradient-header noise-subtle border">
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
-            <Zap className="h-6 w-6 text-primary" />
-            <h1 className="text-2xl font-bold">Welcome to Griseus</h1>
+            <Sparkles className="h-6 w-6 text-primary" />
+            <h1 className="text-2xl font-bold">
+              Find Skilled Workers for Your Data Center Project
+            </h1>
           </div>
-          <p className="text-sm text-muted-foreground max-w-md">
-            Your command center for data center construction. Manage projects, coordinate teams, and track work orders across all your sites.
+          <p className="text-sm text-muted-foreground max-w-lg">
+            AI-powered matching connects your projects with verified, certified
+            professionals
           </p>
-          <div className="flex items-center gap-4 mt-4">
-            <span className="text-xs text-muted-foreground">{today}</span>
-            <div className="flex items-center gap-1.5">
-              <div className="h-2 w-2 rounded-full bg-success animate-pulse" />
-              <span className="text-xs text-success font-medium">All systems operational</span>
+          {!isLoading && (
+            <div className="flex items-center gap-4 mt-6">
+              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
+                <FolderKanban className="h-4 w-4 text-primary" />
+                <div>
+                  <p className="text-lg font-bold leading-none">
+                    {projects?.length || 0}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Total Projects
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
+                <Users className="h-4 w-4 text-emerald-400" />
+                <div>
+                  <p className="text-lg font-bold leading-none">
+                    {availableWorkers}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Available Workers
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
+                <Sparkles className="h-4 w-4 text-amber-400" />
+                <div>
+                  <p className="text-lg font-bold leading-none">
+                    {projects?.filter((p) => p.status === "active").length || 0}
+                  </p>
+                  <p className="text-[10px] text-muted-foreground">
+                    Active Matches
+                  </p>
+                </div>
+              </div>
             </div>
-          </div>
+          )}
         </div>
       </div>
 
-      {isLoading ? (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {[...Array(4)].map((_, i) => (
-            <Card key={i}>
-              <CardHeader className="pb-2">
-                <Skeleton className="h-4 w-24" />
-              </CardHeader>
-              <CardContent>
-                <Skeleton className="h-8 w-16 mb-1" />
-                <Skeleton className="h-3 w-32" />
-              </CardContent>
-            </Card>
-          ))}
-        </div>
-      ) : (
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard
-            title="Active Projects"
-            value={activeProjects}
-            icon={FolderKanban}
-            description={`${projects?.length || 0} total projects`}
-            testId="stat-active-projects"
-            index={0}
-          />
-          <StatCard
-            title="Open Work Orders"
-            value={openOrders}
-            icon={ClipboardList}
-            description={`${urgentOrders} high priority`}
-            testId="stat-open-orders"
-            index={1}
-          />
-          <StatCard
-            title="Available Workers"
-            value={availableWorkers}
-            icon={Users}
-            description={`${workers?.length || 0} total team members`}
-            testId="stat-available-workers"
-            index={2}
-          />
-          <StatCard
-            title="Completion Rate"
-            value={`${workOrders?.length ? Math.round((workOrders.filter((o) => o.status === "completed").length / workOrders.length) * 100) : 0}%`}
-            icon={TrendingUp}
-            description="Across all work orders"
-            testId="stat-completion-rate"
-            index={3}
-          />
-        </div>
-      )}
+      {/* Quick-Start: Select a Project */}
+      <div>
+        <h2 className="text-lg font-semibold mb-3">Select a Project to Match Workers</h2>
+        {loadingProjects ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {[...Array(3)].map((_, i) => (
+              <Card key={i}>
+                <CardContent className="p-4">
+                  <Skeleton className="h-5 w-40 mb-2" />
+                  <Skeleton className="h-4 w-28 mb-2" />
+                  <Skeleton className="h-5 w-20" />
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : projects && projects.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+            {projects.map((project) => (
+              <Card
+                key={project.id}
+                className={`cursor-pointer transition-all hover:border-primary/50 ${
+                  selectedProjectId === project.id
+                    ? "border-primary ring-1 ring-primary/30"
+                    : ""
+                }`}
+                onClick={() => handleSelectProject(project.id)}
+                data-testid={`project-card-${project.id}`}
+              >
+                <CardContent className="p-4">
+                  <div className="flex items-center justify-between mb-1">
+                    <p className="font-medium text-sm truncate">{project.name}</p>
+                    <Badge
+                      variant="secondary"
+                      className={`text-[10px] ${statusColors[project.status] || ""}`}
+                    >
+                      {project.status.replace("_", " ")}
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mb-2">
+                    <MapPin className="h-3 w-3" /> {project.location}
+                  </p>
+                  {project.tradesNeeded && project.tradesNeeded.length > 0 && (
+                    <div className="flex flex-wrap gap-1">
+                      {project.tradesNeeded.map((trade) => (
+                        <Badge
+                          key={trade}
+                          variant="outline"
+                          className="text-[10px] px-1.5 py-0"
+                        >
+                          {trade}
+                        </Badge>
+                      ))}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        ) : (
+          <Card>
+            <CardContent className="flex flex-col items-center justify-center py-12">
+              <p className="text-sm text-muted-foreground">No projects yet</p>
+            </CardContent>
+          </Card>
+        )}
+      </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Chart */}
+      {/* AI Match Preview */}
+      {selectedProjectId && (
         <Card>
           <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
             <CardTitle className="text-base font-semibold flex items-center gap-2">
-              <Activity className="h-4 w-4 text-primary" />
-              Work Order Status
+              <Sparkles className="h-4 w-4 text-primary" />
+              AI Match Preview{" "}
+              {selectedProject && (
+                <span className="text-muted-foreground font-normal">
+                  — {selectedProject.name}
+                </span>
+              )}
+            </CardTitle>
+            <Link href={`/projects/${selectedProjectId}`}>
+              <Button variant="ghost" size="sm">
+                View All Matches <ArrowRight className="h-3 w-3 ml-1" />
+              </Button>
+            </Link>
+          </CardHeader>
+          <CardContent>
+            {matchLoading ? (
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {[...Array(5)].map((_, i) => (
+                  <div
+                    key={i}
+                    className="flex-shrink-0 w-48 rounded-lg border p-4 space-y-2"
+                  >
+                    <Skeleton className="h-10 w-10 rounded-full" />
+                    <Skeleton className="h-4 w-28" />
+                    <Skeleton className="h-3 w-20" />
+                    <Skeleton className="h-5 w-16" />
+                  </div>
+                ))}
+              </div>
+            ) : matchResults && matchResults.length > 0 ? (
+              <div className="flex gap-4 overflow-x-auto pb-2">
+                {matchResults.slice(0, 5).map((result) => (
+                  <div
+                    key={result.worker.id}
+                    className="flex-shrink-0 w-48 rounded-lg border p-4 space-y-2 hover:bg-muted/50 transition-colors"
+                  >
+                    <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center text-sm font-bold text-primary">
+                      {getInitials(result.worker.name)}
+                    </div>
+                    <p className="font-medium text-sm truncate">
+                      {result.worker.name}
+                    </p>
+                    <Badge variant="outline" className="text-[10px]">
+                      {result.matchedTrade}
+                    </Badge>
+                    <p className="text-xs text-muted-foreground">
+                      {result.worker.experience} yrs exp
+                    </p>
+                    <ScoreBadge score={result.score.total} />
+                  </div>
+                ))}
+              </div>
+            ) : (
+              <p className="text-sm text-muted-foreground text-center py-6">
+                No matching workers found for this project.
+              </p>
+            )}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Workforce Demand Summary */}
+      {!loadingProjects && projects && projects.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base font-semibold flex items-center gap-2">
+              <Wrench className="h-4 w-4 text-muted-foreground" />
+              Workforce Demand Summary
             </CardTitle>
           </CardHeader>
           <CardContent>
-            {loadingOrders ? (
-              <Skeleton className="h-[200px] w-full" />
-            ) : chartData.length > 0 ? (
-              <ChartContainer config={chartConfig} className="h-[200px] w-full">
-                <BarChart data={chartData} margin={{ top: 5, right: 5, bottom: 5, left: -20 }}>
-                  <CartesianGrid strokeDasharray="3 3" className="stroke-border" />
-                  <XAxis dataKey="status" tick={{ fontSize: 11 }} className="text-muted-foreground" />
-                  <YAxis tick={{ fontSize: 11 }} className="text-muted-foreground" allowDecimals={false} />
-                  <ChartTooltip content={<ChartTooltipContent />} />
-                  <Bar dataKey="count" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ChartContainer>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No data available</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Projects */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
-            <CardTitle className="text-base font-semibold">Recent Projects</CardTitle>
-            <Link href="/projects">
-              <Button variant="ghost" size="sm" data-testid="link-view-all-projects">
-                View All <ArrowRight className="h-3 w-3 ml-1" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {loadingProjects ? (
-              <div className="space-y-3">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="flex items-center gap-4 py-2">
-                    <Skeleton className="h-4 w-40 flex-1" />
-                    <Skeleton className="h-5 w-16" />
-                    <Skeleton className="h-1.5 w-24" />
+            <div className="divide-y divide-border">
+              {projects.map((project) => (
+                <div
+                  key={project.id}
+                  className="flex items-center gap-4 py-3 px-2 hover:bg-muted/50 rounded-md transition-colors cursor-pointer"
+                  onClick={() => setLocation(`/projects/${project.id}`)}
+                >
+                  <div className="flex-1 min-w-0">
+                    <p className="font-medium text-sm truncate">{project.name}</p>
+                    <p className="text-xs text-muted-foreground truncate">
+                      {project.client} &middot; {project.location}
+                    </p>
                   </div>
-                ))}
-              </div>
-            ) : projects && projects.length > 0 ? (
-              <div className="divide-y divide-border">
-                {projects.slice(0, 5).map((project) => (
-                  <ProjectRow key={project.id} project={project} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No projects yet</p>
-            )}
-          </CardContent>
-        </Card>
-
-        {/* Recent Work Orders */}
-        <Card>
-          <CardHeader className="flex flex-row items-center justify-between gap-2 flex-wrap space-y-0">
-            <CardTitle className="text-base font-semibold">Recent Work Orders</CardTitle>
-            <Link href="/work-orders">
-              <Button variant="ghost" size="sm" data-testid="link-view-all-orders">
-                View All <ArrowRight className="h-3 w-3 ml-1" />
-              </Button>
-            </Link>
-          </CardHeader>
-          <CardContent>
-            {loadingOrders ? (
-              <div className="space-y-3">
-                {[...Array(3)].map((_, i) => (
-                  <div key={i} className="flex items-center gap-3 py-2">
-                    <Skeleton className="h-4 w-4 rounded-full" />
-                    <Skeleton className="h-4 w-40 flex-1" />
-                    <Skeleton className="h-5 w-14" />
+                  <div className="flex flex-wrap gap-1 justify-end">
+                    {project.tradesNeeded && project.tradesNeeded.length > 0 ? (
+                      project.tradesNeeded.map((trade) => (
+                        <Badge
+                          key={trade}
+                          variant="secondary"
+                          className="text-[10px] px-1.5 py-0"
+                        >
+                          {trade}
+                        </Badge>
+                      ))
+                    ) : (
+                      <span className="text-xs text-muted-foreground italic">
+                        No trades specified
+                      </span>
+                    )}
                   </div>
-                ))}
-              </div>
-            ) : workOrders && workOrders.length > 0 ? (
-              <div className="divide-y divide-border">
-                {workOrders.slice(0, 5).map((wo) => (
-                  <WorkOrderRow key={wo.id} workOrder={wo} />
-                ))}
-              </div>
-            ) : (
-              <p className="text-sm text-muted-foreground text-center py-8">No work orders yet</p>
-            )}
+                </div>
+              ))}
+            </div>
           </CardContent>
         </Card>
-      </div>
+      )}
     </div>
   );
 }

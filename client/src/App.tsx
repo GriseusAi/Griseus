@@ -17,7 +17,6 @@ import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
-import WorkOrders from "@/pages/work-orders";
 import Team from "@/pages/team";
 import MobileJobs from "@/pages/mobile-jobs";
 import MobilePassport from "@/pages/mobile-passport";
@@ -39,7 +38,6 @@ function DesktopRouter() {
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
-          <Route path="/work-orders" component={WorkOrders} />
           <Route path="/team" component={Team} />
           <Route component={NotFound} />
         </Switch>
