@@ -16,31 +16,31 @@ import {
 const CURRENT_WORKER_ID_KEY = "griseus_current_worker_id";
 
 const certBadgeStyles: Record<string, { bg: string; icon: typeof Award }> = {
-  "Master Electrician": { bg: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: Zap },
-  "OSHA 30": { bg: "bg-red-500/15 text-red-700 dark:text-red-400", icon: Shield },
-  "OSHA 500 Trainer": { bg: "bg-red-500/15 text-red-700 dark:text-red-400", icon: Shield },
-  "NFPA 70E": { bg: "bg-orange-500/15 text-orange-700 dark:text-orange-400", icon: Shield },
-  "Arc Flash Safety": { bg: "bg-orange-500/15 text-orange-700 dark:text-orange-400", icon: Shield },
-  "Siemens High Voltage Certified": { bg: "bg-blue-500/15 text-blue-700 dark:text-blue-400", icon: Zap },
-  "PMP": { bg: "bg-violet-500/15 text-violet-700 dark:text-violet-400", icon: Award },
-  "CDCMP": { bg: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400", icon: Award },
-  "Six Sigma Black Belt": { bg: "bg-slate-500/15 text-slate-700 dark:text-slate-300", icon: Award },
-  "EPA 608 Universal": { bg: "bg-green-500/15 text-green-700 dark:text-green-400", icon: CheckCircle2 },
-  "ASHRAE Certified": { bg: "bg-teal-500/15 text-teal-700 dark:text-teal-400", icon: Award },
-  "LEED AP": { bg: "bg-emerald-500/15 text-emerald-700 dark:text-emerald-400", icon: Star },
-  "Carrier Chiller Specialist": { bg: "bg-cyan-500/15 text-cyan-700 dark:text-cyan-400", icon: Award },
-  "BMS Controls Pro": { bg: "bg-sky-500/15 text-sky-700 dark:text-sky-400", icon: Award },
-  "BICSI RCDD": { bg: "bg-purple-500/15 text-purple-700 dark:text-purple-400", icon: Award },
-  "Cisco CCNP": { bg: "bg-blue-500/15 text-blue-700 dark:text-blue-400", icon: Award },
-  "CDCDP": { bg: "bg-indigo-500/15 text-indigo-700 dark:text-indigo-400", icon: Award },
-  "Fiber Optic Pro": { bg: "bg-fuchsia-500/15 text-fuchsia-700 dark:text-fuchsia-400", icon: Star },
-  "Corning Certified Installer": { bg: "bg-rose-500/15 text-rose-700 dark:text-rose-400", icon: CheckCircle2 },
-  "CDCEP": { bg: "bg-teal-500/15 text-teal-700 dark:text-teal-400", icon: Award },
-  "AEE CEM": { bg: "bg-lime-500/15 text-lime-700 dark:text-lime-400", icon: Award },
-  "Uptime Tier Designer": { bg: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: Star },
-  "Uptime Institute ATD": { bg: "bg-amber-500/15 text-amber-700 dark:text-amber-400", icon: Star },
-  "Schneider Electric Certified": { bg: "bg-green-500/15 text-green-700 dark:text-green-400", icon: Zap },
-  "Generator Systems Pro": { bg: "bg-yellow-500/15 text-yellow-700 dark:text-yellow-400", icon: Zap },
+  "Master Electrician": { bg: "bg-amber-50 text-amber-700", icon: Zap },
+  "OSHA 30": { bg: "bg-red-50 text-red-700", icon: Shield },
+  "OSHA 500 Trainer": { bg: "bg-red-50 text-red-700", icon: Shield },
+  "NFPA 70E": { bg: "bg-orange-50 text-orange-700", icon: Shield },
+  "Arc Flash Safety": { bg: "bg-orange-50 text-orange-700", icon: Shield },
+  "Siemens High Voltage Certified": { bg: "bg-blue-50 text-blue-700", icon: Zap },
+  "PMP": { bg: "bg-violet-50 text-violet-700", icon: Award },
+  "CDCMP": { bg: "bg-indigo-50 text-indigo-700", icon: Award },
+  "Six Sigma Black Belt": { bg: "bg-slate-100 text-slate-700", icon: Award },
+  "EPA 608 Universal": { bg: "bg-green-50 text-green-700", icon: CheckCircle2 },
+  "ASHRAE Certified": { bg: "bg-teal-50 text-teal-700", icon: Award },
+  "LEED AP": { bg: "bg-emerald-50 text-emerald-700", icon: Star },
+  "Carrier Chiller Specialist": { bg: "bg-cyan-50 text-cyan-700", icon: Award },
+  "BMS Controls Pro": { bg: "bg-sky-50 text-sky-700", icon: Award },
+  "BICSI RCDD": { bg: "bg-purple-50 text-purple-700", icon: Award },
+  "Cisco CCNP": { bg: "bg-blue-50 text-blue-700", icon: Award },
+  "CDCDP": { bg: "bg-indigo-50 text-indigo-700", icon: Award },
+  "Fiber Optic Pro": { bg: "bg-fuchsia-50 text-fuchsia-700", icon: Star },
+  "Corning Certified Installer": { bg: "bg-rose-50 text-rose-700", icon: CheckCircle2 },
+  "CDCEP": { bg: "bg-teal-50 text-teal-700", icon: Award },
+  "AEE CEM": { bg: "bg-lime-50 text-lime-700", icon: Award },
+  "Uptime Tier Designer": { bg: "bg-amber-50 text-amber-700", icon: Star },
+  "Uptime Institute ATD": { bg: "bg-amber-50 text-amber-700", icon: Star },
+  "Schneider Electric Certified": { bg: "bg-green-50 text-green-700", icon: Zap },
+  "Generator Systems Pro": { bg: "bg-yellow-50 text-yellow-700", icon: Zap },
 };
 
 function getCertStyle(certName: string) {
@@ -120,10 +120,10 @@ export default function MobilePassport() {
         <div className="px-4 pb-6 space-y-4">
           <Card data-testid="card-worker-profile" className="overflow-hidden">
             {/* Gradient banner */}
-            <div className="h-20 bg-gradient-to-br from-primary to-chart-2 relative">
+            <div className="h-20 bg-gradient-to-br from-[#92ABBB] to-[#A7B9C6] relative">
               <div className="absolute -bottom-8 left-5">
-                <Avatar className="h-16 w-16 bg-gradient-to-br from-primary to-chart-2 text-white border-4 border-card shadow-lg">
-                  <AvatarFallback className="text-lg font-bold bg-gradient-to-br from-primary to-chart-2 text-white">
+                <Avatar className="h-16 w-16 bg-gradient-to-br from-[#92ABBB] to-[#A7B9C6] text-white border-4 border-card shadow-lg">
+                  <AvatarFallback className="text-lg font-bold bg-gradient-to-br from-[#92ABBB] to-[#A7B9C6] text-white">
                     {worker.name.split(" ").map((n) => n[0]).join("")}
                   </AvatarFallback>
                 </Avatar>
@@ -292,7 +292,7 @@ export default function MobilePassport() {
                     <Card key={a.id} className="overflow-visible" data-testid={`card-application-${a.id}`}>
                       <CardContent className="p-3 flex items-center gap-3">
                         <div className="flex items-center justify-center h-10 w-10 rounded-md bg-amber-500/10 flex-shrink-0">
-                          <Clock className="h-5 w-5 text-amber-600 dark:text-amber-400" />
+                          <Clock className="h-5 w-5 text-amber-600" />
                         </div>
                         <div className="flex-1 min-w-0">
                           <p className="font-medium text-sm truncate">{project?.name || "Unknown Project"}</p>

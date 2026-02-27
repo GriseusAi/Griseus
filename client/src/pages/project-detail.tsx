@@ -52,10 +52,10 @@ function getInitials(name: string) {
 function ScoreBadge({ score }: { score: number }) {
   const color =
     score > 75
-      ? "bg-emerald-500/15 text-emerald-400"
+      ? "bg-emerald-50 text-emerald-700"
       : score >= 50
-        ? "bg-amber-500/15 text-amber-400"
-        : "bg-red-500/15 text-red-400";
+        ? "bg-amber-50 text-amber-700"
+        : "bg-red-50 text-red-700";
   return (
     <Badge variant="secondary" className={`text-xs font-bold ${color}`}>
       {score}%
@@ -319,8 +319,8 @@ export default function ProjectDetail() {
                       variant="secondary"
                       className={`text-[10px] ${
                         result.alreadyAssigned
-                          ? "bg-amber-500/15 text-amber-400"
-                          : "bg-emerald-500/15 text-emerald-400"
+                          ? "bg-amber-50 text-amber-700"
+                          : "bg-emerald-50 text-emerald-700"
                       }`}
                     >
                       {result.alreadyAssigned ? "On Assignment" : "Available"}

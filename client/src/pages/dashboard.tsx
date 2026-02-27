@@ -37,10 +37,10 @@ function getInitials(name: string) {
 function ScoreBadge({ score }: { score: number }) {
   const color =
     score > 75
-      ? "bg-emerald-500/15 text-emerald-400"
+      ? "bg-emerald-50 text-emerald-700"
       : score >= 50
-        ? "bg-amber-500/15 text-amber-400"
-        : "bg-red-500/15 text-red-400";
+        ? "bg-amber-50 text-amber-700"
+        : "bg-red-50 text-red-700";
   return (
     <Badge variant="secondary" className={color}>
       {score}% match
@@ -124,7 +124,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
-                <Users className="h-4 w-4 text-emerald-400" />
+                <Users className="h-4 w-4 text-emerald-600" />
                 <div>
                   <p className="text-lg font-bold leading-none">
                     {availableWorkers}
@@ -135,7 +135,7 @@ export default function Dashboard() {
                 </div>
               </div>
               <div className="flex items-center gap-2 rounded-lg bg-background/50 border px-4 py-2">
-                <Sparkles className="h-4 w-4 text-amber-400" />
+                <Sparkles className="h-4 w-4 text-amber-600" />
                 <div>
                   <p className="text-lg font-bold leading-none">
                     {projects?.filter((p) => p.status === "active").length || 0}

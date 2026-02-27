@@ -53,15 +53,15 @@ function getStoredWorkerId(): string | null {
 // ─── Map Icons ───────────────────────────────────────────────────────
 function createMarkerIcon(isSelected: boolean) {
   const size = isSelected ? 46 : 36;
-  const borderColor = isSelected ? "hsl(35 85% 52%)" : "white";
+  const borderColor = isSelected ? "#9F6C52" : "white";
   const shadow = isSelected
-    ? "0 0 0 4px hsla(35, 85%, 52%, 0.3), 0 2px 12px rgba(0,0,0,0.4)"
-    : "0 2px 8px rgba(0,0,0,0.3)";
+    ? "0 0 0 4px rgba(159, 108, 82, 0.3), 0 2px 12px rgba(0,0,0,0.2)"
+    : "0 2px 8px rgba(0,0,0,0.15)";
   const pulse = isSelected ? "animation: pulse 2s infinite;" : "";
 
   return new L.DivIcon({
     html: `<div style="
-      background: hsl(172 66% 40%);
+      background: #92ABBB;
       width: ${size}px; height: ${size}px;
       border-radius: 50%;
       display: flex; align-items: center; justify-content: center;
@@ -106,20 +106,20 @@ function MapClickHandler({ onMapClick }: { onMapClick: () => void }) {
 
 // ─── Status Colors ───────────────────────────────────────────────────
 const statusColors: Record<string, string> = {
-  active: "bg-emerald-500/15 text-emerald-400 border-emerald-500/20",
-  planning: "bg-blue-500/15 text-blue-400 border-blue-500/20",
-  completed: "bg-muted text-muted-foreground",
-  on_hold: "bg-amber-500/15 text-amber-400 border-amber-500/20",
+  active: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  planning: "bg-blue-50 text-blue-700 border-blue-200",
+  completed: "bg-gray-100 text-gray-600",
+  on_hold: "bg-amber-50 text-amber-700 border-amber-200",
 };
 
 const tradeColors: Record<string, string> = {
-  Electrician: "bg-amber-500/15 text-amber-400",
-  "HVAC Technician": "bg-sky-500/15 text-sky-400",
-  "Network Technician": "bg-violet-500/15 text-violet-400",
-  "Facility Engineer": "bg-emerald-500/15 text-emerald-400",
-  "Project Manager": "bg-rose-500/15 text-rose-400",
-  "General Labor": "bg-slate-500/15 text-slate-400",
-  "Fire Protection": "bg-red-500/15 text-red-400",
+  Electrician: "bg-amber-50 text-amber-700",
+  "HVAC Technician": "bg-sky-50 text-sky-700",
+  "Network Technician": "bg-violet-50 text-violet-700",
+  "Facility Engineer": "bg-emerald-50 text-emerald-700",
+  "Project Manager": "bg-rose-50 text-rose-700",
+  "General Labor": "bg-slate-100 text-slate-600",
+  "Fire Protection": "bg-red-50 text-red-700",
 };
 
 // ─── Bottom Sheet States ─────────────────────────────────────────────
@@ -297,7 +297,7 @@ export default function MobileJobs() {
           zoomControl={false}
           attributionControl={false}
         >
-          <TileLayer url="https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png" />
+          <TileLayer url="https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png" />
           {flyTo && <FlyToProject lat={flyTo.lat} lng={flyTo.lng} />}
           <MapClickHandler onMapClick={handleMapClick} />
           {filteredProjects.map((project) => (

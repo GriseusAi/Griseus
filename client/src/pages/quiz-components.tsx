@@ -3,19 +3,18 @@ import { motion, AnimatePresence } from "framer-motion";
 import { ArrowLeft, Check } from "lucide-react";
 
 /* ─── QuizShell ────────────────────────────────────────────────
-   Fixed full-screen container that covers the dark body.
-   All quiz pages wrap their content in this.
+   Fixed full-screen container that covers the body.
 ──────────────────────────────────────────────────────────────── */
 export function QuizShell({ children }: { children: ReactNode }) {
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto"
-      style={{ backgroundColor: "#F5F5F5" }}
+      style={{ backgroundColor: "#EEE7DD" }}
     >
       <div className="min-h-full flex flex-col">
         {/* Logo */}
         <div className="pt-6 pb-2 px-6 flex items-center justify-center">
-          <span className="text-xl font-bold tracking-tight text-gray-900">
+          <span className="text-xl font-bold tracking-tight text-[#2D2D2D]">
             Griseus
           </span>
         </div>
@@ -26,8 +25,8 @@ export function QuizShell({ children }: { children: ReactNode }) {
 }
 
 /* ─── ProgressDots ─────────────────────────────────────────────
-   Horizontal dot indicator. Active = wide blue pill, past = small
-   blue circle, future = small gray circle.
+   Horizontal dot indicator. Active = wide pill, past = small
+   filled circle, future = small muted circle.
 ──────────────────────────────────────────────────────────────── */
 export function ProgressDots({
   total,
@@ -43,10 +42,10 @@ export function ProgressDots({
           key={i}
           className={`rounded-full transition-all duration-300 ${
             i === current
-              ? "w-8 h-2 bg-blue-500"
+              ? "w-8 h-2 bg-[#92ABBB]"
               : i < current
-                ? "w-2 h-2 bg-blue-500"
-                : "w-2 h-2 bg-gray-300"
+                ? "w-2 h-2 bg-[#92ABBB]"
+                : "w-2 h-2 bg-[#CEB298]/40"
           }`}
         />
       ))}
@@ -71,19 +70,19 @@ export function StepCard({
   return (
     <div className="flex-1 flex items-start justify-center px-4 pb-8">
       <div className="w-full max-w-lg">
-        <div className="bg-white rounded-2xl shadow-sm border border-gray-200 p-6 sm:p-8">
+        <div className="bg-white rounded-2xl shadow-sm border border-[#CEB298]/20 p-6 sm:p-8">
           {onBack && (
             <button
               onClick={onBack}
-              className="flex items-center gap-1.5 text-sm text-gray-500 hover:text-gray-900 transition-colors mb-5"
+              className="flex items-center gap-1.5 text-sm text-[#5A5A5A] hover:text-[#2D2D2D] transition-colors mb-5"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
             </button>
           )}
-          <h2 className="text-2xl font-bold text-gray-900 mb-1">{title}</h2>
+          <h2 className="text-2xl font-bold text-[#2D2D2D] mb-1">{title}</h2>
           {subtitle && (
-            <p className="text-gray-500 text-sm mb-6">{subtitle}</p>
+            <p className="text-[#5A5A5A] text-sm mb-6">{subtitle}</p>
           )}
           {!subtitle && <div className="mb-6" />}
           {children}
@@ -95,7 +94,6 @@ export function StepCard({
 
 /* ─── StepTransition ───────────────────────────────────────────
    AnimatePresence wrapper for slide-left/right transitions.
-   `direction` 1 = forward (slide left), -1 = backward (slide right).
 ──────────────────────────────────────────────────────────────── */
 export function StepTransition({
   stepKey,
@@ -123,7 +121,7 @@ export function StepTransition({
 }
 
 /* ─── SelectableCard ───────────────────────────────────────────
-   Single-select option card. Blue border + bg-blue-50 when selected.
+   Single-select option card.
 ──────────────────────────────────────────────────────────────── */
 export function SelectableCard({
   label,
@@ -141,13 +139,13 @@ export function SelectableCard({
       onClick={onClick}
       className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-150 ${
         selected
-          ? "border-blue-500 bg-blue-50"
-          : "border-gray-200 bg-white hover:border-gray-300"
+          ? "border-[#92ABBB] bg-[#92ABBB]/10"
+          : "border-[#CEB298]/20 bg-white hover:border-[#CEB298]/40"
       }`}
     >
-      <span className="text-base font-medium text-gray-900">{label}</span>
+      <span className="text-base font-medium text-[#2D2D2D]">{label}</span>
       {sublabel && (
-        <span className="block text-sm text-gray-500 mt-0.5">{sublabel}</span>
+        <span className="block text-sm text-[#5A5A5A] mt-0.5">{sublabel}</span>
       )}
     </button>
   );
@@ -172,23 +170,23 @@ export function CheckableCard({
       onClick={onClick}
       className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-150 flex items-center gap-3 ${
         checked
-          ? "border-blue-500 bg-blue-50"
-          : "border-gray-200 bg-white hover:border-gray-300"
+          ? "border-[#92ABBB] bg-[#92ABBB]/10"
+          : "border-[#CEB298]/20 bg-white hover:border-[#CEB298]/40"
       }`}
     >
       <div
         className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
           checked
-            ? "bg-blue-500 border-blue-500"
-            : "border-gray-300 bg-white"
+            ? "bg-[#92ABBB] border-[#92ABBB]"
+            : "border-[#CEB298]/50 bg-white"
         }`}
       >
         {checked && <Check className="w-3 h-3 text-white" />}
       </div>
       <div>
-        <span className="text-base font-medium text-gray-900">{label}</span>
+        <span className="text-base font-medium text-[#2D2D2D]">{label}</span>
         {sublabel && (
-          <span className="block text-sm text-gray-500 mt-0.5">
+          <span className="block text-sm text-[#5A5A5A] mt-0.5">
             {sublabel}
           </span>
         )}
@@ -198,7 +196,7 @@ export function CheckableCard({
 }
 
 /* ─── QuizInput ────────────────────────────────────────────────
-   Plain input with light styling, no CSS variable dependencies.
+   Plain input with warm light styling.
 ──────────────────────────────────────────────────────────────── */
 export function QuizInput({
   label,
@@ -207,20 +205,20 @@ export function QuizInput({
   return (
     <div className="space-y-1.5">
       {label && (
-        <label className="block text-sm font-medium text-gray-700">
+        <label className="block text-sm font-medium text-[#2D2D2D]">
           {label}
         </label>
       )}
       <input
         {...props}
-        className={`w-full rounded-xl border border-gray-200 bg-gray-50 px-4 py-3 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-colors text-base ${props.className || ""}`}
+        className={`w-full rounded-xl border border-[#CEB298]/30 bg-[#F5F0EA] px-4 py-3 text-[#2D2D2D] placeholder:text-[#5A5A5A]/50 focus:border-[#92ABBB] focus:ring-2 focus:ring-[#92ABBB]/20 focus:outline-none transition-colors text-base ${props.className || ""}`}
       />
     </div>
   );
 }
 
 /* ─── QuizButton ───────────────────────────────────────────────
-   Primary (blue) and secondary (white border) variants.
+   Primary (muted blue) and secondary (sand outline) variants.
 ──────────────────────────────────────────────────────────────── */
 export function QuizButton({
   variant = "primary",
@@ -233,14 +231,14 @@ export function QuizButton({
   children: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const base =
-    "w-full rounded-xl px-6 py-3 text-base font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/30";
+    "w-full rounded-xl px-6 py-3 text-base font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#92ABBB]/30";
   const variants = {
     primary: disabled
-      ? "bg-blue-300 text-white cursor-not-allowed"
-      : "bg-blue-500 text-white hover:bg-blue-600 active:bg-blue-700",
+      ? "bg-[#92ABBB]/50 text-white cursor-not-allowed"
+      : "bg-[#92ABBB] text-white hover:bg-[#839dae] active:bg-[#748e9f]",
     secondary: disabled
-      ? "bg-white border border-gray-200 text-gray-400 cursor-not-allowed"
-      : "bg-white border border-gray-200 text-gray-700 hover:border-gray-300 hover:bg-gray-50",
+      ? "bg-white border border-[#CEB298]/30 text-[#5A5A5A]/50 cursor-not-allowed"
+      : "bg-white border border-[#CEB298]/40 text-[#2D2D2D] hover:border-[#CEB298] hover:bg-[#F5F0EA]",
   };
 
   return (

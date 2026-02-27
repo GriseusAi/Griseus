@@ -31,28 +31,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#090a0f" }}>
-      {/* Ambient glow */}
-      <div className="fixed top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-[500px] h-[500px] bg-indigo-600/8 rounded-full blur-[120px] pointer-events-none"></div>
-
-      <Card className="w-full max-w-sm border-white/10 bg-white/[0.03] backdrop-blur-sm shadow-2xl">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#EEE7DD" }}>
+      <Card className="w-full max-w-sm shadow-md border-[#CEB298]/30">
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <div className="w-9 h-9 rounded-lg bg-indigo-600/20 border border-indigo-500/30 flex items-center justify-center">
-              <svg className="w-4.5 h-4.5 text-indigo-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M5 12h14M5 12a2 2 0 01-2-2V6a2 2 0 012-2h14a2 2 0 012 2v4a2 2 0 01-2 2M5 12a2 2 0 00-2 2v4a2 2 0 002 2h14a2 2 0 002-2v-4a2 2 0 00-2-2m-2-4h.01M17 16h.01" />
-              </svg>
-            </div>
+            <span className="text-xl font-bold tracking-tight text-[#2D2D2D]">Griseus</span>
           </div>
-          <CardTitle className="text-white text-xl">Welcome Back</CardTitle>
-          <CardDescription className="text-gray-400">
+          <CardTitle className="text-[#2D2D2D] text-xl">Welcome Back</CardTitle>
+          <CardDescription className="text-[#5A5A5A]">
             Sign in to your Griseus dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-gray-300">Email</Label>
+              <Label htmlFor="email" className="text-[#2D2D2D]">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -60,12 +53,11 @@ export default function LoginPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 required
                 autoComplete="email"
-                className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-indigo-500/50 focus:ring-indigo-500/25"
                 placeholder="Enter your email"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-gray-300">Password</Label>
+              <Label htmlFor="password" className="text-[#2D2D2D]">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -73,13 +65,12 @@ export default function LoginPage() {
                 onChange={(e) => setPassword(e.target.value)}
                 required
                 autoComplete="current-password"
-                className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-indigo-500/50 focus:ring-indigo-500/25"
                 placeholder="Enter your password"
               />
             </div>
 
             {error && (
-              <p className="text-sm text-red-400 bg-red-400/10 border border-red-400/20 rounded-lg px-3 py-2">
+              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                 {error}
               </p>
             )}
@@ -87,7 +78,7 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
+              className="w-full"
             >
               {loading ? "Please wait..." : "Sign In"}
             </Button>
@@ -96,8 +87,8 @@ export default function LoginPage() {
           <div className="mt-4 text-center">
             <button
               type="button"
-              onClick={() => setLocation("/register")}
-              className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
+              onClick={() => setLocation("/")}
+              className="text-sm text-[#92ABBB] hover:text-[#7a97a8] transition-colors"
             >
               Don't have an account? Sign up
             </button>

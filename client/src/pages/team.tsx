@@ -60,16 +60,16 @@ const tradeOptions = [
 ];
 
 const tradeColors: Record<string, string> = {
-  Electrician: "bg-warning/15 text-warning",
-  "HVAC Technician": "bg-primary/15 text-primary",
-  "Mechanical Engineer": "bg-chart-2/15 text-chart-2",
-  "Network Technician": "bg-success/15 text-success",
-  "Fire Protection Specialist": "bg-destructive/15 text-destructive",
-  "Project Manager": "bg-chart-5/15 text-chart-5",
-  "Facility Engineer": "bg-chart-1/15 text-chart-1",
-  "Structural Engineer": "bg-chart-2/15 text-chart-2",
-  "General Contractor": "bg-muted text-muted-foreground",
-  "Safety Officer": "bg-warning/15 text-warning",
+  Electrician: "bg-amber-50 text-amber-700",
+  "HVAC Technician": "bg-sky-50 text-sky-700",
+  "Mechanical Engineer": "bg-violet-50 text-violet-700",
+  "Network Technician": "bg-emerald-50 text-emerald-700",
+  "Fire Protection Specialist": "bg-red-50 text-red-700",
+  "Project Manager": "bg-rose-50 text-rose-700",
+  "Facility Engineer": "bg-blue-50 text-blue-700",
+  "Structural Engineer": "bg-purple-50 text-purple-700",
+  "General Contractor": "bg-gray-100 text-gray-600",
+  "Safety Officer": "bg-orange-50 text-orange-700",
 };
 
 function getInitials(name: string) {
