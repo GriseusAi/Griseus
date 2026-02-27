@@ -10,7 +10,211 @@ import {
 import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
-import { findWorkersForProject, findJobsForWorker } from "./matching";
+import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
+import type { Worker, Project, Trade, Skill, Certification, User } from "@shared/schema";
+
+// ── AI Chat Helpers ──────────────────────────────────────────────────
+
+interface PlatformContext {
+  projects: Project[];
+  workers: Worker[];
+  trades: Trade[];
+  skills: Skill[];
+  certifications: Certification[];
+  activeProjects: Project[];
+}
+
+async function gatherPlatformContext(): Promise<PlatformContext> {
+  const [projects, workers, trades, skills, certifications, activeProjects] = await Promise.all([
+    storage.getProjects(),
+    storage.getWorkers(),
+    storage.getTrades(),
+    storage.getSkills(),
+    storage.getCertifications(),
+    storage.getActiveProjects(),
+  ]);
+  return { projects, workers, trades, skills, certifications, activeProjects };
+}
+
+interface MatchingIntent {
+  type: "workers-for-project" | "jobs-for-worker";
+  projectId?: string;
+  workerId?: string;
+}
+
+function detectMatchingIntent(
+  message: string,
+  projects: Project[],
+  linkedWorkerId: string | null,
+): MatchingIntent | null {
+  const workersForProjectPatterns = [
+    /who(?:'s| is| are)?\s+(?:best|available|qualified|ready)\s+(?:for|to work on)\s+(.+?)(?:\?|$)/i,
+    /find\s+workers?\s+for\s+(.+?)(?:\?|$)/i,
+    /match\s+workers?\s+(?:for|to)\s+(.+?)(?:\?|$)/i,
+    /staff\s+(?:the\s+)?(.+?)(?:\s+project)?(?:\?|$)/i,
+    /who\s+(?:can|should)\s+(?:work on|be assigned to)\s+(.+?)(?:\?|$)/i,
+    /best\s+workers?\s+for\s+(?:the\s+)?(.+?)(?:\s+project)?(?:\?|$)/i,
+  ];
+
+  for (const pattern of workersForProjectPatterns) {
+    const match = message.match(pattern);
+    if (match) {
+      const query = match[1].trim().toLowerCase().replace(/\s+project$/, "");
+      const project = projects.find(p =>
+        p.name.toLowerCase().includes(query) ||
+        query.includes(p.name.toLowerCase()) ||
+        p.location?.toLowerCase().includes(query)
+      );
+      if (project) {
+        return { type: "workers-for-project", projectId: project.id };
+      }
+    }
+  }
+
+  const jobsForWorkerPatterns = [
+    /what\s+jobs?\s+(?:match|fit|suit)\s+me/i,
+    /find\s+(?:jobs?|projects?|work)\s+for\s+me/i,
+    /what(?:'s| is)\s+available\s+for\s+me/i,
+    /which\s+projects?\s+(?:can i|should i|do i)\s+(?:work on|apply)/i,
+    /(?:my|any)\s+(?:job|project)\s+(?:matches|recommendations|opportunities)/i,
+    /jobs?\s+for\s+me/i,
+    /projects?\s+for\s+me/i,
+  ];
+
+  for (const pattern of jobsForWorkerPatterns) {
+    if (pattern.test(message)) {
+      if (linkedWorkerId) {
+        return { type: "jobs-for-worker", workerId: linkedWorkerId };
+      }
+    }
+  }
+
+  return null;
+}
+
+function buildSystemPrompt(
+  user: User | null,
+  ctx: PlatformContext,
+  matchingResults?: { workers?: WorkerMatchResult[]; jobs?: ProjectMatchResult[] },
+): string {
+  const sections: string[] = [];
+
+  // 1. Identity & behavior
+  sections.push(
+    `You are Griseus Site AI, the intelligent assistant for a data center workforce management platform.
+Base ALL your answers on the REAL platform data provided below. Never invent workers, projects, or data that is not listed.
+Use plain text only, no markdown formatting. Use newlines to separate points.
+Keep answers concise and actionable. Respond in the same language the user writes in.`
+  );
+
+  // 2. User personalization
+  if (user) {
+    sections.push(`\n--- CURRENT USER ---
+Name: ${user.name || "Unknown"}
+Role: ${user.role}
+Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExperience ? `\nExperience: ${user.yearsExperience} years` : ""}${user.location ? `\nLocation: ${user.location}` : ""}${user.companyName ? `\nCompany: ${user.companyName}` : ""}`);
+
+    if (user.role === "company") {
+      sections.push("This is a company/management user. Provide management-level insights about workforce, staffing, and project analytics.");
+    } else if (user.role === "worker") {
+      sections.push("This is a worker user. Provide career-relevant information about job matches, certifications, and skill development.");
+    }
+  }
+
+  // 3. Active projects
+  if (ctx.activeProjects.length > 0) {
+    const projectLines = ctx.activeProjects.map(p => {
+      const parts = [`  - ${p.name} (${p.location})`];
+      parts.push(`    Status: ${p.status}, Progress: ${p.progress}%`);
+      if (p.tradesNeeded && p.tradesNeeded.length > 0) parts.push(`    Trades needed: ${p.tradesNeeded.join(", ")}`);
+      if (p.hourlyRate) parts.push(`    Hourly rate: ${p.hourlyRate}`);
+      if (p.client) parts.push(`    Client: ${p.client}`);
+      if (p.tier) parts.push(`    Tier: ${p.tier}`);
+      if (p.powerCapacity) parts.push(`    Power capacity: ${p.powerCapacity}`);
+      return parts.join("\n");
+    });
+    sections.push(`\n--- ACTIVE PROJECTS (${ctx.activeProjects.length}) ---\n${projectLines.join("\n")}`);
+  }
+
+  // 4. Workforce summary
+  if (ctx.workers.length > 0) {
+    const tradeCounts = new Map<string, { total: number; available: number }>();
+    for (const w of ctx.workers) {
+      const entry = tradeCounts.get(w.trade) || { total: 0, available: 0 };
+      entry.total++;
+      if (w.available) entry.available++;
+      tradeCounts.set(w.trade, entry);
+    }
+    const summaryLines = Array.from(tradeCounts.entries()).map(
+      ([trade, c]) => `  - ${trade}: ${c.total} total, ${c.available} available`
+    );
+    sections.push(`\n--- WORKFORCE SUMMARY (${ctx.workers.length} workers) ---\n${summaryLines.join("\n")}`);
+  }
+
+  // 5. Worker details (role-dependent)
+  if (user?.role === "company" && ctx.workers.length > 0) {
+    const workerLines = ctx.workers.map(w => {
+      const parts = [`  - ${w.name} | ${w.trade} | ${w.experience}yr exp | ${w.location}`];
+      parts.push(`    Available: ${w.available ? "Yes" : "No"}`);
+      if (w.certifications && w.certifications.length > 0) parts.push(`    Certs: ${w.certifications.join(", ")}`);
+      if (w.title) parts.push(`    Title: ${w.title}`);
+      return parts.join("\n");
+    });
+    sections.push(`\n--- WORKER ROSTER ---\n${workerLines.join("\n")}`);
+  } else if (user?.role === "worker") {
+    const myWorker = ctx.workers.find(w => w.email === user.email);
+    if (myWorker) {
+      sections.push(`\n--- YOUR WORKER PROFILE ---
+  Name: ${myWorker.name}
+  Trade: ${myWorker.trade}
+  Title: ${myWorker.title}
+  Experience: ${myWorker.experience} years
+  Location: ${myWorker.location}
+  Available: ${myWorker.available ? "Yes" : "No"}
+  Certifications: ${myWorker.certifications?.join(", ") || "None listed"}
+  Bio: ${myWorker.bio || "Not set"}
+  Total hours worked: ${myWorker.totalHoursWorked}
+  Wallet balance: $${(myWorker.walletBalance / 100).toFixed(2)}`);
+    }
+  }
+
+  // 6. Trade ontology
+  if (ctx.trades.length > 0) {
+    const tradeLines = ctx.trades.map(t => {
+      const tradeSkills = ctx.skills.filter(s => s.tradeId === t.id);
+      const skillStr = tradeSkills.length > 0
+        ? tradeSkills.map(s => `${s.name} (difficulty: ${s.difficultyLevel})`).join(", ")
+        : "No skills defined";
+      return `  - ${t.name} [${t.category}]: ${skillStr}`;
+    });
+    sections.push(`\n--- TRADE ONTOLOGY ---\n${tradeLines.join("\n")}`);
+  }
+
+  // 7. Certifications
+  if (ctx.certifications.length > 0) {
+    const certLines = ctx.certifications.map(c =>
+      `  - ${c.name} (issued by: ${c.issuingBody}${c.validityYears ? `, valid ${c.validityYears}yr` : ""})`
+    );
+    sections.push(`\n--- CERTIFICATIONS ---\n${certLines.join("\n")}`);
+  }
+
+  // 8. Matching results (conditional)
+  if (matchingResults?.workers && matchingResults.workers.length > 0) {
+    const lines = matchingResults.workers.map((r, i) =>
+      `  ${i + 1}. ${r.worker.name} — Score: ${r.score.total}/100 (trade: ${r.score.tradeMatch}, skills: ${r.score.skillProficiency}, certs: ${r.score.certCompleteness}, avail: ${r.score.availability}, exp: ${r.score.experience}${r.alreadyAssigned ? ", ALREADY ASSIGNED" : ""})`
+    );
+    sections.push(`\n--- MATCHING RESULTS: Best Workers ---\n${lines.join("\n")}`);
+  }
+
+  if (matchingResults?.jobs && matchingResults.jobs.length > 0) {
+    const lines = matchingResults.jobs.map((r, i) =>
+      `  ${i + 1}. ${r.project.name} (${r.project.location}) — Score: ${r.score.total}/100 (trade: ${r.score.tradeMatch}, skills: ${r.score.skillProficiency}, certs: ${r.score.certCompleteness}, avail: ${r.score.availability}, exp: ${r.score.experience}${r.alreadyAssigned ? ", ALREADY ASSIGNED" : ""})`
+    );
+    sections.push(`\n--- MATCHING RESULTS: Best Job Matches ---\n${lines.join("\n")}`);
+  }
+
+  return sections.join("\n");
+}
 
 export async function registerRoutes(
   httpServer: Server,
@@ -418,7 +622,7 @@ export async function registerRoutes(
     }
   });
 
-  // AI Chat endpoint
+  // AI Chat endpoint — context-aware with real platform data
   app.post("/api/ai/chat", async (req, res) => {
     try {
       const { messages } = req.body;
@@ -426,6 +630,45 @@ export async function registerRoutes(
       if (!apiKey) {
         return res.json({ response: "Site AI is currently unavailable." });
       }
+
+      // Get authenticated user (optional — degrades gracefully)
+      const user: User | null = req.isAuthenticated() ? (req.user as User) : null;
+
+      // Gather all platform data in parallel
+      const ctx = await gatherPlatformContext();
+
+      // Resolve linked worker ID for worker-role users
+      let linkedWorkerId: string | null = null;
+      if (user?.role === "worker" && user.email) {
+        const linkedWorker = ctx.workers.find(w => w.email === user.email);
+        if (linkedWorker) linkedWorkerId = linkedWorker.id;
+      }
+
+      // Extract last user message for intent detection
+      const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
+
+      // Detect matching intent
+      const intent = detectMatchingIntent(lastUserMessage, ctx.projects, linkedWorkerId);
+
+      // Run matching engine if intent detected
+      let matchingResults: { workers?: WorkerMatchResult[]; jobs?: ProjectMatchResult[] } | undefined;
+      if (intent) {
+        try {
+          if (intent.type === "workers-for-project" && intent.projectId) {
+            const workers = await findWorkersForProject(intent.projectId);
+            matchingResults = { workers };
+          } else if (intent.type === "jobs-for-worker" && intent.workerId) {
+            const jobs = await findJobsForWorker(intent.workerId);
+            matchingResults = { jobs };
+          }
+        } catch {
+          // Matching engine errors are non-fatal — AI still has full context
+        }
+      }
+
+      // Build enriched system prompt
+      const systemPrompt = buildSystemPrompt(user, ctx, matchingResults);
+
       const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
         headers: {
@@ -436,7 +679,7 @@ export async function registerRoutes(
         body: JSON.stringify({
           model: "claude-haiku-4-5-20251001",
           max_tokens: 1024,
-          system: "You are Griseus Site AI, a data center workforce assistant. Keep answers concise. Use plain text only, no markdown. Use newlines to separate points. Respond in the same language the user writes in.",
+          system: systemPrompt,
           messages: messages.map((m: any) => ({ role: m.role === "user" ? "user" : "assistant", content: m.content })),
         }),
       });

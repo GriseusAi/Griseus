@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { MapPin, Shield, Users, Sparkles, X, Send, Bot } from "lucide-react";
+import { useUser } from "@/hooks/use-user";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
 import { apiRequest } from "@/lib/queryClient";
@@ -16,13 +17,17 @@ interface ChatMessage {
   content: string;
 }
 
-const WELCOME_MESSAGE: ChatMessage = {
-  role: "assistant",
-  content: "Hello Marcus. I am your Site AI. Ask me about safety protocols or translation.",
-};
-
 function AIChatOverlay({ onClose }: { onClose: () => void }) {
-  const [messages, setMessages] = useState<ChatMessage[]>([WELCOME_MESSAGE]);
+  const { user } = useUser();
+  const userName = user?.name?.split(" ")[0] || "there";
+  const suggestion = user?.role === "company"
+    ? "project staffing, worker matching, or workforce analytics"
+    : "job matches, certifications, or skill development";
+  const welcomeMessage: ChatMessage = {
+    role: "assistant",
+    content: `Hello ${userName}. I am your Site AI. Ask me about ${suggestion}.`,
+  };
+  const [messages, setMessages] = useState<ChatMessage[]>([welcomeMessage]);
   const [input, setInput] = useState("");
   const [isTyping, setIsTyping] = useState(false);
   const scrollRef = useRef<HTMLDivElement>(null);
