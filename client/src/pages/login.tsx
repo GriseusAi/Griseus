@@ -9,8 +9,7 @@ import { queryClient } from "@/lib/queryClient";
 
 export default function LoginPage() {
   const [, setLocation] = useLocation();
-  const [isRegister, setIsRegister] = useState(false);
-  const [username, setUsername] = useState("");
+  const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
@@ -21,10 +20,10 @@ export default function LoginPage() {
     setLoading(true);
 
     try {
-      const endpoint = isRegister ? "/api/register" : "/api/login";
-      await apiRequest("POST", endpoint, { username, password });
+      const res = await apiRequest("POST", "/api/login", { email, password });
+      const user = await res.json();
       await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      setLocation("/dashboard");
+      setLocation(user.role === "company" ? "/dashboard" : "/mobile");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     }
@@ -45,23 +44,24 @@ export default function LoginPage() {
               </svg>
             </div>
           </div>
-          <CardTitle className="text-white text-xl">{isRegister ? "Create Account" : "Welcome Back"}</CardTitle>
+          <CardTitle className="text-white text-xl">Welcome Back</CardTitle>
           <CardDescription className="text-gray-400">
-            {isRegister ? "Sign up to access the dashboard" : "Sign in to your Griseus dashboard"}
+            Sign in to your Griseus dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="username" className="text-gray-300">Username</Label>
+              <Label htmlFor="email" className="text-gray-300">Email</Label>
               <Input
-                id="username"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                id="email"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 required
-                autoComplete="username"
+                autoComplete="email"
                 className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-indigo-500/50 focus:ring-indigo-500/25"
-                placeholder="Enter your username"
+                placeholder="Enter your email"
               />
             </div>
             <div className="space-y-2">
@@ -72,7 +72,7 @@ export default function LoginPage() {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 required
-                autoComplete={isRegister ? "new-password" : "current-password"}
+                autoComplete="current-password"
                 className="bg-white/5 border-white/10 text-white placeholder:text-gray-600 focus:border-indigo-500/50 focus:ring-indigo-500/25"
                 placeholder="Enter your password"
               />
@@ -89,17 +89,17 @@ export default function LoginPage() {
               disabled={loading}
               className="w-full bg-indigo-600 hover:bg-indigo-500 text-white"
             >
-              {loading ? "Please wait..." : isRegister ? "Create Account" : "Sign In"}
+              {loading ? "Please wait..." : "Sign In"}
             </Button>
           </form>
 
           <div className="mt-4 text-center">
             <button
               type="button"
-              onClick={() => { setIsRegister(!isRegister); setError(""); }}
+              onClick={() => setLocation("/register")}
               className="text-sm text-indigo-400 hover:text-indigo-300 transition-colors"
             >
-              {isRegister ? "Already have an account? Sign in" : "Don't have an account? Register"}
+              Don't have an account? Sign up
             </button>
           </div>
         </CardContent>

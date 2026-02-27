@@ -13,7 +13,7 @@ import { useUser } from "@/hooks/use-user";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
-import SelectRolePage from "@/pages/select-role";
+import RegisterPage from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
@@ -113,8 +113,8 @@ function AppContent() {
     return <LoginPage />;
   }
 
-  if (location === "/select-role") {
-    return <SelectRolePage />;
+  if (location === "/register") {
+    return <RegisterPage />;
   }
 
   if (location.startsWith("/mobile")) {

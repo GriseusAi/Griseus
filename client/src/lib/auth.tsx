@@ -13,12 +13,8 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     );
   }
 
-  if (!user) {
+  if (!user || !user.role) {
     return <Redirect to="/login" />;
-  }
-
-  if (!user.role) {
-    return <Redirect to="/select-role" />;
   }
 
   if (user.role === "worker") {

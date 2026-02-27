@@ -36,7 +36,7 @@ app.use(
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 86400000 }),
-    cookie: { maxAge: 24 * 60 * 60 * 1000 },
+    cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
   }),
 );
 
@@ -62,12 +62,12 @@ export async function comparePasswords(supplied: string, stored: string): Promis
 }
 
 passport.use(
-  new LocalStrategy(async (username, password, done) => {
+  new LocalStrategy({ usernameField: "email" }, async (email, password, done) => {
     try {
-      const user = await storage.getUserByUsername(username);
-      if (!user) return done(null, false, { message: "Invalid username or password" });
+      const user = await storage.getUserByEmail(email);
+      if (!user) return done(null, false, { message: "Invalid email or password" });
       const match = await comparePasswords(password, user.password);
-      if (!match) return done(null, false, { message: "Invalid username or password" });
+      if (!match) return done(null, false, { message: "Invalid email or password" });
       return done(null, user);
     } catch (err) {
       return done(err);

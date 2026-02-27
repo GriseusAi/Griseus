@@ -41,12 +41,12 @@ export default function LandingPage() {
             <span className="font-semibold text-white tracking-tight">Griseus</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm text-indigo-400 hover:text-white transition-colors">
+            <Link href="/login" className="text-sm text-gray-400 hover:text-white transition-colors">
               Login
             </Link>
-            <a href="#waitlist" className="text-sm text-gray-400 hover:text-white transition-colors">
-              Join Waitlist &rarr;
-            </a>
+            <Link href="/register" className="text-sm px-4 py-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white transition-colors">
+              Sign Up
+            </Link>
           </div>
         </div>
       </nav>
@@ -202,9 +202,9 @@ export default function LandingPage() {
                 Griseus connects you to what matters.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <a href="#waitlist" className="inline-flex px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-indigo-600/20 active:scale-[0.98]">
-                  Get Early Access
-                </a>
+                <Link href="/register" className="inline-flex px-8 py-3 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-indigo-600/20 active:scale-[0.98]">
+                  Get Started
+                </Link>
                 <Link href="/login" className="inline-flex px-8 py-3 rounded-xl border border-indigo-500/30 hover:border-indigo-500/60 text-indigo-400 hover:text-white text-sm font-medium transition-all">
                   Login to Dashboard
                 </Link>

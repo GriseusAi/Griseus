@@ -5,15 +5,44 @@ import { z } from "zod";
 
 export const users = pgTable("users", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
-  username: text("username").notNull().unique(),
+  email: text("email").notNull().unique(),
   password: text("password").notNull(),
-  role: text("role"),
+  role: text("role").notNull(),
+  name: text("name"),
+  companyName: text("company_name"),
+  industry: text("industry"),
+  position: text("position"),
+  trade: text("trade"),
+  yearsExperience: integer("years_experience"),
+  location: text("location"),
 });
 
-export const insertUserSchema = createInsertSchema(users).pick({
-  username: true,
-  password: true,
+export const insertUserSchema = createInsertSchema(users).omit({ id: true });
+
+export const registerCompanySchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.literal("company"),
+  name: z.string().min(1, "Contact name is required"),
+  companyName: z.string().min(1, "Company name is required"),
+  industry: z.string().min(1, "Industry is required"),
+  position: z.string().min(1, "Position is required"),
 });
+
+export const registerWorkerSchema = z.object({
+  email: z.string().email("Invalid email address"),
+  password: z.string().min(6, "Password must be at least 6 characters"),
+  role: z.literal("worker"),
+  name: z.string().min(1, "Full name is required"),
+  trade: z.string().min(1, "Trade is required"),
+  yearsExperience: z.number().int().min(0, "Years of experience must be 0 or more"),
+  location: z.string().min(1, "Location is required"),
+});
+
+export const registerSchema = z.discriminatedUnion("role", [
+  registerCompanySchema,
+  registerWorkerSchema,
+]);
 
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;

@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
-import { MapPin, Shield, Users, Sparkles, X, Send, Bot, ArrowLeftRight } from "lucide-react";
+import { MapPin, Shield, Users, Sparkles, X, Send, Bot } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Card } from "@/components/ui/card";
-import { apiRequest, queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 
 const tabs = [
   { title: "Jobs", url: "/mobile", icon: MapPin },
@@ -134,26 +134,11 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
 }
 
 export function MobileLayout({ children }: { children: React.ReactNode }) {
-  const [location, setLocation] = useLocation();
+  const [location] = useLocation();
   const [chatOpen, setChatOpen] = useState(false);
 
   return (
     <div className="flex flex-col h-screen w-full bg-background" data-testid="mobile-layout">
-      <header className="flex items-center justify-between px-4 py-2 border-b border-border/50 bg-card/80 backdrop-blur-sm">
-        <span className="text-sm font-semibold text-foreground">Griseus</span>
-        <button
-          onClick={async () => {
-            await apiRequest("PATCH", "/api/user/role", { role: null });
-            await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-            setLocation("/select-role");
-          }}
-          className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
-          data-testid="button-switch-role"
-        >
-          <ArrowLeftRight className="h-3.5 w-3.5" />
-          <span>Switch Role</span>
-        </button>
-      </header>
       <main className="flex-1 h-0 overflow-auto">
         {children}
       </main>

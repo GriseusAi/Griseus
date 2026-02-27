@@ -3,7 +3,7 @@ import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import {
   insertProjectSchema, insertWorkerSchema, insertWorkOrderSchema, insertJobApplicationSchema,
-  insertChatMessageSchema, insertUserSchema, insertTradeSchema, insertSkillSchema,
+  insertChatMessageSchema, registerSchema, insertTradeSchema, insertSkillSchema,
   insertCertificationSchema, insertTradeCertificationSchema, insertProjectPhaseSchema,
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
 } from "@shared/schema";
@@ -19,13 +19,13 @@ export async function registerRoutes(
   // Auth routes
   app.post("/api/register", async (req, res, next) => {
     try {
-      const { username, password } = insertUserSchema.parse(req.body);
-      const existing = await storage.getUserByUsername(username);
+      const data = registerSchema.parse(req.body);
+      const existing = await storage.getUserByEmail(data.email);
       if (existing) {
-        return res.status(400).json({ message: "Username already exists" });
+        return res.status(400).json({ message: "Email already exists" });
       }
-      const hashed = await hashPassword(password);
-      const user = await storage.createUser({ username, password: hashed });
+      const hashed = await hashPassword(data.password);
+      const user = await storage.createUser({ ...data, password: hashed });
       req.login(user, (err) => {
         if (err) return next(err);
         const { password: _, ...safeUser } = user;
@@ -62,23 +62,6 @@ export async function registerRoutes(
     if (!req.isAuthenticated()) return res.sendStatus(401);
     const { password: _, ...safeUser } = req.user as any;
     res.json(safeUser);
-  });
-
-  app.patch("/api/user/role", async (req, res, next) => {
-    try {
-      if (!req.isAuthenticated()) return res.sendStatus(401);
-      const { role } = req.body;
-      if (role !== null && role !== "company" && role !== "worker") {
-        return res.status(400).json({ message: "Role must be 'company', 'worker', or null" });
-      }
-      const user = req.user as any;
-      const updated = await storage.updateUserRole(user.id, role);
-      if (!updated) return res.status(404).json({ message: "User not found" });
-      const { password: _, ...safeUser } = updated;
-      res.json(safeUser);
-    } catch (error) {
-      next(error);
-    }
   });
 
   app.get("/api/projects", async (_req, res) => {
