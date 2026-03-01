@@ -32,6 +32,8 @@ export async function seedOntology() {
     { name: "Mechanical Insulator", category: "Mechanical", description: "Applies thermal and acoustic insulation to piping, ductwork, and mechanical equipment to maintain efficiency and prevent condensation." },
     { name: "Sheet Metal Worker", category: "Mechanical", description: "Fabricates and installs HVAC ductwork, louvers, dampers, and architectural sheet metal for data center mechanical systems." },
     { name: "Controls/BMS Technician", category: "Technology", description: "Programs and commissions building management systems, EPMS, and industrial controls for monitoring and automating critical facility infrastructure." },
+    { name: "Welder", category: "Welding/Fabrication", description: "Performs structural and pipe welding using SMAW, GMAW, FCAW, and GTAW processes for data center steel erection and mechanical systems." },
+    { name: "General Labor", category: "General", description: "Provides general construction support including raised floor installation, cable tray mounting, material handling, and site cleanup on data center projects." },
   ]).returning();
 
   const tradeMap: Record<string, string> = {};
@@ -110,6 +112,18 @@ export async function seedOntology() {
     { name: "EPMS Configuration", tradeId: tradeMap["Controls/BMS Technician"], description: "Configuring Electrical Power Monitoring Systems with power meters, CTs, and communication gateways.", difficultyLevel: 4 },
     { name: "PLC Programming", tradeId: tradeMap["Controls/BMS Technician"], description: "Programming Allen-Bradley, Siemens, and Schneider PLCs for generator paralleling and switchgear control.", difficultyLevel: 5 },
     { name: "Network Integration", tradeId: tradeMap["Controls/BMS Technician"], description: "Integrating BMS, EPMS, and DCIM systems over BACnet, Modbus, and SNMP protocols on converged networks.", difficultyLevel: 4 },
+
+    // Welder (4)
+    { name: "Structural Welding", tradeId: tradeMap["Welder"], description: "Performing structural steel welding per AWS D1.1 code including fillet, groove, and full-penetration welds.", difficultyLevel: 4 },
+    { name: "Pipe Welding", tradeId: tradeMap["Welder"], description: "Welding carbon steel and stainless steel pipe in all positions (6G) for mechanical piping systems.", difficultyLevel: 5 },
+    { name: "TIG/MIG Welding", tradeId: tradeMap["Welder"], description: "Performing GTAW and GMAW welding on various metals including stainless steel, carbon steel, and aluminum.", difficultyLevel: 3 },
+    { name: "Weld Inspection Prep", tradeId: tradeMap["Welder"], description: "Preparing welded joints for visual, UT, and radiographic inspection per applicable codes.", difficultyLevel: 3 },
+
+    // General Labor (4)
+    { name: "Raised Floor Installation", tradeId: tradeMap["General Labor"], description: "Installing raised access floor systems including pedestals, stringers, and perforated tiles for data center white space.", difficultyLevel: 2 },
+    { name: "Material Handling", tradeId: tradeMap["General Labor"], description: "Receiving, staging, and distributing construction materials and equipment using forklifts and pallet jacks.", difficultyLevel: 1 },
+    { name: "Cable Tray Mounting", tradeId: tradeMap["General Labor"], description: "Installing cable tray supports, hangers, and trapeze systems for electrical and data cable routing.", difficultyLevel: 2 },
+    { name: "Site Cleanup", tradeId: tradeMap["General Labor"], description: "Maintaining clean and organized work areas, debris removal, and construction waste management.", difficultyLevel: 1 },
   ];
 
   const createdSkills = await db.insert(skills).values(skillsData).returning();
@@ -144,6 +158,17 @@ export async function seedOntology() {
     { name: "NICET Fire Protection", issuingBody: "NICET", validityYears: 3, description: "National Institute for Certification in Engineering Technologies fire protection engineering certification." },
     { name: "Tridium Niagara Certification", issuingBody: "Tridium / Honeywell", validityYears: 2, description: "Certification for programming and configuring Tridium Niagara AX/N4 building automation framework." },
     { name: "ASHRAE Certification", issuingBody: "ASHRAE", validityYears: 3, description: "ASHRAE certification in HVAC design, operations, or building energy assessment for mechanical professionals." },
+    { name: "NATE Certification", issuingBody: "NATE", validityYears: 2, description: "North American Technician Excellence certification for HVAC/R installation and service technicians." },
+    { name: "R-410A Safety", issuingBody: "EPA", description: "Certification for safe handling and charging of R-410A refrigerant in modern HVAC systems." },
+    { name: "UA Journeyman", issuingBody: "United Association", description: "United Association journeyman certification for pipefitters, plumbers, and steamfitters." },
+    { name: "ASME B31.1/B31.3", issuingBody: "ASME", description: "Qualification under ASME pressure piping codes for power piping (B31.1) and process piping (B31.3)." },
+    { name: "Backflow Prevention", issuingBody: "State/Local Authority", validityYears: 2, description: "Certification for installation and testing of backflow prevention assemblies in potable water systems." },
+    { name: "BICSI Installer", issuingBody: "BICSI", validityYears: 3, description: "BICSI Installer certification for structured cabling installation, termination, and testing." },
+    { name: "CompTIA A+", issuingBody: "CompTIA", validityYears: 3, description: "Vendor-neutral IT certification covering hardware, software, networking, and troubleshooting fundamentals." },
+    { name: "Schneider/Siemens PLC Cert", issuingBody: "Schneider Electric / Siemens", validityYears: 2, description: "Manufacturer certification for programming and configuring Schneider or Siemens PLC controllers." },
+    { name: "BMS Certification", issuingBody: "Various (Tridium/Honeywell/JCI)", validityYears: 3, description: "Certification in building management system programming, configuration, and integration." },
+    { name: "ACI Flatwork Certification", issuingBody: "ACI", validityYears: 5, description: "American Concrete Institute flatwork finisher/technician certification for slab and floor construction." },
+    { name: "AWS D1.1 Structural Welding", issuingBody: "American Welding Society", validityYears: 2, description: "AWS D1.1 structural steel welding code qualification for building and bridge construction." },
   ]).returning();
 
   const certMap: Record<string, string> = {};
@@ -153,64 +178,69 @@ export async function seedOntology() {
 
   // ── TRADES ↔ CERTIFICATIONS ─────────────────────────────────────────
   await db.insert(tradesCertifications).values([
-    // Electrician
-    { tradeId: tradeMap["Electrician"], certificationId: certMap["OSHA 30"] },
-    { tradeId: tradeMap["Electrician"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Electrician"], certificationId: certMap["NFPA 70E"] },
-    { tradeId: tradeMap["Electrician"], certificationId: certMap["NCCER Electrical"] },
+    // Electrician: Journeyman License, NFPA 70E, OSHA 10, OSHA 30, First Aid/CPR
     { tradeId: tradeMap["Electrician"], certificationId: certMap["Journeyman Electrician License"] },
-    { tradeId: tradeMap["Electrician"], certificationId: certMap["Master Electrician License"] },
+    { tradeId: tradeMap["Electrician"], certificationId: certMap["NFPA 70E"] },
+    { tradeId: tradeMap["Electrician"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Electrician"], certificationId: certMap["OSHA 30"] },
     { tradeId: tradeMap["Electrician"], certificationId: certMap["First Aid/CPR"] },
-    // HVAC Technician
+    // HVAC Technician: EPA 608 Universal, NATE Certification, OSHA 10, OSHA 30, R-410A Safety, First Aid/CPR
     { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["EPA 608 Universal"] },
-    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["OSHA 30"] },
+    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["NATE Certification"] },
     { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["ASHRAE Certification"] },
-    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["LEED AP"] },
+    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["OSHA 30"] },
+    { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["R-410A Safety"] },
     { tradeId: tradeMap["HVAC Technician"], certificationId: certMap["First Aid/CPR"] },
-    // Plumber/Pipefitter
-    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["OSHA 30"] },
+    // Plumber/Pipefitter: UA Journeyman, ASME B31.1/B31.3, OSHA 10, OSHA 30, First Aid/CPR
+    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["UA Journeyman"] },
+    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["ASME B31.1/B31.3"] },
     { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["AWS Welding Cert"] },
+    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["OSHA 30"] },
     { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["First Aid/CPR"] },
-    { tradeId: tradeMap["Plumber/Pipefitter"], certificationId: certMap["Confined Space Entry"] },
-    // Structural Ironworker
-    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 30"] },
-    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["AWS Welding Cert"] },
+    // Structural Ironworker: AWS D1.1 Structural Welding, Rigging/Signal Person, OSHA 10, OSHA 30
+    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["AWS D1.1 Structural Welding"] },
     { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["Rigging/Signal Person"] },
-    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["First Aid/CPR"] },
-    // Concrete Worker
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["OSHA 30"] },
+    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 30"] },
+    // Concrete Worker: ACI Flatwork Certification, OSHA 10, OSHA 30
+    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["ACI Flatwork Certification"] },
     { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["Forklift Operator"] },
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["First Aid/CPR"] },
-    // Fire Protection Specialist
-    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["OSHA 30"] },
-    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["OSHA 30"] },
+    // Fire Protection Specialist: NICET Fire Protection, OSHA 10, OSHA 30, First Aid/CPR, Backflow Prevention
     { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["NICET Fire Protection"] },
+    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["OSHA 30"] },
     { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["First Aid/CPR"] },
-    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["Confined Space Entry"] },
-    // Low Voltage Technician
-    { tradeId: tradeMap["Low Voltage Technician"], certificationId: certMap["BICSI RCDD"] },
+    { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["Backflow Prevention"] },
+    // Low Voltage Technician: BICSI Installer, CompTIA Network+, OSHA 10, First Aid/CPR
+    { tradeId: tradeMap["Low Voltage Technician"], certificationId: certMap["BICSI Installer"] },
     { tradeId: tradeMap["Low Voltage Technician"], certificationId: certMap["CompTIA Network+"] },
     { tradeId: tradeMap["Low Voltage Technician"], certificationId: certMap["OSHA 10"] },
     { tradeId: tradeMap["Low Voltage Technician"], certificationId: certMap["First Aid/CPR"] },
-    // Mechanical Insulator
+    // Mechanical Insulator (unchanged)
     { tradeId: tradeMap["Mechanical Insulator"], certificationId: certMap["OSHA 10"] },
     { tradeId: tradeMap["Mechanical Insulator"], certificationId: certMap["OSHA 30"] },
     { tradeId: tradeMap["Mechanical Insulator"], certificationId: certMap["Confined Space Entry"] },
     { tradeId: tradeMap["Mechanical Insulator"], certificationId: certMap["First Aid/CPR"] },
-    // Sheet Metal Worker
+    // Sheet Metal Worker (unchanged)
     { tradeId: tradeMap["Sheet Metal Worker"], certificationId: certMap["OSHA 10"] },
     { tradeId: tradeMap["Sheet Metal Worker"], certificationId: certMap["OSHA 30"] },
     { tradeId: tradeMap["Sheet Metal Worker"], certificationId: certMap["Forklift Operator"] },
     { tradeId: tradeMap["Sheet Metal Worker"], certificationId: certMap["First Aid/CPR"] },
-    // Controls/BMS Technician
-    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["Tridium Niagara Certification"] },
+    // Controls/BMS Technician: CompTIA A+, Schneider/Siemens PLC Cert, OSHA 10, BMS Certification
+    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["CompTIA A+"] },
+    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["Schneider/Siemens PLC Cert"] },
     { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["CompTIA Network+"] },
-    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["First Aid/CPR"] },
+    { tradeId: tradeMap["Controls/BMS Technician"], certificationId: certMap["BMS Certification"] },
+    // Welder: AWS D1.1 Structural Welding, AWS Welding Cert, OSHA 10, OSHA 30
+    { tradeId: tradeMap["Welder"], certificationId: certMap["AWS D1.1 Structural Welding"] },
+    { tradeId: tradeMap["Welder"], certificationId: certMap["AWS Welding Cert"] },
+    { tradeId: tradeMap["Welder"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Welder"], certificationId: certMap["OSHA 30"] },
+    // General Labor: OSHA 10, First Aid/CPR, Forklift Operator
+    { tradeId: tradeMap["General Labor"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["General Labor"], certificationId: certMap["First Aid/CPR"] },
+    { tradeId: tradeMap["General Labor"], certificationId: certMap["Forklift Operator"] },
   ]);
 
   // ── PROJECT PHASES ──────────────────────────────────────────────────
@@ -284,6 +314,8 @@ export async function seedOntology() {
     "Fire Protection": "Fire Protection Specialist",
     "Network Technician": "Low Voltage Technician",
     "Controls Technician": "Controls/BMS Technician",
+    "Welder": "Welder",
+    "General Labor": "General Labor",
   };
 
   // Map existing worker cert strings to ontology cert names

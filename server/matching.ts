@@ -13,6 +13,8 @@ const WORKER_TRADE_TO_ONTOLOGY: Record<string, string> = {
   "Fire Protection": "Fire Protection Specialist",
   "Network Technician": "Low Voltage Technician",
   "Controls Technician": "Controls/BMS Technician",
+  "Welder": "Welder",
+  "General Labor": "General Labor",
 };
 
 // Reverse: ontology name → all worker trade strings that map to it
