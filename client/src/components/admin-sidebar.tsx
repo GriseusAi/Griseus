@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, FolderKanban, Users, LogOut } from "lucide-react";
+import { LayoutDashboard, BarChart3, Users, FolderKanban, Settings, LogOut, ShieldCheck } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -16,23 +16,27 @@ import {
 } from "@/components/ui/sidebar";
 
 const navItems = [
-  { title: "Dashboard", url: "/dashboard", icon: LayoutDashboard },
-  { title: "Projects", url: "/projects", icon: FolderKanban },
-  { title: "My Team", url: "/team", icon: Users },
+  { title: "Overview", url: "/admin", icon: LayoutDashboard },
+  { title: "Analytics", url: "/admin/analytics", icon: BarChart3 },
+  { title: "Users", url: "/admin/users", icon: Users },
+  { title: "Projects", url: "/admin/projects", icon: FolderKanban },
+  { title: "Settings", url: "/admin/settings", icon: Settings },
 ];
 
-export function AppSidebar() {
+export function AdminSidebar() {
   const [location, setLocation] = useLocation();
 
   return (
     <Sidebar>
       <SidebarHeader className="p-4">
-        <Link href="/dashboard" data-testid="link-home">
+        <Link href="/admin">
           <div className="flex items-center gap-2">
-            <img src="/favicon.svg" alt="Griseus" className="h-10 w-10 rounded-lg shadow-md" />
+            <div className="h-10 w-10 rounded-lg shadow-md bg-[#9F6C52] flex items-center justify-center">
+              <ShieldCheck className="h-6 w-6 text-white" />
+            </div>
             <div>
               <h1 className="text-xl font-bold tracking-tight text-sidebar-foreground">Griseus</h1>
-              <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">Data Center Ops</p>
+              <p className="text-[10px] uppercase tracking-wide text-muted-foreground leading-none">Admin Panel</p>
             </div>
           </div>
         </Link>
@@ -40,18 +44,17 @@ export function AppSidebar() {
       </SidebarHeader>
       <SidebarContent>
         <SidebarGroup>
-          <SidebarGroupLabel>Navigation</SidebarGroupLabel>
+          <SidebarGroupLabel>Administration</SidebarGroupLabel>
           <SidebarGroupContent>
             <SidebarMenu>
               {navItems.map((item) => {
-                const isActive = location === item.url || location.startsWith(item.url + "/");
+                const isActive =
+                  item.url === "/admin"
+                    ? location === "/admin"
+                    : location === item.url || location.startsWith(item.url + "/");
                 return (
                   <SidebarMenuItem key={item.title}>
-                    <SidebarMenuButton
-                      asChild
-                      isActive={isActive}
-                      data-testid={`nav-${item.title.toLowerCase().replace(/\s+/g, "-")}`}
-                    >
+                    <SidebarMenuButton asChild isActive={isActive}>
                       <Link href={item.url}>
                         <item.icon className="h-4 w-4" />
                         <span>{item.title}</span>
@@ -68,7 +71,6 @@ export function AppSidebar() {
         <SidebarMenu>
           <SidebarMenuItem>
             <SidebarMenuButton
-              data-testid="button-logout"
               onClick={async () => {
                 await apiRequest("POST", "/api/logout");
                 queryClient.clear();

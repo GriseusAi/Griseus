@@ -5,11 +5,13 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { AdminSidebar } from "@/components/admin-sidebar";
 import { MobileLayout } from "@/components/mobile-layout";
 import { ThemeProvider } from "@/lib/theme";
 import { ProtectedRoute } from "@/lib/auth";
 import { motion, AnimatePresence } from "framer-motion";
 import { useUser } from "@/hooks/use-user";
+import { Loader2 } from "lucide-react";
 import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
@@ -25,6 +27,10 @@ import Team from "@/pages/team";
 import MobileJobs from "@/pages/mobile-jobs";
 import MobilePassport from "@/pages/mobile-passport";
 import MobileSquad from "@/pages/mobile-squad";
+import AdminOverview from "@/pages/admin/overview";
+import AdminUsers from "@/pages/admin/users";
+import AdminProjects from "@/pages/admin/projects";
+import AdminSettings from "@/pages/admin/settings";
 
 function DesktopRouter() {
   const [location] = useLocation();
@@ -40,10 +46,34 @@ function DesktopRouter() {
       >
         <Switch>
           <Route path="/dashboard" component={Dashboard} />
-          <Route path="/analytics" component={Analytics} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/team" component={Team} />
+          <Route component={NotFound} />
+        </Switch>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function AdminRouter() {
+  const [location] = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <Switch>
+          <Route path="/admin" component={AdminOverview} />
+          <Route path="/admin/analytics" component={Analytics} />
+          <Route path="/admin/users" component={AdminUsers} />
+          <Route path="/admin/projects" component={AdminProjects} />
+          <Route path="/admin/settings" component={AdminSettings} />
           <Route component={NotFound} />
         </Switch>
       </motion.div>
@@ -85,6 +115,51 @@ function DesktopLayout() {
       </div>
     </SidebarProvider>
   );
+}
+
+function AdminLayout() {
+  const style = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3rem",
+  };
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <AdminSidebar />
+        <div className="flex flex-col flex-1 min-w-0">
+          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-[#CEB298]/20 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
+            <SidebarTrigger />
+          </header>
+          <main className="flex-1 overflow-auto">
+            <AdminRouter />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function AuthenticatedAdmin() {
+  const { user, isLoading } = useUser();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  if (user.role !== "admin") {
+    return <Redirect to={user.role === "worker" ? "/mobile" : "/dashboard"} />;
+  }
+
+  return <AdminLayout />;
 }
 
 function AuthenticatedMobile() {
@@ -130,6 +205,10 @@ function AppContent() {
 
   if (location.startsWith("/mobile")) {
     return <AuthenticatedMobile />;
+  }
+
+  if (location.startsWith("/admin")) {
+    return <AuthenticatedAdmin />;
   }
 
   return (

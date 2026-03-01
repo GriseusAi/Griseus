@@ -21,5 +21,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/mobile" />;
   }
 
+  if (user.role === "admin") {
+    return <Redirect to="/admin" />;
+  }
+
   return <>{children}</>;
 }

@@ -622,6 +622,49 @@ export async function registerRoutes(
     }
   });
 
+  // ── Admin Endpoints ────────────────────────────────────────────────
+
+  const ADMIN_EMAIL = "gurkanduruak@gmail.com";
+
+  app.get("/api/admin/users", async (req, res) => {
+    if (!req.isAuthenticated()) return res.sendStatus(401);
+    const user = req.user as any;
+    if (user.role !== "admin") return res.status(403).json({ message: "Admin access required" });
+
+    const allUsers = await storage.getAllUsers();
+    // Strip passwords
+    const safeUsers = allUsers.map(({ password: _, ...u }) => u);
+    res.json(safeUsers);
+  });
+
+  app.post("/api/admin/setup", async (req, res) => {
+    try {
+      const user = await storage.getUserByEmail(ADMIN_EMAIL);
+      if (!user) {
+        // Create admin user
+        const hashed = await hashPassword("admin123");
+        const newUser = await storage.createUser({
+          email: ADMIN_EMAIL,
+          password: hashed,
+          role: "admin",
+          name: "Gurkan Duruak",
+        });
+        const { password: _, ...safeUser } = newUser;
+        return res.status(201).json({ message: "Admin user created", user: safeUser });
+      }
+
+      // User exists, update role to admin
+      if (user.role !== "admin") {
+        await storage.updateUserRole(user.id, "admin");
+        return res.json({ message: "User role updated to admin" });
+      }
+
+      res.json({ message: "Admin user already exists" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ── Analytics Endpoints ────────────────────────────────────────────
 
   app.get("/api/analytics/workforce-summary", async (_req, res) => {
