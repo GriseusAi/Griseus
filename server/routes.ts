@@ -622,6 +622,178 @@ export async function registerRoutes(
     }
   });
 
+  // ── Analytics Endpoints ────────────────────────────────────────────
+
+  app.get("/api/analytics/workforce-summary", async (_req, res) => {
+    try {
+      const [allWorkers, allProjects] = await Promise.all([
+        storage.getWorkers(),
+        storage.getProjects(),
+      ]);
+
+      const totalWorkers = allWorkers.length;
+      const availableWorkers = allWorkers.filter(w => w.available).length;
+      const activeProjects = allProjects.filter(p => p.status === "active");
+      const activeProjectCount = activeProjects.length;
+
+      // Compute average match score across all active projects
+      let totalScore = 0;
+      let matchCount = 0;
+
+      for (const project of activeProjects) {
+        try {
+          const results = await findWorkersForProject(project.id);
+          for (const r of results) {
+            totalScore += r.score.total;
+            matchCount++;
+          }
+        } catch {
+          // Skip projects that fail matching
+        }
+      }
+
+      const avgMatchScore = matchCount > 0 ? Math.round((totalScore / matchCount) * 10) / 10 : 0;
+
+      res.json({ totalWorkers, availableWorkers, activeProjects: activeProjectCount, avgMatchScore });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/analytics/supply-demand", async (_req, res) => {
+    try {
+      const [allWorkers, allProjects] = await Promise.all([
+        storage.getWorkers(),
+        storage.getProjects(),
+      ]);
+
+      const activeProjects = allProjects.filter(p => p.status === "active" || p.status === "planning");
+
+      // Collect all unique trades from both workers and project needs
+      const allTrades = new Set<string>();
+      for (const w of allWorkers) allTrades.add(w.trade);
+      for (const p of activeProjects) {
+        for (const t of (p.tradesNeeded ?? [])) allTrades.add(t);
+      }
+
+      const data = Array.from(allTrades).map(trade => {
+        const supply = allWorkers.filter(w => w.available && w.trade === trade).length;
+        const demand = activeProjects.filter(p => (p.tradesNeeded ?? []).includes(trade)).length;
+        return { trade, supply, demand };
+      }).sort((a, b) => (b.demand + b.supply) - (a.demand + a.supply));
+
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/analytics/regional", async (_req, res) => {
+    try {
+      const allWorkers = await storage.getWorkers();
+
+      const locationMap = new Map<string, typeof allWorkers>();
+      for (const w of allWorkers) {
+        const loc = w.location || "Unknown";
+        if (!locationMap.has(loc)) locationMap.set(loc, []);
+        locationMap.get(loc)!.push(w);
+      }
+
+      const data = Array.from(locationMap.entries()).map(([location, workers]) => {
+        const totalWorkers = workers.length;
+        const availableWorkers = workers.filter(w => w.available).length;
+        const avgExperience = Math.round(workers.reduce((s, w) => s + w.experience, 0) / totalWorkers * 10) / 10;
+
+        // Top trades by count
+        const tradeCounts = new Map<string, number>();
+        for (const w of workers) {
+          tradeCounts.set(w.trade, (tradeCounts.get(w.trade) || 0) + 1);
+        }
+        const topTrades = Array.from(tradeCounts.entries())
+          .sort((a, b) => b[1] - a[1])
+          .slice(0, 3)
+          .map(([trade]) => trade);
+
+        return { location, totalWorkers, availableWorkers, topTrades, avgExperience };
+      }).sort((a, b) => b.totalWorkers - a.totalWorkers);
+
+      res.json(data);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/analytics/skill-gaps", async (_req, res) => {
+    try {
+      const [allWorkers, allTrades, allCerts, allTradeCerts] = await Promise.all([
+        storage.getWorkers(),
+        storage.getTrades(),
+        storage.getCertifications(),
+        // Fetch all trade-cert links
+        Promise.resolve().then(async () => {
+          const trades = await storage.getTrades();
+          const links: Array<{ tradeId: string; certificationId: string }> = [];
+          for (const t of trades) {
+            const tl = await storage.getCertificationsByTrade(t.id);
+            links.push(...tl);
+          }
+          return links;
+        }),
+      ]);
+
+      // Build cert id → name map
+      const certNameMap = new Map<string, string>();
+      for (const c of allCerts) certNameMap.set(c.id, c.name);
+
+      // Build trade id → name map
+      const tradeIdToName = new Map<string, string>();
+      for (const t of allTrades) tradeIdToName.set(t.id, t.name);
+
+      // For each trade, get required certs and worker coverage
+      const result: Array<{
+        trade: string;
+        totalWorkers: number;
+        certifications: Array<{ name: string; holdersCount: number; totalWorkers: number; percentage: number }>;
+      }> = [];
+
+      for (const trade of allTrades) {
+        // Find workers in this trade (match by trade name)
+        const tradeWorkers = allWorkers.filter(w => w.trade === trade.name);
+        if (tradeWorkers.length === 0) continue;
+
+        // Get required certs for this trade
+        const requiredCertLinks = allTradeCerts.filter(tc => tc.tradeId === trade.id);
+        if (requiredCertLinks.length === 0) continue;
+
+        // Fetch worker certifications for all workers in this trade
+        const workerCertsMap = new Map<string, Set<string>>();
+        for (const w of tradeWorkers) {
+          const wCerts = await storage.getWorkerCertifications(w.id);
+          workerCertsMap.set(w.id, new Set(wCerts.map(wc => wc.certificationId)));
+        }
+
+        const certData = requiredCertLinks.map(link => {
+          const certName = certNameMap.get(link.certificationId) || "Unknown";
+          const holdersCount = tradeWorkers.filter(w =>
+            workerCertsMap.get(w.id)?.has(link.certificationId)
+          ).length;
+          const percentage = Math.round((holdersCount / tradeWorkers.length) * 100);
+          return { name: certName, holdersCount, totalWorkers: tradeWorkers.length, percentage };
+        });
+
+        result.push({
+          trade: trade.name,
+          totalWorkers: tradeWorkers.length,
+          certifications: certData,
+        });
+      }
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // AI Chat endpoint — context-aware with real platform data
   app.post("/api/ai/chat", async (req, res) => {
     try {

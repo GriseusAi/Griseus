@@ -18,6 +18,7 @@ import OnboardingPage from "@/pages/onboarding";
 import WorkerQuiz from "@/pages/quiz-worker";
 import CompanyQuiz from "@/pages/quiz-company";
 import Dashboard from "@/pages/dashboard";
+import Analytics from "@/pages/analytics";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
 import Team from "@/pages/team";
@@ -39,6 +40,7 @@ function DesktopRouter() {
       >
         <Switch>
           <Route path="/dashboard" component={Dashboard} />
+          <Route path="/analytics" component={Analytics} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/team" component={Team} />
