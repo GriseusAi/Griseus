@@ -26,7 +26,7 @@ export async function seedOntology() {
     { name: "HVAC Technician", category: "Mechanical", description: "Installs, services, and commissions heating, ventilation, air conditioning, and precision cooling systems for data center environments." },
     { name: "Plumber/Pipefitter", category: "Mechanical", description: "Installs chilled water piping, glycol loops, condensate lines, drainage systems, and fire suppression piping in data center facilities." },
     { name: "Structural Ironworker", category: "Structural", description: "Erects structural steel framing, metal decking, and miscellaneous metals for data center buildings and support structures." },
-    { name: "Concrete Worker", category: "Structural", description: "Forms, pours, and finishes concrete foundations, slabs, equipment pads, and elevated decks for data center construction." },
+    { name: "Concrete Specialist", category: "Structural", description: "Forms, pours, and finishes concrete foundations, slabs, equipment pads, and elevated decks for data center construction." },
     { name: "Fire Protection Specialist", category: "Life Safety", description: "Designs, installs, and inspects fire suppression systems including clean agent, pre-action sprinklers, and VESDA detection for data centers." },
     { name: "Low Voltage Technician", category: "Technology", description: "Installs structured cabling, fiber optics, cable tray, and network infrastructure for data center connectivity." },
     { name: "Mechanical Insulator", category: "Mechanical", description: "Applies thermal and acoustic insulation to piping, ductwork, and mechanical equipment to maintain efficiency and prevent condensation." },
@@ -72,12 +72,12 @@ export async function seedOntology() {
     { name: "Rigging", tradeId: tradeMap["Structural Ironworker"], description: "Planning and executing critical lifts of steel members and heavy equipment using slings, shackles, and spreader bars.", difficultyLevel: 5 },
     { name: "Welding Layout", tradeId: tradeMap["Structural Ironworker"], description: "Laying out and preparing structural steel connections for field welding per AWS D1.1 details.", difficultyLevel: 4 },
 
-    // Concrete Worker (5)
-    { name: "Foundation Forming", tradeId: tradeMap["Concrete Worker"], description: "Building formwork for spread footings, grade beams, and pile caps using lumber and prefabricated form systems.", difficultyLevel: 3 },
-    { name: "Slab Pouring", tradeId: tradeMap["Concrete Worker"], description: "Placing, vibrating, and finishing concrete slabs-on-grade with proper slope, joints, and surface tolerance.", difficultyLevel: 3 },
-    { name: "Post-Tensioning", tradeId: tradeMap["Concrete Worker"], description: "Installing post-tension cable systems in elevated concrete decks for long-span data center floor construction.", difficultyLevel: 5 },
-    { name: "Rebar Tying", tradeId: tradeMap["Concrete Worker"], description: "Placing and tying reinforcing steel bars per structural drawings with proper spacing, cover, and lap lengths.", difficultyLevel: 2 },
-    { name: "Equipment Pad Construction", tradeId: tradeMap["Concrete Worker"], description: "Forming and pouring elevated concrete pads for generators, chillers, transformers, and mechanical equipment.", difficultyLevel: 3 },
+    // Concrete Specialist (5)
+    { name: "Foundation Forming", tradeId: tradeMap["Concrete Specialist"], description: "Building formwork for spread footings, grade beams, and pile caps using lumber and prefabricated form systems.", difficultyLevel: 3 },
+    { name: "Slab Pouring", tradeId: tradeMap["Concrete Specialist"], description: "Placing, vibrating, and finishing concrete slabs-on-grade with proper slope, joints, and surface tolerance.", difficultyLevel: 3 },
+    { name: "Post-Tensioning", tradeId: tradeMap["Concrete Specialist"], description: "Installing post-tension cable systems in elevated concrete decks for long-span data center floor construction.", difficultyLevel: 5 },
+    { name: "Rebar Tying", tradeId: tradeMap["Concrete Specialist"], description: "Placing and tying reinforcing steel bars per structural drawings with proper spacing, cover, and lap lengths.", difficultyLevel: 2 },
+    { name: "Equipment Pad Construction", tradeId: tradeMap["Concrete Specialist"], description: "Forming and pouring elevated concrete pads for generators, chillers, transformers, and mechanical equipment.", difficultyLevel: 3 },
 
     // Fire Protection Specialist (5)
     { name: "Clean Agent Systems", tradeId: tradeMap["Fire Protection Specialist"], description: "Installing FM-200 and Novec 1230 clean agent fire suppression systems in data center white space.", difficultyLevel: 5 },
@@ -202,10 +202,10 @@ export async function seedOntology() {
     { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["Rigging/Signal Person"] },
     { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 10"] },
     { tradeId: tradeMap["Structural Ironworker"], certificationId: certMap["OSHA 30"] },
-    // Concrete Worker: ACI Flatwork Certification, OSHA 10, OSHA 30
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["ACI Flatwork Certification"] },
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["OSHA 10"] },
-    { tradeId: tradeMap["Concrete Worker"], certificationId: certMap["OSHA 30"] },
+    // Concrete Specialist: ACI Flatwork Certification, OSHA 10, OSHA 30
+    { tradeId: tradeMap["Concrete Specialist"], certificationId: certMap["ACI Flatwork Certification"] },
+    { tradeId: tradeMap["Concrete Specialist"], certificationId: certMap["OSHA 10"] },
+    { tradeId: tradeMap["Concrete Specialist"], certificationId: certMap["OSHA 30"] },
     // Fire Protection Specialist: NICET Fire Protection, OSHA 10, OSHA 30, First Aid/CPR, Backflow Prevention
     { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["NICET Fire Protection"] },
     { tradeId: tradeMap["Fire Protection Specialist"], certificationId: certMap["OSHA 10"] },
@@ -264,10 +264,10 @@ export async function seedOntology() {
   // ── PROJECT PHASES ↔ TRADES ─────────────────────────────────────────
   await db.insert(projectPhasesTrades).values([
     // Site Preparation
-    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Concrete Worker"], requiredWorkerCount: 8 },
+    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Concrete Specialist"], requiredWorkerCount: 8 },
     { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 4 },
     // Foundation & Structural
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Concrete Worker"], requiredWorkerCount: 12 },
+    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Concrete Specialist"], requiredWorkerCount: 12 },
     { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 10 },
     { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 4 },
     // Electrical Rough-In
@@ -305,17 +305,28 @@ export async function seedOntology() {
   // ── WORKER ↔ SKILLS & CERTIFICATIONS ────────────────────────────────
   // Map existing worker trades to ontology trades
   const workerTradeMapping: Record<string, string> = {
+    // Canonical 12 trades (identity mappings)
     "Electrician": "Electrician",
     "HVAC Technician": "HVAC Technician",
+    "Plumber/Pipefitter": "Plumber/Pipefitter",
+    "Structural Ironworker": "Structural Ironworker",
+    "Concrete Specialist": "Concrete Specialist",
+    "Fire Protection Specialist": "Fire Protection Specialist",
+    "Low Voltage Technician": "Low Voltage Technician",
+    "Controls/BMS Technician": "Controls/BMS Technician",
+    "Welder": "Welder",
+    "General Labor": "General Labor",
+    "Sheet Metal Worker": "Sheet Metal Worker",
+    "Mechanical Insulator": "Mechanical Insulator",
+    // Legacy mappings for backward compatibility
     "Pipefitter": "Plumber/Pipefitter",
     "Plumber": "Plumber/Pipefitter",
-    "Structural Ironworker": "Structural Ironworker",
-    "Concrete Specialist": "Concrete Worker",
     "Fire Protection": "Fire Protection Specialist",
     "Network Technician": "Low Voltage Technician",
     "Controls Technician": "Controls/BMS Technician",
-    "Welder": "Welder",
-    "General Labor": "General Labor",
+    "Concrete Worker": "Concrete Specialist",
+    "Security Systems": "Low Voltage Technician",
+    "Rigger": "General Labor",
   };
 
   // Map existing worker cert strings to ontology cert names

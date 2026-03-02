@@ -163,7 +163,7 @@ export async function seedDatabase() {
     {
       name: "Elena Vasquez",
       title: "Network Infrastructure Engineer",
-      trade: "Network Technician",
+      trade: "Low Voltage Technician",
       email: "elena.vasquez.net@gmail.com",
       phone: "+1 (503) 694-2718",
       location: "Hillsboro, OR",
@@ -178,7 +178,7 @@ export async function seedDatabase() {
     {
       name: "Tyrone Brooks",
       title: "Fiber Optic Technician",
-      trade: "Network Technician",
+      trade: "Low Voltage Technician",
       email: "tyrone.brooks@outlook.com",
       phone: "+1 (614) 873-5042",
       location: "Dublin, OH",
@@ -193,7 +193,7 @@ export async function seedDatabase() {
     {
       name: "Kendra Lawson",
       title: "Network Cabling Lead",
-      trade: "Network Technician",
+      trade: "Low Voltage Technician",
       email: "kendra.lawson88@yahoo.com",
       phone: "+1 (770) 529-4186",
       location: "Marietta, GA",
@@ -240,7 +240,7 @@ export async function seedDatabase() {
     {
       name: "Carlos Mendez",
       title: "Pipefitter Foreman",
-      trade: "Pipefitter",
+      trade: "Plumber/Pipefitter",
       email: "carlos.mendez.pipe@yahoo.com",
       phone: "+1 (210) 847-3196",
       location: "San Antonio, TX",
@@ -255,7 +255,7 @@ export async function seedDatabase() {
     {
       name: "Tommy Sullivan",
       title: "Plumber",
-      trade: "Plumber",
+      trade: "Plumber/Pipefitter",
       email: "tommy.sull@gmail.com",
       phone: "+1 (614) 593-8274",
       location: "New Albany, OH",
@@ -302,7 +302,7 @@ export async function seedDatabase() {
     {
       name: "Keith Morrison",
       title: "Fire Protection Technician",
-      trade: "Fire Protection",
+      trade: "Fire Protection Specialist",
       email: "keith.morrison.fp@yahoo.com",
       phone: "+1 (571) 842-6309",
       location: "Manassas, VA",
@@ -317,7 +317,7 @@ export async function seedDatabase() {
     {
       name: "Dana Pearson",
       title: "Sprinkler Fitter",
-      trade: "Fire Protection",
+      trade: "Fire Protection Specialist",
       email: "dana.pearson.fire@outlook.com",
       phone: "+1 (404) 631-7248",
       location: "Atlanta, GA",
@@ -333,7 +333,7 @@ export async function seedDatabase() {
     {
       name: "Victor Pham",
       title: "Controls Engineer",
-      trade: "Controls Technician",
+      trade: "Controls/BMS Technician",
       email: "victor.pham.ctrl@gmail.com",
       phone: "+1 (503) 278-4631",
       location: "Portland, OR",
@@ -349,7 +349,7 @@ export async function seedDatabase() {
     {
       name: "DeShawn Carter",
       title: "Rigger / Equipment Operator",
-      trade: "Rigger",
+      trade: "General Labor",
       email: "deshawn.carter@yahoo.com",
       phone: "+1 (614) 745-2389",
       location: "Columbus, OH",
@@ -391,18 +391,18 @@ export async function seedDatabase() {
       pendingPayout: 5400,
       totalHoursWorked: 380,
     },
-    // --- Security Systems ---
+    // --- Low Voltage Technician (Security/Network) ---
     {
       name: "Nathan Cole",
-      title: "Security Systems Installer",
-      trade: "Security Systems",
+      title: "Low Voltage Technician",
+      trade: "Low Voltage Technician",
       email: "nathan.cole.sec@yahoo.com",
       phone: "+1 (972) 813-6274",
       location: "Fort Worth, TX",
       experience: 7,
-      certifications: ["ESA/NTS Certified", "OSHA 10", "Lenel Certified", "Genetec Certified", "Low Voltage License"],
+      certifications: ["BICSI Installer 2", "OSHA 10", "First Aid/CPR", "Lenel Certified", "Low Voltage License"],
       available: true,
-      bio: "Installs and configures access control, CCTV, and intrusion detection systems for data center physical security.",
+      bio: "Installs and configures low voltage systems including access control, CCTV, structured cabling, and intrusion detection for data center physical security.",
       walletBalance: 49800,
       pendingPayout: 16300,
       totalHoursWorked: 860,
@@ -455,7 +455,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 39.0438,
       longitude: -77.4874,
-      tradesNeeded: ["Electrician", "Project Manager", "Facility Engineer", "Fire Protection"],
+      tradesNeeded: ["Electrician", "Fire Protection Specialist"],
       hourlyRate: "$60-95/hr",
     },
     // 2. Dallas, TX
@@ -472,7 +472,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 32.7767,
       longitude: -96.7970,
-      tradesNeeded: ["HVAC Technician", "Network Technician", "Fire Protection", "Welder"],
+      tradesNeeded: ["HVAC Technician", "Low Voltage Technician", "Fire Protection Specialist", "Welder"],
       hourlyRate: "$50-80/hr",
     },
     // 3. Phoenix, AZ
@@ -489,7 +489,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 33.4484,
       longitude: -112.0740,
-      tradesNeeded: ["Electrician", "HVAC Technician", "General Labor", "Pipefitter"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "General Labor", "Plumber/Pipefitter"],
       hourlyRate: "$55-90/hr",
     },
     // 4. Hillsboro, OR - Silicon Forest
@@ -506,7 +506,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 45.5231,
       longitude: -122.9898,
-      tradesNeeded: ["Network Technician"],
+      tradesNeeded: ["Low Voltage Technician"],
       hourlyRate: "$45-70/hr",
     },
     // 5. Columbus, OH
@@ -523,7 +523,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 39.9612,
       longitude: -82.9988,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Network Technician", "General Labor"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Low Voltage Technician", "General Labor"],
       hourlyRate: "$50-80/hr",
     },
     // 6. Atlanta, GA
@@ -540,7 +540,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 33.7490,
       longitude: -84.3880,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Fire Protection", "Rigger"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Fire Protection Specialist", "General Labor"],
       hourlyRate: "$50-80/hr",
     },
     // 7. Las Vegas, NV
@@ -557,7 +557,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 36.1699,
       longitude: -115.1398,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Concrete Specialist", "Welder", "Pipefitter"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Concrete Specialist", "Welder", "Plumber/Pipefitter"],
       hourlyRate: "$60-95/hr",
     },
     // 8. San Antonio, TX
@@ -574,7 +574,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 29.4241,
       longitude: -98.4936,
-      tradesNeeded: ["Electrician", "Security Systems", "Fire Protection", "Structural Ironworker"],
+      tradesNeeded: ["Electrician", "Low Voltage Technician", "Fire Protection Specialist", "Structural Ironworker"],
       hourlyRate: "$55-85/hr",
     },
     // 9. Manassas, VA
@@ -591,7 +591,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 38.7509,
       longitude: -77.4753,
-      tradesNeeded: ["Electrician", "Fire Protection", "Controls Technician", "Security Systems"],
+      tradesNeeded: ["Electrician", "Fire Protection Specialist", "Controls/BMS Technician", "Low Voltage Technician"],
       hourlyRate: "$55-85/hr",
     },
     // 10. Reno, NV
@@ -625,7 +625,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 40.0812,
       longitude: -82.8085,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Pipefitter", "Network Technician", "Plumber"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Plumber/Pipefitter", "Low Voltage Technician"],
       hourlyRate: "$55-90/hr",
     },
     // 12. Richmond, VA
@@ -659,7 +659,7 @@ export async function seedDatabase() {
       tier: "tier_4",
       latitude: 37.3541,
       longitude: -121.9552,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Facility Engineer", "Network Technician", "Controls Technician"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Low Voltage Technician", "Controls/BMS Technician"],
       hourlyRate: "$65-100/hr",
     },
     // 14. Fort Worth, TX
@@ -676,7 +676,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 32.7555,
       longitude: -97.3308,
-      tradesNeeded: ["Electrician", "HVAC Technician", "Security Systems", "General Labor", "Welder"],
+      tradesNeeded: ["Electrician", "HVAC Technician", "Low Voltage Technician", "General Labor", "Welder"],
       hourlyRate: "$50-80/hr",
     },
     // 15. Marietta, GA (Metro Atlanta)
@@ -693,7 +693,7 @@ export async function seedDatabase() {
       tier: "tier_3",
       latitude: 33.9526,
       longitude: -84.5499,
-      tradesNeeded: ["Network Technician", "Fire Protection"],
+      tradesNeeded: ["Low Voltage Technician", "Fire Protection Specialist"],
       hourlyRate: "$45-70/hr",
     },
   ]).returning();
@@ -768,7 +768,7 @@ export async function seedDatabase() {
       assigneeId: createdWorkers[25].id, // Nathan Cole
       status: "completed",
       priority: "high",
-      trade: "Security",
+      trade: "Low Voltage",
       dueDate: "2026-01-10",
     },
     {

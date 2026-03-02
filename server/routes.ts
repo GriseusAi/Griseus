@@ -705,25 +705,47 @@ export async function registerRoutes(
 
   app.get("/api/analytics/supply-demand", async (_req, res) => {
     try {
-      const [allWorkers, allProjects] = await Promise.all([
+      const [allWorkers, allProjects, officialTrades] = await Promise.all([
         storage.getWorkers(),
         storage.getProjects(),
+        storage.getTrades(),
       ]);
 
       const activeProjects = allProjects.filter(p => p.status === "active" || p.status === "planning");
 
-      // Collect all unique trades from both workers and project needs
-      const allTrades = new Set<string>();
-      for (const w of allWorkers) allTrades.add(w.trade);
-      for (const p of activeProjects) {
-        for (const t of (p.tradesNeeded ?? [])) allTrades.add(t);
+      // Start with all official trades to ensure complete coverage in the chart
+      const tradeDataMap = new Map<string, { supply: number; demand: number }>();
+      for (const t of officialTrades) {
+        tradeDataMap.set(t.name, { supply: 0, demand: 0 });
       }
 
-      const data = Array.from(allTrades).map(trade => {
-        const supply = allWorkers.filter(w => w.available && w.trade === trade).length;
-        const demand = activeProjects.filter(p => (p.tradesNeeded ?? []).includes(trade)).length;
-        return { trade, supply, demand };
-      }).sort((a, b) => (b.demand + b.supply) - (a.demand + a.supply));
+      // Also include any non-ontology trades from workers/projects
+      for (const w of allWorkers) {
+        if (!tradeDataMap.has(w.trade)) tradeDataMap.set(w.trade, { supply: 0, demand: 0 });
+      }
+      for (const p of activeProjects) {
+        for (const t of (p.tradesNeeded ?? [])) {
+          if (!tradeDataMap.has(t)) tradeDataMap.set(t, { supply: 0, demand: 0 });
+        }
+      }
+
+      // Count supply (available workers) and demand (projects requesting)
+      for (const w of allWorkers) {
+        if (w.available) {
+          const entry = tradeDataMap.get(w.trade);
+          if (entry) entry.supply++;
+        }
+      }
+      for (const p of activeProjects) {
+        for (const t of (p.tradesNeeded ?? [])) {
+          const entry = tradeDataMap.get(t);
+          if (entry) entry.demand++;
+        }
+      }
+
+      const data = Array.from(tradeDataMap.entries())
+        .map(([trade, { supply, demand }]) => ({ trade, supply, demand }))
+        .sort((a, b) => (b.demand + b.supply) - (a.demand + a.supply));
 
       res.json(data);
     } catch (error: any) {

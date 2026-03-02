@@ -4,17 +4,28 @@ import { storage } from "./storage";
 // ── Trade Name Mapping ──────────────────────────────────────────────────
 // Maps worker.trade text → ontology trades.name (mirrors seed-ontology.ts)
 const WORKER_TRADE_TO_ONTOLOGY: Record<string, string> = {
+  // Canonical 12 trades (identity mappings)
   "Electrician": "Electrician",
   "HVAC Technician": "HVAC Technician",
+  "Plumber/Pipefitter": "Plumber/Pipefitter",
+  "Structural Ironworker": "Structural Ironworker",
+  "Concrete Specialist": "Concrete Specialist",
+  "Fire Protection Specialist": "Fire Protection Specialist",
+  "Low Voltage Technician": "Low Voltage Technician",
+  "Controls/BMS Technician": "Controls/BMS Technician",
+  "Welder": "Welder",
+  "General Labor": "General Labor",
+  "Sheet Metal Worker": "Sheet Metal Worker",
+  "Mechanical Insulator": "Mechanical Insulator",
+  // Legacy mappings for backward compatibility
   "Pipefitter": "Plumber/Pipefitter",
   "Plumber": "Plumber/Pipefitter",
-  "Structural Ironworker": "Structural Ironworker",
-  "Concrete Specialist": "Concrete Worker",
+  "Concrete Worker": "Concrete Specialist",
   "Fire Protection": "Fire Protection Specialist",
   "Network Technician": "Low Voltage Technician",
   "Controls Technician": "Controls/BMS Technician",
-  "Welder": "Welder",
-  "General Labor": "General Labor",
+  "Security Systems": "Low Voltage Technician",
+  "Rigger": "General Labor",
 };
 
 // Reverse: ontology name → all worker trade strings that map to it
