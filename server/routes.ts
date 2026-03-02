@@ -713,32 +713,39 @@ export async function registerRoutes(
 
       const activeProjects = allProjects.filter(p => p.status === "active" || p.status === "planning");
 
-      // Start with all official trades to ensure complete coverage in the chart
+      // ONLY include the official trades from the trades table (exactly 12)
+      const officialTradeNames = new Set(officialTrades.map(t => t.name));
       const tradeDataMap = new Map<string, { supply: number; demand: number }>();
       for (const t of officialTrades) {
         tradeDataMap.set(t.name, { supply: 0, demand: 0 });
       }
 
-      // Also include any non-ontology trades from workers/projects
-      for (const w of allWorkers) {
-        if (!tradeDataMap.has(w.trade)) tradeDataMap.set(w.trade, { supply: 0, demand: 0 });
-      }
-      for (const p of activeProjects) {
-        for (const t of (p.tradesNeeded ?? [])) {
-          if (!tradeDataMap.has(t)) tradeDataMap.set(t, { supply: 0, demand: 0 });
-        }
-      }
+      // Map legacy worker trade names to canonical ontology names
+      const tradeAliases: Record<string, string> = {
+        "Pipefitter": "Plumber/Pipefitter",
+        "Plumber": "Plumber/Pipefitter",
+        "Fire Protection": "Fire Protection Specialist",
+        "Network Technician": "Low Voltage Technician",
+        "Controls Technician": "Controls/BMS Technician",
+        "Concrete Worker": "Concrete Specialist",
+        "Security Systems": "Low Voltage Technician",
+        "Rigger": "General Labor",
+      };
 
-      // Count supply (available workers) and demand (projects requesting)
+      // Count supply: available workers mapped to official trades only
       for (const w of allWorkers) {
         if (w.available) {
-          const entry = tradeDataMap.get(w.trade);
+          const canonical = tradeAliases[w.trade] || w.trade;
+          const entry = tradeDataMap.get(canonical);
           if (entry) entry.supply++;
         }
       }
+
+      // Count demand: projects requesting official trades only
       for (const p of activeProjects) {
         for (const t of (p.tradesNeeded ?? [])) {
-          const entry = tradeDataMap.get(t);
+          const canonical = tradeAliases[t] || t;
+          const entry = tradeDataMap.get(canonical);
           if (entry) entry.demand++;
         }
       }
