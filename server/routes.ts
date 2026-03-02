@@ -291,21 +291,26 @@ export async function registerRoutes(
       if (process.env.RESEND_API_KEY) {
         const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
-        await resend.emails.send({
-          from: "noreply@griseus.io",
-          to: email,
-          subject: "Your Griseus Password Reset Code",
-          html: `
-            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
-              <h2 style="color: #2D2D2D; margin-bottom: 8px;">Password Reset</h2>
-              <p style="color: #5A5A5A; margin-bottom: 24px;">Use the code below to reset your Griseus password. It expires in 15 minutes.</p>
-              <div style="background: #EEE7DD; border: 1px solid #CEB298; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
-                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2D2D2D;">${code}</span>
+        try {
+          const emailResponse = await resend.emails.send({
+            from: "noreply@griseus.io",
+            to: email,
+            subject: "Your Griseus Password Reset Code",
+            html: `
+              <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+                <h2 style="color: #2D2D2D; margin-bottom: 8px;">Password Reset</h2>
+                <p style="color: #5A5A5A; margin-bottom: 24px;">Use the code below to reset your Griseus password. It expires in 15 minutes.</p>
+                <div style="background: #EEE7DD; border: 1px solid #CEB298; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+                  <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2D2D2D;">${code}</span>
+                </div>
+                <p style="color: #92ABBB; font-size: 13px;">If you did not request this, you can safely ignore this email.</p>
               </div>
-              <p style="color: #92ABBB; font-size: 13px;">If you did not request this, you can safely ignore this email.</p>
-            </div>
-          `,
-        });
+            `,
+          });
+          console.log(`[Password Reset] Resend response for ${email}:`, JSON.stringify(emailResponse));
+        } catch (emailError) {
+          console.error(`[Password Reset] Resend error for ${email}:`, emailError);
+        }
       } else {
         console.log(`[Password Reset] Code for ${email}: ${code}`);
       }
