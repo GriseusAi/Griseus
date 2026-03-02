@@ -69,6 +69,16 @@ export default function LoginPage() {
               />
             </div>
 
+            <div className="text-right">
+              <button
+                type="button"
+                onClick={() => setLocation("/forgot-password")}
+                className="text-sm text-[#92ABBB] hover:text-[#7a97a8] transition-colors"
+              >
+                Forgot your password?
+              </button>
+            </div>
+
             {error && (
               <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
                 {error}

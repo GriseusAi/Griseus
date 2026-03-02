@@ -16,10 +16,10 @@ import {
   type WorkerCertification, type InsertWorkerCertification,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
   trades, skills, certifications, tradesCertifications, projectPhases, projectPhasesTrades,
-  workerSkills, workerCertifications,
+  workerSkills, workerCertifications, passwordResetCodes,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, asc, or } from "drizzle-orm";
+import { eq, and, gt, asc, or } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -87,6 +87,13 @@ export interface IStorage {
   getTradeByName(name: string): Promise<Trade | undefined>;
   getWorkersByTrade(trade: string): Promise<Worker[]>;
   getActiveProjects(): Promise<Project[]>;
+
+  // Password reset
+  createPasswordResetCode(userId: string, code: string, expiresAt: Date): Promise<void>;
+  getValidResetCode(userId: string, code: string): Promise<{ id: string } | undefined>;
+  markResetCodeUsed(id: string): Promise<void>;
+  deleteExpiredResetCodes(userId: string): Promise<void>;
+  updateUserPassword(id: string, hashedPassword: string): Promise<void>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -337,6 +344,39 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(projects).where(
       or(eq(projects.status, "active"), eq(projects.status, "planning"))
     );
+  }
+
+  // ── Password Reset ──────────────────────────────────────────────────
+
+  async createPasswordResetCode(userId: string, code: string, expiresAt: Date): Promise<void> {
+    await db.insert(passwordResetCodes).values({ userId, code, expiresAt });
+  }
+
+  async getValidResetCode(userId: string, code: string): Promise<{ id: string } | undefined> {
+    const [row] = await db
+      .select({ id: passwordResetCodes.id })
+      .from(passwordResetCodes)
+      .where(
+        and(
+          eq(passwordResetCodes.userId, userId),
+          eq(passwordResetCodes.code, code),
+          eq(passwordResetCodes.used, false),
+          gt(passwordResetCodes.expiresAt, new Date()),
+        ),
+      );
+    return row;
+  }
+
+  async markResetCodeUsed(id: string): Promise<void> {
+    await db.update(passwordResetCodes).set({ used: true }).where(eq(passwordResetCodes.id, id));
+  }
+
+  async deleteExpiredResetCodes(userId: string): Promise<void> {
+    await db.delete(passwordResetCodes).where(eq(passwordResetCodes.userId, userId));
+  }
+
+  async updateUserPassword(id: string, hashedPassword: string): Promise<void> {
+    await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
   }
 }
 

@@ -268,6 +268,82 @@ export async function registerRoutes(
     res.json(safeUser);
   });
 
+  // ── Password Reset ────────────────────────────────────────────────
+
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+
+      const user = await storage.getUserByEmail(email);
+      // Always return 200 to prevent email enumeration
+      if (!user) return res.json({ message: "If that email exists, a reset code has been sent." });
+
+      // Generate 6-digit code
+      const code = String(Math.floor(100000 + Math.random() * 900000));
+      const expiresAt = new Date(Date.now() + 15 * 60 * 1000); // 15 minutes
+
+      // Clean up old codes, then insert new one
+      await storage.deleteExpiredResetCodes(user.id);
+      await storage.createPasswordResetCode(user.id, code, expiresAt);
+
+      // Send email via Resend if API key is set, otherwise log to console
+      if (process.env.RESEND_API_KEY) {
+        const { Resend } = await import("resend");
+        const resend = new Resend(process.env.RESEND_API_KEY);
+        await resend.emails.send({
+          from: "noreply@griseus.io",
+          to: email,
+          subject: "Your Griseus Password Reset Code",
+          html: `
+            <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 480px; margin: 0 auto; padding: 40px 20px;">
+              <h2 style="color: #2D2D2D; margin-bottom: 8px;">Password Reset</h2>
+              <p style="color: #5A5A5A; margin-bottom: 24px;">Use the code below to reset your Griseus password. It expires in 15 minutes.</p>
+              <div style="background: #EEE7DD; border: 1px solid #CEB298; border-radius: 8px; padding: 24px; text-align: center; margin-bottom: 24px;">
+                <span style="font-size: 32px; font-weight: bold; letter-spacing: 8px; color: #2D2D2D;">${code}</span>
+              </div>
+              <p style="color: #92ABBB; font-size: 13px;">If you did not request this, you can safely ignore this email.</p>
+            </div>
+          `,
+        });
+      } else {
+        console.log(`[Password Reset] Code for ${email}: ${code}`);
+      }
+
+      res.json({ message: "If that email exists, a reset code has been sent." });
+    } catch (error: any) {
+      console.error("Forgot password error:", error);
+      res.status(500).json({ message: "Something went wrong" });
+    }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { email, code, newPassword } = req.body;
+      if (!email || !code || !newPassword) {
+        return res.status(400).json({ message: "Email, code, and new password are required" });
+      }
+      if (newPassword.length < 6) {
+        return res.status(400).json({ message: "Password must be at least 6 characters" });
+      }
+
+      const user = await storage.getUserByEmail(email);
+      if (!user) return res.status(400).json({ message: "Invalid code or email" });
+
+      const validCode = await storage.getValidResetCode(user.id, code);
+      if (!validCode) return res.status(400).json({ message: "Invalid or expired reset code" });
+
+      const hashed = await hashPassword(newPassword);
+      await storage.updateUserPassword(user.id, hashed);
+      await storage.markResetCodeUsed(validCode.id);
+
+      res.json({ message: "Password has been reset successfully" });
+    } catch (error: any) {
+      console.error("Reset password error:", error);
+      res.status(500).json({ message: "Something went wrong" });
+    }
+  });
+
   app.get("/api/projects", async (_req, res) => {
     const projects = await storage.getProjects();
     res.json(projects);

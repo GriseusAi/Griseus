@@ -235,3 +235,13 @@ export const workerCertifications = pgTable("worker_certifications", {
 export const insertWorkerCertificationSchema = createInsertSchema(workerCertifications).omit({ id: true });
 export type InsertWorkerCertification = z.infer<typeof insertWorkerCertificationSchema>;
 export type WorkerCertification = typeof workerCertifications.$inferSelect;
+
+// --- Password Reset Codes ---
+
+export const passwordResetCodes = pgTable("password_reset_codes", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  userId: varchar("user_id").notNull(),
+  code: varchar("code", { length: 6 }).notNull(),
+  expiresAt: timestamp("expires_at").notNull(),
+  used: boolean("used").notNull().default(false),
+});

@@ -16,6 +16,7 @@ import NotFound from "@/pages/not-found";
 import LandingPage from "@/pages/landing";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import OnboardingPage from "@/pages/onboarding";
 import WorkerQuiz from "@/pages/quiz-worker";
 import CompanyQuiz from "@/pages/quiz-company";
@@ -201,6 +202,10 @@ function AppContent() {
 
   if (location === "/register") {
     return <RegisterPage />;
+  }
+
+  if (location === "/forgot-password") {
+    return <ForgotPasswordPage />;
   }
 
   if (location.startsWith("/mobile")) {
