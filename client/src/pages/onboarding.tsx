@@ -1,5 +1,5 @@
 import { useLocation } from "wouter";
-import { Building2, HardHat, ChevronDown } from "lucide-react";
+import { ChevronDown } from "lucide-react";
 import { useEffect, useRef, useState, useCallback } from "react";
 
 /* ───────────────────────── ANIMATED COUNTER ───────────────────────── */
@@ -327,6 +327,406 @@ function TypeWriter({ text, active, speed = 35 }: { text: string; active: boolea
   );
 }
 
+/* ──────────────────────── FLOATING NAVBAR ──────────────────────────── */
+
+function FloatingNav({
+  scrolled,
+  onGetStarted,
+}: {
+  scrolled: boolean;
+  onGetStarted: () => void;
+}) {
+  const [, setLocation] = useLocation();
+
+  return (
+    <nav
+      className={`fixed top-0 left-0 right-0 z-[100] transition-all duration-500 ${
+        scrolled
+          ? "bg-[#1A1A2E]/95 backdrop-blur-xl border-b border-white/10 shadow-lg shadow-black/20"
+          : "bg-transparent"
+      }`}
+    >
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 sm:h-16 flex items-center justify-between">
+        <span
+          className="text-base sm:text-lg font-bold tracking-[0.15em] uppercase text-white"
+          style={{
+            textShadow:
+              "0 0 20px rgba(59,130,246,0.4), 0 0 40px rgba(59,130,246,0.2)",
+          }}
+        >
+          GRISEUS
+        </span>
+        <div className="flex items-center gap-3 sm:gap-4">
+          <button
+            onClick={() => setLocation("/login")}
+            className="text-sm text-slate-400 hover:text-white transition-colors"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={onGetStarted}
+            className="onb-nav-btn relative px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95"
+            style={{
+              background: "linear-gradient(135deg, #3B82F6, #10B981)",
+            }}
+          >
+            Get Started
+          </button>
+        </div>
+      </div>
+    </nav>
+  );
+}
+
+/* ──────────────────────── ANIMATED BUILDING ICON ──────────────────── */
+
+function BuildingAnimation() {
+  return (
+    <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto">
+      {/* Pulsing glow */}
+      <div
+        className="absolute inset-[-20%] rounded-full"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(59,130,246,0.15) 0%, transparent 70%)",
+          animation: "onb-pulse-glow 3s ease-in-out infinite",
+        }}
+      />
+      <svg viewBox="0 0 100 100" className="relative w-full h-full">
+        {/* Building */}
+        <rect
+          x="25"
+          y="28"
+          width="50"
+          height="52"
+          rx="3"
+          fill="none"
+          stroke="#3B82F6"
+          strokeWidth="1.5"
+          opacity="0.7"
+        />
+        {/* Windows - animated glow */}
+        {[
+          [32, 36],
+          [45, 36],
+          [58, 36],
+          [32, 49],
+          [45, 49],
+          [58, 49],
+          [32, 62],
+          [45, 62],
+          [58, 62],
+        ].map(([x, y], i) => (
+          <rect key={i} x={x} y={y} width="10" height="8" rx="1.5" fill="#3B82F6">
+            <animate
+              attributeName="opacity"
+              values="0.1;0.55;0.1"
+              dur={`${2 + (i % 3) * 0.5}s`}
+              begin={`${i * 0.15}s`}
+              repeatCount="indefinite"
+            />
+          </rect>
+        ))}
+        {/* Antenna */}
+        <line
+          x1="50"
+          y1="14"
+          x2="50"
+          y2="28"
+          stroke="#3B82F6"
+          strokeWidth="1.5"
+          opacity="0.5"
+        />
+        {/* Signal pulse */}
+        <circle cx="50" cy="11" r="3" fill="#3B82F6" opacity="0.6">
+          <animate
+            attributeName="opacity"
+            values="0.3;1;0.3"
+            dur="2s"
+            repeatCount="indefinite"
+          />
+        </circle>
+        <circle
+          cx="50"
+          cy="11"
+          r="5"
+          fill="none"
+          stroke="#3B82F6"
+          strokeWidth="0.8"
+          opacity="0"
+        >
+          <animate
+            attributeName="r"
+            values="5;18"
+            dur="2.5s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.5;0"
+            dur="2.5s"
+            repeatCount="indefinite"
+          />
+        </circle>
+        <circle
+          cx="50"
+          cy="11"
+          r="5"
+          fill="none"
+          stroke="#3B82F6"
+          strokeWidth="0.5"
+          opacity="0"
+        >
+          <animate
+            attributeName="r"
+            values="5;28"
+            dur="2.5s"
+            begin="0.8s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.3;0"
+            dur="2.5s"
+            begin="0.8s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      </svg>
+    </div>
+  );
+}
+
+/* ──────────────────────── ANIMATED WORKER ICON ────────────────────── */
+
+function WorkerAnimation() {
+  return (
+    <div className="relative w-24 h-24 sm:w-28 sm:h-28 mx-auto">
+      {/* Pulsing glow */}
+      <div
+        className="absolute inset-[-20%] rounded-full"
+        style={{
+          background:
+            "radial-gradient(circle, rgba(245,158,11,0.15) 0%, transparent 70%)",
+          animation: "onb-pulse-glow 3s ease-in-out infinite 0.5s",
+        }}
+      />
+      <svg viewBox="0 0 100 100" className="relative w-full h-full">
+        {/* Hard hat */}
+        <path
+          d="M30 42 C30 25 70 25 70 42"
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="1.5"
+          opacity="0.7"
+        />
+        <rect
+          x="26"
+          y="41"
+          width="48"
+          height="5"
+          rx="2.5"
+          fill="#F59E0B"
+          opacity="0.35"
+        />
+        {/* Head */}
+        <circle
+          cx="50"
+          cy="54"
+          r="9"
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="1.5"
+          opacity="0.6"
+        />
+        {/* Body */}
+        <path
+          d="M34 78 C34 68 42 64 50 64 C58 64 66 68 66 78"
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="1.5"
+          opacity="0.5"
+        />
+        {/* Arms */}
+        <line
+          x1="34"
+          y1="72"
+          x2="24"
+          y2="65"
+          stroke="#F59E0B"
+          strokeWidth="1.5"
+          opacity="0.4"
+        />
+        <line
+          x1="66"
+          y1="72"
+          x2="76"
+          y2="62"
+          stroke="#F59E0B"
+          strokeWidth="1.5"
+          opacity="0.4"
+        />
+        {/* Tool in hand */}
+        <line
+          x1="76"
+          y1="62"
+          x2="83"
+          y2="52"
+          stroke="#F59E0B"
+          strokeWidth="2"
+          opacity="0.5"
+        >
+          <animate
+            attributeName="opacity"
+            values="0.3;0.7;0.3"
+            dur="2.5s"
+            repeatCount="indefinite"
+          />
+        </line>
+        {/* Glow pulse */}
+        <circle
+          cx="50"
+          cy="50"
+          r="30"
+          fill="none"
+          stroke="#F59E0B"
+          strokeWidth="0.5"
+          opacity="0"
+        >
+          <animate
+            attributeName="r"
+            values="25;42"
+            dur="3s"
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0.3;0"
+            dur="3s"
+            repeatCount="indefinite"
+          />
+        </circle>
+      </svg>
+    </div>
+  );
+}
+
+/* ─────────────────── FLOATING PARTICLES (CTA BG) ─────────────────── */
+
+const CTA_PARTICLES = Array.from({ length: 18 }, (_, i) => ({
+  size: 1.5 + Math.random() * 2.5,
+  left: Math.random() * 100,
+  duration: 18 + Math.random() * 22,
+  delay: Math.random() * 20,
+  color:
+    i % 3 === 0
+      ? "59,130,246"
+      : i % 3 === 1
+        ? "16,185,129"
+        : "245,158,11",
+}));
+
+function CtaParticles() {
+  return (
+    <div className="absolute inset-0 overflow-hidden pointer-events-none">
+      {CTA_PARTICLES.map((p, i) => (
+        <div
+          key={i}
+          className="absolute rounded-full"
+          style={{
+            width: p.size,
+            height: p.size,
+            left: `${p.left}%`,
+            bottom: 0,
+            background: `rgba(${p.color}, 0.5)`,
+            boxShadow: `0 0 ${p.size * 4}px rgba(${p.color}, 0.3)`,
+            animation: `onb-float-particle ${p.duration}s linear infinite`,
+            animationDelay: `-${p.delay}s`,
+          }}
+        />
+      ))}
+    </div>
+  );
+}
+
+/* ──────────────────────── CSS KEYFRAMES ───────────────────────────── */
+
+const CTA_STYLES = `
+@keyframes onb-border-rotate {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+@keyframes onb-pulse-glow {
+  0%, 100% { transform: scale(1); opacity: 1; }
+  50% { transform: scale(1.25); opacity: 0.4; }
+}
+@keyframes onb-shimmer {
+  0% { background-position: -200% center; }
+  100% { background-position: 200% center; }
+}
+@keyframes onb-float-particle {
+  0% { transform: translateY(0) translateX(0); opacity: 0; }
+  5% { opacity: 1; }
+  95% { opacity: 1; }
+  100% { transform: translateY(-100vh) translateX(30px); opacity: 0; }
+}
+@keyframes onb-nav-glow {
+  0%, 100% { box-shadow: 0 0 12px rgba(59,130,246,0.3), 0 0 24px rgba(16,185,129,0.1); }
+  50% { box-shadow: 0 0 20px rgba(59,130,246,0.5), 0 0 40px rgba(16,185,129,0.25); }
+}
+@keyframes onb-bg-shift {
+  0%, 100% { background-position: 0% 50%; }
+  50% { background-position: 100% 50%; }
+}
+@keyframes onb-card-flash {
+  0% { opacity: 0; }
+  50% { opacity: 0.6; }
+  100% { opacity: 0; }
+}
+.onb-nav-btn {
+  animation: onb-nav-glow 2.5s ease-in-out infinite;
+}
+.onb-shimmer-text {
+  background: linear-gradient(
+    90deg,
+    white 0%,
+    white 35%,
+    #60A5FA 50%,
+    white 65%,
+    white 100%
+  );
+  background-size: 200% 100%;
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+  animation: onb-shimmer 4s ease-in-out infinite;
+}
+.onb-cta-card {
+  transition: transform 0.4s cubic-bezier(0.16, 1, 0.3, 1),
+    box-shadow 0.4s ease;
+  will-change: transform;
+}
+.onb-cta-card:hover {
+  transform: perspective(800px) rotateY(2deg) rotateX(-1.5deg) scale(1.03) translateY(-4px);
+}
+.onb-cta-card .onb-hover-text {
+  opacity: 0;
+  transform: translateY(6px);
+  transition: all 0.35s ease;
+}
+.onb-cta-card:hover .onb-hover-text {
+  opacity: 1;
+  transform: translateY(0);
+}
+.onb-cta-card .onb-rotating-border {
+  opacity: 0.25;
+  transition: opacity 0.4s ease;
+}
+.onb-cta-card:hover .onb-rotating-border {
+  opacity: 0.7;
+}
+`;
+
 /* ──────────────────────── MAIN PAGE ──────────────────────────────── */
 
 export default function OnboardingPage() {
@@ -346,9 +746,40 @@ export default function OnboardingPage() {
     return () => clearTimeout(t);
   }, []);
 
+  // Navbar scroll state
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [navScrolled, setNavScrolled] = useState(false);
+
+  useEffect(() => {
+    const el = scrollContainerRef.current;
+    if (!el) return;
+    const handleScroll = () => {
+      setNavScrolled(el.scrollTop > window.innerHeight * 0.3);
+    };
+    el.addEventListener("scroll", handleScroll, { passive: true });
+    return () => el.removeEventListener("scroll", handleScroll);
+  }, []);
+
+  // Card click animation
+  const [navigating, setNavigating] = useState<string | null>(null);
+
+  const handleCardClick = useCallback(
+    (path: string) => {
+      if (navigating) return;
+      setNavigating(path);
+      setTimeout(() => setLocation(path), 550);
+    },
+    [navigating, setLocation],
+  );
+
   const scrollToNext = useCallback(() => {
     const sections = document.querySelectorAll("[data-section]");
     if (sections[1]) sections[1].scrollIntoView({ behavior: "smooth" });
+  }, []);
+
+  const scrollToCta = useCallback(() => {
+    const el = document.getElementById("cta-section");
+    if (el) el.scrollIntoView({ behavior: "smooth" });
   }, []);
 
   const statCounters = [
@@ -360,16 +791,24 @@ export default function OnboardingPage() {
   ];
 
   return (
-    <div className="fixed inset-0 z-50 overflow-y-auto scroll-smooth"
+    <div
+      ref={scrollContainerRef}
+      className="fixed inset-0 z-50 overflow-y-auto scroll-smooth"
       style={{ scrollSnapType: "y proximity" }}
     >
+      <style>{CTA_STYLES}</style>
+
+      {/* ━━━━━━━━━━ FLOATING NAVBAR ━━━━━━━━━━ */}
+      <FloatingNav scrolled={navScrolled} onGetStarted={scrollToCta} />
+
       {/* ━━━━━━━━━━ SECTION 1: HERO ━━━━━━━━━━ */}
       <section
         data-section
         ref={hero.ref}
         className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
         style={{
-          background: "linear-gradient(145deg, #0F172A 0%, #1A1A2E 50%, #0F172A 100%)",
+          background:
+            "linear-gradient(145deg, #0F172A 0%, #1A1A2E 50%, #0F172A 100%)",
           scrollSnapAlign: "start",
         }}
       >
@@ -400,13 +839,20 @@ export default function OnboardingPage() {
                 transitionDelay: `${s.delay}ms`,
               }}
             >
-              <div className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-1"
+              <div
+                className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-1"
                 style={{
-                  textShadow: heroReady ? "0 0 40px rgba(59,130,246,0.3)" : "none",
+                  textShadow: heroReady
+                    ? "0 0 40px rgba(59,130,246,0.3)"
+                    : "none",
                   transition: "text-shadow 1.5s",
                 }}
               >
-                <AnimatedCounter end={s.n} active={heroReady} duration={1400 + i * 200} />
+                <AnimatedCounter
+                  end={s.n}
+                  active={heroReady}
+                  duration={1400 + i * 200}
+                />
               </div>
               <div className="text-xs sm:text-sm text-slate-400 font-medium tracking-wide uppercase">
                 {s.label}
@@ -436,7 +882,9 @@ export default function OnboardingPage() {
           onClick={scrollToNext}
           className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 text-slate-500 hover:text-slate-300 transition-colors cursor-pointer"
         >
-          <span className="text-xs tracking-widest uppercase">Scroll to explore</span>
+          <span className="text-xs tracking-widest uppercase">
+            Scroll to explore
+          </span>
           <ChevronDown className="w-5 h-5 animate-bounce" />
         </button>
       </section>
@@ -459,8 +907,11 @@ export default function OnboardingPage() {
           }}
         >
           <h2 className="text-3xl sm:text-4xl lg:text-5xl font-bold text-slate-900 mb-4 leading-tight">
-            We mapped the entire<br />
-            <span className="text-blue-500">data center construction workforce.</span>
+            We mapped the entire
+            <br />
+            <span className="text-blue-500">
+              data center construction workforce.
+            </span>
           </h2>
         </div>
 
@@ -485,7 +936,8 @@ export default function OnboardingPage() {
             <span className="w-2.5 h-2.5 rounded-full bg-blue-500" /> Trades
           </span>
           <span className="flex items-center gap-1.5">
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" /> Certifications
+            <span className="w-2.5 h-2.5 rounded-full bg-amber-500" />{" "}
+            Certifications
           </span>
           <span className="flex items-center gap-1.5">
             <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" /> Skills
@@ -542,7 +994,9 @@ export default function OnboardingPage() {
               <div className="text-sm font-semibold text-slate-700">
                 Senior Electrician, Northern Virginia
               </div>
-              <div className="text-lg font-bold text-blue-600">$56 – $73/hr</div>
+              <div className="text-lg font-bold text-blue-600">
+                $56 &ndash; $73/hr
+              </div>
             </div>
           </div>
 
@@ -566,7 +1020,9 @@ export default function OnboardingPage() {
                 { w: "50%", color: "#F59E0B", label: "Plumb" },
               ].map((bar, i) => (
                 <div key={i} className="flex items-center gap-2">
-                  <span className="text-[9px] text-slate-400 w-8 text-right">{bar.label}</span>
+                  <span className="text-[9px] text-slate-400 w-8 text-right">
+                    {bar.label}
+                  </span>
                   <div className="flex-1 h-3 bg-slate-100 rounded-full overflow-hidden">
                     <div
                       className="h-full rounded-full transition-all duration-1000"
@@ -587,9 +1043,11 @@ export default function OnboardingPage() {
               Know exactly who you need, when you need them
             </h3>
             <div className="rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
-              <div className="text-xs text-slate-400 mb-0.5">MEP Rough-In Phase</div>
+              <div className="text-xs text-slate-400 mb-0.5">
+                MEP Rough-In Phase
+              </div>
               <div className="text-sm font-semibold text-slate-700">
-                60 Electricians · 40 HVAC · 30 Plumbers
+                60 Electricians &middot; 40 HVAC &middot; 30 Plumbers
               </div>
               <div className="text-lg font-bold text-emerald-600">20 weeks</div>
             </div>
@@ -620,7 +1078,7 @@ export default function OnboardingPage() {
                 HVAC
               </div>
               <div className="flex items-center gap-0.5">
-                {[0, 1, 2].map(i => (
+                {[0, 1, 2].map((i) => (
                   <div
                     key={i}
                     className="w-2 h-0.5 rounded-full bg-amber-400 transition-all duration-500"
@@ -640,7 +1098,9 @@ export default function OnboardingPage() {
                   transitionDelay: "900ms",
                 }}
               >
-                Controls<br />BMS
+                Controls
+                <br />
+                BMS
               </div>
             </div>
             <div className="text-xs font-semibold uppercase tracking-wider text-amber-500 mb-2">
@@ -652,9 +1112,11 @@ export default function OnboardingPage() {
             <div className="rounded-lg bg-slate-50 border border-slate-100 px-4 py-3">
               <div className="text-xs text-slate-400 mb-0.5">Transition</div>
               <div className="text-sm font-semibold text-slate-700">
-                HVAC Tech → Controls/BMS Tech
+                HVAC Tech &rarr; Controls/BMS Tech
               </div>
-              <div className="text-lg font-bold text-amber-600">moderate · +$15/hr</div>
+              <div className="text-lg font-bold text-amber-600">
+                moderate &middot; +$15/hr
+              </div>
             </div>
           </div>
         </div>
@@ -699,91 +1161,203 @@ export default function OnboardingPage() {
         <div
           className="absolute bottom-20 left-1/2 -translate-x-1/2 w-16 h-px transition-all duration-1000 delay-[3500ms]"
           style={{
-            background: "linear-gradient(90deg, transparent, #3B82F6, transparent)",
+            background:
+              "linear-gradient(90deg, transparent, #3B82F6, transparent)",
             opacity: hook.inView ? 0.5 : 0,
           }}
         />
       </section>
 
-      {/* ━━━━━━━━━━ SECTION 5: CTA — ROLE SELECTION ━━━━━━━━━━ */}
+      {/* ━━━━━━━━━━ SECTION 5: CTA — MAGICAL ROLE SELECTION ━━━━━━━━━━ */}
       <section
+        id="cta-section"
         data-section
         ref={cta.ref}
-        className="relative min-h-screen flex flex-col items-center justify-center px-6 py-20"
+        className="relative min-h-screen flex flex-col items-center justify-center px-4 sm:px-6 py-20 overflow-hidden"
         style={{
-          backgroundColor: "#EEE7DD",
+          background:
+            "linear-gradient(145deg, #0F172A, #1A1A2E, #0F172A, #161637)",
+          backgroundSize: "400% 400%",
+          animation: "onb-bg-shift 20s ease infinite",
           scrollSnapAlign: "start",
         }}
       >
+        {/* Floating particles */}
+        <CtaParticles />
+
+        {/* Heading with shimmer */}
         <div
-          className="text-center mb-10 transition-all duration-700"
+          className="relative z-10 text-center mb-12 sm:mb-16 transition-all duration-700"
           style={{
             opacity: cta.inView ? 1 : 0,
             transform: cta.inView ? "translateY(0)" : "translateY(30px)",
           }}
         >
-          <h2 className="text-3xl sm:text-4xl font-bold text-[#2D2D2D] mb-3">
+          <h2 className="onb-shimmer-text text-3xl sm:text-4xl lg:text-5xl font-bold mb-4 leading-tight">
             Ready to experience it?
           </h2>
-          <p className="text-[#5A5A5A] text-base">
+          <p className="text-slate-400 text-base sm:text-lg font-light">
             Choose your path to get started
           </p>
         </div>
 
-        {/* Role cards — elevated Coastal Ibiza */}
+        {/* Role cards container */}
         <div
-          className="w-full max-w-lg flex flex-col sm:flex-row gap-5 transition-all duration-700 delay-200"
+          className="relative z-10 w-full max-w-[920px] flex flex-col sm:flex-row items-stretch gap-6 sm:gap-0 transition-all duration-700 delay-200"
           style={{
             opacity: cta.inView ? 1 : 0,
-            transform: cta.inView ? "translateY(0)" : "translateY(30px)",
+            transform: cta.inView ? "translateY(0)" : "translateY(40px)",
           }}
         >
-          {/* Company */}
+          {/* ── COMPANY CARD: I'm Hiring ─────────────────────── */}
           <button
-            onClick={() => setLocation("/onboarding/company")}
-            className="flex-1 group rounded-2xl border border-[#CEB298]/30 bg-white/80 backdrop-blur-sm p-8 text-left transition-all duration-200 hover:shadow-lg hover:border-[#9F6C52]/40 hover:scale-[1.03] hover:-translate-y-1"
+            onClick={() => handleCardClick("/onboarding/company")}
+            className="onb-cta-card group relative flex-1 min-h-[300px] sm:min-h-[340px] cursor-pointer text-left"
+            disabled={!!navigating}
           >
-            <div className="w-14 h-14 rounded-xl bg-[#9F6C52]/10 flex items-center justify-center mb-5 group-hover:bg-[#9F6C52]/20 transition-colors">
-              <Building2 className="w-7 h-7 text-[#9F6C52]" />
+            {/* Rotating gradient border */}
+            <div className="absolute -inset-[1px] rounded-2xl overflow-hidden">
+              <div
+                className="onb-rotating-border absolute top-[-50%] left-[-50%] w-[200%] h-[200%]"
+                style={{
+                  background:
+                    "conic-gradient(from 0deg, #3B82F6, transparent 25%, transparent 50%, #10B981, transparent 75%, #3B82F6)",
+                  animation: "onb-border-rotate 4s linear infinite",
+                }}
+              />
             </div>
-            <h3 className="text-xl font-semibold text-[#2D2D2D] mb-1">
-              I'm Hiring
-            </h3>
-            <p className="text-[#5A5A5A] text-sm leading-relaxed">
-              Find skilled workers for your data center projects
-            </p>
+
+            {/* Card content */}
+            <div
+              className="relative z-10 h-full rounded-2xl flex flex-col items-center justify-center p-8 sm:p-10 transition-all duration-500"
+              style={{
+                background:
+                  navigating === "/onboarding/company"
+                    ? "rgba(59,130,246,0.15)"
+                    : "rgba(13,17,23,0.95)",
+                boxShadow:
+                  navigating === "/onboarding/company"
+                    ? "0 0 80px 20px rgba(59,130,246,0.3)"
+                    : "none",
+                opacity: navigating && navigating !== "/onboarding/company" ? 0.4 : 1,
+              }}
+            >
+              {/* Click flash overlay */}
+              {navigating === "/onboarding/company" && (
+                <div
+                  className="absolute inset-0 rounded-2xl bg-blue-500/20 pointer-events-none"
+                  style={{ animation: "onb-card-flash 0.5s ease-out" }}
+                />
+              )}
+
+              <BuildingAnimation />
+
+              <h3 className="text-2xl sm:text-[28px] font-bold text-white mt-6 mb-2 text-center">
+                I'm Hiring
+              </h3>
+              <p className="text-slate-400 text-sm sm:text-base text-center leading-relaxed max-w-[280px]">
+                Find skilled workers for your data center projects
+              </p>
+
+              {/* Hover reveal text */}
+              <div className="onb-hover-text mt-4 flex items-center gap-2 text-xs font-medium text-blue-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-blue-400 animate-pulse" />
+                Join 50+ companies
+              </div>
+            </div>
           </button>
 
-          {/* Worker */}
-          <button
-            onClick={() => setLocation("/onboarding/worker")}
-            className="flex-1 group rounded-2xl bg-[#92ABBB] p-8 text-left transition-all duration-200 hover:bg-[#839dae] hover:shadow-lg hover:scale-[1.03] hover:-translate-y-1"
-          >
-            <div className="w-14 h-14 rounded-xl bg-white/20 flex items-center justify-center mb-5 group-hover:bg-white/30 transition-colors">
-              <HardHat className="w-7 h-7 text-white" />
+          {/* ── "OR" DIVIDER ──────────────────────────────── */}
+          <div className="flex items-center justify-center sm:flex-col gap-3 px-6 sm:px-5 sm:py-0">
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent sm:w-px sm:h-auto sm:flex-1 sm:bg-gradient-to-b sm:from-transparent sm:via-white/10 sm:to-transparent" />
+            <div className="relative flex items-center justify-center">
+              <span className="text-xs text-slate-500 uppercase tracking-widest font-medium">
+                or
+              </span>
+              <div
+                className="absolute w-6 h-6 rounded-full blur-md"
+                style={{
+                  background:
+                    "radial-gradient(circle, rgba(59,130,246,0.3) 0%, transparent 70%)",
+                  animation: "onb-pulse-glow 3s ease-in-out infinite",
+                }}
+              />
             </div>
-            <h3 className="text-xl font-semibold text-white mb-1">
-              I'm Looking for Work
-            </h3>
-            <p className="text-white/80 text-sm leading-relaxed">
-              Showcase your skills and find the right jobs
-            </p>
+            <div className="flex-1 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent sm:w-px sm:h-auto sm:flex-1 sm:bg-gradient-to-b sm:from-transparent sm:via-white/10 sm:to-transparent" />
+          </div>
+
+          {/* ── WORKER CARD: I'm Looking for Work ────────── */}
+          <button
+            onClick={() => handleCardClick("/onboarding/worker")}
+            className="onb-cta-card group relative flex-1 min-h-[300px] sm:min-h-[340px] cursor-pointer text-left"
+            disabled={!!navigating}
+          >
+            {/* Rotating gradient border */}
+            <div className="absolute -inset-[1px] rounded-2xl overflow-hidden">
+              <div
+                className="onb-rotating-border absolute top-[-50%] left-[-50%] w-[200%] h-[200%]"
+                style={{
+                  background:
+                    "conic-gradient(from 180deg, #F59E0B, transparent 25%, transparent 50%, #EF4444, transparent 75%, #F59E0B)",
+                  animation: "onb-border-rotate 4s linear infinite reverse",
+                }}
+              />
+            </div>
+
+            {/* Card content */}
+            <div
+              className="relative z-10 h-full rounded-2xl flex flex-col items-center justify-center p-8 sm:p-10 transition-all duration-500"
+              style={{
+                background:
+                  navigating === "/onboarding/worker"
+                    ? "rgba(245,158,11,0.15)"
+                    : "rgba(13,17,23,0.95)",
+                boxShadow:
+                  navigating === "/onboarding/worker"
+                    ? "0 0 80px 20px rgba(245,158,11,0.3)"
+                    : "none",
+                opacity: navigating && navigating !== "/onboarding/worker" ? 0.4 : 1,
+              }}
+            >
+              {/* Click flash overlay */}
+              {navigating === "/onboarding/worker" && (
+                <div
+                  className="absolute inset-0 rounded-2xl bg-amber-500/20 pointer-events-none"
+                  style={{ animation: "onb-card-flash 0.5s ease-out" }}
+                />
+              )}
+
+              <WorkerAnimation />
+
+              <h3 className="text-2xl sm:text-[28px] font-bold text-white mt-6 mb-2 text-center">
+                I'm Looking for Work
+              </h3>
+              <p className="text-slate-400 text-sm sm:text-base text-center leading-relaxed max-w-[280px]">
+                Showcase your skills and find the right jobs
+              </p>
+
+              {/* Hover reveal text */}
+              <div className="onb-hover-text mt-4 flex items-center gap-2 text-xs font-medium text-amber-400">
+                <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+                Join 200+ workers
+              </div>
+            </div>
           </button>
         </div>
 
         {/* Sign-in link */}
         <div
-          className="mt-10 transition-all duration-700 delay-500"
+          className="relative z-10 mt-12 transition-all duration-700 delay-500"
           style={{
             opacity: cta.inView ? 1 : 0,
           }}
         >
           <button
             onClick={() => setLocation("/login")}
-            className="text-sm text-[#5A5A5A] hover:text-[#2D2D2D] transition-colors"
+            className="text-sm text-slate-500 hover:text-slate-300 transition-colors"
           >
             Already have an account?{" "}
-            <span className="text-[#92ABBB] font-medium hover:text-[#7a97a8]">
+            <span className="text-blue-400 font-medium hover:text-blue-300 transition-colors">
               Sign in
             </span>
           </button>
