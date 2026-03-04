@@ -173,6 +173,7 @@ export const certifications = pgTable("certifications", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull().unique(),
   issuingBody: text("issuing_body").notNull(),
+  website: text("website"),
   validityYears: integer("validity_years"),
   description: text("description"),
 });

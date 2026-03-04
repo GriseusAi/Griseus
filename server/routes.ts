@@ -205,9 +205,9 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
   // 7. Certifications
   if (ctx.certifications.length > 0) {
     const certLines = ctx.certifications.map(c =>
-      `  - ${c.name} (issued by: ${c.issuingBody}${c.validityYears ? `, valid ${c.validityYears}yr` : ""})`
+      `  - ${c.name} (issued by: ${c.issuingBody}${c.website ? `, website: ${c.website}` : ""}${c.validityYears ? `, valid ${c.validityYears}yr` : ""})`
     );
-    sections.push(`\n--- CERTIFICATIONS ---\n${certLines.join("\n")}`);
+    sections.push(`\n--- CERTIFICATIONS ---\nWhen users ask where to get or renew a certification, provide the official website URL listed below.\n${certLines.join("\n")}`);
   }
 
   // 8.5 Cross-trade adjacencies
@@ -225,13 +225,15 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
 
   // 8.6 Certification expiry/renewal data
   if (ctx.certificationRequirements.length > 0) {
-    const certIdToName = new Map(ctx.certifications.map(c => [c.id, c.name]));
+    const certById = new Map(ctx.certifications.map(c => [c.id, c]));
     const reqLines = ctx.certificationRequirements.map(r => {
-      const name = certIdToName.get(r.certificationId) || "Unknown";
+      const cert = certById.get(r.certificationId);
+      const name = cert?.name || "Unknown";
+      const website = cert?.website || "N/A";
       const validity = r.validityPeriod ? `${r.validityPeriod} months` : "never expires";
       const cost = r.renewalCost != null ? `$${r.renewalCost}` : "N/A";
       const ce = r.continuingEducationHours ? `${r.continuingEducationHours} CE hours` : "none";
-      return `  - ${name}: validity=${validity}, renewal cost=${cost}, CE hours=${ce}${r.renewalProcess ? ` — ${r.renewalProcess}` : ""}`;
+      return `  - ${name}: validity=${validity}, renewal cost=${cost}, CE hours=${ce}, renewal site=${website}${r.renewalProcess ? ` — ${r.renewalProcess}` : ""}`;
     });
     sections.push(`\n--- CERTIFICATION EXPIRY & RENEWAL ---\n${reqLines.join("\n")}`);
   }
