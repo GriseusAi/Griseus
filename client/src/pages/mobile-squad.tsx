@@ -180,7 +180,7 @@ export default function MobileSquad() {
                       {member.name.split(" ").map((n) => n[0]).join("")}
                     </AvatarFallback>
                   </Avatar>
-                  <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-success border-2 border-card" />
+                  <div className="absolute top-0 right-0 h-3 w-3 rounded-full bg-emerald-500 border-2 border-card" />
                   <div className="absolute -bottom-0.5 -right-0.5 h-5 w-5 rounded-full bg-card border flex items-center justify-center">
                     <RoleIcon className="h-3 w-3 text-muted-foreground" />
                   </div>
@@ -226,7 +226,7 @@ export default function MobileSquad() {
                     )}
                     <div className={`rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                       isMe
-                        ? "bg-gradient-to-br from-primary to-primary/80 text-primary-foreground rounded-br-sm"
+                        ? "bg-gradient-to-br from-blue-500 to-blue-600 text-white rounded-br-sm"
                         : "bg-muted rounded-bl-sm"
                     }`}>
                       {msg.content}
@@ -262,7 +262,7 @@ export default function MobileSquad() {
               }
             }}
             placeholder="Type a message..."
-            className="flex-1 bg-muted rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-primary/50"
+            className="flex-1 bg-[#1E293B] rounded-full px-4 py-2.5 text-sm outline-none focus:ring-2 focus:ring-blue-500/50"
             data-testid="input-chat-message"
           />
           <Button

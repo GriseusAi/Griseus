@@ -106,7 +106,7 @@ function DesktopLayout() {
       <div className="flex h-screen w-full">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-[#CEB298]/20 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
+          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-white/10 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
           </header>
           <main className="flex-1 overflow-auto">
@@ -129,7 +129,7 @@ function AdminLayout() {
       <div className="flex h-screen w-full">
         <AdminSidebar />
         <div className="flex flex-col flex-1 min-w-0">
-          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-[#CEB298]/20 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
+          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-white/10 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
             <SidebarTrigger />
           </header>
           <main className="flex-1 overflow-auto">

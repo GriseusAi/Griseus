@@ -28,20 +28,20 @@ export default function LandingPage() {
   }
 
   return (
-    <div className="landing font-sans text-[#5A5A5A] antialiased overflow-x-hidden" style={{ backgroundColor: "#EEE7DD" }}>
+    <div className="landing font-sans text-slate-400 antialiased overflow-x-hidden" style={{ backgroundColor: "#0F172A" }}>
       {/* Accent bar */}
-      <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-[#92ABBB] via-[#CEB298] to-[#9F6C52] z-[60]" />
+      <div className="fixed top-0 left-0 right-0 h-1 bg-gradient-to-r from-blue-500 via-emerald-500 to-amber-500 z-[60]" />
       {/* Nav */}
-      <nav className="fixed top-0 w-full z-50 border-b border-[#CEB298]/20 bg-[#EEE7DD]/80 backdrop-blur-xl">
+      <nav className="fixed top-0 w-full z-50 border-b border-white/10 bg-[#0F172A]/80 backdrop-blur-xl">
         <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-lg text-[#2D2D2D] tracking-tight">Griseus</span>
+            <span className="font-bold text-lg text-white tracking-tight">Griseus</span>
           </div>
           <div className="flex items-center gap-4">
-            <Link href="/login" className="text-sm text-[#5A5A5A] hover:text-[#2D2D2D] transition-colors">
+            <Link href="/login" className="text-sm text-slate-400 hover:text-white transition-colors">
               Login
             </Link>
-            <Link href="/" className="text-sm px-5 py-2 rounded-full bg-[#92ABBB] hover:bg-[#839dae] text-white font-medium transition-colors">
+            <Link href="/" className="text-sm px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors">
               Sign Up
             </Link>
           </div>
@@ -52,19 +52,19 @@ export default function LandingPage() {
       <section className="relative min-h-screen flex items-center justify-center overflow-hidden">
         <div className="relative z-10 max-w-4xl mx-auto px-6 text-center pt-24 pb-20">
           {/* Badge */}
-          <div className="landing-fade-in inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-[#92ABBB]/20 bg-[#92ABBB]/5 mb-8">
+          <div className="landing-fade-in inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-blue-500/20 bg-blue-500/5 mb-8">
             <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
-            <span className="text-xs font-medium text-[#92ABBB] tracking-wide uppercase">Early Access</span>
+            <span className="text-xs font-medium text-blue-400 tracking-wide uppercase">Early Access</span>
           </div>
 
           {/* Heading */}
-          <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold text-[#1A1A1A] leading-[1.1] tracking-tight mb-6">
+          <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.1] tracking-tight mb-6">
             Data Center<br />
-            <span className="text-[#92ABBB]">Workforce Marketplace</span>
+            <span className="text-blue-400">Workforce Marketplace</span>
           </h1>
 
           {/* Tagline */}
-          <p className="landing-fade-in landing-fade-in-delay-2 text-lg sm:text-xl text-[#5A5A5A] max-w-2xl mx-auto mb-12 leading-relaxed">
+          <p className="landing-fade-in landing-fade-in-delay-2 text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed">
             Connecting skilled workers with AI infrastructure projects.
             From rack &amp; stack to commissioning &mdash; find the right talent, fast.
           </p>
@@ -78,43 +78,43 @@ export default function LandingPage() {
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="your@email.com"
                 required
-                className="flex-1 px-4 py-3 rounded-xl bg-white border border-[#CEB298]/30 text-[#2D2D2D] text-sm
-                           focus:outline-none focus:border-[#92ABBB] focus:ring-1 focus:ring-[#92ABBB]/25
-                           transition-all placeholder:text-[#5A5A5A]/50"
+                className="flex-1 px-4 py-3 rounded-xl bg-[#1E293B] border border-white/10 text-white text-sm
+                           focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/25
+                           transition-all placeholder:text-slate-500"
               />
               <button
                 type="submit"
                 disabled={submitting}
-                className="px-6 py-3 rounded-full bg-[#92ABBB] hover:bg-[#839dae] text-white text-sm font-semibold
-                           transition-all shadow-lg hover:shadow-xl hover:shadow-[#92ABBB]/20 active:scale-[0.98]
+                className="px-6 py-3 rounded-full bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold
+                           transition-all shadow-lg hover:shadow-xl hover:shadow-blue-500/20 active:scale-[0.98]
                            whitespace-nowrap disabled:opacity-50"
               >
                 {submitting ? "Joining..." : "Join Waitlist"}
               </button>
             </form>
             {message && (
-              <p className={`mt-3 text-sm ${message.type === "success" ? "text-emerald-600" : "text-red-600"}`}>
+              <p className={`mt-3 text-sm ${message.type === "success" ? "text-emerald-400" : "text-red-400"}`}>
                 {message.text}
               </p>
             )}
-            <p className="mt-4 text-xs text-[#5A5A5A]/60">No spam. We'll notify you when we launch.</p>
+            <p className="mt-4 text-xs text-slate-400/60">No spam. We'll notify you when we launch.</p>
           </div>
 
           {/* Stats */}
-          <div className="landing-fade-in landing-fade-in-delay-4 flex items-center justify-center gap-8 sm:gap-12 mt-16 pt-8 border-t border-[#CEB298]/20">
+          <div className="landing-fade-in landing-fade-in-delay-4 flex items-center justify-center gap-8 sm:gap-12 mt-16 pt-8 border-t border-white/10">
             <div className="text-center">
-              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">500+</div>
-              <div className="text-xs text-[#5A5A5A] mt-1">Workers Ready</div>
+              <div className="text-4xl font-extrabold text-white font-mono">500+</div>
+              <div className="text-xs text-slate-400 mt-1">Workers Ready</div>
             </div>
-            <div className="w-px h-8 bg-[#CEB298]/30"></div>
+            <div className="w-px h-8 bg-white/10"></div>
             <div className="text-center">
-              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">12</div>
-              <div className="text-xs text-[#5A5A5A] mt-1">Markets</div>
+              <div className="text-4xl font-extrabold text-white font-mono">12</div>
+              <div className="text-xs text-slate-400 mt-1">Markets</div>
             </div>
-            <div className="w-px h-8 bg-[#CEB298]/30"></div>
+            <div className="w-px h-8 bg-white/10"></div>
             <div className="text-center">
-              <div className="text-4xl font-extrabold text-[#1A1A1A] font-mono">48h</div>
-              <div className="text-xs text-[#5A5A5A] mt-1">Avg. Placement</div>
+              <div className="text-4xl font-extrabold text-white font-mono">48h</div>
+              <div className="text-xs text-slate-400 mt-1">Avg. Placement</div>
             </div>
           </div>
         </div>
@@ -124,11 +124,11 @@ export default function LandingPage() {
       <section className="relative py-24 sm:py-32">
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <p className="text-sm font-medium text-[#9F6C52] mb-3 tracking-wide uppercase">How it works</p>
-            <h2 className="text-3xl sm:text-4xl font-bold text-[#2D2D2D] mb-4">
+            <p className="text-sm font-medium text-blue-400 mb-3 tracking-wide uppercase">How it works</p>
+            <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
               Built for the data center industry
             </h2>
-            <p className="text-[#5A5A5A] leading-relaxed">
+            <p className="text-slate-400 leading-relaxed">
               Purpose-built tools that understand the unique demands of data center construction,
               commissioning, and operations.
             </p>
@@ -165,14 +165,14 @@ export default function LandingPage() {
                 desc: "Real-time analytics on workforce utilization, project timelines, and cost tracking. Make data-driven staffing decisions across your portfolio.",
               },
             ].map((feature) => (
-              <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-[#CEB298]/20 bg-white shadow-md">
-                <div className="w-10 h-10 rounded-xl bg-[#92ABBB]/10 border border-[#92ABBB]/20 flex items-center justify-center mb-4 group-hover:border-[#92ABBB]/40 transition-colors">
-                  <svg className="w-5 h-5 text-[#92ABBB]" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+              <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-white/10 bg-[#1A1A2E]">
+                <div className="w-10 h-10 rounded-xl bg-blue-500/10 border border-blue-500/20 flex items-center justify-center mb-4 group-hover:border-blue-500/40 transition-colors">
+                  <svg className="w-5 h-5 text-blue-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
                     {feature.icon}
                   </svg>
                 </div>
-                <h3 className="text-[#2D2D2D] font-semibold mb-2">{feature.title}</h3>
-                <p className="text-sm text-[#5A5A5A] leading-relaxed">{feature.desc}</p>
+                <h3 className="text-white font-semibold mb-2">{feature.title}</h3>
+                <p className="text-sm text-slate-400 leading-relaxed">{feature.desc}</p>
               </div>
             ))}
           </div>
@@ -182,21 +182,21 @@ export default function LandingPage() {
       {/* CTA Banner */}
       <section className="relative py-24">
         <div className="max-w-4xl mx-auto px-6">
-          <div className="relative rounded-2xl border border-[#CEB298]/20 bg-white p-10 sm:p-14 text-center overflow-hidden">
+          <div className="relative rounded-2xl border border-white/10 bg-[#1A1A2E] p-10 sm:p-14 text-center overflow-hidden">
             <div className="relative z-10">
-              <p className="text-sm font-medium text-[#9F6C52] mb-3 font-mono">// launching soon</p>
-              <h2 className="text-3xl sm:text-4xl font-bold text-[#2D2D2D] mb-4">
+              <p className="text-sm font-medium text-blue-400 mb-3 font-mono">// launching soon</p>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
                 The future of data center staffing
               </h2>
-              <p className="text-[#5A5A5A] max-w-xl mx-auto mb-8 leading-relaxed">
+              <p className="text-slate-400 max-w-xl mx-auto mb-8 leading-relaxed">
                 Whether you're a hyperscaler building at scale or a technician looking for your next project,
                 Griseus connects you to what matters.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link href="/" className="inline-flex px-8 py-3 rounded-xl bg-[#92ABBB] hover:bg-[#839dae] text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-[#92ABBB]/20 active:scale-[0.98]">
+                <Link href="/" className="inline-flex px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98]">
                   Get Started
                 </Link>
-                <Link href="/login" className="inline-flex px-8 py-3 rounded-xl border border-[#CEB298]/40 hover:border-[#CEB298] text-[#2D2D2D] hover:text-[#2D2D2D] text-sm font-medium transition-all">
+                <Link href="/login" className="inline-flex px-8 py-3 rounded-xl border border-white/10 hover:border-white/20 text-white hover:text-white text-sm font-medium transition-all">
                   Login to Dashboard
                 </Link>
               </div>
@@ -206,16 +206,16 @@ export default function LandingPage() {
       </section>
 
       {/* Footer */}
-      <footer className="border-t border-[#CEB298]/20 py-10">
+      <footer className="border-t border-white/10 py-10">
         <div className="max-w-6xl mx-auto px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <span className="font-bold text-[#2D2D2D] tracking-tight">Griseus</span>
-            <span className="text-sm text-[#5A5A5A]">&copy; 2026 All rights reserved.</span>
+            <span className="font-bold text-white tracking-tight">Griseus</span>
+            <span className="text-sm text-slate-400">&copy; 2026 All rights reserved.</span>
           </div>
-          <div className="flex items-center gap-6 text-xs text-[#5A5A5A]">
-            <a href="#" className="hover:text-[#2D2D2D] transition-colors">Privacy</a>
-            <a href="#" className="hover:text-[#2D2D2D] transition-colors">Terms</a>
-            <a href="#" className="hover:text-[#2D2D2D] transition-colors">Contact</a>
+          <div className="flex items-center gap-6 text-xs text-slate-400">
+            <a href="#" className="hover:text-white transition-colors">Privacy</a>
+            <a href="#" className="hover:text-white transition-colors">Terms</a>
+            <a href="#" className="hover:text-white transition-colors">Contact</a>
           </div>
         </div>
       </footer>

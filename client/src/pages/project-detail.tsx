@@ -34,10 +34,10 @@ interface WorkerMatchResult {
 }
 
 const statusColors: Record<string, string> = {
-  planning: "bg-amber-100 text-amber-800 font-semibold",
-  active: "bg-[#92ABBB] text-white font-semibold",
-  completed: "bg-emerald-100 text-emerald-800 font-semibold",
-  on_hold: "bg-red-100 text-red-800 font-semibold",
+  planning: "bg-amber-500/15 text-amber-400 font-semibold",
+  active: "bg-blue-500/15 text-blue-400 font-semibold",
+  completed: "bg-emerald-500/15 text-emerald-400 font-semibold",
+  on_hold: "bg-red-500/15 text-red-400 font-semibold",
 };
 
 function getInitials(name: string) {
@@ -52,10 +52,10 @@ function getInitials(name: string) {
 function ScoreBadge({ score }: { score: number }) {
   const color =
     score > 75
-      ? "bg-emerald-50 text-emerald-700"
+      ? "bg-emerald-500/15 text-emerald-400"
       : score >= 50
-        ? "bg-amber-50 text-amber-700"
-        : "bg-red-50 text-red-700";
+        ? "bg-amber-500/15 text-amber-400"
+        : "bg-red-500/15 text-red-400";
   return (
     <Badge variant="secondary" className={`text-xs font-bold ${color}`}>
       {score}%
@@ -295,7 +295,7 @@ export default function ProjectDetail() {
                 >
                   <div className="flex items-start justify-between mb-3">
                     <div className="flex items-center gap-3">
-                      <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center text-sm font-bold text-primary">
+                      <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
                         {getInitials(result.worker.name)}
                       </div>
                       <div>
@@ -319,8 +319,8 @@ export default function ProjectDetail() {
                       variant="secondary"
                       className={`text-[10px] ${
                         result.alreadyAssigned
-                          ? "bg-amber-50 text-amber-700"
-                          : "bg-emerald-50 text-emerald-700"
+                          ? "bg-amber-500/15 text-amber-400"
+                          : "bg-emerald-500/15 text-emerald-400"
                       }`}
                     >
                       {result.alreadyAssigned ? "On Assignment" : "Available"}

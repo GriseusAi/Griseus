@@ -56,10 +56,10 @@ const statusFilters = [
 ];
 
 const statusColors: Record<string, string> = {
-  planning: "bg-amber-100 text-amber-800 font-semibold",
-  active: "bg-[#92ABBB] text-white font-semibold",
-  completed: "bg-emerald-100 text-emerald-800 font-semibold",
-  on_hold: "bg-red-100 text-red-800 font-semibold",
+  planning: "bg-amber-500/15 text-amber-400 font-semibold",
+  active: "bg-blue-500/15 text-blue-400 font-semibold",
+  completed: "bg-emerald-500/15 text-emerald-400 font-semibold",
+  on_hold: "bg-red-500/15 text-red-400 font-semibold",
 };
 
 export default function Projects() {

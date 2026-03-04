@@ -32,15 +32,15 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <Card className="bg-white shadow-md hover:shadow-lg transition-shadow">
+    <Card className="bg-[#1A1A2E]/80 backdrop-blur-xl border border-white/10 hover:border-white/20 transition-all">
       <CardContent className="p-6">
         <div className="flex items-center gap-3 mb-3">
           <div className={`p-2 rounded-lg ${accent}`}>
             <Icon className="h-5 w-5 text-white" />
           </div>
-          <p className="text-sm font-medium text-muted-foreground">{label}</p>
+          <p className="text-sm font-medium text-slate-400">{label}</p>
         </div>
-        <p className="text-4xl font-extrabold tracking-tight text-[#1A1A1A]">{value}</p>
+        <p className="text-4xl font-extrabold tracking-tight text-white">{value}</p>
       </CardContent>
     </Card>
   );
@@ -76,10 +76,10 @@ export default function AdminOverview() {
   const recentWorkers = workers?.slice(0, 5) ?? [];
 
   const statusColors: Record<string, string> = {
-    planning: "bg-amber-100 text-amber-800",
-    active: "bg-[#92ABBB] text-white",
-    completed: "bg-emerald-100 text-emerald-800",
-    on_hold: "bg-red-100 text-red-800",
+    planning: "bg-amber-500/15 text-amber-400",
+    active: "bg-blue-500/15 text-blue-400",
+    completed: "bg-emerald-500/15 text-emerald-400",
+    on_hold: "bg-red-500/15 text-red-400",
   };
 
   return (
@@ -89,7 +89,7 @@ export default function AdminOverview() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <ShieldCheck className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Admin Overview
             </h1>
           </div>
@@ -108,9 +108,9 @@ export default function AdminOverview() {
         </div>
       ) : (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
-          <StatCard icon={Users} label="Total Users" value={totalUsers} accent="bg-[#92ABBB]" />
+          <StatCard icon={Users} label="Total Users" value={totalUsers} accent="bg-blue-500" />
           <StatCard icon={UserCheck} label="Workers" value={summary?.totalWorkers ?? 0} accent="bg-emerald-500" />
-          <StatCard icon={Building2} label="Companies" value={companyUsers} accent="bg-[#9F6C52]" />
+          <StatCard icon={Building2} label="Companies" value={companyUsers} accent="bg-amber-500" />
           <StatCard icon={FolderKanban} label="Active Projects" value={summary?.activeProjects ?? 0} accent="bg-amber-500" />
           <StatCard icon={Target} label="Avg Match Score" value={`${summary?.avgMatchScore ?? 0}%`} accent="bg-indigo-500" />
         </div>
@@ -118,7 +118,7 @@ export default function AdminOverview() {
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
         {/* Recent Projects */}
-        <Card className="bg-white shadow-md">
+        <Card className="border border-white/10">
           <CardHeader>
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <FolderKanban className="h-4 w-4 text-muted-foreground" />
@@ -149,7 +149,7 @@ export default function AdminOverview() {
         </Card>
 
         {/* Recent Workers */}
-        <Card className="bg-white shadow-md">
+        <Card className="border border-white/10">
           <CardHeader>
             <CardTitle className="text-base font-semibold flex items-center gap-2">
               <Users className="h-4 w-4 text-muted-foreground" />
@@ -170,7 +170,7 @@ export default function AdminOverview() {
                     <Badge
                       variant="secondary"
                       className={`text-[10px] font-semibold ml-2 flex-shrink-0 ${
-                        w.available ? "bg-emerald-100 text-emerald-700" : "bg-red-100 text-red-700"
+                        w.available ? "bg-emerald-500/15 text-emerald-400" : "bg-red-500/15 text-red-400"
                       }`}
                     >
                       {w.available ? "Available" : "Unavailable"}

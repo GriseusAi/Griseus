@@ -37,10 +37,10 @@ function getInitials(name: string) {
 function ScoreBadge({ score }: { score: number }) {
   const color =
     score > 75
-      ? "bg-emerald-50 text-emerald-700"
+      ? "bg-emerald-500/15 text-emerald-400"
       : score >= 50
-        ? "bg-amber-50 text-amber-700"
-        : "bg-red-50 text-red-700";
+        ? "bg-amber-500/15 text-amber-400"
+        : "bg-red-500/15 text-red-400";
   return (
     <Badge variant="secondary" className={color}>
       {score}% match
@@ -89,10 +89,10 @@ export default function Dashboard() {
   const selectedProject = projects?.find((p) => p.id === selectedProjectId);
 
   const statusColors: Record<string, string> = {
-    planning: "bg-amber-100 text-amber-800 font-semibold",
-    active: "bg-[#92ABBB] text-white font-semibold",
-    completed: "bg-emerald-100 text-emerald-800 font-semibold",
-    on_hold: "bg-red-100 text-red-800 font-semibold",
+    planning: "bg-amber-500/15 text-amber-400 font-semibold",
+    active: "bg-blue-500/15 text-blue-400 font-semibold",
+    completed: "bg-emerald-500/15 text-emerald-400 font-semibold",
+    on_hold: "bg-red-500/15 text-red-400 font-semibold",
   };
 
   return (
@@ -102,7 +102,7 @@ export default function Dashboard() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <Sparkles className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight">
               Find Skilled Workers for Your Data Center Project
             </h1>
           </div>
@@ -112,20 +112,20 @@ export default function Dashboard() {
           </p>
           {!isLoading && (
             <div className="grid grid-cols-3 gap-4 mt-8">
-              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-[#92ABBB]">
-                <FolderKanban className="h-5 w-5 text-[#92ABBB] mb-2" />
-                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{projects?.length || 0}</p>
-                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Total Projects</p>
+              <div className="bg-[#1A1A2E]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-lg p-6 border-t-2 border-t-blue-500">
+                <FolderKanban className="h-5 w-5 text-blue-400 mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-white">{projects?.length || 0}</p>
+                <p className="text-sm text-slate-400 mt-1 font-medium">Total Projects</p>
               </div>
-              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-emerald-500">
-                <Users className="h-5 w-5 text-emerald-500 mb-2" />
-                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{availableWorkers}</p>
-                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Available Workers</p>
+              <div className="bg-[#1A1A2E]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-lg p-6 border-t-2 border-t-emerald-500">
+                <Users className="h-5 w-5 text-emerald-400 mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-white">{availableWorkers}</p>
+                <p className="text-sm text-slate-400 mt-1 font-medium">Available Workers</p>
               </div>
-              <div className="bg-white rounded-2xl shadow-lg p-6 border-t-4 border-amber-500">
-                <Sparkles className="h-5 w-5 text-amber-500 mb-2" />
-                <p className="text-5xl font-extrabold tracking-tight text-[#1A1A1A]">{projects?.filter((p) => p.status === "active").length || 0}</p>
-                <p className="text-sm text-[#5A5A5A] mt-1 font-medium">Active Matches</p>
+              <div className="bg-[#1A1A2E]/80 backdrop-blur-xl border border-white/10 rounded-2xl shadow-lg p-6 border-t-2 border-t-amber-500">
+                <Sparkles className="h-5 w-5 text-amber-400 mb-2" />
+                <p className="text-5xl font-extrabold tracking-tight text-white">{projects?.filter((p) => p.status === "active").length || 0}</p>
+                <p className="text-sm text-slate-400 mt-1 font-medium">Active Matches</p>
               </div>
             </div>
           )}
@@ -178,7 +178,7 @@ export default function Dashboard() {
                       {project.tradesNeeded.map((trade) => (
                         <span
                           key={trade}
-                          className="bg-[#92ABBB] text-white text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          className="bg-blue-500/15 text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-medium"
                         >
                           {trade}
                         </span>
@@ -239,7 +239,7 @@ export default function Dashboard() {
                     key={result.worker.id}
                     className="flex-shrink-0 w-48 rounded-lg border p-4 space-y-2 hover:bg-muted/50 transition-colors"
                   >
-                    <div className="h-10 w-10 rounded-full bg-primary/15 flex items-center justify-center text-sm font-bold text-primary">
+                    <div className="h-10 w-10 rounded-full bg-blue-500/20 flex items-center justify-center text-sm font-bold text-blue-400">
                       {getInitials(result.worker.name)}
                     </div>
                     <p className="font-medium text-sm truncate">
@@ -292,7 +292,7 @@ export default function Dashboard() {
                       project.tradesNeeded.map((trade) => (
                         <span
                           key={trade}
-                          className="bg-[#92ABBB] text-white text-[10px] px-2 py-0.5 rounded-full font-medium"
+                          className="bg-blue-500/15 text-blue-400 text-[10px] px-2 py-0.5 rounded-full font-medium"
                         >
                           {trade}
                         </span>

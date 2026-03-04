@@ -55,17 +55,17 @@ const trades = [
 ];
 
 const priorityConfig: Record<string, { icon: React.ElementType; color: string; bg: string; accent: string }> = {
-  urgent: { icon: AlertTriangle, color: "text-destructive", bg: "bg-destructive/15 text-destructive", accent: "bg-destructive" },
-  high: { icon: AlertTriangle, color: "text-warning", bg: "bg-warning/15 text-warning", accent: "bg-warning" },
-  medium: { icon: Clock, color: "text-muted-foreground", bg: "bg-muted text-muted-foreground", accent: "bg-success" },
-  low: { icon: CheckCircle2, color: "text-success", bg: "bg-success/15 text-success", accent: "bg-muted-foreground" },
+  urgent: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-500/15 text-red-400", accent: "bg-red-500" },
+  high: { icon: AlertTriangle, color: "text-amber-400", bg: "bg-amber-500/15 text-amber-400", accent: "bg-amber-500" },
+  medium: { icon: Clock, color: "text-slate-400", bg: "bg-slate-500/15 text-slate-400", accent: "bg-emerald-500" },
+  low: { icon: CheckCircle2, color: "text-emerald-400", bg: "bg-emerald-500/15 text-emerald-400", accent: "bg-slate-500" },
 };
 
 const statusConfig: Record<string, { icon: React.ElementType; color: string }> = {
-  open: { icon: CircleDot, color: "bg-warning/15 text-warning" },
-  in_progress: { icon: Clock, color: "bg-primary/15 text-primary" },
-  completed: { icon: CheckCircle2, color: "bg-success/15 text-success" },
-  cancelled: { icon: AlertTriangle, color: "bg-destructive/15 text-destructive" },
+  open: { icon: CircleDot, color: "bg-amber-500/15 text-amber-400" },
+  in_progress: { icon: Clock, color: "bg-blue-500/15 text-blue-400" },
+  completed: { icon: CheckCircle2, color: "bg-emerald-500/15 text-emerald-400" },
+  cancelled: { icon: AlertTriangle, color: "bg-red-500/15 text-red-400" },
 };
 
 export default function WorkOrders() {

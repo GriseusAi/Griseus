@@ -31,21 +31,21 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#EEE7DD" }}>
-      <Card className="w-full max-w-sm shadow-md border-[#CEB298]/30">
+    <div className="min-h-screen flex items-center justify-center px-4" style={{ backgroundColor: "#0F172A" }}>
+      <Card className="w-full max-w-sm shadow-xl border-white/10" style={{ background: "rgba(26,26,46,0.6)", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)", borderColor: "rgba(255,255,255,0.08)" }}>
         <CardHeader className="text-center">
           <div className="flex items-center justify-center gap-2 mb-4">
-            <span className="text-xl font-bold tracking-tight text-[#2D2D2D]">Griseus</span>
+            <span className="text-xl font-bold tracking-tight text-white" style={{ textShadow: "0 0 20px rgba(59,130,246,0.5), 0 0 40px rgba(59,130,246,0.3)" }}>Griseus</span>
           </div>
-          <CardTitle className="text-[#2D2D2D] text-xl">Welcome Back</CardTitle>
-          <CardDescription className="text-[#5A5A5A]">
+          <CardTitle className="text-white text-xl">Welcome Back</CardTitle>
+          <CardDescription className="text-slate-400">
             Sign in to your Griseus dashboard
           </CardDescription>
         </CardHeader>
         <CardContent>
           <form onSubmit={handleSubmit} className="space-y-4">
             <div className="space-y-2">
-              <Label htmlFor="email" className="text-[#2D2D2D]">Email</Label>
+              <Label htmlFor="email" className="text-white">Email</Label>
               <Input
                 id="email"
                 type="email"
@@ -54,10 +54,11 @@ export default function LoginPage() {
                 required
                 autoComplete="email"
                 placeholder="Enter your email"
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
               />
             </div>
             <div className="space-y-2">
-              <Label htmlFor="password" className="text-[#2D2D2D]">Password</Label>
+              <Label htmlFor="password" className="text-white">Password</Label>
               <Input
                 id="password"
                 type="password"
@@ -66,6 +67,7 @@ export default function LoginPage() {
                 required
                 autoComplete="current-password"
                 placeholder="Enter your password"
+                className="bg-white/5 border-white/10 text-white placeholder:text-slate-500 focus:border-blue-500/50 focus:ring-blue-500/20"
               />
             </div>
 
@@ -73,14 +75,14 @@ export default function LoginPage() {
               <button
                 type="button"
                 onClick={() => setLocation("/forgot-password")}
-                className="text-sm text-[#92ABBB] hover:text-[#7a97a8] transition-colors"
+                className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
               >
                 Forgot your password?
               </button>
             </div>
 
             {error && (
-              <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">
+              <p className="text-sm text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">
                 {error}
               </p>
             )}
@@ -88,7 +90,8 @@ export default function LoginPage() {
             <Button
               type="submit"
               disabled={loading}
-              className="w-full"
+              className="w-full text-white font-semibold"
+              style={{ background: "linear-gradient(135deg, #3B82F6, #10B981)" }}
             >
               {loading ? "Please wait..." : "Sign In"}
             </Button>
@@ -98,7 +101,7 @@ export default function LoginPage() {
             <button
               type="button"
               onClick={() => setLocation("/")}
-              className="text-sm text-[#92ABBB] hover:text-[#7a97a8] transition-colors"
+              className="text-sm text-blue-400 hover:text-blue-300 transition-colors"
             >
               Don't have an account? Sign up
             </button>

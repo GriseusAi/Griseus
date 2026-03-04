@@ -9,12 +9,12 @@ export function QuizShell({ children }: { children: ReactNode }) {
   return (
     <div
       className="fixed inset-0 z-50 overflow-y-auto"
-      style={{ backgroundColor: "#EEE7DD" }}
+      style={{ backgroundColor: "#0F172A" }}
     >
       <div className="min-h-full flex flex-col">
         {/* Logo */}
         <div className="pt-6 pb-2 px-6 flex items-center justify-center">
-          <span className="text-xl font-bold tracking-tight text-[#2D2D2D]">
+          <span className="text-xl font-bold tracking-tight text-white">
             Griseus
           </span>
         </div>
@@ -42,10 +42,10 @@ export function ProgressDots({
           key={i}
           className={`rounded-full transition-all duration-300 ${
             i === current
-              ? "w-8 h-2 bg-[#92ABBB]"
+              ? "w-8 h-2 bg-blue-500"
               : i < current
-                ? "w-2 h-2 bg-[#92ABBB]"
-                : "w-2 h-2 bg-[#CEB298]/40"
+                ? "w-2 h-2 bg-blue-500"
+                : "w-2 h-2 bg-white/20"
           }`}
         />
       ))}
@@ -54,7 +54,7 @@ export function ProgressDots({
 }
 
 /* ─── StepCard ─────────────────────────────────────────────────
-   White rounded card with optional back button, title, subtitle.
+   Glass-morphism rounded card with optional back button, title, subtitle.
 ──────────────────────────────────────────────────────────────── */
 export function StepCard({
   title,
@@ -70,19 +70,19 @@ export function StepCard({
   return (
     <div className="flex-1 flex items-start justify-center px-4 pb-8">
       <div className="w-full max-w-lg">
-        <div className="bg-white rounded-2xl shadow-sm border border-[#CEB298]/20 p-6 sm:p-8">
+        <div className="bg-[#1A1A2E]/80 backdrop-blur-xl rounded-2xl border border-white/10 shadow-2xl p-6 sm:p-8">
           {onBack && (
             <button
               onClick={onBack}
-              className="flex items-center gap-1.5 text-sm text-[#5A5A5A] hover:text-[#2D2D2D] transition-colors mb-5"
+              className="flex items-center gap-1.5 text-sm text-slate-400 hover:text-white transition-colors mb-5"
             >
               <ArrowLeft className="h-4 w-4" />
               Back
             </button>
           )}
-          <h2 className="text-2xl font-bold text-[#2D2D2D] mb-1">{title}</h2>
+          <h2 className="text-2xl font-bold text-white mb-1">{title}</h2>
           {subtitle && (
-            <p className="text-[#5A5A5A] text-sm mb-6">{subtitle}</p>
+            <p className="text-slate-400 text-sm mb-6">{subtitle}</p>
           )}
           {!subtitle && <div className="mb-6" />}
           {children}
@@ -139,13 +139,13 @@ export function SelectableCard({
       onClick={onClick}
       className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-150 ${
         selected
-          ? "border-[#92ABBB] bg-[#92ABBB]/10"
-          : "border-[#CEB298]/20 bg-white hover:border-[#CEB298]/40"
+          ? "border-blue-500 bg-blue-500/10"
+          : "border-white/10 bg-white/5 hover:border-white/20"
       }`}
     >
-      <span className="text-base font-medium text-[#2D2D2D]">{label}</span>
+      <span className="text-base font-medium text-white">{label}</span>
       {sublabel && (
-        <span className="block text-sm text-[#5A5A5A] mt-0.5">{sublabel}</span>
+        <span className="block text-sm text-slate-400 mt-0.5">{sublabel}</span>
       )}
     </button>
   );
@@ -170,23 +170,23 @@ export function CheckableCard({
       onClick={onClick}
       className={`w-full text-left rounded-xl border-2 p-4 transition-all duration-150 flex items-center gap-3 ${
         checked
-          ? "border-[#92ABBB] bg-[#92ABBB]/10"
-          : "border-[#CEB298]/20 bg-white hover:border-[#CEB298]/40"
+          ? "border-blue-500 bg-blue-500/10"
+          : "border-white/10 bg-white/5 hover:border-white/20"
       }`}
     >
       <div
         className={`flex-shrink-0 w-5 h-5 rounded border-2 flex items-center justify-center transition-all ${
           checked
-            ? "bg-[#92ABBB] border-[#92ABBB]"
-            : "border-[#CEB298]/50 bg-white"
+            ? "bg-blue-500 border-blue-500"
+            : "border-white/30 bg-transparent"
         }`}
       >
         {checked && <Check className="w-3 h-3 text-white" />}
       </div>
       <div>
-        <span className="text-base font-medium text-[#2D2D2D]">{label}</span>
+        <span className="text-base font-medium text-white">{label}</span>
         {sublabel && (
-          <span className="block text-sm text-[#5A5A5A] mt-0.5">
+          <span className="block text-sm text-slate-400 mt-0.5">
             {sublabel}
           </span>
         )}
@@ -196,7 +196,7 @@ export function CheckableCard({
 }
 
 /* ─── QuizInput ────────────────────────────────────────────────
-   Plain input with warm light styling.
+   Dark-themed input with blue focus ring.
 ──────────────────────────────────────────────────────────────── */
 export function QuizInput({
   label,
@@ -205,20 +205,20 @@ export function QuizInput({
   return (
     <div className="space-y-1.5">
       {label && (
-        <label className="block text-sm font-medium text-[#2D2D2D]">
+        <label className="block text-sm font-medium text-slate-300">
           {label}
         </label>
       )}
       <input
         {...props}
-        className={`w-full rounded-xl border border-[#CEB298]/30 bg-[#F5F0EA] px-4 py-3 text-[#2D2D2D] placeholder:text-[#5A5A5A]/50 focus:border-[#92ABBB] focus:ring-2 focus:ring-[#92ABBB]/20 focus:outline-none transition-colors text-base ${props.className || ""}`}
+        className={`w-full rounded-xl bg-[#1E293B] border border-white/10 px-4 py-3 text-white placeholder:text-slate-500 focus:border-blue-500 focus:ring-2 focus:ring-blue-500/20 focus:outline-none transition-colors text-base ${props.className || ""}`}
       />
     </div>
   );
 }
 
 /* ─── QuizButton ───────────────────────────────────────────────
-   Primary (muted blue) and secondary (sand outline) variants.
+   Primary (blue-to-emerald gradient) and secondary (outline) variants.
 ──────────────────────────────────────────────────────────────── */
 export function QuizButton({
   variant = "primary",
@@ -231,14 +231,14 @@ export function QuizButton({
   children: ReactNode;
 } & React.ButtonHTMLAttributes<HTMLButtonElement>) {
   const base =
-    "w-full rounded-xl px-6 py-3 text-base font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-[#92ABBB]/30";
+    "w-full rounded-xl px-6 py-3 text-base font-semibold transition-all duration-150 focus:outline-none focus:ring-2 focus:ring-blue-500/30";
   const variants = {
     primary: disabled
-      ? "bg-[#92ABBB]/50 text-white cursor-not-allowed"
-      : "bg-[#92ABBB] text-white hover:bg-[#839dae] active:bg-[#748e9f]",
+      ? "bg-slate-700 text-slate-500 cursor-not-allowed"
+      : "bg-gradient-to-r from-blue-500 to-emerald-500 text-white hover:shadow-lg hover:shadow-blue-500/25",
     secondary: disabled
-      ? "bg-white border border-[#CEB298]/30 text-[#5A5A5A]/50 cursor-not-allowed"
-      : "bg-white border border-[#CEB298]/40 text-[#2D2D2D] hover:border-[#CEB298] hover:bg-[#F5F0EA]",
+      ? "bg-transparent border border-white/5 text-slate-600 cursor-not-allowed"
+      : "bg-transparent border border-white/10 text-white hover:border-white/20 hover:bg-white/5",
   };
 
   return (

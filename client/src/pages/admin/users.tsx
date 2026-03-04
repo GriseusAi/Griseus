@@ -9,9 +9,9 @@ import { Users, Search } from "lucide-react";
 import type { User } from "@shared/schema";
 
 const roleColors: Record<string, string> = {
-  admin: "bg-purple-100 text-purple-700",
-  company: "bg-[#92ABBB]/15 text-[#92ABBB]",
-  worker: "bg-emerald-100 text-emerald-700",
+  admin: "bg-purple-500/15 text-purple-400",
+  company: "bg-blue-500/15 text-blue-400",
+  worker: "bg-emerald-500/15 text-emerald-400",
 };
 
 export default function AdminUsers() {
@@ -42,7 +42,7 @@ export default function AdminUsers() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <Users className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Users
             </h1>
           </div>
@@ -70,8 +70,8 @@ export default function AdminUsers() {
               onClick={() => setRoleFilter(role)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 roleFilter === role
-                  ? "bg-[#9F6C52] text-white"
-                  : "bg-white border border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-blue-500 text-white"
+                  : "bg-[#1E293B] border border-white/10 text-slate-400 hover:bg-white/5"
               }`}
             >
               {role === "all" ? "All" : role.charAt(0).toUpperCase() + role.slice(1)}
@@ -81,7 +81,7 @@ export default function AdminUsers() {
       </div>
 
       {/* Table */}
-      <Card className="bg-white shadow-md">
+      <Card className="border border-white/10">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">
@@ -91,7 +91,7 @@ export default function AdminUsers() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border">
+                  <tr className="border-b border-white/10">
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Name</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Email</th>
                     <th className="text-center py-3 px-4 font-semibold text-muted-foreground">Role</th>
@@ -101,7 +101,7 @@ export default function AdminUsers() {
                 </thead>
                 <tbody>
                   {filtered.map(user => (
-                    <tr key={user.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                    <tr key={user.id} className="border-b border-white/10 hover:bg-white/5 transition-colors">
                       <td className="py-3 px-4 font-medium">{user.name || "—"}</td>
                       <td className="py-3 px-4 text-muted-foreground">{user.email}</td>
                       <td className="py-3 px-4 text-center">

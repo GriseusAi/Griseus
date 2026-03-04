@@ -64,15 +64,15 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
 
   return (
     <div className="fixed inset-0 z-[200] flex flex-col bg-background/80 backdrop-blur-sm" data-testid="ai-chat-overlay">
-      <Card className="flex flex-col flex-1 m-3 mb-0 overflow-hidden border border-[#CEB298]/20">
-        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-[#CEB298]/20 bg-card">
+      <Card className="flex flex-col flex-1 m-3 mb-0 overflow-hidden border border-white/10">
+        <div className="flex items-center justify-between gap-2 px-4 py-3 border-b border-white/10 bg-card">
           <div className="flex items-center gap-2">
-            <div className="flex items-center justify-center h-8 w-8 rounded-md bg-[#92ABBB]/15">
-              <Bot className="h-4 w-4 text-[#92ABBB]" />
+            <div className="flex items-center justify-center h-8 w-8 rounded-md bg-blue-500/15">
+              <Bot className="h-4 w-4 text-blue-400" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-[#2D2D2D]">Site AI</p>
-              <p className="text-[11px] text-[#5A5A5A]">Always available on site</p>
+              <p className="text-sm font-semibold text-white">Site AI</p>
+              <p className="text-[11px] text-slate-400">Always available on site</p>
             </div>
           </div>
           <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-ai-chat">
@@ -86,8 +86,8 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
               <div
                 className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm leading-relaxed ${
                   msg.role === "user"
-                    ? "bg-[#92ABBB] text-white rounded-br-sm"
-                    : "bg-[#F5F0EA] text-[#2D2D2D] rounded-bl-sm"
+                    ? "bg-blue-500 text-white rounded-br-sm"
+                    : "bg-[#1E293B] text-slate-200 rounded-bl-sm"
                 }`}
                 data-testid={`ai-message-${i}`}
               >
@@ -102,18 +102,18 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
           ))}
           {isTyping && (
             <div className="flex justify-start">
-              <div className="bg-[#F5F0EA] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm">
+              <div className="bg-[#1E293B] rounded-2xl rounded-bl-sm px-4 py-2.5 text-sm">
                 <span className="inline-flex gap-1 items-center">
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#5A5A5A]/60 animate-bounce [animation-delay:0ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#5A5A5A]/60 animate-bounce [animation-delay:150ms]" />
-                  <span className="h-1.5 w-1.5 rounded-full bg-[#5A5A5A]/60 animate-bounce [animation-delay:300ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:0ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:150ms]" />
+                  <span className="h-1.5 w-1.5 rounded-full bg-slate-400 animate-bounce [animation-delay:300ms]" />
                 </span>
               </div>
             </div>
           )}
         </div>
 
-        <div className="border-t border-[#CEB298]/20 p-3 bg-card">
+        <div className="border-t border-white/10 p-3 bg-card">
           <form
             className="flex items-center gap-2"
             onSubmit={(e) => { e.preventDefault(); handleSend(); }}
@@ -123,7 +123,7 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
               value={input}
               onChange={(e) => setInput(e.target.value)}
               placeholder="Ask Site AI anything..."
-              className="flex-1 h-10 rounded-md border border-[#CEB298]/30 bg-[#F5F0EA] px-3 text-sm text-[#2D2D2D] outline-none focus:ring-2 focus:ring-[#92ABBB]/40"
+              className="flex-1 h-10 rounded-md border border-white/10 bg-[#1E293B] px-3 text-sm text-white outline-none focus:ring-2 focus:ring-blue-500/40 placeholder:text-slate-500"
               data-testid="input-ai-chat"
             />
             <Button size="icon" type="submit" disabled={!input.trim()} data-testid="button-send-ai">
@@ -153,10 +153,10 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
       {!chatOpen && (
         <button
           onClick={() => setChatOpen(true)}
-          className="fixed z-[100] bottom-20 right-4 h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ring-4 ring-[#92ABBB]/20"
+          className="fixed z-[100] bottom-20 right-4 h-14 w-14 rounded-full flex items-center justify-center shadow-lg transition-transform active:scale-95 ring-4 ring-blue-500/20"
           style={{
-            background: "linear-gradient(135deg, #92ABBB, #A7B9C6)",
-            boxShadow: "0 0 18px 4px rgba(146, 171, 187, 0.35), 0 4px 12px rgba(0,0,0,0.1)",
+            background: "linear-gradient(135deg, #3B82F6, #10B981)",
+            boxShadow: "0 0 18px 4px rgba(59, 130, 246, 0.35), 0 4px 12px rgba(0,0,0,0.1)",
           }}
           data-testid="button-ai-fab"
         >
@@ -164,7 +164,7 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
         </button>
       )}
 
-      <nav className="border-t border-[#CEB298]/20 bg-white/90 backdrop-blur-md sticky bottom-0 z-50 safe-area-bottom" data-testid="mobile-tab-bar">
+      <nav className="border-t border-white/10 bg-[#0F172A]/90 backdrop-blur-md sticky bottom-0 z-50 safe-area-bottom" data-testid="mobile-tab-bar">
         <div className="flex items-center justify-around gap-1 px-2 py-2">
           {tabs.map((tab) => {
             const isActive = location === tab.url || (tab.url !== "/mobile" && location.startsWith(tab.url));
@@ -175,14 +175,14 @@ export function MobileLayout({ children }: { children: React.ReactNode }) {
                 <button
                   className={`flex flex-col items-center justify-center gap-0.5 px-4 py-1.5 rounded-xl transition-all min-w-[72px] ${
                     active
-                      ? "bg-[#92ABBB]/15 text-[#92ABBB]"
-                      : "text-[#5A5A5A]"
+                      ? "bg-blue-500/15 text-blue-400"
+                      : "text-slate-500"
                   }`}
                   data-testid={`mobile-tab-${tab.title.toLowerCase()}`}
                 >
                   <tab.icon className={`h-5 w-5 ${active ? "stroke-[2.5px]" : ""}`} />
                   <span className={`text-[10px] font-medium ${active ? "font-semibold" : ""}`}>{tab.title}</span>
-                  {active && <div className="h-1 w-1 rounded-full bg-[#92ABBB] mt-0.5" />}
+                  {active && <div className="h-1 w-1 rounded-full bg-blue-400 mt-0.5" />}
                 </button>
               </Link>
             );

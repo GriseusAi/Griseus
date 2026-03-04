@@ -31,7 +31,7 @@ export function AdminSidebar() {
       <SidebarHeader className="p-4">
         <Link href="/admin">
           <div className="flex items-center gap-2">
-            <div className="h-10 w-10 rounded-lg shadow-md bg-[#9F6C52] flex items-center justify-center">
+            <div className="h-10 w-10 rounded-lg shadow-md bg-blue-600 flex items-center justify-center">
               <ShieldCheck className="h-6 w-6 text-white" />
             </div>
             <div>

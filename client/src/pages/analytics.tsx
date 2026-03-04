@@ -25,7 +25,7 @@ import {
   ResponsiveContainer,
 } from "recharts";
 
-// ── Types ────────────────────────────────────────────────────────────
+// -- Types --------------------------------------------------------------------
 
 interface WorkforceSummary {
   totalWorkers: number;
@@ -61,7 +61,7 @@ interface SkillGapItem {
   certifications: CertCoverage[];
 }
 
-// ── Stat Card ────────────────────────────────────────────────────────
+// -- Stat Card ----------------------------------------------------------------
 
 function StatCard({
   icon: Icon,
@@ -75,7 +75,7 @@ function StatCard({
   accent: string;
 }) {
   return (
-    <Card className="bg-white shadow-md hover:shadow-lg transition-shadow">
+    <Card className="bg-[#1A1A2E]/80 backdrop-blur-xl border border-white/10 hover:shadow-lg transition-shadow">
       <CardContent className="p-6">
         <div className="flex items-center gap-3 mb-3">
           <div className={`p-2 rounded-lg ${accent}`}>
@@ -83,19 +83,19 @@ function StatCard({
           </div>
           <p className="text-sm font-medium text-muted-foreground">{label}</p>
         </div>
-        <p className="text-4xl font-extrabold tracking-tight text-[#1A1A1A]">{value}</p>
+        <p className="text-4xl font-extrabold tracking-tight text-white">{value}</p>
       </CardContent>
     </Card>
   );
 }
 
-// ── Custom Tooltip ───────────────────────────────────────────────────
+// -- Custom Tooltip -----------------------------------------------------------
 
 function SupplyDemandTooltip({ active, payload, label }: any) {
   if (!active || !payload?.length) return null;
   return (
-    <div className="bg-white border border-border rounded-lg shadow-lg p-3">
-      <p className="font-semibold text-sm mb-1">{label}</p>
+    <div className="bg-[#1A1A2E] border border-white/10 rounded-lg shadow-lg p-3">
+      <p className="font-semibold text-sm mb-1 text-white">{label}</p>
       {payload.map((entry: any) => (
         <p key={entry.dataKey} className="text-xs" style={{ color: entry.color }}>
           {entry.name}: {entry.value}
@@ -105,7 +105,7 @@ function SupplyDemandTooltip({ active, payload, label }: any) {
   );
 }
 
-// ── Page ─────────────────────────────────────────────────────────────
+// -- Page ---------------------------------------------------------------------
 
 export default function Analytics() {
   usePageMeta("Workforce Analytics", "Platform-wide workforce intelligence and gap analysis.");
@@ -155,7 +155,7 @@ export default function Analytics() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <BarChart3 className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Workforce Analytics
             </h1>
           </div>
@@ -179,15 +179,15 @@ export default function Analytics() {
         </div>
       ) : summary ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <StatCard icon={Users} label="Total Workers" value={summary.totalWorkers} accent="bg-[#92ABBB]" />
+          <StatCard icon={Users} label="Total Workers" value={summary.totalWorkers} accent="bg-blue-500" />
           <StatCard icon={UserCheck} label="Available Workers" value={summary.availableWorkers} accent="bg-emerald-500" />
-          <StatCard icon={FolderKanban} label="Active Projects" value={summary.activeProjects} accent="bg-[#9F6C52]" />
+          <StatCard icon={FolderKanban} label="Active Projects" value={summary.activeProjects} accent="bg-amber-500" />
           <StatCard icon={Target} label="Avg Match Score" value={`${summary.avgMatchScore}%`} accent="bg-amber-500" />
         </div>
       ) : null}
 
       {/* 2. Supply vs Demand Chart */}
-      <Card className="bg-white shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <BarChart3 className="h-4 w-4 text-muted-foreground" />
@@ -203,22 +203,22 @@ export default function Analytics() {
           ) : supplyDemand && supplyDemand.length > 0 ? (
             <ResponsiveContainer width="100%" height={350}>
               <BarChart data={supplyDemand} margin={{ top: 10, right: 30, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E0DA" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
                 <XAxis
                   dataKey="trade"
-                  tick={{ fontSize: 11, fill: "#5A5A5A" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   angle={-20}
                   textAnchor="end"
                   height={60}
                 />
                 <YAxis
-                  tick={{ fontSize: 11, fill: "#5A5A5A" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   allowDecimals={false}
                 />
                 <Tooltip content={<SupplyDemandTooltip />} />
                 <Legend wrapperStyle={{ fontSize: 12, paddingTop: 8 }} />
-                <Bar dataKey="supply" name="Available Workers" fill="#92ABBB" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="demand" name="Projects Requesting" fill="#9F6C52" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="supply" name="Available Workers" fill="#3B82F6" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="demand" name="Projects Requesting" fill="#F59E0B" radius={[4, 4, 0, 0]} />
               </BarChart>
             </ResponsiveContainer>
           ) : (
@@ -230,7 +230,7 @@ export default function Analytics() {
       </Card>
 
       {/* 3. Regional Workforce Map (table view) */}
-      <Card className="bg-white shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <MapPin className="h-4 w-4 text-muted-foreground" />
@@ -260,18 +260,18 @@ export default function Analytics() {
                 <tbody>
                   {regional.map(r => {
                     const ratio = r.totalWorkers > 0 ? r.availableWorkers / r.totalWorkers : 0;
-                    const statusColor = ratio < 0.3 ? "bg-red-100 text-red-700" : ratio < 0.6 ? "bg-amber-100 text-amber-700" : "bg-emerald-100 text-emerald-700";
+                    const statusColor = ratio < 0.3 ? "bg-red-500/15 text-red-400" : ratio < 0.6 ? "bg-amber-500/15 text-amber-400" : "bg-emerald-500/15 text-emerald-400";
                     const statusLabel = ratio < 0.3 ? "Low Supply" : ratio < 0.6 ? "Moderate" : "High Supply";
 
                     return (
-                      <tr key={r.location} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                      <tr key={r.location} className="border-b border-border/50 hover:bg-white/5 transition-colors">
                         <td className="py-3 px-3 font-medium">{r.location}</td>
                         <td className="py-3 px-3 text-center font-semibold">{r.totalWorkers}</td>
-                        <td className="py-3 px-3 text-center font-semibold text-emerald-600">{r.availableWorkers}</td>
+                        <td className="py-3 px-3 text-center font-semibold text-emerald-400">{r.availableWorkers}</td>
                         <td className="py-3 px-3">
                           <div className="flex flex-wrap gap-1">
                             {r.topTrades.map(t => (
-                              <Badge key={t} variant="secondary" className="text-[10px] bg-[#92ABBB]/10 text-[#92ABBB]">
+                              <Badge key={t} variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-400">
                                 {t}
                               </Badge>
                             ))}
@@ -298,7 +298,7 @@ export default function Analytics() {
       </Card>
 
       {/* 4. Skill Gap Analysis */}
-      <Card className="bg-white shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <ShieldCheck className="h-4 w-4 text-muted-foreground" />
@@ -356,7 +356,7 @@ export default function Analytics() {
       </Card>
 
       {/* 5. Certification Coverage */}
-      <Card className="bg-white shadow-md">
+      <Card>
         <CardHeader>
           <CardTitle className="text-base font-semibold flex items-center gap-2">
             <Award className="h-4 w-4 text-muted-foreground" />
@@ -376,33 +376,34 @@ export default function Analytics() {
                 layout="vertical"
                 margin={{ top: 5, right: 30, left: 120, bottom: 5 }}
               >
-                <CartesianGrid strokeDasharray="3 3" stroke="#E5E0DA" />
+                <CartesianGrid strokeDasharray="3 3" stroke="#1E293B" />
                 <XAxis
                   type="number"
                   domain={[0, 100]}
-                  tick={{ fontSize: 11, fill: "#5A5A5A" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   tickFormatter={(v: number) => `${v}%`}
                 />
                 <YAxis
                   type="category"
                   dataKey="name"
-                  tick={{ fontSize: 11, fill: "#5A5A5A" }}
+                  tick={{ fontSize: 11, fill: "#94A3B8" }}
                   width={110}
                 />
                 <Tooltip
                   formatter={(value: number) => [`${value}%`, "Coverage"]}
                   contentStyle={{
-                    background: "white",
-                    border: "1px solid #E5E0DA",
+                    background: "#1A1A2E",
+                    border: "1px solid rgba(255,255,255,0.1)",
                     borderRadius: 8,
                     fontSize: 12,
+                    color: "#ffffff",
                   }}
                 />
                 <Bar
                   dataKey="percentage"
                   name="Coverage"
                   radius={[0, 4, 4, 0]}
-                  fill="#92ABBB"
+                  fill="#3B82F6"
                 />
               </BarChart>
             </ResponsiveContainer>

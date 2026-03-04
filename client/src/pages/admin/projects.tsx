@@ -9,10 +9,10 @@ import { FolderKanban, Search } from "lucide-react";
 import type { Project, ProjectAssignment } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
-  planning: "bg-amber-100 text-amber-800",
-  active: "bg-[#92ABBB] text-white",
-  completed: "bg-emerald-100 text-emerald-800",
-  on_hold: "bg-red-100 text-red-800",
+  planning: "bg-amber-500/15 text-amber-400",
+  active: "bg-blue-500/15 text-blue-400",
+  completed: "bg-emerald-500/15 text-emerald-400",
+  on_hold: "bg-red-500/15 text-red-400",
 };
 
 export default function AdminProjects() {
@@ -44,7 +44,7 @@ export default function AdminProjects() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <FolderKanban className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Projects
             </h1>
           </div>
@@ -72,8 +72,8 @@ export default function AdminProjects() {
               onClick={() => setStatusFilter(s)}
               className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
                 statusFilter === s
-                  ? "bg-[#9F6C52] text-white"
-                  : "bg-white border border-border text-muted-foreground hover:bg-muted/50"
+                  ? "bg-blue-500 text-white"
+                  : "bg-[#1E293B] border border-white/10 text-slate-400 hover:bg-white/5"
               }`}
             >
               {s === "all" ? "All" : s === "on_hold" ? "On Hold" : s.charAt(0).toUpperCase() + s.slice(1)}
@@ -83,7 +83,7 @@ export default function AdminProjects() {
       </div>
 
       {/* Table */}
-      <Card className="bg-white shadow-md">
+      <Card className="border border-white/10">
         <CardContent className="p-0">
           {isLoading ? (
             <div className="p-6 space-y-3">
@@ -93,7 +93,7 @@ export default function AdminProjects() {
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-border">
+                  <tr className="border-b border-white/10">
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Name</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Client</th>
                     <th className="text-left py-3 px-4 font-semibold text-muted-foreground">Location</th>
@@ -105,7 +105,7 @@ export default function AdminProjects() {
                 </thead>
                 <tbody>
                   {filtered.map(p => (
-                    <tr key={p.id} className="border-b border-border/50 hover:bg-muted/30 transition-colors">
+                    <tr key={p.id} className="border-b border-white/10 hover:bg-white/5 transition-colors">
                       <td className="py-3 px-4 font-medium">{p.name}</td>
                       <td className="py-3 px-4 text-muted-foreground">{p.client}</td>
                       <td className="py-3 px-4">{p.location}</td>
@@ -118,7 +118,7 @@ export default function AdminProjects() {
                         <div className="flex items-center gap-2 justify-center">
                           <div className="w-16 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div
-                              className="h-full bg-[#92ABBB] rounded-full"
+                              className="h-full bg-blue-500 rounded-full"
                               style={{ width: `${p.progress}%` }}
                             />
                           </div>
@@ -128,7 +128,7 @@ export default function AdminProjects() {
                       <td className="py-3 px-4">
                         <div className="flex flex-wrap gap-1">
                           {(p.tradesNeeded ?? []).map(t => (
-                            <Badge key={t} variant="secondary" className="text-[10px] bg-[#92ABBB]/10 text-[#92ABBB]">
+                            <Badge key={t} variant="secondary" className="text-[10px] bg-blue-500/10 text-blue-400">
                               {t}
                             </Badge>
                           ))}

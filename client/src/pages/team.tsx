@@ -60,16 +60,16 @@ const tradeOptions = [
 ];
 
 const tradeColors: Record<string, string> = {
-  Electrician: "bg-amber-50 text-amber-700",
-  "HVAC Technician": "bg-sky-50 text-sky-700",
-  "Mechanical Engineer": "bg-violet-50 text-violet-700",
-  "Network Technician": "bg-emerald-50 text-emerald-700",
-  "Fire Protection Specialist": "bg-red-50 text-red-700",
-  "Project Manager": "bg-rose-50 text-rose-700",
-  "Facility Engineer": "bg-blue-50 text-blue-700",
-  "Structural Engineer": "bg-purple-50 text-purple-700",
-  "General Contractor": "bg-gray-100 text-gray-600",
-  "Safety Officer": "bg-orange-50 text-orange-700",
+  Electrician: "bg-amber-500/15 text-amber-400",
+  "HVAC Technician": "bg-sky-500/15 text-sky-400",
+  "Mechanical Engineer": "bg-violet-500/15 text-violet-400",
+  "Network Technician": "bg-emerald-500/15 text-emerald-400",
+  "Fire Protection Specialist": "bg-red-500/15 text-red-400",
+  "Project Manager": "bg-rose-500/15 text-rose-400",
+  "Facility Engineer": "bg-blue-500/15 text-blue-400",
+  "Structural Engineer": "bg-purple-500/15 text-purple-400",
+  "General Contractor": "bg-gray-500/15 text-gray-400",
+  "Safety Officer": "bg-orange-500/15 text-orange-400",
 };
 
 function getInitials(name: string) {
@@ -365,7 +365,7 @@ export default function Team() {
             <Card key={worker.id} className="shadow-md hover:shadow-xl hover:scale-[1.02] transition-all duration-200" data-testid={`card-worker-${worker.id}`}>
               <CardContent className="p-5">
                 <div className="flex items-start gap-4">
-                  <Avatar className={`h-12 w-12 ${worker.available ? "ring-2 ring-success ring-offset-2 ring-offset-card" : ""}`}>
+                  <Avatar className={`h-12 w-12 ${worker.available ? "ring-2 ring-emerald-500 ring-offset-2 ring-offset-card" : ""}`}>
                     <AvatarFallback className="bg-primary/15 text-primary text-sm font-semibold">
                       {getInitials(worker.name)}
                     </AvatarFallback>
@@ -375,7 +375,7 @@ export default function Team() {
                       <h3 className="font-bold text-base" data-testid={`text-worker-name-${worker.id}`}>
                         {worker.name}
                       </h3>
-                      <Badge variant={worker.available ? "default" : "secondary"} className={`text-[10px] ${worker.available ? "bg-success/15 text-success" : ""}`}>
+                      <Badge variant={worker.available ? "default" : "secondary"} className={`text-[10px] ${worker.available ? "bg-emerald-500/15 text-emerald-400" : ""}`}>
                         {worker.available ? "Available" : "On Assignment"}
                       </Badge>
                     </div>

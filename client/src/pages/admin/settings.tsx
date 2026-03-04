@@ -11,7 +11,7 @@ export default function AdminSettings() {
         <div className="relative z-10 p-8">
           <div className="flex items-center gap-2 mb-2">
             <Settings className="h-6 w-6 text-primary" />
-            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-[#1A1A1A]">
+            <h1 className="text-3xl sm:text-4xl font-extrabold tracking-tight text-white">
               Settings
             </h1>
           </div>
@@ -21,13 +21,13 @@ export default function AdminSettings() {
         </div>
       </div>
 
-      <Card className="bg-white shadow-md">
+      <Card className="border border-white/10">
         <CardHeader>
           <CardTitle className="text-base font-semibold">Platform Settings</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="flex flex-col items-center justify-center py-12 text-center">
-            <Settings className="h-12 w-12 text-muted-foreground/30 mb-4" />
+            <Settings className="h-12 w-12 text-slate-600 mb-4" />
             <p className="text-sm text-muted-foreground">Settings panel coming soon.</p>
             <p className="text-xs text-muted-foreground mt-1">
               Platform configuration, notification preferences, and security settings will be available here.
