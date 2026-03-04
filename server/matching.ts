@@ -78,6 +78,8 @@ export interface ProjectMatchResult {
   alreadyAssigned: boolean;
   skillDetails: SkillDetails;
   certDetails: CertDetails;
+  crossTrade?: boolean;
+  adjacencyDescription?: string;
 }
 
 // ── Ontology Cache ──────────────────────────────────────────────────────
@@ -367,6 +369,60 @@ export async function findJobsForWorker(workerId: string): Promise<ProjectMatchR
       skillDetails: skillResult.details,
       certDetails: certResult.details,
     });
+  }
+
+  // ── Cross-Trade Matching ──────────────────────────────────────────
+  // Query adjacencies for the worker's trade and check qualification
+  if (trade) {
+    const adjacencies = await storage.getTradeAdjacencies(trade.id);
+    const workerCertIds = new Set(workerCerts.map(wc => wc.certificationId));
+    // Track projects already matched directly to avoid duplicates
+    const directProjectIds = new Set(results.map(r => r.project.id));
+
+    for (const adj of adjacencies) {
+      // Check if worker holds the required certification (if any)
+      if (adj.requiredCertificationId && !workerCertIds.has(adj.requiredCertificationId)) {
+        continue; // Worker doesn't have the required cert
+      }
+
+      // Find the target trade name
+      const targetTrade = await storage.getTrade(adj.targetTradeId);
+      if (!targetTrade) continue;
+      const targetTradeName = targetTrade.name;
+
+      // Score skills/certs against the target trade's ontology
+      const targetOntology = await getTradeOntology(adj.targetTradeId);
+      const crossSkillResult = computeSkillScore(targetOntology.skills, workerSkills);
+      const crossCertResult = computeCertScore(targetOntology.certLinks, workerCerts);
+
+      for (const project of activeProjects) {
+        const tradesNeeded = project.tradesNeeded ?? [];
+        if (!tradesNeeded.includes(targetTradeName)) continue;
+        if (directProjectIds.has(project.id)) continue; // Already a direct match
+
+        const alreadyAssigned = assignedProjectIds.has(project.id);
+
+        const score = buildBreakdown({
+          tradeMatch: 15, // Reduced from 25 for cross-trade
+          skillProficiency: crossSkillResult.score,
+          certCompleteness: crossCertResult.score,
+          availability: worker.available ? 15 : 0,
+          experience: computeExperienceScore(worker.experience),
+          assignmentPenalty: alreadyAssigned ? -10 : 0,
+        });
+
+        results.push({
+          project,
+          score,
+          matchedTrade: targetTradeName,
+          alreadyAssigned,
+          skillDetails: crossSkillResult.details,
+          certDetails: crossCertResult.details,
+          crossTrade: true,
+          adjacencyDescription: adj.description || `Cross-trade match via ${ontologyTradeName} → ${targetTradeName} (${adj.transitionDifficulty})`,
+        });
+      }
+    }
   }
 
   // Sort descending by total score, return top 10

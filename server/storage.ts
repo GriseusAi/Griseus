@@ -10,12 +10,14 @@ import {
   type Skill, type InsertSkill,
   type Certification, type InsertCertification,
   type TradeCertification, type InsertTradeCertification,
+  type TradeAdjacency, type InsertTradeAdjacency,
   type ProjectPhase, type InsertProjectPhase,
   type ProjectPhaseTrade, type InsertProjectPhaseTrade,
   type WorkerSkill, type InsertWorkerSkill,
   type WorkerCertification, type InsertWorkerCertification,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
-  trades, skills, certifications, tradesCertifications, projectPhases, projectPhasesTrades,
+  trades, skills, certifications, tradesCertifications, tradeAdjacencies,
+  projectPhases, projectPhasesTrades,
   workerSkills, workerCertifications, passwordResetCodes,
 } from "@shared/schema";
 import { db } from "./db";
@@ -68,6 +70,9 @@ export interface IStorage {
   getCertificationsByTrade(tradeId: string): Promise<TradeCertification[]>;
   getTradesByCertification(certificationId: string): Promise<TradeCertification[]>;
   createTradeCertification(link: InsertTradeCertification): Promise<TradeCertification>;
+
+  getTradeAdjacencies(sourceTradeId: string): Promise<TradeAdjacency[]>;
+  getAllTradeAdjacencies(): Promise<TradeAdjacency[]>;
 
   getProjectPhases(): Promise<ProjectPhase[]>;
   getProjectPhase(id: string): Promise<ProjectPhase | undefined>;
@@ -269,6 +274,16 @@ export class DatabaseStorage implements IStorage {
   async createTradeCertification(link: InsertTradeCertification): Promise<TradeCertification> {
     const [created] = await db.insert(tradesCertifications).values(link).returning();
     return created;
+  }
+
+  // ── Ontology: Trade Adjacencies ─────────────────────────────────────
+
+  async getTradeAdjacencies(sourceTradeId: string): Promise<TradeAdjacency[]> {
+    return db.select().from(tradeAdjacencies).where(eq(tradeAdjacencies.sourceTradeId, sourceTradeId));
+  }
+
+  async getAllTradeAdjacencies(): Promise<TradeAdjacency[]> {
+    return db.select().from(tradeAdjacencies);
   }
 
   // ── Ontology: Project Phases ────────────────────────────────────────

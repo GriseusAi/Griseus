@@ -5,6 +5,7 @@ import {
   skills,
   certifications,
   tradesCertifications,
+  tradeAdjacencies,
   projectPhases,
   projectPhasesTrades,
   workerSkills,
@@ -243,6 +244,30 @@ export async function seedOntology() {
     { tradeId: tradeMap["General Labor"], certificationId: certMap["Forklift Operator"] },
   ]);
 
+  // ── TRADE ADJACENCIES (Cross-Trade Intelligence) ──────────────────
+  await db.insert(tradeAdjacencies).values([
+    { sourceTradeId: tradeMap["HVAC Technician"], targetTradeId: tradeMap["Fire Protection Specialist"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "HVAC techs with EPA 608 can handle refrigerant work in fire suppression systems." },
+    { sourceTradeId: tradeMap["Electrician"], targetTradeId: tradeMap["Low Voltage Technician"], requiredCertificationId: certMap["OSHA 30"], transitionDifficulty: "easy", description: "Electricians can transition to low voltage work with basic safety training." },
+    { sourceTradeId: tradeMap["Electrician"], targetTradeId: tradeMap["Controls/BMS Technician"], requiredCertificationId: certMap["NFPA 70E"], transitionDifficulty: "moderate", description: "Electricians with NFPA 70E arc flash training can move into building automation controls." },
+    { sourceTradeId: tradeMap["Low Voltage Technician"], targetTradeId: tradeMap["Controls/BMS Technician"], requiredCertificationId: certMap["CompTIA Network+"], transitionDifficulty: "easy", description: "Low voltage techs with networking knowledge transition smoothly into BMS/controls." },
+    { sourceTradeId: tradeMap["Plumber/Pipefitter"], targetTradeId: tradeMap["Fire Protection Specialist"], requiredCertificationId: certMap["NICET Fire Protection"], transitionDifficulty: "moderate", description: "Pipefitters with NICET certification can install and maintain fire suppression piping." },
+    { sourceTradeId: tradeMap["Structural Ironworker"], targetTradeId: tradeMap["Mechanical Insulator"], transitionDifficulty: "hard", description: "Ironworkers can transition to insulation work but require significant retraining in thermal systems." },
+    { sourceTradeId: tradeMap["Sheet Metal Worker"], targetTradeId: tradeMap["HVAC Technician"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "Sheet metal workers with EPA 608 can move into HVAC installation and service." },
+    { sourceTradeId: tradeMap["Welder"], targetTradeId: tradeMap["Structural Ironworker"], requiredCertificationId: certMap["Rigging/Signal Person"], transitionDifficulty: "moderate", description: "Welders with rigging certification can transition into structural ironwork erection." },
+    { sourceTradeId: tradeMap["Welder"], targetTradeId: tradeMap["Plumber/Pipefitter"], requiredCertificationId: certMap["ASME B31.1/B31.3"], transitionDifficulty: "moderate", description: "Welders qualified under ASME pressure piping codes can do pipefitting work." },
+    { sourceTradeId: tradeMap["Fire Protection Specialist"], targetTradeId: tradeMap["Plumber/Pipefitter"], requiredCertificationId: certMap["UA Journeyman"], transitionDifficulty: "moderate", description: "Fire protection specialists with UA journeyman status can do general plumbing/pipefitting." },
+    { sourceTradeId: tradeMap["Controls/BMS Technician"], targetTradeId: tradeMap["Electrician"], requiredCertificationId: certMap["NFPA 70E"], transitionDifficulty: "moderate", description: "Controls techs with NFPA 70E can handle electrical installation and maintenance work." },
+    { sourceTradeId: tradeMap["Controls/BMS Technician"], targetTradeId: tradeMap["Low Voltage Technician"], transitionDifficulty: "easy", description: "BMS technicians already have the skills to do low voltage cabling and termination." },
+    { sourceTradeId: tradeMap["General Labor"], targetTradeId: tradeMap["Mechanical Insulator"], requiredCertificationId: certMap["OSHA 30"], transitionDifficulty: "moderate", description: "General laborers with OSHA 30 can move into insulation installation with on-the-job training." },
+    { sourceTradeId: tradeMap["General Labor"], targetTradeId: tradeMap["Concrete Specialist"], transitionDifficulty: "moderate", description: "General laborers can advance to concrete specialist roles through hands-on experience." },
+    { sourceTradeId: tradeMap["Sheet Metal Worker"], targetTradeId: tradeMap["Mechanical Insulator"], transitionDifficulty: "easy", description: "Sheet metal workers' fabrication skills transfer directly to insulation jacketing and application." },
+    { sourceTradeId: tradeMap["HVAC Technician"], targetTradeId: tradeMap["Sheet Metal Worker"], transitionDifficulty: "easy", description: "HVAC techs with ductwork experience can easily transition to sheet metal fabrication." },
+    { sourceTradeId: tradeMap["Low Voltage Technician"], targetTradeId: tradeMap["Electrician"], requiredCertificationId: certMap["Journeyman Electrician License"], transitionDifficulty: "hard", description: "Low voltage techs need a journeyman license to perform high-voltage electrical work." },
+    { sourceTradeId: tradeMap["Plumber/Pipefitter"], targetTradeId: tradeMap["HVAC Technician"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "Pipefitters with EPA 608 can work on HVAC refrigerant and chilled water systems." },
+  ]);
+
+  console.log("Seeded 18 trade adjacencies.");
+
   // ── PROJECT PHASES ──────────────────────────────────────────────────
   const createdPhases = await db.insert(projectPhases).values([
     { name: "Site Preparation", description: "Clearing, grading, erosion control, temporary utilities, and construction access roads.", orderIndex: 1 },
@@ -410,4 +435,52 @@ export async function seedOntology() {
 
   console.log(`Ontology seeded: ${createdTrades.length} trades, ${createdSkills.length} skills, ${createdCerts.length} certifications, ${createdPhases.length} phases`);
   console.log(`Linked: ${workerSkillRows.length} worker-skills, ${workerCertRows.length} worker-certifications`);
+}
+
+/**
+ * Seeds trade adjacencies on an already-seeded DB if they don't exist yet.
+ * Safe to call multiple times — skips if adjacencies already exist.
+ */
+export async function seedTradeAdjacencies() {
+  const existing = await db.select().from(tradeAdjacencies);
+  if (existing.length > 0) {
+    console.log("Trade adjacencies already seeded, skipping.");
+    return;
+  }
+
+  // Need trade and cert maps from existing data
+  const existingTrades = await db.select().from(trades);
+  if (existingTrades.length === 0) {
+    console.log("No trades found — run seedOntology first.");
+    return;
+  }
+  const tradeMap: Record<string, string> = {};
+  for (const t of existingTrades) tradeMap[t.name] = t.id;
+
+  const existingCerts = await db.select().from(certifications);
+  const certMap: Record<string, string> = {};
+  for (const c of existingCerts) certMap[c.name] = c.id;
+
+  await db.insert(tradeAdjacencies).values([
+    { sourceTradeId: tradeMap["HVAC Technician"], targetTradeId: tradeMap["Fire Protection Specialist"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "HVAC techs with EPA 608 can handle refrigerant work in fire suppression systems." },
+    { sourceTradeId: tradeMap["Electrician"], targetTradeId: tradeMap["Low Voltage Technician"], requiredCertificationId: certMap["OSHA 30"], transitionDifficulty: "easy", description: "Electricians can transition to low voltage work with basic safety training." },
+    { sourceTradeId: tradeMap["Electrician"], targetTradeId: tradeMap["Controls/BMS Technician"], requiredCertificationId: certMap["NFPA 70E"], transitionDifficulty: "moderate", description: "Electricians with NFPA 70E arc flash training can move into building automation controls." },
+    { sourceTradeId: tradeMap["Low Voltage Technician"], targetTradeId: tradeMap["Controls/BMS Technician"], requiredCertificationId: certMap["CompTIA Network+"], transitionDifficulty: "easy", description: "Low voltage techs with networking knowledge transition smoothly into BMS/controls." },
+    { sourceTradeId: tradeMap["Plumber/Pipefitter"], targetTradeId: tradeMap["Fire Protection Specialist"], requiredCertificationId: certMap["NICET Fire Protection"], transitionDifficulty: "moderate", description: "Pipefitters with NICET certification can install and maintain fire suppression piping." },
+    { sourceTradeId: tradeMap["Structural Ironworker"], targetTradeId: tradeMap["Mechanical Insulator"], transitionDifficulty: "hard", description: "Ironworkers can transition to insulation work but require significant retraining in thermal systems." },
+    { sourceTradeId: tradeMap["Sheet Metal Worker"], targetTradeId: tradeMap["HVAC Technician"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "Sheet metal workers with EPA 608 can move into HVAC installation and service." },
+    { sourceTradeId: tradeMap["Welder"], targetTradeId: tradeMap["Structural Ironworker"], requiredCertificationId: certMap["Rigging/Signal Person"], transitionDifficulty: "moderate", description: "Welders with rigging certification can transition into structural ironwork erection." },
+    { sourceTradeId: tradeMap["Welder"], targetTradeId: tradeMap["Plumber/Pipefitter"], requiredCertificationId: certMap["ASME B31.1/B31.3"], transitionDifficulty: "moderate", description: "Welders qualified under ASME pressure piping codes can do pipefitting work." },
+    { sourceTradeId: tradeMap["Fire Protection Specialist"], targetTradeId: tradeMap["Plumber/Pipefitter"], requiredCertificationId: certMap["UA Journeyman"], transitionDifficulty: "moderate", description: "Fire protection specialists with UA journeyman status can do general plumbing/pipefitting." },
+    { sourceTradeId: tradeMap["Controls/BMS Technician"], targetTradeId: tradeMap["Electrician"], requiredCertificationId: certMap["NFPA 70E"], transitionDifficulty: "moderate", description: "Controls techs with NFPA 70E can handle electrical installation and maintenance work." },
+    { sourceTradeId: tradeMap["Controls/BMS Technician"], targetTradeId: tradeMap["Low Voltage Technician"], transitionDifficulty: "easy", description: "BMS technicians already have the skills to do low voltage cabling and termination." },
+    { sourceTradeId: tradeMap["General Labor"], targetTradeId: tradeMap["Mechanical Insulator"], requiredCertificationId: certMap["OSHA 30"], transitionDifficulty: "moderate", description: "General laborers with OSHA 30 can move into insulation installation with on-the-job training." },
+    { sourceTradeId: tradeMap["General Labor"], targetTradeId: tradeMap["Concrete Specialist"], transitionDifficulty: "moderate", description: "General laborers can advance to concrete specialist roles through hands-on experience." },
+    { sourceTradeId: tradeMap["Sheet Metal Worker"], targetTradeId: tradeMap["Mechanical Insulator"], transitionDifficulty: "easy", description: "Sheet metal workers' fabrication skills transfer directly to insulation jacketing and application." },
+    { sourceTradeId: tradeMap["HVAC Technician"], targetTradeId: tradeMap["Sheet Metal Worker"], transitionDifficulty: "easy", description: "HVAC techs with ductwork experience can easily transition to sheet metal fabrication." },
+    { sourceTradeId: tradeMap["Low Voltage Technician"], targetTradeId: tradeMap["Electrician"], requiredCertificationId: certMap["Journeyman Electrician License"], transitionDifficulty: "hard", description: "Low voltage techs need a journeyman license to perform high-voltage electrical work." },
+    { sourceTradeId: tradeMap["Plumber/Pipefitter"], targetTradeId: tradeMap["HVAC Technician"], requiredCertificationId: certMap["EPA 608 Universal"], transitionDifficulty: "moderate", description: "Pipefitters with EPA 608 can work on HVAC refrigerant and chilled water systems." },
+  ]);
+
+  console.log("Seeded 18 trade adjacencies (backfill).");
 }

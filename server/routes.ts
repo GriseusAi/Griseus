@@ -11,7 +11,7 @@ import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, User } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, User } from "@shared/schema";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -22,18 +22,20 @@ interface PlatformContext {
   skills: Skill[];
   certifications: Certification[];
   activeProjects: Project[];
+  tradeAdjacencies: TradeAdjacency[];
 }
 
 async function gatherPlatformContext(): Promise<PlatformContext> {
-  const [projects, workers, trades, skills, certifications, activeProjects] = await Promise.all([
+  const [projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies] = await Promise.all([
     storage.getProjects(),
     storage.getWorkers(),
     storage.getTrades(),
     storage.getSkills(),
     storage.getCertifications(),
     storage.getActiveProjects(),
+    storage.getAllTradeAdjacencies(),
   ]);
-  return { projects, workers, trades, skills, certifications, activeProjects };
+  return { projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies };
 }
 
 interface MatchingIntent {
@@ -104,7 +106,8 @@ function buildSystemPrompt(
     `You are Griseus Site AI, the intelligent assistant for a data center workforce management platform.
 Base ALL your answers on the REAL platform data provided below. Never invent workers, projects, or data that is not listed.
 Use plain text only, no markdown formatting. Use newlines to separate points.
-Keep answers concise and actionable. Respond in the same language the user writes in.`
+Keep answers concise and actionable. Respond in the same language the user writes in.
+When a worker asks for job matches, also recommend adjacent-trade jobs they may qualify for based on their certifications and cross-trade adjacencies. Format cross-trade suggestions like: "Based on your [Trade] certifications, you also qualify for these [Adjacent Trade] roles..."`
   );
 
   // 2. User personalization
@@ -198,6 +201,19 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
     sections.push(`\n--- CERTIFICATIONS ---\n${certLines.join("\n")}`);
   }
 
+  // 8.5 Cross-trade adjacencies
+  if (ctx.tradeAdjacencies.length > 0) {
+    const tradeIdToName = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const certIdToName = new Map(ctx.certifications.map(c => [c.id, c.name]));
+    const adjLines = ctx.tradeAdjacencies.map(a => {
+      const src = tradeIdToName.get(a.sourceTradeId) || "Unknown";
+      const tgt = tradeIdToName.get(a.targetTradeId) || "Unknown";
+      const cert = a.requiredCertificationId ? certIdToName.get(a.requiredCertificationId) || "Unknown" : "none";
+      return `  - ${src} -> ${tgt} (difficulty: ${a.transitionDifficulty}, required cert: ${cert})${a.description ? ` — ${a.description}` : ""}`;
+    });
+    sections.push(`\n--- CROSS-TRADE ADJACENCIES ---\n${adjLines.join("\n")}`);
+  }
+
   // 8. Matching results (conditional)
   if (matchingResults?.workers && matchingResults.workers.length > 0) {
     const lines = matchingResults.workers.map((r, i) =>
@@ -207,10 +223,22 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
   }
 
   if (matchingResults?.jobs && matchingResults.jobs.length > 0) {
-    const lines = matchingResults.jobs.map((r, i) =>
-      `  ${i + 1}. ${r.project.name} (${r.project.location}) — Score: ${r.score.total}/100 (trade: ${r.score.tradeMatch}, skills: ${r.score.skillProficiency}, certs: ${r.score.certCompleteness}, avail: ${r.score.availability}, exp: ${r.score.experience}${r.alreadyAssigned ? ", ALREADY ASSIGNED" : ""})`
-    );
-    sections.push(`\n--- MATCHING RESULTS: Best Job Matches ---\n${lines.join("\n")}`);
+    const directJobs = matchingResults.jobs.filter(r => !r.crossTrade);
+    const crossTradeJobs = matchingResults.jobs.filter(r => r.crossTrade);
+
+    if (directJobs.length > 0) {
+      const lines = directJobs.map((r, i) =>
+        `  ${i + 1}. ${r.project.name} (${r.project.location}) — Score: ${r.score.total}/100 (trade: ${r.score.tradeMatch}, skills: ${r.score.skillProficiency}, certs: ${r.score.certCompleteness}, avail: ${r.score.availability}, exp: ${r.score.experience}${r.alreadyAssigned ? ", ALREADY ASSIGNED" : ""})`
+      );
+      sections.push(`\n--- MATCHING RESULTS: Best Job Matches ---\n${lines.join("\n")}`);
+    }
+
+    if (crossTradeJobs.length > 0) {
+      const lines = crossTradeJobs.map((r, i) =>
+        `  ${i + 1}. ${r.project.name} (${r.project.location}) — Score: ${r.score.total}/100 [CROSS-TRADE: ${r.matchedTrade}] ${r.adjacencyDescription || ""}${r.alreadyAssigned ? " (ALREADY ASSIGNED)" : ""}`
+      );
+      sections.push(`\n--- CROSS-TRADE JOB MATCHES ---\n${lines.join("\n")}`);
+    }
   }
 
   return sections.join("\n");
@@ -678,6 +706,34 @@ export async function registerRoutes(
         return res.status(400).json({ message: error.errors.map(e => e.message).join(", ") });
       }
       throw error;
+    }
+  });
+
+  // ── Ontology: Trade Adjacencies ─────────────────────────────────────
+
+  app.get("/api/trade-adjacencies/:tradeId", async (req, res) => {
+    try {
+      const adjacencies = await storage.getTradeAdjacencies(req.params.tradeId);
+      const allTrades = await storage.getTrades();
+      const allCerts = await storage.getCertifications();
+
+      const tradeIdToObj = new Map(allTrades.map(t => [t.id, { id: t.id, name: t.name }]));
+      const certIdToObj = new Map(allCerts.map(c => [c.id, { id: c.id, name: c.name }]));
+
+      const enriched = adjacencies.map(a => ({
+        id: a.id,
+        sourceTrade: tradeIdToObj.get(a.sourceTradeId) || { id: a.sourceTradeId, name: "Unknown" },
+        targetTrade: tradeIdToObj.get(a.targetTradeId) || { id: a.targetTradeId, name: "Unknown" },
+        requiredCertification: a.requiredCertificationId
+          ? certIdToObj.get(a.requiredCertificationId) || { id: a.requiredCertificationId, name: "Unknown" }
+          : null,
+        transitionDifficulty: a.transitionDifficulty,
+        description: a.description,
+      }));
+
+      res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

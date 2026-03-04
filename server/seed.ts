@@ -955,6 +955,8 @@ export async function seedDatabase() {
   console.log("Database seeded successfully with realistic data center data.");
 
   // Seed ontology tables
-  const { seedOntology } = await import("./seed-ontology");
+  const { seedOntology, seedTradeAdjacencies } = await import("./seed-ontology");
   await seedOntology();
+  // Backfill trade adjacencies if ontology was already seeded but adjacencies weren't
+  await seedTradeAdjacencies();
 }

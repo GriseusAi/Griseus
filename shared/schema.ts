@@ -191,6 +191,19 @@ export const insertTradeCertificationSchema = createInsertSchema(tradesCertifica
 export type InsertTradeCertification = z.infer<typeof insertTradeCertificationSchema>;
 export type TradeCertification = typeof tradesCertifications.$inferSelect;
 
+export const tradeAdjacencies = pgTable("trade_adjacencies", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  sourceTradeId: varchar("source_trade_id").notNull(),
+  targetTradeId: varchar("target_trade_id").notNull(),
+  requiredCertificationId: varchar("required_certification_id"),
+  transitionDifficulty: text("transition_difficulty").notNull(), // "easy" | "moderate" | "hard"
+  description: text("description"),
+});
+
+export const insertTradeAdjacencySchema = createInsertSchema(tradeAdjacencies).omit({ id: true });
+export type InsertTradeAdjacency = z.infer<typeof insertTradeAdjacencySchema>;
+export type TradeAdjacency = typeof tradeAdjacencies.$inferSelect;
+
 export const projectPhases = pgTable("project_phases", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
