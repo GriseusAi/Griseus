@@ -11,12 +11,16 @@ import {
   type Certification, type InsertCertification,
   type TradeCertification, type InsertTradeCertification,
   type TradeAdjacency, type InsertTradeAdjacency,
+  type CertificationRequirement, type InsertCertificationRequirement,
+  type WageData, type InsertWageData,
+  type PhaseTradeRequirement, type InsertPhaseTradeRequirement,
   type ProjectPhase, type InsertProjectPhase,
   type ProjectPhaseTrade, type InsertProjectPhaseTrade,
   type WorkerSkill, type InsertWorkerSkill,
   type WorkerCertification, type InsertWorkerCertification,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
   trades, skills, certifications, tradesCertifications, tradeAdjacencies,
+  certificationRequirements, wageData, phaseTradeRequirements,
   projectPhases, projectPhasesTrades,
   workerSkills, workerCertifications, passwordResetCodes,
 } from "@shared/schema";
@@ -73,6 +77,18 @@ export interface IStorage {
 
   getTradeAdjacencies(sourceTradeId: string): Promise<TradeAdjacency[]>;
   getAllTradeAdjacencies(): Promise<TradeAdjacency[]>;
+
+  // Certification Requirements
+  getCertificationRequirement(certificationId: string): Promise<CertificationRequirement | undefined>;
+  getAllCertificationRequirements(): Promise<CertificationRequirement[]>;
+
+  // Wage Data
+  getWageData(tradeId: string, region?: string): Promise<WageData[]>;
+  getAllWageData(): Promise<WageData[]>;
+
+  // Phase-Trade Requirements
+  getPhaseTradeRequirements(projectPhaseId: string): Promise<PhaseTradeRequirement[]>;
+  getAllPhaseTradeRequirements(): Promise<PhaseTradeRequirement[]>;
 
   getProjectPhases(): Promise<ProjectPhase[]>;
   getProjectPhase(id: string): Promise<ProjectPhase | undefined>;
@@ -284,6 +300,40 @@ export class DatabaseStorage implements IStorage {
 
   async getAllTradeAdjacencies(): Promise<TradeAdjacency[]> {
     return db.select().from(tradeAdjacencies);
+  }
+
+  // ── Ontology: Certification Requirements ────────────────────────────
+
+  async getCertificationRequirement(certificationId: string): Promise<CertificationRequirement | undefined> {
+    const [req] = await db.select().from(certificationRequirements).where(eq(certificationRequirements.certificationId, certificationId));
+    return req;
+  }
+
+  async getAllCertificationRequirements(): Promise<CertificationRequirement[]> {
+    return db.select().from(certificationRequirements);
+  }
+
+  // ── Ontology: Wage Data ─────────────────────────────────────────────
+
+  async getWageData(tradeId: string, region?: string): Promise<WageData[]> {
+    if (region) {
+      return db.select().from(wageData).where(and(eq(wageData.tradeId, tradeId), eq(wageData.region, region)));
+    }
+    return db.select().from(wageData).where(eq(wageData.tradeId, tradeId));
+  }
+
+  async getAllWageData(): Promise<WageData[]> {
+    return db.select().from(wageData);
+  }
+
+  // ── Ontology: Phase-Trade Requirements ──────────────────────────────
+
+  async getPhaseTradeRequirements(projectPhaseId: string): Promise<PhaseTradeRequirement[]> {
+    return db.select().from(phaseTradeRequirements).where(eq(phaseTradeRequirements.projectPhaseId, projectPhaseId));
+  }
+
+  async getAllPhaseTradeRequirements(): Promise<PhaseTradeRequirement[]> {
+    return db.select().from(phaseTradeRequirements);
   }
 
   // ── Ontology: Project Phases ────────────────────────────────────────

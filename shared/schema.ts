@@ -249,6 +249,56 @@ export const insertWorkerCertificationSchema = createInsertSchema(workerCertific
 export type InsertWorkerCertification = z.infer<typeof insertWorkerCertificationSchema>;
 export type WorkerCertification = typeof workerCertifications.$inferSelect;
 
+// --- Certification Expiry Tracking ---
+
+export const certificationRequirements = pgTable("certification_requirements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  certificationId: varchar("certification_id").notNull(),
+  validityPeriod: integer("validity_period"), // months, null = never expires
+  renewalProcess: text("renewal_process"),
+  renewalCost: doublePrecision("renewal_cost"), // approximate USD
+  continuingEducationHours: integer("continuing_education_hours"),
+});
+
+export const insertCertificationRequirementSchema = createInsertSchema(certificationRequirements).omit({ id: true });
+export type InsertCertificationRequirement = z.infer<typeof insertCertificationRequirementSchema>;
+export type CertificationRequirement = typeof certificationRequirements.$inferSelect;
+
+// --- Wage Intelligence ---
+
+export const wageData = pgTable("wage_data", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  tradeId: varchar("trade_id").notNull(),
+  region: text("region").notNull(),
+  experienceLevel: text("experience_level").notNull(), // "entry" | "mid" | "senior" | "master"
+  hourlyRateMin: doublePrecision("hourly_rate_min").notNull(),
+  hourlyRateMax: doublePrecision("hourly_rate_max").notNull(),
+  overtimeMultiplier: doublePrecision("overtime_multiplier").notNull().default(1.5),
+  perDiemDaily: doublePrecision("per_diem_daily"),
+  dataSource: text("data_source"),
+  lastUpdated: timestamp("last_updated").defaultNow(),
+});
+
+export const insertWageDataSchema = createInsertSchema(wageData).omit({ id: true, lastUpdated: true });
+export type InsertWageData = z.infer<typeof insertWageDataSchema>;
+export type WageData = typeof wageData.$inferSelect;
+
+// --- Phase-Trade Requirements Matrix ---
+
+export const phaseTradeRequirements = pgTable("phase_trade_requirements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  projectPhaseId: varchar("project_phase_id").notNull(),
+  tradeId: varchar("trade_id").notNull(),
+  workersNeeded: integer("workers_needed").notNull().default(1),
+  priority: text("priority").notNull(), // "critical" | "important" | "supporting"
+  durationWeeks: integer("duration_weeks").notNull(),
+  notes: text("notes"),
+});
+
+export const insertPhaseTradeRequirementSchema = createInsertSchema(phaseTradeRequirements).omit({ id: true });
+export type InsertPhaseTradeRequirement = z.infer<typeof insertPhaseTradeRequirementSchema>;
+export type PhaseTradeRequirement = typeof phaseTradeRequirements.$inferSelect;
+
 // --- Password Reset Codes ---
 
 export const passwordResetCodes = pgTable("password_reset_codes", {

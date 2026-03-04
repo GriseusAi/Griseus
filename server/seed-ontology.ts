@@ -6,6 +6,9 @@ import {
   certifications,
   tradesCertifications,
   tradeAdjacencies,
+  certificationRequirements,
+  wageData,
+  phaseTradeRequirements,
   projectPhases,
   projectPhasesTrades,
   workerSkills,
@@ -483,4 +486,184 @@ export async function seedTradeAdjacencies() {
   ]);
 
   console.log("Seeded 18 trade adjacencies (backfill).");
+}
+
+/**
+ * Seeds certification expiry/renewal requirements.
+ */
+export async function seedCertificationRequirements() {
+  const existing = await db.select().from(certificationRequirements);
+  if (existing.length > 0) {
+    console.log("Certification requirements already seeded, skipping.");
+    return;
+  }
+
+  const existingCerts = await db.select().from(certifications);
+  if (existingCerts.length === 0) {
+    console.log("No certifications found — run seedOntology first.");
+    return;
+  }
+  const certMap: Record<string, string> = {};
+  for (const c of existingCerts) certMap[c.name] = c.id;
+
+  await db.insert(certificationRequirements).values([
+    { certificationId: certMap["EPA 608 Universal"], validityPeriod: null, renewalProcess: "Never expires once obtained. No renewal required.", renewalCost: 0, continuingEducationHours: null },
+    { certificationId: certMap["OSHA 10"], validityPeriod: null, renewalProcess: "Never expires. Recommended refresh every 5 years. Retake full course.", renewalCost: 75, continuingEducationHours: null },
+    { certificationId: certMap["OSHA 30"], validityPeriod: null, renewalProcess: "Never expires. Recommended refresh every 5 years. Retake full course.", renewalCost: 150, continuingEducationHours: null },
+    { certificationId: certMap["NATE Certification"], validityPeriod: 24, renewalProcess: "Recertification exam required every 2 years. Must pass current version of specialty exam.", renewalCost: 175, continuingEducationHours: null },
+    { certificationId: certMap["NFPA 70E"], validityPeriod: 36, renewalProcess: "Retraining required every 3 years. Must complete updated classroom and hands-on training.", renewalCost: 300, continuingEducationHours: null },
+    { certificationId: certMap["BICSI RCDD"], validityPeriod: 36, renewalProcess: "Requires 45 Continuing Education Units (CEUs) within 3-year cycle. Submit renewal application.", renewalCost: 250, continuingEducationHours: 45 },
+    { certificationId: certMap["Journeyman Electrician License"], validityPeriod: 36, renewalProcess: "Varies by state. Typically requires continuing education hours and renewal fee every 3 years.", renewalCost: 200, continuingEducationHours: 24 },
+    { certificationId: certMap["Master Electrician License"], validityPeriod: 36, renewalProcess: "Varies by state. Typically requires continuing education hours and renewal fee every 3 years.", renewalCost: 250, continuingEducationHours: 30 },
+    { certificationId: certMap["NCCER Electrical"], validityPeriod: null, renewalProcess: "NCCER credentials never expire. Certification is permanent once earned.", renewalCost: 0, continuingEducationHours: null },
+    { certificationId: certMap["AWS Welding Cert"], validityPeriod: 6, renewalProcess: "Expires every 6 months without welding continuity log. Must retest or submit employer continuity verification.", renewalCost: 300, continuingEducationHours: null },
+    { certificationId: certMap["First Aid/CPR"], validityPeriod: 24, renewalProcess: "Full recertification course required every 2 years. Includes written exam and skills demonstration.", renewalCost: 65, continuingEducationHours: null },
+    { certificationId: certMap["Confined Space Entry"], validityPeriod: 12, renewalProcess: "Annual refresher training recommended. Full classroom and practical training renewal.", renewalCost: 150, continuingEducationHours: null },
+    { certificationId: certMap["Forklift Operator"], validityPeriod: 36, renewalProcess: "Evaluation required every 3 years. Includes written test and practical driving evaluation.", renewalCost: 100, continuingEducationHours: null },
+    { certificationId: certMap["LEED AP"], validityPeriod: 24, renewalProcess: "Requires 30 CE hours within 2-year reporting period. Must maintain through GBCI.", renewalCost: 50, continuingEducationHours: 30 },
+    { certificationId: certMap["CompTIA Network+"], validityPeriod: 36, renewalProcess: "Requires 30 CEUs within 3-year cycle. Can also renew by passing current exam or earning higher cert.", renewalCost: 150, continuingEducationHours: 30 },
+  ]);
+
+  console.log("Seeded 15 certification requirements.");
+}
+
+/**
+ * Seeds wage intelligence data for 6 trades across 4 regions.
+ */
+export async function seedWageData() {
+  const existing = await db.select().from(wageData);
+  if (existing.length > 0) {
+    console.log("Wage data already seeded, skipping.");
+    return;
+  }
+
+  const existingTrades = await db.select().from(trades);
+  if (existingTrades.length === 0) {
+    console.log("No trades found — run seedOntology first.");
+    return;
+  }
+  const tradeMap: Record<string, string> = {};
+  for (const t of existingTrades) tradeMap[t.name] = t.id;
+
+  // Regional multipliers: NoVA=1.12, DFW=1.0, Phoenix=1.02, Columbus=0.92
+  const regions = [
+    { name: "Northern Virginia", mult: 1.12, perDiem: 95 },
+    { name: "Dallas-Fort Worth, TX", mult: 1.0, perDiem: 80 },
+    { name: "Phoenix Metro, AZ", mult: 1.02, perDiem: 82 },
+    { name: "Columbus/New Albany, OH", mult: 0.92, perDiem: 75 },
+  ];
+
+  // Base wage ranges per trade per experience level (BLS/industry reference)
+  const tradeWages: Array<{ trade: string; entry: [number, number]; mid: [number, number]; senior: [number, number]; master: [number, number] }> = [
+    { trade: "Electrician", entry: [25, 30], mid: [35, 45], senior: [50, 65], master: [65, 85] },
+    { trade: "HVAC Technician", entry: [22, 28], mid: [32, 42], senior: [45, 60], master: [60, 80] },
+    { trade: "Plumber/Pipefitter", entry: [24, 29], mid: [33, 43], senior: [48, 62], master: [62, 82] },
+    { trade: "Low Voltage Technician", entry: [20, 26], mid: [30, 38], senior: [40, 52], master: [52, 68] },
+    { trade: "Fire Protection Specialist", entry: [23, 28], mid: [32, 40], senior: [44, 58], master: [58, 75] },
+    { trade: "Controls/BMS Technician", entry: [26, 32], mid: [38, 48], senior: [52, 68], master: [68, 90] },
+  ];
+
+  const levels = ["entry", "mid", "senior", "master"] as const;
+  const rows: Array<{
+    tradeId: string; region: string; experienceLevel: string;
+    hourlyRateMin: number; hourlyRateMax: number;
+    overtimeMultiplier: number; perDiemDaily: number; dataSource: string;
+  }> = [];
+
+  for (const tw of tradeWages) {
+    const tradeId = tradeMap[tw.trade];
+    if (!tradeId) continue;
+    for (const region of regions) {
+      for (const level of levels) {
+        const [baseMin, baseMax] = tw[level];
+        const min = Math.round(baseMin * region.mult * 100) / 100;
+        const max = Math.round(baseMax * region.mult * 100) / 100;
+        rows.push({
+          tradeId,
+          region: region.name,
+          experienceLevel: level,
+          hourlyRateMin: min,
+          hourlyRateMax: max,
+          overtimeMultiplier: 1.5,
+          perDiemDaily: region.perDiem,
+          dataSource: "BLS 2024 / Industry Survey 2024",
+        });
+      }
+    }
+  }
+
+  await db.insert(wageData).values(rows);
+  console.log(`Seeded ${rows.length} wage data rows.`);
+}
+
+/**
+ * Seeds phase-trade requirements for a standard 60MW data center build.
+ */
+export async function seedPhaseTradeRequirements() {
+  const existing = await db.select().from(phaseTradeRequirements);
+  if (existing.length > 0) {
+    console.log("Phase-trade requirements already seeded, skipping.");
+    return;
+  }
+
+  const existingTrades = await db.select().from(trades);
+  const existingPhases = await db.select().from(projectPhases);
+  if (existingTrades.length === 0 || existingPhases.length === 0) {
+    console.log("No trades or phases found — run seedOntology first.");
+    return;
+  }
+
+  const tradeMap: Record<string, string> = {};
+  for (const t of existingTrades) tradeMap[t.name] = t.id;
+
+  const phaseMap: Record<string, string> = {};
+  for (const p of existingPhases) phaseMap[p.name] = p.id;
+
+  await db.insert(phaseTradeRequirements).values([
+    // Site Preparation
+    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Concrete Specialist"], workersNeeded: 40, priority: "critical", durationWeeks: 12, notes: "Foundation excavation, grading, and initial concrete work for pads and footings." },
+    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 25, priority: "critical", durationWeeks: 10, notes: "Rebar placement, foundation steel, and anchor bolt installation." },
+
+    // Foundation & Structural
+    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Concrete Specialist"], workersNeeded: 50, priority: "critical", durationWeeks: 16, notes: "Major structural concrete: foundations, slabs, elevated decks, equipment pads." },
+    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 35, priority: "critical", durationWeeks: 14, notes: "Steel erection: columns, beams, bracing, metal decking, miscellaneous metals." },
+    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Electrician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "Temporary power distribution, construction lighting, and ground grid installation." },
+
+    // Electrical Rough-In
+    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Electrician"], workersNeeded: 60, priority: "critical", durationWeeks: 20, notes: "Main power distribution, conduit, cable tray, transformer placement, switchgear rooms." },
+    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Plumber/Pipefitter"], workersNeeded: 30, priority: "critical", durationWeeks: 16, notes: "Chilled water piping, glycol loops, condensate lines, drain systems." },
+    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 40, priority: "critical", durationWeeks: 18, notes: "CRAH/CRAC units, ductwork, cooling tower assembly, chiller plant piping." },
+    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 20, priority: "important", durationWeeks: 12, notes: "Pre-action sprinkler piping, clean agent piping, fire alarm rough-in." },
+    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Sheet Metal Worker"], workersNeeded: 15, priority: "important", durationWeeks: 14, notes: "HVAC ductwork fabrication and installation, louvers, dampers." },
+
+    // Mechanical/HVAC Install
+    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 50, priority: "critical", durationWeeks: 20, notes: "Chiller plant commissioning, precision cooling installation, refrigerant systems." },
+    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Plumber/Pipefitter"], workersNeeded: 25, priority: "critical", durationWeeks: 14, notes: "Secondary chilled water loops, valve installation, pressure testing." },
+    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Mechanical Insulator"], workersNeeded: 20, priority: "important", durationWeeks: 16, notes: "Pipe insulation, duct wrapping, vapor barriers on all mechanical systems." },
+    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 20, priority: "critical", durationWeeks: 16, notes: "BMS controller installation, sensor placement, initial programming." },
+
+    // Low Voltage & Cabling
+    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Electrician"], workersNeeded: 80, priority: "critical", durationWeeks: 24, notes: "PDU installation, busway, RPPs, UPS systems, generator paralleling switchgear." },
+    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 25, priority: "important", durationWeeks: 16, notes: "Structured cabling, fiber backbone, network racks, cable tray in white space." },
+    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 15, priority: "important", durationWeeks: 12, notes: "EPMS integration, power meter installation, BACnet/Modbus network build-out." },
+
+    // Controls & BMS Integration
+    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 12, notes: "Full BMS programming, graphics, point-to-point checkout, alarm configuration." },
+    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Electrician"], workersNeeded: 10, priority: "supporting", durationWeeks: 4, notes: "Final electrical connections, VFD programming, generator controls." },
+    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "HVAC system balancing, TAB support, refrigerant charge verification." },
+
+    // Testing & Commissioning
+    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Electrician"], workersNeeded: 30, priority: "critical", durationWeeks: 12, notes: "Load bank testing, IST procedures, arc flash labeling, relay coordination verification." },
+    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 20, priority: "critical", durationWeeks: 10, notes: "Cooling system performance testing, PUE verification, redundancy failover testing." },
+    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 12, notes: "Integrated systems testing, sequence of operations verification, DCIM integration." },
+    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 15, priority: "important", durationWeeks: 8, notes: "Fiber/copper certification, OTDR testing, network connectivity validation." },
+    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 10, priority: "important", durationWeeks: 6, notes: "Fire suppression acceptance testing, VESDA calibration, fire alarm final inspection." },
+
+    // Punch List & Closeout
+    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 10, priority: "critical", durationWeeks: 4, notes: "Final BMS tuning, owner training, as-built documentation, DCIM handover." },
+    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Electrician"], workersNeeded: 10, priority: "supporting", durationWeeks: 4, notes: "Punch list corrections, final labeling, as-built drawings, spare parts inventory." },
+    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "Final balancing adjustments, filter replacement, warranty documentation." },
+  ]);
+
+  console.log("Seeded 28 phase-trade requirement rows.");
 }

@@ -11,7 +11,7 @@ import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, User } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, User } from "@shared/schema";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -23,10 +23,13 @@ interface PlatformContext {
   certifications: Certification[];
   activeProjects: Project[];
   tradeAdjacencies: TradeAdjacency[];
+  certificationRequirements: CertificationRequirement[];
+  wageData: WageData[];
+  phaseTradeRequirements: PhaseTradeRequirement[];
 }
 
 async function gatherPlatformContext(): Promise<PlatformContext> {
-  const [projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies] = await Promise.all([
+  const [projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements] = await Promise.all([
     storage.getProjects(),
     storage.getWorkers(),
     storage.getTrades(),
@@ -34,8 +37,11 @@ async function gatherPlatformContext(): Promise<PlatformContext> {
     storage.getCertifications(),
     storage.getActiveProjects(),
     storage.getAllTradeAdjacencies(),
+    storage.getAllCertificationRequirements(),
+    storage.getAllWageData(),
+    storage.getAllPhaseTradeRequirements(),
   ]);
-  return { projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies };
+  return { projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements };
 }
 
 interface MatchingIntent {
@@ -107,7 +113,10 @@ function buildSystemPrompt(
 Base ALL your answers on the REAL platform data provided below. Never invent workers, projects, or data that is not listed.
 Use plain text only, no markdown formatting. Use newlines to separate points.
 Keep answers concise and actionable. Respond in the same language the user writes in.
-When a worker asks for job matches, also recommend adjacent-trade jobs they may qualify for based on their certifications and cross-trade adjacencies. Format cross-trade suggestions like: "Based on your [Trade] certifications, you also qualify for these [Adjacent Trade] roles..."`
+When a worker asks for job matches, also recommend adjacent-trade jobs they may qualify for based on their certifications and cross-trade adjacencies. Format cross-trade suggestions like: "Based on your [Trade] certifications, you also qualify for these [Adjacent Trade] roles..."
+When asked about certification expiry, warn about upcoming expirations and suggest renewal steps with costs.
+When asked about wages or salary, provide data by trade, region, and experience level from the wage intelligence data.
+When asked about workforce planning or phase staffing, reference the phase-trade requirements matrix to answer questions like "how many electricians for MEP rough-in?".`
   );
 
   // 2. User personalization
@@ -212,6 +221,57 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
       return `  - ${src} -> ${tgt} (difficulty: ${a.transitionDifficulty}, required cert: ${cert})${a.description ? ` — ${a.description}` : ""}`;
     });
     sections.push(`\n--- CROSS-TRADE ADJACENCIES ---\n${adjLines.join("\n")}`);
+  }
+
+  // 8.6 Certification expiry/renewal data
+  if (ctx.certificationRequirements.length > 0) {
+    const certIdToName = new Map(ctx.certifications.map(c => [c.id, c.name]));
+    const reqLines = ctx.certificationRequirements.map(r => {
+      const name = certIdToName.get(r.certificationId) || "Unknown";
+      const validity = r.validityPeriod ? `${r.validityPeriod} months` : "never expires";
+      const cost = r.renewalCost != null ? `$${r.renewalCost}` : "N/A";
+      const ce = r.continuingEducationHours ? `${r.continuingEducationHours} CE hours` : "none";
+      return `  - ${name}: validity=${validity}, renewal cost=${cost}, CE hours=${ce}${r.renewalProcess ? ` — ${r.renewalProcess}` : ""}`;
+    });
+    sections.push(`\n--- CERTIFICATION EXPIRY & RENEWAL ---\n${reqLines.join("\n")}`);
+  }
+
+  // 8.7 Wage intelligence
+  if (ctx.wageData.length > 0) {
+    const tradeIdToName2 = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const byTrade = new Map<string, WageData[]>();
+    for (const w of ctx.wageData) {
+      const key = tradeIdToName2.get(w.tradeId) || "Unknown";
+      if (!byTrade.has(key)) byTrade.set(key, []);
+      byTrade.get(key)!.push(w);
+    }
+    const wageLines: string[] = [];
+    Array.from(byTrade.entries()).forEach(([trade, data]) => {
+      const regionLines = data.map(w =>
+        `    ${w.region} | ${w.experienceLevel}: $${w.hourlyRateMin}-${w.hourlyRateMax}/hr (OT x${w.overtimeMultiplier}${w.perDiemDaily ? `, per diem $${w.perDiemDaily}/day` : ""})`
+      );
+      wageLines.push(`  ${trade}:\n${regionLines.join("\n")}`);
+    });
+    sections.push(`\n--- WAGE INTELLIGENCE (Data Center Construction) ---\n${wageLines.join("\n")}`);
+  }
+
+  // 8.8 Phase-trade requirements matrix
+  if (ctx.phaseTradeRequirements.length > 0) {
+    const tradeIdToName3 = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const byPhase = new Map<string, PhaseTradeRequirement[]>();
+    for (const r of ctx.phaseTradeRequirements) {
+      if (!byPhase.has(r.projectPhaseId)) byPhase.set(r.projectPhaseId, []);
+      byPhase.get(r.projectPhaseId)!.push(r);
+    }
+    const phaseLines: string[] = [];
+    Array.from(byPhase.entries()).forEach(([phaseId, reqs]) => {
+      const tradeLines = reqs.map(r => {
+        const trade = tradeIdToName3.get(r.tradeId) || "Unknown";
+        return `    ${trade}: ${r.workersNeeded} workers, ${r.durationWeeks} weeks, priority=${r.priority}${r.notes ? ` — ${r.notes}` : ""}`;
+      });
+      phaseLines.push(`  Phase ${phaseId}:\n${tradeLines.join("\n")}`);
+    });
+    sections.push(`\n--- PHASE-TRADE REQUIREMENTS (60MW Data Center Build) ---\n${phaseLines.join("\n")}`);
   }
 
   // 8. Matching results (conditional)
@@ -732,6 +792,109 @@ export async function registerRoutes(
       }));
 
       res.json(enriched);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Certification Requirements ──────────────────────────────────────
+
+  app.get("/api/certifications/:id/requirements", async (req, res) => {
+    try {
+      const cert = await storage.getCertification(req.params.id);
+      if (!cert) return res.status(404).json({ message: "Certification not found" });
+
+      const requirement = await storage.getCertificationRequirement(req.params.id);
+      res.json({
+        certification: cert,
+        requirements: requirement || null,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Wage Intelligence ─────────────────────────────────────────────
+
+  app.get("/api/wages", async (req, res) => {
+    try {
+      const { tradeId, region } = req.query;
+      if (tradeId) {
+        const data = await storage.getWageData(tradeId as string, region as string | undefined);
+        // Enrich with trade name
+        const trade = await storage.getTrade(tradeId as string);
+        return res.json(data.map(w => ({
+          ...w,
+          tradeName: trade?.name || "Unknown",
+        })));
+      }
+      // Return all wage data grouped by trade
+      const allData = await storage.getAllWageData();
+      const allTrades = await storage.getTrades();
+      const tradeIdToName = new Map(allTrades.map(t => [t.id, t.name]));
+      res.json(allData.map(w => ({
+        ...w,
+        tradeName: tradeIdToName.get(w.tradeId) || "Unknown",
+      })));
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Phase-Trade Requirements ──────────────────────────────────────
+
+  app.get("/api/phase-requirements", async (req, res) => {
+    try {
+      const { phaseId } = req.query;
+      if (!phaseId) return res.status(400).json({ message: "phaseId query parameter is required" });
+
+      const phase = await storage.getProjectPhase(phaseId as string);
+      if (!phase) return res.status(404).json({ message: "Phase not found" });
+
+      const requirements = await storage.getPhaseTradeRequirements(phaseId as string);
+      const allTrades = await storage.getTrades();
+      const tradeIdToName = new Map(allTrades.map(t => [t.id, t.name]));
+
+      res.json({
+        phase,
+        requirements: requirements.map(r => ({
+          ...r,
+          tradeName: tradeIdToName.get(r.tradeId) || "Unknown",
+        })),
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/phase-requirements/summary", async (_req, res) => {
+    try {
+      const [allPhases, allRequirements, allTrades] = await Promise.all([
+        storage.getProjectPhases(),
+        storage.getAllPhaseTradeRequirements(),
+        storage.getTrades(),
+      ]);
+
+      const tradeIdToName = new Map(allTrades.map(t => [t.id, t.name]));
+
+      const summary = allPhases.map(phase => {
+        const phaseReqs = allRequirements.filter(r => r.projectPhaseId === phase.id);
+        const totalWorkers = phaseReqs.reduce((sum, r) => sum + r.workersNeeded, 0);
+        return {
+          phase: { id: phase.id, name: phase.name, orderIndex: phase.orderIndex },
+          totalWorkers,
+          trades: phaseReqs.map(r => ({
+            tradeName: tradeIdToName.get(r.tradeId) || "Unknown",
+            tradeId: r.tradeId,
+            workersNeeded: r.workersNeeded,
+            priority: r.priority,
+            durationWeeks: r.durationWeeks,
+            notes: r.notes,
+          })),
+        };
+      });
+
+      res.json(summary);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
