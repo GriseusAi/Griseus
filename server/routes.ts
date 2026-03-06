@@ -11,7 +11,7 @@ import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, User } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User } from "@shared/schema";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -26,10 +26,11 @@ interface PlatformContext {
   certificationRequirements: CertificationRequirement[];
   wageData: WageData[];
   phaseTradeRequirements: PhaseTradeRequirement[];
+  projectPhases: ProjectPhase[];
 }
 
 async function gatherPlatformContext(): Promise<PlatformContext> {
-  const [projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements] = await Promise.all([
+  const [projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements, projectPhases] = await Promise.all([
     storage.getProjects(),
     storage.getWorkers(),
     storage.getTrades(),
@@ -40,8 +41,9 @@ async function gatherPlatformContext(): Promise<PlatformContext> {
     storage.getAllCertificationRequirements(),
     storage.getAllWageData(),
     storage.getAllPhaseTradeRequirements(),
+    storage.getProjectPhases(),
   ]);
-  return { projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements };
+  return { projects, workers, trades, skills, certifications, activeProjects, tradeAdjacencies, certificationRequirements, wageData, phaseTradeRequirements, projectPhases };
 }
 
 interface MatchingIntent {
@@ -109,14 +111,24 @@ function buildSystemPrompt(
 
   // 1. Identity & behavior
   sections.push(
-    `You are Griseus Site AI, the intelligent assistant for a data center workforce management platform.
+    `You are Griseus Site AI, the intelligent assistant for a phase-based data center workforce planning platform.
+Griseus specializes in mapping data center project phases to the exact trades and certifications needed.
 Base ALL your answers on the REAL platform data provided below. Never invent workers, projects, or data that is not listed.
 Use plain text only, no markdown formatting. Use newlines to separate points.
 Keep answers concise and actionable. Respond in the same language the user writes in.
+
+PHASE-BASED WORKFORCE PLANNING (your core capability):
+When a company selects or asks about a project phase, provide specific guidance on:
+1. Which trades are required for that phase
+2. Which certifications each trade needs for that specific phase
+3. How many workers are typically needed
+4. Sourcing timeline: recommend companies begin sourcing workers 6-8 weeks before a phase starts
+For example, if asked about MEP Rough-In phase, respond like: "For MEP Rough-In phase, you'll need Electricians with NFPA 70E and OSHA 30, HVAC Technicians with EPA 608 and NATE, and Plumbers/Pipefitters with OSHA 10. Based on typical data center timelines, you should be sourcing 6-8 weeks before this phase starts."
+
 When a worker asks for job matches, also recommend adjacent-trade jobs they may qualify for based on their certifications and cross-trade adjacencies. Format cross-trade suggestions like: "Based on your [Trade] certifications, you also qualify for these [Adjacent Trade] roles..."
 When asked about certification expiry, warn about upcoming expirations and suggest renewal steps with costs.
 When asked about wages or salary, provide data by trade, region, and experience level from the wage intelligence data.
-When asked about workforce planning or phase staffing, reference the phase-trade requirements matrix to answer questions like "how many electricians for MEP rough-in?".`
+When asked about workforce planning or phase staffing, reference the phase-trade requirements matrix including required certifications per phase-trade combination.`
   );
 
   // 2. User personalization
@@ -257,9 +269,10 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
     sections.push(`\n--- WAGE INTELLIGENCE (Data Center Construction) ---\n${wageLines.join("\n")}`);
   }
 
-  // 8.8 Phase-trade requirements matrix
+  // 8.8 Phase-trade requirements matrix (with required certifications per phase-trade)
   if (ctx.phaseTradeRequirements.length > 0) {
     const tradeIdToName3 = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const phaseIdToName = new Map(ctx.projectPhases?.map(p => [p.id, p.name]) || []);
     const byPhase = new Map<string, PhaseTradeRequirement[]>();
     for (const r of ctx.phaseTradeRequirements) {
       if (!byPhase.has(r.projectPhaseId)) byPhase.set(r.projectPhaseId, []);
@@ -267,13 +280,15 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
     }
     const phaseLines: string[] = [];
     Array.from(byPhase.entries()).forEach(([phaseId, reqs]) => {
+      const phaseName = phaseIdToName.get(phaseId) || phaseId;
       const tradeLines = reqs.map(r => {
         const trade = tradeIdToName3.get(r.tradeId) || "Unknown";
-        return `    ${trade}: ${r.workersNeeded} workers, ${r.durationWeeks} weeks, priority=${r.priority}${r.notes ? ` — ${r.notes}` : ""}`;
+        const certs = r.requiredCertifications ? ` | Required certs: ${r.requiredCertifications}` : "";
+        return `    ${trade}: ${r.workersNeeded} workers, ${r.durationWeeks} weeks, priority=${r.priority}${certs}${r.notes ? ` — ${r.notes}` : ""}`;
       });
-      phaseLines.push(`  Phase ${phaseId}:\n${tradeLines.join("\n")}`);
+      phaseLines.push(`  ${phaseName}:\n${tradeLines.join("\n")}`);
     });
-    sections.push(`\n--- PHASE-TRADE REQUIREMENTS (60MW Data Center Build) ---\n${phaseLines.join("\n")}`);
+    sections.push(`\n--- PHASE-TRADE-CERTIFICATION REQUIREMENTS (60MW Data Center Build) ---\nFor each phase, the required trades and their certifications are listed. Recommend sourcing workers 6-8 weeks before a phase starts.\n${phaseLines.join("\n")}`);
   }
 
   // 8. Matching results (conditional)

@@ -273,15 +273,13 @@ export async function seedOntology() {
 
   // ── PROJECT PHASES ──────────────────────────────────────────────────
   const createdPhases = await db.insert(projectPhases).values([
-    { name: "Site Preparation", description: "Clearing, grading, erosion control, temporary utilities, and construction access roads.", orderIndex: 1 },
-    { name: "Foundation & Structural", description: "Concrete foundations, structural steel erection, metal decking, and building envelope.", orderIndex: 2 },
-    { name: "Electrical Rough-In", description: "Main power distribution, conduit runs, cable tray, grounding, and transformer placement.", orderIndex: 3 },
-    { name: "Mechanical/HVAC Install", description: "Chiller plant, CRAH/CRAC units, ductwork, piping, and cooling tower assembly.", orderIndex: 4 },
-    { name: "Plumbing & Fire Protection", description: "Chilled water piping, drainage, fire suppression systems, and sprinkler installation.", orderIndex: 5 },
-    { name: "Low Voltage & Cabling", description: "Structured cabling, fiber optics, cable tray, network racks, and pathway infrastructure.", orderIndex: 6 },
-    { name: "Controls & BMS Integration", description: "BMS programming, sensor installation, EPMS configuration, and system integration.", orderIndex: 7 },
-    { name: "Testing & Commissioning", description: "Integrated systems testing, load bank testing, IST procedures, and performance verification.", orderIndex: 8 },
-    { name: "Punch List & Closeout", description: "Deficiency correction, final inspections, as-built documentation, and owner training.", orderIndex: 9 },
+    { name: "Pre-construction & Planning", description: "Site surveys, permitting, engineering design, procurement, and construction planning.", orderIndex: 1 },
+    { name: "Civil & Foundation", description: "Site clearing, grading, concrete foundations, slabs, equipment pads, and underground utilities.", orderIndex: 2 },
+    { name: "Structural Steel & Envelope", description: "Steel erection, metal decking, building envelope, roofing, and exterior enclosure.", orderIndex: 3 },
+    { name: "MEP Rough-In", description: "Mechanical, Electrical, and Plumbing rough-in including conduit, piping, ductwork, and fire protection.", orderIndex: 4 },
+    { name: "IT Infrastructure & Cabling", description: "Structured cabling, fiber optics, network racks, cable tray, PDUs, and pathway infrastructure.", orderIndex: 5 },
+    { name: "Commissioning & Testing", description: "Integrated systems testing, load bank testing, IST procedures, performance verification, and BMS integration.", orderIndex: 6 },
+    { name: "Operations & Maintenance", description: "Facility turnover, ongoing maintenance, equipment monitoring, and operational support.", orderIndex: 7 },
   ]).returning();
 
   const phaseMap: Record<string, string> = {};
@@ -291,43 +289,39 @@ export async function seedOntology() {
 
   // ── PROJECT PHASES ↔ TRADES ─────────────────────────────────────────
   await db.insert(projectPhasesTrades).values([
-    // Site Preparation
-    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Concrete Specialist"], requiredWorkerCount: 8 },
-    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 4 },
-    // Foundation & Structural
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Concrete Specialist"], requiredWorkerCount: 12 },
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 10 },
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 4 },
-    // Electrical Rough-In
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 20 },
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 6 },
-    // Mechanical/HVAC Install
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 15 },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Sheet Metal Worker"], requiredWorkerCount: 8 },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Mechanical Insulator"], requiredWorkerCount: 6 },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Plumber/Pipefitter"], requiredWorkerCount: 10 },
-    // Plumbing & Fire Protection
-    { projectPhaseId: phaseMap["Plumbing & Fire Protection"], tradeId: tradeMap["Plumber/Pipefitter"], requiredWorkerCount: 12 },
-    { projectPhaseId: phaseMap["Plumbing & Fire Protection"], tradeId: tradeMap["Fire Protection Specialist"], requiredWorkerCount: 8 },
-    // Low Voltage & Cabling
-    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 16 },
-    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 4 },
-    // Controls & BMS Integration
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 8 },
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 4 },
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 3 },
-    // Testing & Commissioning
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 10 },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 6 },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 6 },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Fire Protection Specialist"], requiredWorkerCount: 3 },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 4 },
-    // Punch List & Closeout
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 6 },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 4 },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 4 },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 2 },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Fire Protection Specialist"], requiredWorkerCount: 2 },
+    // Pre-construction & Planning
+    { projectPhaseId: phaseMap["Pre-construction & Planning"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 2 },
+    { projectPhaseId: phaseMap["Pre-construction & Planning"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 2 },
+    // Civil & Foundation
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["Concrete Specialist"], requiredWorkerCount: 12 },
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 6 },
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["General Labor"], requiredWorkerCount: 8 },
+    // Structural Steel & Envelope
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Structural Ironworker"], requiredWorkerCount: 14 },
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Welder"], requiredWorkerCount: 6 },
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Sheet Metal Worker"], requiredWorkerCount: 4 },
+    // MEP Rough-In
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 20 },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 15 },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Plumber/Pipefitter"], requiredWorkerCount: 12 },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Fire Protection Specialist"], requiredWorkerCount: 8 },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Sheet Metal Worker"], requiredWorkerCount: 6 },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Mechanical Insulator"], requiredWorkerCount: 4 },
+    // IT Infrastructure & Cabling
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 16 },
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 10 },
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 6 },
+    // Commissioning & Testing
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 10 },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 6 },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 8 },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Fire Protection Specialist"], requiredWorkerCount: 3 },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 4 },
+    // Operations & Maintenance
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Electrician"], requiredWorkerCount: 6 },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["HVAC Technician"], requiredWorkerCount: 4 },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Controls/BMS Technician"], requiredWorkerCount: 3 },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Low Voltage Technician"], requiredWorkerCount: 3 },
   ]);
 
   // ── WORKER ↔ SKILLS & CERTIFICATIONS ────────────────────────────────
@@ -620,50 +614,46 @@ export async function seedPhaseTradeRequirements() {
   for (const p of existingPhases) phaseMap[p.name] = p.id;
 
   await db.insert(phaseTradeRequirements).values([
-    // Site Preparation
-    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Concrete Specialist"], workersNeeded: 40, priority: "critical", durationWeeks: 12, notes: "Foundation excavation, grading, and initial concrete work for pads and footings." },
-    { projectPhaseId: phaseMap["Site Preparation"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 25, priority: "critical", durationWeeks: 10, notes: "Rebar placement, foundation steel, and anchor bolt installation." },
+    // Pre-construction & Planning
+    { projectPhaseId: phaseMap["Pre-construction & Planning"], tradeId: tradeMap["Electrician"], workersNeeded: 2, priority: "supporting", durationWeeks: 8, requiredCertifications: "OSHA 30, NFPA 70E", notes: "Electrical engineering support, power design review, temporary power planning." },
+    { projectPhaseId: phaseMap["Pre-construction & Planning"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 2, priority: "supporting", durationWeeks: 8, requiredCertifications: "EPA 608 Universal", notes: "Mechanical design review, cooling system planning, equipment procurement support." },
 
-    // Foundation & Structural
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Concrete Specialist"], workersNeeded: 50, priority: "critical", durationWeeks: 16, notes: "Major structural concrete: foundations, slabs, elevated decks, equipment pads." },
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 35, priority: "critical", durationWeeks: 14, notes: "Steel erection: columns, beams, bracing, metal decking, miscellaneous metals." },
-    { projectPhaseId: phaseMap["Foundation & Structural"], tradeId: tradeMap["Electrician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "Temporary power distribution, construction lighting, and ground grid installation." },
+    // Civil & Foundation
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["Concrete Specialist"], workersNeeded: 50, priority: "critical", durationWeeks: 16, requiredCertifications: "ACI Certification, OSHA 10", notes: "Foundation excavation, concrete pads, slabs, footings, and equipment bases." },
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 25, priority: "critical", durationWeeks: 12, requiredCertifications: "OSHA 10", notes: "Rebar placement, foundation steel, anchor bolts, embed plates." },
+    { projectPhaseId: phaseMap["Civil & Foundation"], tradeId: tradeMap["General Labor"], workersNeeded: 30, priority: "important", durationWeeks: 16, requiredCertifications: "OSHA 10", notes: "Site grading, excavation support, material handling, erosion control." },
 
-    // Electrical Rough-In
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Electrician"], workersNeeded: 60, priority: "critical", durationWeeks: 20, notes: "Main power distribution, conduit, cable tray, transformer placement, switchgear rooms." },
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Plumber/Pipefitter"], workersNeeded: 30, priority: "critical", durationWeeks: 16, notes: "Chilled water piping, glycol loops, condensate lines, drain systems." },
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 40, priority: "critical", durationWeeks: 18, notes: "CRAH/CRAC units, ductwork, cooling tower assembly, chiller plant piping." },
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 20, priority: "important", durationWeeks: 12, notes: "Pre-action sprinkler piping, clean agent piping, fire alarm rough-in." },
-    { projectPhaseId: phaseMap["Electrical Rough-In"], tradeId: tradeMap["Sheet Metal Worker"], workersNeeded: 15, priority: "important", durationWeeks: 14, notes: "HVAC ductwork fabrication and installation, louvers, dampers." },
+    // Structural Steel & Envelope
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Structural Ironworker"], workersNeeded: 40, priority: "critical", durationWeeks: 14, requiredCertifications: "OSHA 30", notes: "Steel erection: columns, beams, bracing, metal decking, miscellaneous metals." },
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Welder"], workersNeeded: 15, priority: "critical", durationWeeks: 12, requiredCertifications: "AWS D1.1, OSHA 10", notes: "Structural welding, field connections, moment connections." },
+    { projectPhaseId: phaseMap["Structural Steel & Envelope"], tradeId: tradeMap["Sheet Metal Worker"], workersNeeded: 10, priority: "important", durationWeeks: 10, requiredCertifications: "OSHA 10", notes: "Metal wall panels, roofing, flashing, building envelope weatherproofing." },
 
-    // Mechanical/HVAC Install
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 50, priority: "critical", durationWeeks: 20, notes: "Chiller plant commissioning, precision cooling installation, refrigerant systems." },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Plumber/Pipefitter"], workersNeeded: 25, priority: "critical", durationWeeks: 14, notes: "Secondary chilled water loops, valve installation, pressure testing." },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Mechanical Insulator"], workersNeeded: 20, priority: "important", durationWeeks: 16, notes: "Pipe insulation, duct wrapping, vapor barriers on all mechanical systems." },
-    { projectPhaseId: phaseMap["Mechanical/HVAC Install"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 20, priority: "critical", durationWeeks: 16, notes: "BMS controller installation, sensor placement, initial programming." },
+    // MEP Rough-In (Mechanical, Electrical, Plumbing)
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Electrician"], workersNeeded: 60, priority: "critical", durationWeeks: 20, requiredCertifications: "NFPA 70E, OSHA 30", notes: "Main power distribution, conduit, cable tray, transformer placement, switchgear rooms." },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 45, priority: "critical", durationWeeks: 18, requiredCertifications: "EPA 608 Universal, NATE", notes: "CRAH/CRAC units, ductwork, cooling tower assembly, chiller plant piping." },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Plumber/Pipefitter"], workersNeeded: 30, priority: "critical", durationWeeks: 16, requiredCertifications: "OSHA 10", notes: "Chilled water piping, glycol loops, condensate lines, drain systems, fire suppression piping." },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 20, priority: "important", durationWeeks: 12, requiredCertifications: "NICET Level II, OSHA 10", notes: "Pre-action sprinkler piping, clean agent piping, fire alarm rough-in." },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Sheet Metal Worker"], workersNeeded: 15, priority: "important", durationWeeks: 14, requiredCertifications: "OSHA 10", notes: "HVAC ductwork fabrication and installation, louvers, dampers." },
+    { projectPhaseId: phaseMap["MEP Rough-In"], tradeId: tradeMap["Mechanical Insulator"], workersNeeded: 12, priority: "important", durationWeeks: 12, requiredCertifications: "OSHA 10", notes: "Pipe insulation, duct wrapping, vapor barriers on mechanical systems." },
 
-    // Low Voltage & Cabling
-    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Electrician"], workersNeeded: 80, priority: "critical", durationWeeks: 24, notes: "PDU installation, busway, RPPs, UPS systems, generator paralleling switchgear." },
-    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 25, priority: "important", durationWeeks: 16, notes: "Structured cabling, fiber backbone, network racks, cable tray in white space." },
-    { projectPhaseId: phaseMap["Low Voltage & Cabling"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 15, priority: "important", durationWeeks: 12, notes: "EPMS integration, power meter installation, BACnet/Modbus network build-out." },
+    // IT Infrastructure & Cabling
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 16, requiredCertifications: "BICSI RCDD, OSHA 10", notes: "Structured cabling, fiber backbone, network racks, cable tray in white space." },
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Electrician"], workersNeeded: 40, priority: "critical", durationWeeks: 20, requiredCertifications: "NFPA 70E, OSHA 30", notes: "PDU installation, busway, RPPs, UPS systems, generator paralleling switchgear." },
+    { projectPhaseId: phaseMap["IT Infrastructure & Cabling"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 15, priority: "important", durationWeeks: 12, requiredCertifications: "OSHA 10", notes: "EPMS integration, power meter installation, BACnet/Modbus network build-out." },
 
-    // Controls & BMS Integration
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 12, notes: "Full BMS programming, graphics, point-to-point checkout, alarm configuration." },
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["Electrician"], workersNeeded: 10, priority: "supporting", durationWeeks: 4, notes: "Final electrical connections, VFD programming, generator controls." },
-    { projectPhaseId: phaseMap["Controls & BMS Integration"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "HVAC system balancing, TAB support, refrigerant charge verification." },
+    // Commissioning & Testing
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Electrician"], workersNeeded: 30, priority: "critical", durationWeeks: 12, requiredCertifications: "NFPA 70E, OSHA 30", notes: "Load bank testing, IST procedures, arc flash labeling, relay coordination verification." },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 20, priority: "critical", durationWeeks: 10, requiredCertifications: "EPA 608 Universal", notes: "Cooling system performance testing, PUE verification, redundancy failover testing." },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 12, requiredCertifications: "OSHA 10", notes: "Integrated systems testing, sequence of operations verification, DCIM integration." },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 15, priority: "important", durationWeeks: 8, requiredCertifications: "BICSI RCDD", notes: "Fiber/copper certification, OTDR testing, network connectivity validation." },
+    { projectPhaseId: phaseMap["Commissioning & Testing"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 10, priority: "important", durationWeeks: 6, requiredCertifications: "NICET Level II", notes: "Fire suppression acceptance testing, VESDA calibration, fire alarm final inspection." },
 
-    // Testing & Commissioning
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Electrician"], workersNeeded: 30, priority: "critical", durationWeeks: 12, notes: "Load bank testing, IST procedures, arc flash labeling, relay coordination verification." },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 20, priority: "critical", durationWeeks: 10, notes: "Cooling system performance testing, PUE verification, redundancy failover testing." },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 25, priority: "critical", durationWeeks: 12, notes: "Integrated systems testing, sequence of operations verification, DCIM integration." },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 15, priority: "important", durationWeeks: 8, notes: "Fiber/copper certification, OTDR testing, network connectivity validation." },
-    { projectPhaseId: phaseMap["Testing & Commissioning"], tradeId: tradeMap["Fire Protection Specialist"], workersNeeded: 10, priority: "important", durationWeeks: 6, notes: "Fire suppression acceptance testing, VESDA calibration, fire alarm final inspection." },
-
-    // Punch List & Closeout
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 10, priority: "critical", durationWeeks: 4, notes: "Final BMS tuning, owner training, as-built documentation, DCIM handover." },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["Electrician"], workersNeeded: 10, priority: "supporting", durationWeeks: 4, notes: "Punch list corrections, final labeling, as-built drawings, spare parts inventory." },
-    { projectPhaseId: phaseMap["Punch List & Closeout"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 5, priority: "supporting", durationWeeks: 4, notes: "Final balancing adjustments, filter replacement, warranty documentation." },
+    // Operations & Maintenance
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Electrician"], workersNeeded: 10, priority: "critical", durationWeeks: 52, requiredCertifications: "NFPA 70E, OSHA 30", notes: "Ongoing power system maintenance, preventive maintenance, arc flash updates." },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["HVAC Technician"], workersNeeded: 8, priority: "critical", durationWeeks: 52, requiredCertifications: "EPA 608 Universal, NATE", notes: "Cooling system monitoring, refrigerant management, filter maintenance." },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Controls/BMS Technician"], workersNeeded: 6, priority: "important", durationWeeks: 52, requiredCertifications: "OSHA 10", notes: "BMS tuning, alarm management, DCIM reporting, firmware updates." },
+    { projectPhaseId: phaseMap["Operations & Maintenance"], tradeId: tradeMap["Low Voltage Technician"], workersNeeded: 4, priority: "supporting", durationWeeks: 52, requiredCertifications: "BICSI RCDD", notes: "Cable plant maintenance, fiber repairs, network infrastructure support." },
   ]);
 
-  console.log("Seeded 28 phase-trade requirement rows.");
+  console.log("Seeded phase-trade requirement rows with certification mappings.");
 }

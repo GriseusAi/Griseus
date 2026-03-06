@@ -18,7 +18,6 @@ import {
 interface CompanyQuizState {
   step: number;
   direction: number;
-  facilityType: string;
   selectedPhaseId: string;
   location: string;
   companyName: string;
@@ -31,14 +30,12 @@ interface CompanyQuizState {
 type Action =
   | { type: "NEXT" }
   | { type: "BACK" }
-  | { type: "SET_FACILITY"; value: string }
   | { type: "SET_PHASE"; id: string }
   | { type: "SET_FIELD"; field: "location" | "companyName" | "name" | "position" | "email" | "password"; value: string };
 
 const initial: CompanyQuizState = {
   step: 0,
   direction: 1,
-  facilityType: "",
   selectedPhaseId: "",
   location: "",
   companyName: "",
@@ -54,10 +51,8 @@ function reducer(state: CompanyQuizState, action: Action): CompanyQuizState {
       return { ...state, step: state.step + 1, direction: 1 };
     case "BACK":
       return { ...state, step: state.step - 1, direction: -1 };
-    case "SET_FACILITY":
-      return { ...state, facilityType: action.value, step: 1, direction: 1 };
     case "SET_PHASE":
-      return { ...state, selectedPhaseId: action.id, step: 2, direction: 1 };
+      return { ...state, selectedPhaseId: action.id, step: 1, direction: 1 };
     case "SET_FIELD":
       return { ...state, [action.field]: action.value };
     default:
@@ -65,7 +60,7 @@ function reducer(state: CompanyQuizState, action: Action): CompanyQuizState {
   }
 }
 
-const TOTAL_STEPS = 4;
+const TOTAL_STEPS = 3;
 
 /* ─── Component ────────────────────────────────────────────── */
 
@@ -118,31 +113,12 @@ export default function CompanyQuiz() {
 
   function renderStep() {
     switch (state.step) {
-      /* Step 0 — Facility type */
+      /* Step 0 — Project phase (FIRST question) */
       case 0:
         return (
           <StepCard
-            title="What type of facility?"
-            subtitle="Select the type of project you're working on"
-            onBack={goBack}
-          >
-            <div className="space-y-3">
-              <SelectableCard
-                label="Data Center"
-                sublabel="Hyperscale, colocation, or edge facilities"
-                selected={state.facilityType === "Data Center"}
-                onClick={() => dispatch({ type: "SET_FACILITY", value: "Data Center" })}
-              />
-            </div>
-          </StepCard>
-        );
-
-      /* Step 1 — Project phase */
-      case 1:
-        return (
-          <StepCard
-            title="What phase is your project in?"
-            subtitle="Select the current stage of construction"
+            title="What phase is your data center project currently in?"
+            subtitle="Select the current stage of your project"
             onBack={goBack}
           >
             <div className="space-y-3">
@@ -164,8 +140,8 @@ export default function CompanyQuiz() {
           </StepCard>
         );
 
-      /* Step 2 — Location */
-      case 2:
+      /* Step 1 — Location */
+      case 1:
         return (
           <StepCard
             title="Where is your project?"
@@ -191,8 +167,8 @@ export default function CompanyQuiz() {
           </StepCard>
         );
 
-      /* Step 3 — Account */
-      case 3:
+      /* Step 2 — Account */
+      case 2:
         return (
           <StepCard
             title="Set up your account"

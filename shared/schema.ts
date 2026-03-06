@@ -293,6 +293,7 @@ export const phaseTradeRequirements = pgTable("phase_trade_requirements", {
   workersNeeded: integer("workers_needed").notNull().default(1),
   priority: text("priority").notNull(), // "critical" | "important" | "supporting"
   durationWeeks: integer("duration_weeks").notNull(),
+  requiredCertifications: text("required_certifications"), // comma-separated certification names for this phase-trade combo
   notes: text("notes"),
 });
 

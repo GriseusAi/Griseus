@@ -42,7 +42,7 @@ export default function LandingPage() {
               Login
             </Link>
             <Link href="/" className="text-sm px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors">
-              Sign Up
+              Plan Your Project Workforce
             </Link>
           </div>
         </div>
@@ -59,14 +59,14 @@ export default function LandingPage() {
 
           {/* Heading */}
           <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.1] tracking-tight mb-6">
-            Data Center<br />
-            <span className="text-blue-400">Workforce Marketplace</span>
+            The Right Worker.<br />
+            <span className="text-blue-400">The Right Phase. The Right Certification.</span>
           </h1>
 
           {/* Tagline */}
           <p className="landing-fade-in landing-fade-in-delay-2 text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-            Connecting skilled workers with AI infrastructure projects.
-            From rack &amp; stack to commissioning &mdash; find the right talent, fast.
+            Griseus maps your data center project phases to the exact trades and certifications
+            you need &mdash; before shortages become delays.
           </p>
 
           {/* Waitlist Form */}
@@ -126,11 +126,11 @@ export default function LandingPage() {
           <div className="max-w-2xl mb-16">
             <p className="text-sm font-medium text-blue-400 mb-3 tracking-wide uppercase">How it works</p>
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Built for the data center industry
+              Phase-based workforce intelligence
             </h2>
             <p className="text-slate-400 leading-relaxed">
-              Purpose-built tools that understand the unique demands of data center construction,
-              commissioning, and operations.
+              Plan workforce by phase. Know which trades and certifications you need at every stage
+              of your data center build &mdash; from civil work to commissioning.
             </p>
           </div>
 
@@ -140,15 +140,15 @@ export default function LandingPage() {
                 icon: (
                   <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
                 ),
-                title: "Verified Talent Pool",
-                desc: "Pre-screened technicians with verified certifications for electrical, mechanical, fiber, and structured cabling work. Background-checked and compliance-ready.",
+                title: "Phase-to-Trade Mapping",
+                desc: "Our ontology maps every data center construction phase to the exact trades and certifications required. No guessing, no shortages.",
               },
               {
                 icon: (
                   <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
                 ),
-                title: "Rapid Deployment",
-                desc: "Match and mobilize crews in under 48 hours. Our algorithm considers location, skill level, availability, and project clearance requirements.",
+                title: "Workforce Matching",
+                desc: "Match certified workers to your project phase. Our algorithm considers trade, certifications, location, and availability.",
               },
               {
                 icon: (
@@ -161,8 +161,8 @@ export default function LandingPage() {
                 icon: (
                   <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
                 ),
-                title: "Project Intelligence",
-                desc: "Real-time analytics on workforce utilization, project timelines, and cost tracking. Make data-driven staffing decisions across your portfolio.",
+                title: "Proactive Planning",
+                desc: "Know your workforce needs 6-8 weeks before each phase starts. Source the right certifications before shortages become delays.",
               },
             ].map((feature) => (
               <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-white/10 bg-[#1A1A2E]">
@@ -186,15 +186,15 @@ export default function LandingPage() {
             <div className="relative z-10">
               <p className="text-sm font-medium text-blue-400 mb-3 font-mono">// launching soon</p>
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                The future of data center staffing
+                Phase-based workforce planning for data center construction
               </h2>
               <p className="text-slate-400 max-w-xl mx-auto mb-8 leading-relaxed">
-                Whether you're a hyperscaler building at scale or a technician looking for your next project,
-                Griseus connects you to what matters.
+                Whether you're building a hyperscale campus or a single facility,
+                Griseus maps every phase to the workforce you need.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
                 <Link href="/" className="inline-flex px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98]">
-                  Get Started
+                  Plan Your Project Workforce
                 </Link>
                 <Link href="/login" className="inline-flex px-8 py-3 rounded-xl border border-white/10 hover:border-white/20 text-white hover:text-white text-sm font-medium transition-all">
                   Login to Dashboard

@@ -25,6 +25,7 @@ import Analytics from "@/pages/analytics";
 import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
 import Team from "@/pages/team";
+import PhasePlanner from "@/pages/phase-planner";
 import MobileJobs from "@/pages/mobile-jobs";
 import MobilePassport from "@/pages/mobile-passport";
 import MobileSquad from "@/pages/mobile-squad";
@@ -46,6 +47,7 @@ function DesktopRouter() {
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
         <Switch>
+          <Route path="/phase-planner" component={PhasePlanner} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
