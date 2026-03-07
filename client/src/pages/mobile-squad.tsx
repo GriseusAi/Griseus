@@ -87,7 +87,8 @@ export default function MobileSquad() {
   const assignedProjects = myAssignments?.map((a) => projects?.find((p) => p.id === a.projectId)).filter(Boolean) as Project[] | undefined;
 
   const squadMembers = projectAssignments?.map((a) => {
-    const worker = workers?.find((w) => w.id === a.workerId);
+    const isMe = a.workerId === currentWorkerId;
+    const worker = isMe ? currentWorker : workers?.find((w) => w.id === a.workerId);
     return worker ? { ...worker, role: a.role } : null;
   }).filter(Boolean) as (Worker & { role: string })[] | undefined;
 
@@ -217,8 +218,8 @@ export default function MobileSquad() {
               <span className="text-xs text-muted-foreground">Project Chat</span>
             </div>
             {messages.map((msg) => {
-              const sender = workers?.find((w) => w.id === msg.senderId);
               const isMe = msg.senderId === currentWorkerId;
+              const sender = isMe ? currentWorker : workers?.find((w) => w.id === msg.senderId);
               return (
                 <div key={msg.id} className={`flex gap-2 ${isMe ? "flex-row-reverse" : ""}`} data-testid={`chat-msg-${msg.id}`}>
                   {!isMe && (
