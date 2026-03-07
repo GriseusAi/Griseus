@@ -4,6 +4,8 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -18,8 +20,19 @@ import {
   Wrench,
   Send,
   ArrowLeft,
+  Shield,
+  Award,
+  Mail,
+  Phone,
+  Briefcase,
+  Star,
+  Zap,
+  Wallet,
+  DollarSign,
+  Timer,
+  X,
 } from "lucide-react";
-import type { Worker } from "@shared/schema";
+import type { Worker, ProjectAssignment, Project } from "@shared/schema";
 
 // ── Lead Time by order index ───────────────────────────────────────────
 // Earlier phases need more lead time for sourcing; later phases less.
@@ -242,6 +255,7 @@ function AvailableWorkersPanel({
 }: {
   tradeNames: string[];
 }) {
+  const [passportWorkerId, setPassportWorkerId] = useState<string | null>(null);
   const tradesParam = tradeNames.join(",");
   const { data: workers, isLoading } = useQuery<Worker[]>({
     queryKey: ["/api/phase-workers", tradesParam],
@@ -299,19 +313,28 @@ function AvailableWorkersPanel({
 
       <div className="grid gap-2 max-h-[400px] overflow-y-auto pr-1">
         {available.map((worker) => (
-          <WorkerCard key={worker.id} worker={worker} />
+          <WorkerCard key={worker.id} worker={worker} onClick={() => setPassportWorkerId(worker.id)} />
         ))}
         {unavailable.map((worker) => (
-          <WorkerCard key={worker.id} worker={worker} dimmed />
+          <WorkerCard key={worker.id} worker={worker} dimmed onClick={() => setPassportWorkerId(worker.id)} />
         ))}
       </div>
+
+      <WorkerPassportDialog
+        workerId={passportWorkerId}
+        open={!!passportWorkerId}
+        onClose={() => setPassportWorkerId(null)}
+      />
     </div>
   );
 }
 
-function WorkerCard({ worker, dimmed }: { worker: Worker; dimmed?: boolean }) {
+function WorkerCard({ worker, dimmed, onClick }: { worker: Worker; dimmed?: boolean; onClick?: () => void }) {
   return (
-    <div className={`flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-card ${dimmed ? "opacity-50" : ""}`}>
+    <div
+      className={`flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-card cursor-pointer hover:border-white/20 hover:bg-card/80 transition-all ${dimmed ? "opacity-50" : ""}`}
+      onClick={onClick}
+    >
       <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
         {getInitials(worker.name)}
       </div>
@@ -348,6 +371,256 @@ function WorkerCard({ worker, dimmed }: { worker: Worker; dimmed?: boolean }) {
         )}
       </div>
     </div>
+  );
+}
+
+// ── Cert Badge Styles (matching passport page) ─────────────────────────
+
+const certBadgeStyles: Record<string, { bg: string; icon: typeof Award }> = {
+  "Master Electrician": { bg: "bg-amber-500/15 text-amber-400", icon: Zap },
+  "OSHA 30": { bg: "bg-red-500/15 text-red-400", icon: Shield },
+  "OSHA 500 Trainer": { bg: "bg-red-500/15 text-red-400", icon: Shield },
+  "NFPA 70E": { bg: "bg-orange-500/15 text-orange-400", icon: Shield },
+  "Arc Flash Safety": { bg: "bg-orange-500/15 text-orange-400", icon: Shield },
+  "Siemens High Voltage Certified": { bg: "bg-blue-500/15 text-blue-400", icon: Zap },
+  "PMP": { bg: "bg-violet-500/15 text-violet-400", icon: Award },
+  "CDCMP": { bg: "bg-indigo-500/15 text-indigo-400", icon: Award },
+  "Six Sigma Black Belt": { bg: "bg-slate-500/15 text-slate-400", icon: Award },
+  "EPA 608 Universal": { bg: "bg-green-500/15 text-green-400", icon: CheckCircle2 },
+  "ASHRAE Certified": { bg: "bg-teal-500/15 text-teal-400", icon: Award },
+  "LEED AP": { bg: "bg-emerald-500/15 text-emerald-400", icon: Star },
+  "Carrier Chiller Specialist": { bg: "bg-cyan-500/15 text-cyan-400", icon: Award },
+  "BMS Controls Pro": { bg: "bg-sky-500/15 text-sky-400", icon: Award },
+  "BICSI RCDD": { bg: "bg-purple-500/15 text-purple-400", icon: Award },
+  "Cisco CCNP": { bg: "bg-blue-500/15 text-blue-400", icon: Award },
+  "CDCDP": { bg: "bg-indigo-500/15 text-indigo-400", icon: Award },
+  "Fiber Optic Pro": { bg: "bg-fuchsia-500/15 text-fuchsia-400", icon: Star },
+  "Corning Certified Installer": { bg: "bg-rose-500/15 text-rose-400", icon: CheckCircle2 },
+  "CDCEP": { bg: "bg-teal-500/15 text-teal-400", icon: Award },
+  "AEE CEM": { bg: "bg-lime-500/15 text-lime-400", icon: Award },
+  "Uptime Tier Designer": { bg: "bg-amber-500/15 text-amber-400", icon: Star },
+  "Uptime Institute ATD": { bg: "bg-amber-500/15 text-amber-400", icon: Star },
+  "Schneider Electric Certified": { bg: "bg-green-500/15 text-green-400", icon: Zap },
+  "Generator Systems Pro": { bg: "bg-yellow-500/15 text-yellow-400", icon: Zap },
+};
+
+function getCertStyle(certName: string) {
+  return certBadgeStyles[certName] || { bg: "bg-primary/10 text-primary", icon: Award };
+}
+
+// ── Worker Passport Dialog ─────────────────────────────────────────────
+
+function WorkerPassportDialog({
+  workerId,
+  open,
+  onClose,
+}: {
+  workerId: string | null;
+  open: boolean;
+  onClose: () => void;
+}) {
+  const { data: worker, isLoading: workerLoading } = useQuery<Worker>({
+    queryKey: ["/api/workers", workerId],
+    queryFn: async () => {
+      const res = await fetch(`/api/workers/${workerId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch worker");
+      return res.json();
+    },
+    enabled: !!workerId && open,
+  });
+
+  const { data: assignments } = useQuery<ProjectAssignment[]>({
+    queryKey: ["/api/project-assignments/worker", workerId],
+    enabled: !!workerId && open,
+  });
+
+  const { data: projects } = useQuery<Project[]>({
+    queryKey: ["/api/projects"],
+    enabled: !!workerId && open,
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto p-0 gap-0">
+        <DialogHeader className="sr-only">
+          <DialogTitle>{worker?.name || "Worker Profile"}</DialogTitle>
+        </DialogHeader>
+
+        {workerLoading || !worker ? (
+          <div className="p-6 space-y-4">
+            <Skeleton className="h-20 w-full" />
+            <Skeleton className="h-32 w-full" />
+            <Skeleton className="h-48 w-full" />
+          </div>
+        ) : (
+          <div className="space-y-4 pb-6">
+            {/* Profile card */}
+            <div className="overflow-hidden">
+              <div className="h-20 bg-gradient-to-br from-blue-600 to-blue-500 relative">
+                <div className="absolute -bottom-8 left-5">
+                  <Avatar className="h-16 w-16 bg-gradient-to-br from-blue-600 to-blue-500 text-white border-4 border-card shadow-lg">
+                    <AvatarFallback className="text-lg font-bold bg-gradient-to-br from-blue-600 to-blue-500 text-white">
+                      {getInitials(worker.name)}
+                    </AvatarFallback>
+                  </Avatar>
+                </div>
+              </div>
+              <div className="pt-12 px-5 pb-2">
+                <div className="flex-1 min-w-0">
+                  <h2 className="text-xl font-bold truncate">{worker.name}</h2>
+                  <p className="text-sm text-muted-foreground">{worker.title}</p>
+                  <div className="flex items-center gap-2 mt-1 flex-wrap">
+                    <Badge variant={worker.available ? "default" : "secondary"}>
+                      {worker.available ? "Available" : "On Assignment"}
+                    </Badge>
+                    <span className="text-xs text-muted-foreground flex items-center gap-1">
+                      <Star className="h-3 w-3" />
+                      {worker.experience} yrs
+                    </span>
+                  </div>
+                </div>
+
+                <div className="space-y-2 text-sm mt-4">
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <MapPin className="h-4 w-4 flex-shrink-0" />
+                    <span>{worker.location}</span>
+                  </div>
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Mail className="h-4 w-4 flex-shrink-0" />
+                    <span>{worker.email}</span>
+                  </div>
+                  {worker.phone && (
+                    <div className="flex items-center gap-2 text-muted-foreground">
+                      <Phone className="h-4 w-4 flex-shrink-0" />
+                      <span>{worker.phone}</span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 text-muted-foreground">
+                    <Briefcase className="h-4 w-4 flex-shrink-0" />
+                    <span>{worker.trade}</span>
+                  </div>
+                </div>
+
+                {worker.bio && (
+                  <p className="text-sm text-muted-foreground mt-3 pt-3 border-t">{worker.bio}</p>
+                )}
+              </div>
+            </div>
+
+            {/* Wallet & Stats */}
+            <div className="px-5">
+              <Card>
+                <CardContent className="p-4">
+                  <div className="flex items-center gap-2 mb-3">
+                    <Wallet className="h-4 w-4 text-primary" />
+                    <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">Wallet & Stats</h3>
+                  </div>
+                  <div className="grid grid-cols-3 gap-3">
+                    <div className="text-center p-2 rounded-lg bg-emerald-500/10 border border-emerald-500/20">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-md bg-emerald-500/10 mx-auto mb-1.5">
+                        <DollarSign className="h-4 w-4 text-emerald-500" />
+                      </div>
+                      <p className="text-lg font-bold text-emerald-500">
+                        ${(worker.walletBalance / 100).toLocaleString()}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">Balance</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-amber-500/10 border border-amber-500/20">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-md bg-amber-500/10 mx-auto mb-1.5">
+                        <Clock className="h-4 w-4 text-amber-500" />
+                      </div>
+                      <p className="text-lg font-bold">
+                        ${(worker.pendingPayout / 100).toLocaleString()}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">Pending</p>
+                    </div>
+                    <div className="text-center p-2 rounded-lg bg-blue-500/10 border border-blue-500/20">
+                      <div className="flex items-center justify-center h-9 w-9 rounded-md bg-blue-500/10 mx-auto mb-1.5">
+                        <Timer className="h-4 w-4 text-blue-500" />
+                      </div>
+                      <p className="text-lg font-bold">
+                        {worker.totalHoursWorked.toLocaleString()}
+                      </p>
+                      <p className="text-[11px] text-muted-foreground leading-tight">Hours Worked</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            </div>
+
+            {/* Certifications */}
+            <div className="px-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Award className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Verified Certifications ({worker.certifications?.length || 0})
+                </h3>
+              </div>
+              <div className="space-y-2">
+                {worker.certifications?.map((cert, i) => {
+                  const style = getCertStyle(cert);
+                  const CertIcon = style.icon;
+                  return (
+                    <Card key={i}>
+                      <CardContent className="p-3 flex items-center gap-3">
+                        <div className={`flex items-center justify-center h-10 w-10 rounded-md ${style.bg} flex-shrink-0`}>
+                          <CertIcon className="h-5 w-5" />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="font-medium text-sm">{cert}</p>
+                          <p className="text-xs text-muted-foreground flex items-center gap-1">
+                            <CheckCircle2 className="h-3 w-3 text-emerald-400" />
+                            Verified
+                          </p>
+                        </div>
+                        <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      </CardContent>
+                    </Card>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Active Assignments */}
+            <div className="px-5">
+              <div className="flex items-center gap-2 mb-3">
+                <Briefcase className="h-4 w-4 text-primary" />
+                <h3 className="text-sm font-semibold uppercase tracking-wider text-muted-foreground">
+                  Active Assignments ({assignments?.length || 0})
+                </h3>
+              </div>
+              {assignments && assignments.length > 0 ? (
+                <div className="space-y-2">
+                  {assignments.map((a) => {
+                    const project = projects?.find((p) => p.id === a.projectId);
+                    return (
+                      <Card key={a.id}>
+                        <CardContent className="p-3 flex items-center gap-3">
+                          <div className="flex items-center justify-center h-10 w-10 rounded-md bg-primary/10 flex-shrink-0">
+                            <Briefcase className="h-5 w-5 text-primary" />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="font-medium text-sm truncate">{project?.name || "Unknown Project"}</p>
+                            <p className="text-xs text-muted-foreground capitalize">{a.role} &middot; {project?.location}</p>
+                          </div>
+                          <Badge variant="outline" className="capitalize">{a.role}</Badge>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              ) : (
+                <Card>
+                  <CardContent className="p-4 text-center text-sm text-muted-foreground">
+                    No active assignments
+                  </CardContent>
+                </Card>
+              )}
+            </div>
+          </div>
+        )}
+      </DialogContent>
+    </Dialog>
   );
 }
 
