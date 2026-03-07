@@ -6,7 +6,7 @@ import {
   insertChatMessageSchema, registerSchema, insertTradeSchema, insertSkillSchema,
   insertCertificationSchema, insertTradeCertificationSchema, insertProjectPhaseSchema,
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
-  insertProjectScheduleSchema,
+  insertProjectScheduleSchema, insertProjectAssignmentSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
@@ -572,6 +572,19 @@ export async function registerRoutes(
   app.get("/api/project-assignments/worker/:workerId", async (req, res) => {
     const assignments = await storage.getProjectAssignmentsByWorker(req.params.workerId);
     res.json(assignments);
+  });
+
+  app.post("/api/project-assignments", async (req, res) => {
+    try {
+      const data = insertProjectAssignmentSchema.parse(req.body);
+      const assignment = await storage.createProjectAssignment(data);
+      res.status(201).json(assignment);
+    } catch (error) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors.map(e => e.message).join(", ") });
+      }
+      throw error;
+    }
   });
 
   app.get("/api/chat-messages/:projectId", async (req, res) => {

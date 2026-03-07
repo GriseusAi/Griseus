@@ -1,12 +1,14 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePageMeta } from "@/hooks/use-page-meta";
-import { FolderKanban, Search } from "lucide-react";
-import type { Project, ProjectAssignment } from "@shared/schema";
+import { FolderKanban, Search, Wrench } from "lucide-react";
+import type { Project } from "@shared/schema";
 
 const statusColors: Record<string, string> = {
   planning: "bg-amber-500/15 text-amber-400",
@@ -15,15 +17,49 @@ const statusColors: Record<string, string> = {
   on_hold: "bg-red-500/15 text-red-400",
 };
 
+interface PhaseSummary {
+  phase: { id: string; name: string; orderIndex: number };
+  totalWorkers: number;
+  trades: Array<{ tradeName: string; tradeId: string }>;
+}
+
 export default function AdminProjects() {
   usePageMeta("Projects", "Manage all platform projects.");
+  const [, setLocation] = useLocation();
 
   const { data: projects, isLoading } = useQuery<Project[]>({
     queryKey: ["/api/projects"],
   });
 
+  const { data: phaseSummary } = useQuery<PhaseSummary[]>({
+    queryKey: ["/api/phase-requirements/summary"],
+  });
+
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState<string>("all");
+  const [tradeFilter, setTradeFilter] = useState<string>("all");
+
+  // Collect all unique trade names from phase requirements
+  const allTrades = useMemo(() => {
+    if (!phaseSummary) return [];
+    const set = new Set<string>();
+    phaseSummary.forEach(ps => ps.trades.forEach(t => set.add(t.tradeName)));
+    return Array.from(set).sort();
+  }, [phaseSummary]);
+
+  // Trades needed across all phases (for the trade filter)
+  const tradeToProjects = useMemo(() => {
+    // Since phase requirements are global (not per-project), trade filter
+    // matches projects whose tradesNeeded array includes the selected trade
+    if (tradeFilter === "all" || !projects) return null;
+    return new Set(
+      projects
+        .filter(p => (p.tradesNeeded ?? []).some(t =>
+          t.toLowerCase().includes(tradeFilter.toLowerCase())
+        ))
+        .map(p => p.id)
+    );
+  }, [tradeFilter, projects]);
 
   const filtered = projects?.filter(p => {
     const matchesSearch =
@@ -32,7 +68,8 @@ export default function AdminProjects() {
       p.client.toLowerCase().includes(search.toLowerCase()) ||
       p.location.toLowerCase().includes(search.toLowerCase());
     const matchesStatus = statusFilter === "all" || p.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    const matchesTrade = !tradeToProjects || tradeToProjects.has(p.id);
+    return matchesSearch && matchesStatus && matchesTrade;
   }) ?? [];
 
   const statuses = ["all", "active", "planning", "completed", "on_hold"];
@@ -65,21 +102,35 @@ export default function AdminProjects() {
             className="pl-9"
           />
         </div>
-        <div className="flex gap-2 flex-wrap">
-          {statuses.map(s => (
-            <button
-              key={s}
-              onClick={() => setStatusFilter(s)}
-              className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
-                statusFilter === s
-                  ? "bg-blue-500 text-white"
-                  : "bg-[#1E293B] border border-white/10 text-slate-400 hover:bg-white/5"
-              }`}
-            >
-              {s === "all" ? "All" : s === "on_hold" ? "On Hold" : s.charAt(0).toUpperCase() + s.slice(1)}
-            </button>
-          ))}
-        </div>
+        <Select value={tradeFilter} onValueChange={setTradeFilter}>
+          <SelectTrigger className="w-[240px]">
+            <div className="flex items-center gap-2">
+              <Wrench className="h-3.5 w-3.5 text-muted-foreground" />
+              <SelectValue placeholder="Filter by trade" />
+            </div>
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">All Trades</SelectItem>
+            {allTrades.map(t => (
+              <SelectItem key={t} value={t}>{t}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
+      <div className="flex gap-2 flex-wrap">
+        {statuses.map(s => (
+          <button
+            key={s}
+            onClick={() => setStatusFilter(s)}
+            className={`px-3 py-1.5 rounded-lg text-xs font-semibold transition-colors ${
+              statusFilter === s
+                ? "bg-blue-500 text-white"
+                : "bg-[#1E293B] border border-white/10 text-slate-400 hover:bg-white/5"
+            }`}
+          >
+            {s === "all" ? "All" : s === "on_hold" ? "On Hold" : s.charAt(0).toUpperCase() + s.slice(1)}
+          </button>
+        ))}
       </div>
 
       {/* Table */}
@@ -105,7 +156,11 @@ export default function AdminProjects() {
                 </thead>
                 <tbody>
                   {filtered.map(p => (
-                    <tr key={p.id} className="border-b border-white/10 hover:bg-white/5 transition-colors">
+                    <tr
+                      key={p.id}
+                      className="border-b border-white/10 hover:bg-white/5 transition-colors cursor-pointer"
+                      onClick={() => setLocation(`/admin/projects/${p.id}`)}
+                    >
                       <td className="py-3 px-4 font-medium">{p.name}</td>
                       <td className="py-3 px-4 text-muted-foreground">{p.client}</td>
                       <td className="py-3 px-4">{p.location}</td>

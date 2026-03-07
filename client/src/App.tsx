@@ -32,6 +32,7 @@ import MobileSquad from "@/pages/mobile-squad";
 import AdminOverview from "@/pages/admin/overview";
 import AdminUsers from "@/pages/admin/users";
 import AdminProjects from "@/pages/admin/projects";
+import AdminProjectDetail from "@/pages/admin/project-detail";
 import AdminSettings from "@/pages/admin/settings";
 
 function DesktopRouter() {
@@ -76,6 +77,7 @@ function AdminRouter() {
           <Route path="/admin/analytics" component={Analytics} />
           <Route path="/admin/users" component={AdminUsers} />
           <Route path="/admin/projects" component={AdminProjects} />
+          <Route path="/admin/projects/:id" component={AdminProjectDetail} />
           <Route path="/admin/settings" component={AdminSettings} />
           <Route component={NotFound} />
         </Switch>
