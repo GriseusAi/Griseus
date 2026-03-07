@@ -11,8 +11,6 @@ import { usePageMeta } from "@/hooks/use-page-meta";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { Users, Send, Crown, Wrench, HardHat, MapPin, MessageCircle } from "lucide-react";
 
-const CURRENT_WORKER_ID_KEY = "griseus_current_worker_id";
-
 const roleIcons: Record<string, typeof Crown> = {
   foreman: Crown,
   lead: HardHat,
@@ -28,10 +26,11 @@ const roleLabels: Record<string, string> = {
 export default function MobileSquad() {
   usePageMeta("My Squad | Griseus", "View your team and communicate with your project squad.");
 
+  const { data: currentWorker, isLoading: workerLoading } = useQuery<Worker>({ queryKey: ["/api/workers/me"] });
+  const currentWorkerId = currentWorker?.id || null;
+
   const { data: workers } = useQuery<Worker[]>({ queryKey: ["/api/workers"] });
   const { data: projects } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
-
-  const [currentWorkerId] = useState(() => localStorage.getItem(CURRENT_WORKER_ID_KEY));
 
   const { data: myAssignments, isLoading: assignmentsLoading } = useQuery<ProjectAssignment[]>({
     queryKey: ["/api/project-assignments/worker", currentWorkerId],
@@ -83,7 +82,6 @@ export default function MobileSquad() {
   }, [messages]);
 
   const selectedProject = projects?.find((p) => p.id === selectedProjectId);
-  const currentWorker = workers?.find((w) => w.id === currentWorkerId);
   const myRole = myAssignments?.find((a) => a.projectId === selectedProjectId)?.role;
 
   const assignedProjects = myAssignments?.map((a) => projects?.find((p) => p.id === a.projectId)).filter(Boolean) as Project[] | undefined;
@@ -99,12 +97,22 @@ export default function MobileSquad() {
     sendMutation.mutate(trimmed);
   };
 
+  if (workerLoading) {
+    return (
+      <div className="p-4 space-y-4">
+        <Skeleton className="h-10 w-full" />
+        <Skeleton className="h-32 w-full" />
+        <Skeleton className="h-64 w-full" />
+      </div>
+    );
+  }
+
   if (!currentWorkerId) {
     return (
       <div className="flex flex-col items-center justify-center h-full p-6 text-center">
         <Users className="h-12 w-12 text-muted-foreground mb-4" />
-        <h2 className="text-lg font-semibold mb-2">No Profile Selected</h2>
-        <p className="text-sm text-muted-foreground">Go to Passport to select your worker profile first.</p>
+        <h2 className="text-lg font-semibold mb-2">No Profile Found</h2>
+        <p className="text-sm text-muted-foreground">No worker profile is linked to your account.</p>
       </div>
     );
   }
