@@ -6,12 +6,13 @@ import {
   insertChatMessageSchema, registerSchema, insertTradeSchema, insertSkillSchema,
   insertCertificationSchema, insertTradeCertificationSchema, insertProjectPhaseSchema,
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
+  insertProjectScheduleSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule } from "@shared/schema";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -1249,6 +1250,53 @@ export async function registerRoutes(
       return res.json({ response: text });
     } catch (error) {
       return res.json({ response: "I'm having trouble connecting right now." });
+    }
+  });
+
+  // ── Project Schedules ────────────────────────────────────────────────
+
+  app.get("/api/project-schedules", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const schedules = await storage.getProjectSchedules((req.user as User).id);
+      res.json(schedules);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/project-schedules", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const data = insertProjectScheduleSchema.parse({
+        ...req.body,
+        companyId: (req.user as User).id,
+      });
+      const schedule = await storage.createProjectSchedule(data);
+      res.status(201).json(schedule);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Workers by Phase (trade matching) ────────────────────────────────
+
+  app.get("/api/phase-workers", async (req, res) => {
+    try {
+      const { trades: tradeNames } = req.query;
+      if (!tradeNames) return res.status(400).json({ message: "trades query parameter is required (comma-separated)" });
+
+      const tradeList = (tradeNames as string).split(",").map(t => t.trim());
+      const allWorkers = await storage.getWorkers();
+
+      const matched = allWorkers.filter(w => {
+        const workerTrade = w.trade.toLowerCase();
+        return tradeList.some(t => workerTrade.includes(t.toLowerCase()) || t.toLowerCase().includes(workerTrade));
+      });
+
+      res.json(matched);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

@@ -18,11 +18,12 @@ import {
   type ProjectPhaseTrade, type InsertProjectPhaseTrade,
   type WorkerSkill, type InsertWorkerSkill,
   type WorkerCertification, type InsertWorkerCertification,
+  type ProjectSchedule, type InsertProjectSchedule,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
   trades, skills, certifications, tradesCertifications, tradeAdjacencies,
   certificationRequirements, wageData, phaseTradeRequirements,
   projectPhases, projectPhasesTrades,
-  workerSkills, workerCertifications, passwordResetCodes,
+  workerSkills, workerCertifications, passwordResetCodes, projectSchedules,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gt, asc, or } from "drizzle-orm";
@@ -108,6 +109,10 @@ export interface IStorage {
   getTradeByName(name: string): Promise<Trade | undefined>;
   getWorkersByTrade(trade: string): Promise<Worker[]>;
   getActiveProjects(): Promise<Project[]>;
+
+  // Project Schedules
+  getProjectSchedules(companyId: string): Promise<ProjectSchedule[]>;
+  createProjectSchedule(schedule: InsertProjectSchedule): Promise<ProjectSchedule>;
 
   // Password reset
   createPasswordResetCode(userId: string, code: string, expiresAt: Date): Promise<void>;
@@ -409,6 +414,17 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(projects).where(
       or(eq(projects.status, "active"), eq(projects.status, "planning"))
     );
+  }
+
+  // ── Project Schedules ──────────────────────────────────────────────
+
+  async getProjectSchedules(companyId: string): Promise<ProjectSchedule[]> {
+    return db.select().from(projectSchedules).where(eq(projectSchedules.companyId, companyId));
+  }
+
+  async createProjectSchedule(schedule: InsertProjectSchedule): Promise<ProjectSchedule> {
+    const [created] = await db.insert(projectSchedules).values(schedule).returning();
+    return created;
   }
 
   // ── Password Reset ──────────────────────────────────────────────────

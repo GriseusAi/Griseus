@@ -301,6 +301,24 @@ export const insertPhaseTradeRequirementSchema = createInsertSchema(phaseTradeRe
 export type InsertPhaseTradeRequirement = z.infer<typeof insertPhaseTradeRequirementSchema>;
 export type PhaseTradeRequirement = typeof phaseTradeRequirements.$inferSelect;
 
+// --- Project Schedules ---
+
+export const projectSchedules = pgTable("project_schedules", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  projectId: varchar("project_id"),
+  phaseName: text("phase_name").notNull(),
+  phaseStartDate: text("phase_start_date").notNull(),
+  sourcingDeadline: text("sourcing_deadline").notNull(),
+  tradesNeeded: text("trades_needed").array().default(sql`'{}'::text[]`),
+  status: text("status").notNull().default("planning"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertProjectScheduleSchema = createInsertSchema(projectSchedules).omit({ id: true, createdAt: true });
+export type InsertProjectSchedule = z.infer<typeof insertProjectScheduleSchema>;
+export type ProjectSchedule = typeof projectSchedules.$inferSelect;
+
 // --- Password Reset Codes ---
 
 export const passwordResetCodes = pgTable("password_reset_codes", {
