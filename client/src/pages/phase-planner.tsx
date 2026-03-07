@@ -21,24 +21,15 @@ import {
 } from "lucide-react";
 import type { Worker } from "@shared/schema";
 
-// ── Phase Definitions ──────────────────────────────────────────────────
-
-interface PhaseDefinition {
-  name: string;
-  orderIndex: number;
-  leadTimeWeeks: number;
-  description: string;
+// ── Lead Time by order index ───────────────────────────────────────────
+// Earlier phases need more lead time for sourcing; later phases less.
+function getLeadTimeWeeks(orderIndex: number): number {
+  if (orderIndex <= 1) return 12;
+  if (orderIndex <= 2) return 10;
+  if (orderIndex <= 4) return 8;
+  if (orderIndex <= 6) return 6;
+  return 4;
 }
-
-const PHASES: PhaseDefinition[] = [
-  { name: "Pre-construction & Planning", orderIndex: 1, leadTimeWeeks: 12, description: "Site surveys, permitting, engineering design, procurement, and construction planning." },
-  { name: "Civil & Foundation", orderIndex: 2, leadTimeWeeks: 10, description: "Site clearing, grading, concrete foundations, slabs, equipment pads, and underground utilities." },
-  { name: "Structural Steel & Envelope", orderIndex: 3, leadTimeWeeks: 8, description: "Steel erection, metal decking, building envelope, roofing, and exterior enclosure." },
-  { name: "MEP Rough-In", orderIndex: 4, leadTimeWeeks: 8, description: "Mechanical, Electrical, and Plumbing rough-in including conduit, piping, ductwork, and fire protection." },
-  { name: "IT Infrastructure & Cabling", orderIndex: 5, leadTimeWeeks: 6, description: "Structured cabling, fiber optics, network racks, cable tray, PDUs, and pathway infrastructure." },
-  { name: "Commissioning & Testing", orderIndex: 6, leadTimeWeeks: 6, description: "Integrated systems testing, load bank testing, IST procedures, performance verification, and BMS integration." },
-  { name: "Operations & Maintenance", orderIndex: 7, leadTimeWeeks: 4, description: "Facility turnover, ongoing maintenance, equipment monitoring, and operational support." },
-];
 
 // ── Types ──────────────────────────────────────────────────────────────
 
@@ -109,21 +100,22 @@ function subtractWeeks(dateStr: string, weeks: number): string {
 
 function PhaseSelector({
   phases,
-  selectedPhase,
+  selectedPhaseId,
   onSelect,
 }: {
-  phases: PhaseDefinition[];
-  selectedPhase: string | null;
-  onSelect: (name: string) => void;
+  phases: PhaseSummary[];
+  selectedPhaseId: string | null;
+  onSelect: (id: string) => void;
 }) {
   return (
     <div className="grid gap-2">
-      {phases.map((phase) => {
-        const isSelected = selectedPhase === phase.name;
+      {phases.map((ps) => {
+        const isSelected = selectedPhaseId === ps.phase.id;
+        const leadTime = getLeadTimeWeeks(ps.phase.orderIndex);
         return (
           <button
-            key={phase.name}
-            onClick={() => onSelect(phase.name)}
+            key={ps.phase.id}
+            onClick={() => onSelect(ps.phase.id)}
             className={`group flex items-center gap-4 p-4 rounded-xl border text-left transition-all ${
               isSelected
                 ? "border-primary/40 bg-primary/5"
@@ -137,19 +129,19 @@ function PhaseSelector({
                   : "bg-white/5 text-muted-foreground group-hover:bg-white/10"
               }`}
             >
-              {phase.orderIndex}
+              {ps.phase.orderIndex}
             </div>
             <div className="flex-1 min-w-0">
               <div className={`font-medium truncate ${isSelected ? "text-foreground" : "text-foreground/80"}`}>
-                {phase.name}
+                {ps.phase.name}
               </div>
-              <div className="text-xs text-muted-foreground mt-0.5 truncate">
-                {phase.description}
+              <div className="text-xs text-muted-foreground mt-0.5">
+                {ps.totalWorkers} workers &middot; {ps.trades.length} trades
               </div>
             </div>
             <div className="flex items-center gap-2 shrink-0">
               <Badge variant="outline" className="text-xs border-white/10">
-                {phase.leadTimeWeeks}w lead
+                {leadTime}w lead
               </Badge>
               <ChevronRight className={`w-4 h-4 transition-colors ${isSelected ? "text-primary" : "text-muted-foreground/50"}`} />
             </div>
@@ -470,28 +462,29 @@ function SchedulingPanel({
 // ── Main Page ──────────────────────────────────────────────────────────
 
 export default function PhasePlanner() {
-  const [selectedPhase, setSelectedPhase] = useState<string | null>(null);
+  const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
 
   const { data: phaseSummary, isLoading: loadingSummary } = useQuery<PhaseSummary[]>({
     queryKey: ["/api/phase-requirements/summary"],
   });
 
-  // Find the phase ID from the summary to fetch detailed requirements
-  const selectedPhaseData = phaseSummary?.find(p => p.phase.name === selectedPhase);
+  // Derive selected phase data from the API summary
+  const selectedPhaseData = phaseSummary?.find(p => p.phase.id === selectedPhaseId);
+  const selectedPhaseName = selectedPhaseData?.phase.name || null;
+  const leadTimeWeeks = selectedPhaseData ? getLeadTimeWeeks(selectedPhaseData.phase.orderIndex) : 0;
 
   const { data: phaseDetail, isLoading: loadingDetail } = useQuery<PhaseRequirementResponse>({
-    queryKey: ["/api/phase-requirements", selectedPhaseData?.phase.id],
+    queryKey: ["/api/phase-requirements", selectedPhaseId],
     queryFn: async () => {
-      const res = await fetch(`/api/phase-requirements?phaseId=${selectedPhaseData!.phase.id}`, {
+      const res = await fetch(`/api/phase-requirements?phaseId=${selectedPhaseId}`, {
         credentials: "include",
       });
       if (!res.ok) throw new Error("Failed to fetch phase requirements");
       return res.json();
     },
-    enabled: !!selectedPhaseData?.phase.id,
+    enabled: !!selectedPhaseId,
   });
 
-  const phaseConfig = PHASES.find(p => p.name === selectedPhase);
   const tradeNames = useMemo(() => {
     return phaseDetail?.requirements.map(r => r.tradeName) || [];
   }, [phaseDetail]);
@@ -568,7 +561,7 @@ export default function PhasePlanner() {
           <Card className="border-white/10">
             <CardContent className="p-4">
               <div className="text-2xl font-bold text-primary">
-                {selectedPhase ? phaseConfig?.leadTimeWeeks + "w" : "--"}
+                {selectedPhaseId ? leadTimeWeeks + "w" : "--"}
               </div>
               <div className="text-xs text-muted-foreground mt-0.5">Lead Time</div>
             </CardContent>
@@ -584,17 +577,19 @@ export default function PhasePlanner() {
             <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wider">
               Construction Phases
             </h2>
-            <PhaseSelector
-              phases={PHASES}
-              selectedPhase={selectedPhase}
-              onSelect={setSelectedPhase}
-            />
+            {phaseSummary && (
+              <PhaseSelector
+                phases={phaseSummary}
+                selectedPhaseId={selectedPhaseId}
+                onSelect={setSelectedPhaseId}
+              />
+            )}
           </div>
         </div>
 
         {/* Right: Phase Details */}
         <div className="lg:col-span-2 space-y-6">
-          {!selectedPhase ? (
+          {!selectedPhaseId ? (
             <Card className="border-white/10">
               <CardContent className="p-12 text-center">
                 <div className="w-16 h-16 rounded-2xl bg-primary/10 flex items-center justify-center mx-auto mb-4">
@@ -613,15 +608,15 @@ export default function PhasePlanner() {
               {/* Phase header */}
               <div className="flex items-center gap-3">
                 <button
-                  onClick={() => setSelectedPhase(null)}
+                  onClick={() => setSelectedPhaseId(null)}
                   className="lg:hidden p-2 rounded-lg border border-white/10 hover:bg-white/5 transition-colors"
                 >
                   <ArrowLeft className="w-4 h-4" />
                 </button>
                 <div>
-                  <h2 className="text-xl font-bold text-foreground">{selectedPhase}</h2>
+                  <h2 className="text-xl font-bold text-foreground">{selectedPhaseName}</h2>
                   <p className="text-sm text-muted-foreground mt-0.5">
-                    {phaseConfig?.description}
+                    {phaseDetail?.phase.description}
                   </p>
                 </div>
               </div>
@@ -636,15 +631,15 @@ export default function PhasePlanner() {
               ) : phaseDetail ? (
                 <TradeRequirementsPanel
                   requirements={phaseDetail.requirements}
-                  phaseName={selectedPhase}
+                  phaseName={selectedPhaseName || ""}
                 />
               ) : null}
 
               {/* Scheduling */}
-              {phaseConfig && tradeNames.length > 0 && (
+              {selectedPhaseName && (
                 <SchedulingPanel
-                  phaseName={selectedPhase}
-                  leadTimeWeeks={phaseConfig.leadTimeWeeks}
+                  phaseName={selectedPhaseName}
+                  leadTimeWeeks={leadTimeWeeks}
                   tradeNames={tradeNames}
                   availableCount={availableCount}
                 />
