@@ -484,6 +484,14 @@ export async function registerRoutes(
     res.json(workers);
   });
 
+  app.get("/api/workers/me", async (req, res) => {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Not authenticated" });
+    const user = req.user as User;
+    const worker = await storage.getWorkerByEmail(user.email);
+    if (!worker) return res.status(404).json({ message: "No worker profile found for this account" });
+    res.json(worker);
+  });
+
   app.get("/api/workers/:id", async (req, res) => {
     const worker = await storage.getWorker(req.params.id);
     if (!worker) return res.status(404).json({ message: "Worker not found" });

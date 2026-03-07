@@ -1,19 +1,14 @@
-import { useState, useEffect } from "react";
 import { useQuery } from "@tanstack/react-query";
 import type { Worker, JobApplication, ProjectAssignment, Project } from "@shared/schema";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { usePageMeta } from "@/hooks/use-page-meta";
 import {
   Shield, Award, MapPin, Mail, Phone, Briefcase, Star, CheckCircle2,
   Clock, FileText, ChevronRight, Zap, Wallet, DollarSign, Timer
 } from "lucide-react";
-
-const CURRENT_WORKER_ID_KEY = "griseus_current_worker_id";
 
 const certBadgeStyles: Record<string, { bg: string; icon: typeof Award }> = {
   "Master Electrician": { bg: "bg-amber-500/15 text-amber-400", icon: Zap },
@@ -50,42 +45,21 @@ function getCertStyle(certName: string) {
 export default function MobilePassport() {
   usePageMeta("Digital Passport | Griseus", "Your verified professional profile with certifications and skills.");
 
-  const { data: workers, isLoading: workersLoading } = useQuery<Worker[]>({ queryKey: ["/api/workers"] });
-  const [selectedWorkerId, setSelectedWorkerId] = useState<string | null>(null);
-
-  useEffect(() => {
-    const stored = localStorage.getItem(CURRENT_WORKER_ID_KEY);
-    if (stored) setSelectedWorkerId(stored);
-  }, []);
-
-  useEffect(() => {
-    if (!selectedWorkerId && workers && workers.length > 0) {
-      const id = workers[0].id;
-      setSelectedWorkerId(id);
-      localStorage.setItem(CURRENT_WORKER_ID_KEY, id);
-    }
-  }, [workers, selectedWorkerId]);
-
-  const handleWorkerChange = (id: string) => {
-    setSelectedWorkerId(id);
-    localStorage.setItem(CURRENT_WORKER_ID_KEY, id);
-  };
-
-  const worker = workers?.find((w) => w.id === selectedWorkerId);
+  const { data: worker, isLoading: workerLoading } = useQuery<Worker>({ queryKey: ["/api/workers/me"] });
 
   const { data: assignments } = useQuery<ProjectAssignment[]>({
-    queryKey: ["/api/project-assignments/worker", selectedWorkerId],
-    enabled: !!selectedWorkerId,
+    queryKey: ["/api/project-assignments/worker", worker?.id],
+    enabled: !!worker?.id,
   });
 
   const { data: applications } = useQuery<JobApplication[]>({
-    queryKey: ["/api/job-applications", selectedWorkerId],
-    enabled: !!selectedWorkerId,
+    queryKey: ["/api/job-applications", worker?.id],
+    enabled: !!worker?.id,
   });
 
   const { data: projects } = useQuery<Project[]>({ queryKey: ["/api/projects"] });
 
-  if (workersLoading) {
+  if (workerLoading) {
     return (
       <div className="p-4 space-y-4">
         <Skeleton className="h-10 w-full" />
@@ -98,22 +72,10 @@ export default function MobilePassport() {
   return (
     <div className="flex flex-col h-full overflow-auto">
       <div className="px-4 pt-4 pb-3">
-        <div className="flex items-center gap-2 mb-3">
+        <div className="flex items-center gap-2">
           <Shield className="h-5 w-5 text-primary" />
           <h1 className="text-xl font-bold" data-testid="text-passport-title">Digital Passport</h1>
         </div>
-        <Select value={selectedWorkerId || ""} onValueChange={handleWorkerChange}>
-          <SelectTrigger data-testid="select-worker">
-            <SelectValue placeholder="Select your profile" />
-          </SelectTrigger>
-          <SelectContent>
-            {workers?.map((w) => (
-              <SelectItem key={w.id} value={w.id} data-testid={`select-worker-${w.id}`}>
-                {w.name} - {w.title}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
       </div>
 
       {worker && (

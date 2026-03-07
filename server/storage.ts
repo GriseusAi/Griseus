@@ -107,6 +107,7 @@ export interface IStorage {
 
   // Matching engine helpers
   getTradeByName(name: string): Promise<Trade | undefined>;
+  getWorkerByEmail(email: string): Promise<Worker | undefined>;
   getWorkersByTrade(trade: string): Promise<Worker[]>;
   getActiveProjects(): Promise<Project[]>;
 
@@ -404,6 +405,11 @@ export class DatabaseStorage implements IStorage {
   async getTradeByName(name: string): Promise<Trade | undefined> {
     const [trade] = await db.select().from(trades).where(eq(trades.name, name));
     return trade;
+  }
+
+  async getWorkerByEmail(email: string): Promise<Worker | undefined> {
+    const [worker] = await db.select().from(workers).where(eq(workers.email, email));
+    return worker;
   }
 
   async getWorkersByTrade(trade: string): Promise<Worker[]> {
