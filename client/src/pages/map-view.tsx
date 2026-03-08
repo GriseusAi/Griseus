@@ -386,11 +386,21 @@ export default function MapView() {
             {/* ── HQ Marker ── */}
             <Marker position={CUKUROVA_HQ} icon={createHQIcon()}>
               <Popup>
-                <div className="text-sm space-y-1 min-w-[200px]">
+                <div className="text-sm space-y-2 min-w-[220px]">
                   <p className="font-bold text-base">Çukurova Isı Sistemleri</p>
                   <p className="text-gray-600">Company Headquarters</p>
                   <p className="text-gray-500 text-xs">Gebze, Kocaeli, Turkey</p>
                   <p className="text-gray-500 text-xs">HVAC Manufacturing & Service Operations</p>
+                  <div className="border-t pt-2 mt-1 grid grid-cols-2 gap-2 text-xs">
+                    <div className="flex items-center gap-1.5">
+                      <Calendar className="h-3 w-3 text-blue-500" />
+                      <span><strong>{appointments.length}</strong> appointments</span>
+                    </div>
+                    <div className="flex items-center gap-1.5">
+                      <Users className="h-3 w-3 text-purple-500" />
+                      <span><strong>{technicianPins.length}</strong> technicians</span>
+                    </div>
+                  </div>
                 </div>
               </Popup>
             </Marker>

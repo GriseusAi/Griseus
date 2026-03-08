@@ -6,6 +6,10 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -31,6 +35,8 @@ import {
   DollarSign,
   Timer,
   X,
+  Plus,
+  Thermometer,
 } from "lucide-react";
 import type { Worker, ProjectAssignment, Project } from "@shared/schema";
 
@@ -732,16 +738,263 @@ function SchedulingPanel({
   );
 }
 
+// ── Maintenance Campaign Panel ───────────────────────────────────────
+
+interface MaintenanceCampaign {
+  id: string;
+  name: string;
+  region: string;
+  equipmentType: string;
+  technicianCount: number;
+  startDate: string;
+  endDate: string;
+  status: string;
+  createdAt: string;
+}
+
+const HVAC_EQUIPMENT_TYPES = [
+  "Kombi (Wall-hung Boiler)",
+  "Central Heating Boiler",
+  "Heat Pump",
+  "Split Air Conditioner",
+  "VRF/VRV System",
+  "Chiller",
+  "Fan Coil Unit",
+  "Rooftop Unit",
+  "Radiant Floor Heating",
+  "Solar Thermal System",
+];
+
+const SERVICE_REGIONS = [
+  "Gebze, Kocaeli",
+  "Darıca, Kocaeli",
+  "Çayırova, Kocaeli",
+  "Dilovası, Kocaeli",
+  "İzmit, Kocaeli",
+  "Tuzla, Istanbul",
+  "Pendik, Istanbul",
+  "Kartal, Istanbul",
+  "Maltepe, Istanbul",
+  "Kadıköy, Istanbul",
+];
+
+function MaintenanceCampaignPanel() {
+  const { toast } = useToast();
+  const [campaigns, setCampaigns] = useState<MaintenanceCampaign[]>([]);
+  const [showForm, setShowForm] = useState(false);
+  const [form, setForm] = useState({
+    name: "",
+    region: "",
+    equipmentType: "",
+    technicianCount: 2,
+    startDate: "",
+    endDate: "",
+  });
+
+  const handleCreate = () => {
+    if (!form.name || !form.region || !form.equipmentType || !form.startDate || !form.endDate) {
+      toast({ title: "Missing fields", description: "Please fill in all required fields.", variant: "destructive" });
+      return;
+    }
+    const campaign: MaintenanceCampaign = {
+      id: crypto.randomUUID(),
+      ...form,
+      status: "planned",
+      createdAt: new Date().toISOString(),
+    };
+    setCampaigns((prev) => [campaign, ...prev]);
+    toast({ title: "Campaign Created", description: `${form.name} has been scheduled.` });
+    setForm({ name: "", region: "", equipmentType: "", technicianCount: 2, startDate: "", endDate: "" });
+    setShowForm(false);
+  };
+
+  const daysBetween = (start: string, end: string) => {
+    const diff = new Date(end).getTime() - new Date(start).getTime();
+    return Math.max(1, Math.ceil(diff / (1000 * 60 * 60 * 24)));
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-xl font-bold text-foreground flex items-center gap-2">
+            <Thermometer className="w-5 h-5 text-orange-400" />
+            Maintenance Campaigns
+          </h2>
+          <p className="text-sm text-muted-foreground mt-1">
+            Plan seasonal HVAC maintenance campaigns with region targeting and technician allocation.
+          </p>
+        </div>
+        <Button onClick={() => setShowForm(!showForm)} variant={showForm ? "secondary" : "default"}>
+          {showForm ? <X className="w-4 h-4 mr-2" /> : <Plus className="w-4 h-4 mr-2" />}
+          {showForm ? "Cancel" : "New Campaign"}
+        </Button>
+      </div>
+
+      {/* Creation Form */}
+      {showForm && (
+        <Card className="border-primary/20 bg-primary/5">
+          <CardContent className="p-6 space-y-4">
+            <h3 className="text-base font-semibold flex items-center gap-2">
+              <CalendarRange className="w-4 h-4 text-primary" />
+              Create Maintenance Campaign
+            </h3>
+
+            <div className="grid sm:grid-cols-2 gap-4">
+              <div className="sm:col-span-2">
+                <Label>Campaign Name</Label>
+                <Input
+                  placeholder="e.g., Pre-Winter Kombi Maintenance 2026"
+                  value={form.name}
+                  onChange={(e) => setForm({ ...form, name: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Service Region</Label>
+                <Select value={form.region} onValueChange={(v) => setForm({ ...form, region: v })}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select region" /></SelectTrigger>
+                  <SelectContent>
+                    {SERVICE_REGIONS.map((r) => (
+                      <SelectItem key={r} value={r}>{r}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Equipment Type</Label>
+                <Select value={form.equipmentType} onValueChange={(v) => setForm({ ...form, equipmentType: v })}>
+                  <SelectTrigger className="mt-1"><SelectValue placeholder="Select equipment" /></SelectTrigger>
+                  <SelectContent>
+                    {HVAC_EQUIPMENT_TYPES.map((t) => (
+                      <SelectItem key={t} value={t}>{t}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div>
+                <Label>Technician Count</Label>
+                <Input
+                  type="number"
+                  min={1}
+                  max={50}
+                  value={form.technicianCount}
+                  onChange={(e) => setForm({ ...form, technicianCount: parseInt(e.target.value) || 1 })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>Start Date</Label>
+                <Input
+                  type="date"
+                  value={form.startDate}
+                  onChange={(e) => setForm({ ...form, startDate: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+
+              <div>
+                <Label>End Date</Label>
+                <Input
+                  type="date"
+                  value={form.endDate}
+                  onChange={(e) => setForm({ ...form, endDate: e.target.value })}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+
+            {form.startDate && form.endDate && form.technicianCount > 0 && (
+              <div className="bg-background/50 rounded-lg p-3 text-sm text-muted-foreground border">
+                <span className="text-foreground font-medium">{daysBetween(form.startDate, form.endDate)} days</span> campaign duration &middot;{" "}
+                <span className="text-foreground font-medium">{form.technicianCount}</span> technicians &middot;{" "}
+                Est. <span className="text-foreground font-medium">{form.technicianCount * daysBetween(form.startDate, form.endDate) * 4}</span> service calls capacity
+              </div>
+            )}
+
+            <Button onClick={handleCreate} className="w-full">
+              <Send className="w-4 h-4 mr-2" />
+              Create Campaign
+            </Button>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Campaign list */}
+      {campaigns.length === 0 && !showForm && (
+        <Card className="border-white/10">
+          <CardContent className="p-12 text-center">
+            <div className="w-16 h-16 rounded-2xl bg-orange-500/10 flex items-center justify-center mx-auto mb-4">
+              <Thermometer className="w-8 h-8 text-orange-400" />
+            </div>
+            <h3 className="text-lg font-semibold text-foreground mb-2">No Campaigns Yet</h3>
+            <p className="text-muted-foreground text-sm max-w-md mx-auto">
+              Create your first maintenance campaign to plan seasonal HVAC service operations across your service regions.
+            </p>
+          </CardContent>
+        </Card>
+      )}
+
+      <div className="grid gap-3">
+        {campaigns.map((c) => (
+          <Card key={c.id} className="border-white/10 hover:border-white/20 transition-all">
+            <CardContent className="p-4">
+              <div className="flex items-start justify-between gap-3">
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center gap-2 mb-1">
+                    <h3 className="font-semibold text-foreground truncate">{c.name}</h3>
+                    <Badge variant="outline" className="bg-orange-500/10 text-orange-400 border-orange-500/20 capitalize">
+                      {c.status}
+                    </Badge>
+                  </div>
+                  <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground mt-2">
+                    <span className="flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5" />
+                      {c.region}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Wrench className="w-3.5 h-3.5" />
+                      {c.equipmentType}
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <Users className="w-3.5 h-3.5" />
+                      {c.technicianCount} technicians
+                    </span>
+                    <span className="flex items-center gap-1">
+                      <CalendarRange className="w-3.5 h-3.5" />
+                      {formatDate(c.startDate)} — {formatDate(c.endDate)}
+                    </span>
+                  </div>
+                </div>
+                <div className="text-right shrink-0">
+                  <div className="text-lg font-bold text-foreground">
+                    {daysBetween(c.startDate, c.endDate)}d
+                  </div>
+                  <div className="text-[10px] text-muted-foreground">duration</div>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main Page ──────────────────────────────────────────────────────────
 
-export default function PhasePlanner() {
+function ConstructionPhasesTab() {
   const [selectedPhaseId, setSelectedPhaseId] = useState<string | null>(null);
 
   const { data: phaseSummary, isLoading: loadingSummary } = useQuery<PhaseSummary[]>({
     queryKey: ["/api/phase-requirements/summary"],
   });
 
-  // Derive selected phase data from the API summary
   const selectedPhaseData = phaseSummary?.find(p => p.phase.id === selectedPhaseId);
   const selectedPhaseName = selectedPhaseData?.phase.name || null;
   const leadTimeWeeks = selectedPhaseData ? getLeadTimeWeeks(selectedPhaseData.phase.orderIndex) : 0;
@@ -762,7 +1015,6 @@ export default function PhasePlanner() {
     return phaseDetail?.requirements.map(r => r.tradeName) || [];
   }, [phaseDetail]);
 
-  // Get available worker count for the selected phase
   const tradesParam = tradeNames.join(",");
   const { data: phaseWorkers } = useQuery<Worker[]>({
     queryKey: ["/api/phase-workers", tradesParam],
@@ -779,8 +1031,7 @@ export default function PhasePlanner() {
 
   if (loadingSummary) {
     return (
-      <div className="p-6 space-y-4">
-        <Skeleton className="h-10 w-72" />
+      <div className="space-y-4">
         <div className="grid lg:grid-cols-3 gap-6">
           <div className="space-y-2">
             {[1, 2, 3, 4, 5, 6, 7].map(i => (
@@ -797,15 +1048,7 @@ export default function PhasePlanner() {
   }
 
   return (
-    <div className="p-6 space-y-6">
-      {/* Header */}
-      <div>
-        <h1 className="text-2xl font-bold text-foreground">Phase Planner</h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Select a project phase to see required trades, certifications, and available workforce.
-        </p>
-      </div>
-
+    <div className="space-y-6">
       {/* Summary stats */}
       {phaseSummary && (
         <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -844,7 +1087,6 @@ export default function PhasePlanner() {
 
       {/* Main content grid */}
       <div className="grid lg:grid-cols-3 gap-6">
-        {/* Left: Phase Selector */}
         <div className="lg:col-span-1">
           <div className="sticky top-20">
             <h2 className="text-sm font-medium text-muted-foreground mb-3 uppercase tracking-wider">
@@ -860,7 +1102,6 @@ export default function PhasePlanner() {
           </div>
         </div>
 
-        {/* Right: Phase Details */}
         <div className="lg:col-span-2 space-y-6">
           {!selectedPhaseId ? (
             <Card className="border-white/10">
@@ -878,7 +1119,6 @@ export default function PhasePlanner() {
             </Card>
           ) : (
             <>
-              {/* Phase header */}
               <div className="flex items-center gap-3">
                 <button
                   onClick={() => setSelectedPhaseId(null)}
@@ -894,7 +1134,6 @@ export default function PhasePlanner() {
                 </div>
               </div>
 
-              {/* Trade Requirements */}
               {loadingDetail ? (
                 <div className="space-y-3">
                   {[1, 2, 3].map(i => (
@@ -908,7 +1147,6 @@ export default function PhasePlanner() {
                 />
               ) : null}
 
-              {/* Scheduling */}
               {selectedPhaseName && (
                 <SchedulingPanel
                   phaseName={selectedPhaseName}
@@ -918,7 +1156,6 @@ export default function PhasePlanner() {
                 />
               )}
 
-              {/* Available Workers */}
               {tradeNames.length > 0 && (
                 <AvailableWorkersPanel tradeNames={tradeNames} />
               )}
@@ -926,6 +1163,40 @@ export default function PhasePlanner() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+export default function PhasePlanner() {
+  return (
+    <div className="p-6 space-y-6">
+      <div>
+        <h1 className="text-2xl font-bold text-foreground">Phase Planner</h1>
+        <p className="text-sm text-muted-foreground mt-1">
+          Plan construction phases and HVAC maintenance campaigns with workforce allocation.
+        </p>
+      </div>
+
+      <Tabs defaultValue="construction" className="space-y-6">
+        <TabsList>
+          <TabsTrigger value="construction" className="flex items-center gap-1.5">
+            <Wrench className="w-3.5 h-3.5" />
+            Construction Phases
+          </TabsTrigger>
+          <TabsTrigger value="maintenance" className="flex items-center gap-1.5">
+            <Thermometer className="w-3.5 h-3.5" />
+            Maintenance Campaign
+          </TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="construction">
+          <ConstructionPhasesTab />
+        </TabsContent>
+
+        <TabsContent value="maintenance">
+          <MaintenanceCampaignPanel />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

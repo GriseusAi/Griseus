@@ -1499,6 +1499,34 @@ export async function registerRoutes(
         technicians: techStats,
         routeAnalysis,
         typeBreakdown,
+        seasonalForecast: (() => {
+          // HVAC seasonal demand model: maintenance surges Sep-Oct (pre-winter) and Apr-May (pre-summer)
+          // Based on appointment volume patterns + HVAC industry knowledge
+          const months = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+          // Base seasonal multipliers for HVAC service demand (Turkey climate)
+          const seasonalMultipliers = [0.6, 0.5, 0.7, 1.1, 1.2, 0.8, 0.7, 0.9, 1.5, 1.6, 1.0, 0.7];
+
+          // Calculate actual monthly volumes from data
+          const monthlyActual = new Array(12).fill(0);
+          for (const a of appointments) {
+            if (a.status === "cancelled") continue;
+            const month = parseInt(a.scheduledDate.split("-")[1], 10) - 1;
+            if (month >= 0 && month < 12) monthlyActual[month]++;
+          }
+
+          // Average monthly baseline from actual data
+          const totalNonCancelled = appointments.filter(a => a.status !== "cancelled").length;
+          const monthsWithData = monthlyActual.filter(v => v > 0).length || 1;
+          const avgMonthly = totalNonCancelled / Math.max(monthsWithData, 1);
+
+          return months.map((name, i) => ({
+            month: name,
+            actual: monthlyActual[i],
+            predicted: Math.round(Math.max(avgMonthly, 1) * seasonalMultipliers[i]),
+            multiplier: seasonalMultipliers[i],
+            isSurge: seasonalMultipliers[i] >= 1.3,
+          }));
+        })(),
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
