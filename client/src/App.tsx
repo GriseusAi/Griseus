@@ -26,6 +26,8 @@ import Projects from "@/pages/projects";
 import ProjectDetail from "@/pages/project-detail";
 import Team from "@/pages/team";
 import PhasePlanner from "@/pages/phase-planner";
+import MapView from "@/pages/map-view";
+import Scheduling from "@/pages/scheduling";
 import MobileJobs from "@/pages/mobile-jobs";
 import MobilePassport from "@/pages/mobile-passport";
 import MobileSquad from "@/pages/mobile-squad";
@@ -53,6 +55,8 @@ function DesktopRouter() {
           <Route path="/projects" component={Projects} />
           <Route path="/projects/:id" component={ProjectDetail} />
           <Route path="/team" component={Team} />
+          <Route path="/map" component={MapView} />
+          <Route path="/scheduling" component={Scheduling} />
           <Route component={NotFound} />
         </Switch>
       </motion.div>

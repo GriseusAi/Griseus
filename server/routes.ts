@@ -6,13 +6,13 @@ import {
   insertChatMessageSchema, registerSchema, insertTradeSchema, insertSkillSchema,
   insertCertificationSchema, insertTradeCertificationSchema, insertProjectPhaseSchema,
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
-  insertProjectScheduleSchema, insertProjectAssignmentSchema,
+  insertProjectScheduleSchema, insertProjectAssignmentSchema, insertServiceAppointmentSchema,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment } from "@shared/schema";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -1297,6 +1297,262 @@ export async function registerRoutes(
       res.status(201).json(schedule);
     } catch (error: any) {
       res.status(400).json({ message: error.message });
+    }
+  });
+
+  // ── Scheduling Intelligence ──────────────────────────────────────────
+
+  app.get("/api/scheduling/intelligence", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const companyId = (req.user as User).id;
+      const appointments = await storage.getServiceAppointments(companyId);
+      const allWorkers = await storage.getWorkers();
+
+      // Build assignee set from appointments
+      const assigneeIds = new Set(appointments.map(a => a.assigneeId).filter(Boolean) as string[]);
+      const technicians = allWorkers.filter(w => assigneeIds.has(w.id));
+
+      const WORK_HOURS_PER_DAY = 8 * 60; // 480 minutes
+
+      // ── Technician utilization & jobs/day ───────────────────────────
+      const techStats = technicians.map(tech => {
+        const techAppts = appointments.filter(a => a.assigneeId === tech.id);
+        const completed = techAppts.filter(a => a.status === "completed");
+        const scheduled = techAppts.filter(a => a.status === "scheduled" || a.status === "in_progress");
+
+        // Group by date for jobs/day
+        const byDate = new Map<string, typeof techAppts>();
+        for (const a of techAppts) {
+          const existing = byDate.get(a.scheduledDate) || [];
+          existing.push(a);
+          byDate.set(a.scheduledDate, existing);
+        }
+
+        // Utilization = total scheduled minutes / available minutes across active days
+        const activeDays = byDate.size || 1;
+        const totalMinutes = techAppts
+          .filter(a => a.status !== "cancelled")
+          .reduce((sum, a) => sum + a.estimatedDuration, 0);
+        const availableMinutes = activeDays * WORK_HOURS_PER_DAY;
+        const utilization = availableMinutes > 0 ? Math.round((totalMinutes / availableMinutes) * 100) : 0;
+
+        const jobsPerDay = activeDays > 0 ? +(techAppts.filter(a => a.status !== "cancelled").length / activeDays).toFixed(1) : 0;
+
+        // Completion rate
+        const nonCancelled = techAppts.filter(a => a.status !== "cancelled");
+        const completionRate = nonCancelled.length > 0
+          ? Math.round((completed.length / nonCancelled.length) * 100)
+          : 0;
+
+        // Avg job duration
+        const avgDuration = nonCancelled.length > 0
+          ? Math.round(nonCancelled.reduce((s, a) => s + a.estimatedDuration, 0) / nonCancelled.length)
+          : 0;
+
+        // Performance score: weighted composite (0-100)
+        // 40% utilization (capped at 100%), 30% completion rate, 20% jobs/day (normalize to 5/day target), 10% consistency
+        const utilizationScore = Math.min(utilization, 100);
+        const jobsDayScore = Math.min((jobsPerDay / 5) * 100, 100);
+        const dailyCounts = Array.from(byDate.values()).map(arr => arr.filter(a => a.status !== "cancelled").length);
+        const meanDaily = dailyCounts.length > 0 ? dailyCounts.reduce((a, b) => a + b, 0) / dailyCounts.length : 0;
+        const variance = dailyCounts.length > 1
+          ? dailyCounts.reduce((sum, c) => sum + Math.pow(c - meanDaily, 2), 0) / dailyCounts.length
+          : 0;
+        const consistencyScore = meanDaily > 0 ? Math.max(0, 100 - (Math.sqrt(variance) / meanDaily) * 100) : 0;
+
+        const performanceScore = Math.round(
+          utilizationScore * 0.4 + completionRate * 0.3 + jobsDayScore * 0.2 + consistencyScore * 0.1
+        );
+
+        return {
+          technicianId: tech.id,
+          name: tech.name,
+          trade: tech.trade,
+          location: tech.location,
+          totalJobs: techAppts.length,
+          completedJobs: completed.length,
+          scheduledJobs: scheduled.length,
+          cancelledJobs: techAppts.filter(a => a.status === "cancelled").length,
+          utilization,
+          jobsPerDay,
+          completionRate,
+          avgDuration,
+          performanceScore,
+          activeDays,
+          dailyBreakdown: Array.from(byDate.entries()).map(([date, appts]) => ({
+            date,
+            jobs: appts.filter(a => a.status !== "cancelled").length,
+            minutes: appts.filter(a => a.status !== "cancelled").reduce((s, a) => s + a.estimatedDuration, 0),
+          })).sort((a, b) => a.date.localeCompare(b.date)),
+        };
+      });
+
+      // ── Route optimization analysis ─────────────────────────────────
+      // Group appointments by technician+date, compute travel distances
+      const routeAnalysis: Array<{
+        technicianId: string;
+        technicianName: string;
+        date: string;
+        stops: Array<{ title: string; lat: number | null; lng: number | null; time: string; address: string }>;
+        totalDistanceKm: number;
+        optimizedDistanceKm: number;
+        savingsPercent: number;
+        optimizedOrder: number[];
+      }> = [];
+
+      // Haversine distance helper
+      const haversine = (lat1: number, lon1: number, lat2: number, lon2: number) => {
+        const R = 6371;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a2 = Math.sin(dLat / 2) ** 2 + Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+        return R * 2 * Math.atan2(Math.sqrt(a2), Math.sqrt(1 - a2));
+      };
+
+      for (const tech of technicians) {
+        const techAppts = appointments.filter(a => a.assigneeId === tech.id && a.status !== "cancelled");
+        const byDate = new Map<string, typeof techAppts>();
+        for (const a of techAppts) {
+          const existing = byDate.get(a.scheduledDate) || [];
+          existing.push(a);
+          byDate.set(a.scheduledDate, existing);
+        }
+
+        const dateEntries = Array.from(byDate.entries());
+        for (const [date, dayAppts] of dateEntries) {
+          if (dayAppts.length < 2) continue;
+          const sorted = [...dayAppts].sort((a, b) => a.scheduledTime.localeCompare(b.scheduledTime));
+          const geoAppts = sorted.filter(a => a.latitude != null && a.longitude != null);
+          if (geoAppts.length < 2) continue;
+
+          // Current order distance
+          let currentDist = 0;
+          for (let i = 1; i < geoAppts.length; i++) {
+            currentDist += haversine(geoAppts[i - 1].latitude!, geoAppts[i - 1].longitude!, geoAppts[i].latitude!, geoAppts[i].longitude!);
+          }
+
+          // Nearest-neighbor greedy optimization
+          const remaining = geoAppts.map((_, i) => i);
+          const optimized: number[] = [remaining.shift()!];
+          while (remaining.length > 0) {
+            const last = geoAppts[optimized[optimized.length - 1]];
+            let bestIdx = 0, bestDist = Infinity;
+            for (let i = 0; i < remaining.length; i++) {
+              const d = haversine(last.latitude!, last.longitude!, geoAppts[remaining[i]].latitude!, geoAppts[remaining[i]].longitude!);
+              if (d < bestDist) { bestDist = d; bestIdx = i; }
+            }
+            optimized.push(remaining.splice(bestIdx, 1)[0]);
+          }
+
+          let optimizedDist = 0;
+          for (let i = 1; i < optimized.length; i++) {
+            optimizedDist += haversine(geoAppts[optimized[i - 1]].latitude!, geoAppts[optimized[i - 1]].longitude!, geoAppts[optimized[i]].latitude!, geoAppts[optimized[i]].longitude!);
+          }
+
+          const savings = currentDist > 0 ? Math.round(((currentDist - optimizedDist) / currentDist) * 100) : 0;
+
+          routeAnalysis.push({
+            technicianId: tech.id,
+            technicianName: tech.name,
+            date,
+            stops: sorted.map(a => ({ title: a.title, lat: a.latitude, lng: a.longitude, time: a.scheduledTime, address: a.customerAddress })),
+            totalDistanceKm: +currentDist.toFixed(1),
+            optimizedDistanceKm: +optimizedDist.toFixed(1),
+            savingsPercent: savings,
+            optimizedOrder: optimized,
+          });
+        }
+      }
+
+      // ── Aggregate metrics ───────────────────────────────────────────
+      const totalAppointments = appointments.length;
+      const completedCount = appointments.filter(a => a.status === "completed").length;
+      const cancelledCount = appointments.filter(a => a.status === "cancelled").length;
+      const avgUtilization = techStats.length > 0 ? Math.round(techStats.reduce((s, t) => s + t.utilization, 0) / techStats.length) : 0;
+      const avgPerformance = techStats.length > 0 ? Math.round(techStats.reduce((s, t) => s + t.performanceScore, 0) / techStats.length) : 0;
+      const avgJobsPerDay = techStats.length > 0 ? +(techStats.reduce((s, t) => s + t.jobsPerDay, 0) / techStats.length).toFixed(1) : 0;
+      const totalSavingsKm = routeAnalysis.reduce((s, r) => s + (r.totalDistanceKm - r.optimizedDistanceKm), 0);
+
+      // Type breakdown
+      const typeBreakdown = ["installation", "maintenance", "repair", "inspection"].map(type => ({
+        type,
+        count: appointments.filter(a => a.appointmentType === type).length,
+        completed: appointments.filter(a => a.appointmentType === type && a.status === "completed").length,
+        avgDuration: (() => {
+          const typed = appointments.filter(a => a.appointmentType === type);
+          return typed.length > 0 ? Math.round(typed.reduce((s, a) => s + a.estimatedDuration, 0) / typed.length) : 0;
+        })(),
+      }));
+
+      res.json({
+        summary: {
+          totalAppointments,
+          completedCount,
+          cancelledCount,
+          activeTechnicians: technicians.length,
+          avgUtilization,
+          avgPerformance,
+          avgJobsPerDay,
+          totalSavingsKm: +totalSavingsKm.toFixed(1),
+        },
+        technicians: techStats,
+        routeAnalysis,
+        typeBreakdown,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── Service Appointments (Scheduling Module) ─────────────────────────
+
+  app.get("/api/service-appointments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const appointments = await storage.getServiceAppointments((req.user as User).id);
+      res.json(appointments);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/service-appointments/:id", async (req, res) => {
+    try {
+      const appointment = await storage.getServiceAppointment(req.params.id);
+      if (!appointment) return res.status(404).json({ message: "Appointment not found" });
+      res.json(appointment);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.post("/api/service-appointments", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const data = insertServiceAppointmentSchema.parse({
+        ...req.body,
+        companyId: (req.user as User).id,
+      });
+      const appointment = await storage.createServiceAppointment(data);
+      res.status(201).json(appointment);
+    } catch (error: any) {
+      res.status(400).json({ message: error.message });
+    }
+  });
+
+  app.patch("/api/service-appointments/:id/status", async (req, res) => {
+    try {
+      if (!req.isAuthenticated()) return res.status(401).json({ message: "Unauthorized" });
+      const { status } = req.body;
+      if (!["scheduled", "in_progress", "completed", "cancelled"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const updated = await storage.updateServiceAppointmentStatus(req.params.id, status);
+      if (!updated) return res.status(404).json({ message: "Appointment not found" });
+      res.json(updated);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 

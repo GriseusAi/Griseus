@@ -328,3 +328,31 @@ export const passwordResetCodes = pgTable("password_reset_codes", {
   expiresAt: timestamp("expires_at").notNull(),
   used: boolean("used").notNull().default(false),
 });
+
+// --- Service Team Scheduling ---
+
+export const serviceAppointments = pgTable("service_appointments", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  companyId: varchar("company_id").notNull(),
+  projectId: varchar("project_id"),
+  assigneeId: varchar("assignee_id"),
+  title: text("title").notNull(),
+  description: text("description"),
+  appointmentType: text("appointment_type").notNull(), // "installation" | "maintenance" | "repair" | "inspection"
+  status: text("status").notNull().default("scheduled"), // "scheduled" | "in_progress" | "completed" | "cancelled"
+  priority: text("priority").notNull().default("normal"), // "low" | "normal" | "high" | "urgent"
+  scheduledDate: text("scheduled_date").notNull(),
+  scheduledTime: text("scheduled_time").notNull(),
+  estimatedDuration: integer("estimated_duration").notNull().default(60), // minutes
+  customerName: text("customer_name").notNull(),
+  customerPhone: text("customer_phone"),
+  customerAddress: text("customer_address").notNull(),
+  latitude: doublePrecision("latitude"),
+  longitude: doublePrecision("longitude"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertServiceAppointmentSchema = createInsertSchema(serviceAppointments).omit({ id: true, createdAt: true });
+export type InsertServiceAppointment = z.infer<typeof insertServiceAppointmentSchema>;
+export type ServiceAppointment = typeof serviceAppointments.$inferSelect;

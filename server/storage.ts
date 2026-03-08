@@ -19,11 +19,13 @@ import {
   type WorkerSkill, type InsertWorkerSkill,
   type WorkerCertification, type InsertWorkerCertification,
   type ProjectSchedule, type InsertProjectSchedule,
+  type ServiceAppointment, type InsertServiceAppointment,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
   trades, skills, certifications, tradesCertifications, tradeAdjacencies,
   certificationRequirements, wageData, phaseTradeRequirements,
   projectPhases, projectPhasesTrades,
   workerSkills, workerCertifications, passwordResetCodes, projectSchedules,
+  serviceAppointments,
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, and, gt, asc, or } from "drizzle-orm";
@@ -121,6 +123,12 @@ export interface IStorage {
   markResetCodeUsed(id: string): Promise<void>;
   deleteExpiredResetCodes(userId: string): Promise<void>;
   updateUserPassword(id: string, hashedPassword: string): Promise<void>;
+
+  // Service Appointments
+  getServiceAppointments(companyId: string): Promise<ServiceAppointment[]>;
+  getServiceAppointment(id: string): Promise<ServiceAppointment | undefined>;
+  createServiceAppointment(appointment: InsertServiceAppointment): Promise<ServiceAppointment>;
+  updateServiceAppointmentStatus(id: string, status: string): Promise<ServiceAppointment | undefined>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -464,6 +472,33 @@ export class DatabaseStorage implements IStorage {
 
   async updateUserPassword(id: string, hashedPassword: string): Promise<void> {
     await db.update(users).set({ password: hashedPassword }).where(eq(users.id, id));
+  }
+
+  // ── Service Appointments ──────────────────────────────────────────────
+
+  async getServiceAppointments(companyId: string): Promise<ServiceAppointment[]> {
+    return db.select().from(serviceAppointments)
+      .where(eq(serviceAppointments.companyId, companyId))
+      .orderBy(asc(serviceAppointments.scheduledDate));
+  }
+
+  async getServiceAppointment(id: string): Promise<ServiceAppointment | undefined> {
+    const [appointment] = await db.select().from(serviceAppointments).where(eq(serviceAppointments.id, id));
+    return appointment;
+  }
+
+  async createServiceAppointment(appointment: InsertServiceAppointment): Promise<ServiceAppointment> {
+    const [created] = await db.insert(serviceAppointments).values(appointment).returning();
+    return created;
+  }
+
+  async updateServiceAppointmentStatus(id: string, status: string): Promise<ServiceAppointment | undefined> {
+    const [updated] = await db
+      .update(serviceAppointments)
+      .set({ status })
+      .where(eq(serviceAppointments.id, id))
+      .returning();
+    return updated;
   }
 }
 

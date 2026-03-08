@@ -1,5 +1,5 @@
 import { useLocation, Link } from "wouter";
-import { LayoutDashboard, FolderKanban, Users, LogOut, CalendarRange, UserCheck } from "lucide-react";
+import { LayoutDashboard, FolderKanban, Users, LogOut, CalendarRange, UserCheck, Globe, Brain } from "lucide-react";
 import { Separator } from "@/components/ui/separator";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import {
@@ -19,6 +19,8 @@ const navItems = [
   { title: "Phase Planner", url: "/phase-planner", icon: CalendarRange },
   { title: "Workforce Matching", url: "/dashboard", icon: UserCheck },
   { title: "Projects", url: "/projects", icon: FolderKanban },
+  { title: "Map View", url: "/map", icon: Globe },
+  { title: "Scheduling Intelligence", url: "/scheduling", icon: Brain },
   { title: "My Team", url: "/team", icon: Users },
 ];
 
