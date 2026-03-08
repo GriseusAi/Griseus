@@ -29,14 +29,25 @@ app.use(
 app.use(express.urlencoded({ extended: false }));
 
 // Session setup
+const isProduction = process.env.NODE_ENV === "production";
 const MemoryStore = createMemoryStore(session);
+
+if (isProduction) {
+  app.set("trust proxy", 1);
+}
+
 app.use(
   session({
     secret: process.env.SESSION_SECRET || "griseus-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 86400000 }),
-    cookie: { maxAge: 7 * 24 * 60 * 60 * 1000 },
+    cookie: {
+      maxAge: 7 * 24 * 60 * 60 * 1000,
+      secure: isProduction,
+      sameSite: "lax",
+      httpOnly: true,
+    },
   }),
 );
 
