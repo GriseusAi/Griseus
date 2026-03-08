@@ -15,6 +15,7 @@ export const users = pgTable("users", {
   trade: text("trade"),
   yearsExperience: integer("years_experience"),
   location: text("location"),
+  companyType: text("company_type"),
 });
 
 export const insertUserSchema = createInsertSchema(users).omit({ id: true });

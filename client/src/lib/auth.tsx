@@ -25,5 +25,9 @@ export function ProtectedRoute({ children }: { children: React.ReactNode }) {
     return <Redirect to="/admin" />;
   }
 
+  if (user.role === "company" && user.companyType === "manufacturing") {
+    return <Redirect to="/operations" />;
+  }
+
   return <>{children}</>;
 }

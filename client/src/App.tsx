@@ -36,6 +36,8 @@ import AdminUsers from "@/pages/admin/users";
 import AdminProjects from "@/pages/admin/projects";
 import AdminProjectDetail from "@/pages/admin/project-detail";
 import AdminSettings from "@/pages/admin/settings";
+import Operations from "@/pages/operations";
+import { OperationsSidebar } from "@/components/operations-sidebar";
 
 function DesktopRouter() {
   const [location] = useLocation();
@@ -149,6 +151,70 @@ function AdminLayout() {
   );
 }
 
+function OperationsRouter() {
+  const [location] = useLocation();
+
+  return (
+    <AnimatePresence mode="wait">
+      <motion.div
+        key={location}
+        initial={{ opacity: 0, y: 8 }}
+        animate={{ opacity: 1, y: 0 }}
+        exit={{ opacity: 0, y: -4 }}
+        transition={{ duration: 0.25, ease: "easeOut" }}
+      >
+        <Switch>
+          <Route path="/operations" component={Operations} />
+          <Route path="/operations/scheduling" component={Operations} />
+          <Route path="/operations/finance" component={Operations} />
+          <Route component={NotFound} />
+        </Switch>
+      </motion.div>
+    </AnimatePresence>
+  );
+}
+
+function OperationsLayout() {
+  const style = {
+    "--sidebar-width": "16rem",
+    "--sidebar-width-icon": "3rem",
+  };
+
+  return (
+    <SidebarProvider style={style as React.CSSProperties}>
+      <div className="flex h-screen w-full">
+        <OperationsSidebar />
+        <div className="flex flex-col flex-1 min-w-0">
+          <header className="flex items-center gap-2 flex-wrap p-2 border-b border-white/10 sticky top-0 z-50 bg-background/80 backdrop-blur-xl">
+            <SidebarTrigger />
+          </header>
+          <main className="flex-1 overflow-auto">
+            <OperationsRouter />
+          </main>
+        </div>
+      </div>
+    </SidebarProvider>
+  );
+}
+
+function AuthenticatedOperations() {
+  const { user, isLoading } = useUser();
+
+  if (isLoading) {
+    return (
+      <div className="flex items-center justify-center min-h-screen">
+        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+
+  if (!user) {
+    return <Redirect to="/login" />;
+  }
+
+  return <OperationsLayout />;
+}
+
 function AuthenticatedAdmin() {
   const { user, isLoading } = useUser();
 
@@ -165,7 +231,8 @@ function AuthenticatedAdmin() {
   }
 
   if (user.role !== "admin") {
-    return <Redirect to={user.role === "worker" ? "/mobile" : "/dashboard"} />;
+    const dest = user.role === "worker" ? "/mobile" : user.companyType === "manufacturing" ? "/operations" : "/dashboard";
+    return <Redirect to={dest} />;
   }
 
   return <AdminLayout />;
@@ -218,6 +285,10 @@ function AppContent() {
 
   if (location.startsWith("/mobile")) {
     return <AuthenticatedMobile />;
+  }
+
+  if (location.startsWith("/operations")) {
+    return <AuthenticatedOperations />;
   }
 
   if (location.startsWith("/admin")) {
