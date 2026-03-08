@@ -40,6 +40,8 @@ import {
   PolarAngleAxis,
   PolarRadiusAxis,
   Radar,
+  Cell,
+  ReferenceLine,
 } from "recharts";
 
 // ── Dummy Data ──────────────────────────────────────────────────────────
@@ -289,6 +291,110 @@ function ProductionIntelligence() {
                 <Bar dataKey="utilization" fill="#8B5CF6" radius={[0, 4, 4, 0]} />
               </BarChart>
             </ResponsiveContainer>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Seasonal Demand Forecast */}
+      <SeasonalDemandForecast />
+    </div>
+  );
+}
+
+// ── Seasonal Demand Forecast ────────────────────────────────────────────
+
+const SEASONAL_DEMAND = [
+  { month: "Jan", demand: 3 },
+  { month: "Feb", demand: 2 },
+  { month: "Mar", demand: 3 },
+  { month: "Apr", demand: 4 },
+  { month: "May", demand: 4 },
+  { month: "Jun", demand: 5 },
+  { month: "Jul", demand: 5 },
+  { month: "Aug", demand: 6 },
+  { month: "Sep", demand: 10 },
+  { month: "Oct", demand: 9 },
+  { month: "Nov", demand: 7 },
+  { month: "Dec", demand: 6 },
+];
+
+function SeasonalDemandForecast() {
+  const peakMonths = new Set(["Sep", "Oct"]);
+
+  return (
+    <div className="space-y-4">
+      {/* Peak Season Banner */}
+      <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
+        <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
+          <AlertTriangle className="h-5 w-5 text-amber-400" />
+        </div>
+        <div>
+          <p className="font-semibold text-amber-400">Peak season in 26 weeks — recommend hiring 8 additional technicians now</p>
+          <p className="text-xs text-muted-foreground mt-0.5">
+            Sep–Oct demand index reaches 9–10. Current workforce will be at 130% capacity without reinforcement.
+          </p>
+        </div>
+      </div>
+
+      {/* Forecast Chart */}
+      <Card className="border-white/10">
+        <CardHeader className="pb-2">
+          <CardTitle className="text-base flex items-center gap-2">
+            <TrendingUp className="h-4 w-4 text-amber-400" />
+            Seasonal Demand Forecast — 12-Month Outlook
+          </CardTitle>
+        </CardHeader>
+        <CardContent>
+          <div className="h-[320px]">
+            <ResponsiveContainer width="100%" height="100%">
+              <BarChart data={SEASONAL_DEMAND} barCategoryGap="15%">
+                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
+                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
+                <YAxis domain={[0, 10]} stroke="#64748b" fontSize={12} tickCount={6} />
+                <Tooltip
+                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
+                  labelStyle={{ color: "#fff" }}
+                  formatter={(v: number) => [`${v} / 10`, "Demand Index"]}
+                />
+                <ReferenceLine y={7} stroke="#F59E0B" strokeDasharray="5 5" label={{ value: "High demand threshold", fill: "#F59E0B", fontSize: 11, position: "insideTopRight" }} />
+                <Bar dataKey="demand" radius={[4, 4, 0, 0]}>
+                  {SEASONAL_DEMAND.map((entry) => (
+                    <Cell
+                      key={entry.month}
+                      fill={
+                        peakMonths.has(entry.month)
+                          ? entry.demand >= 10
+                            ? "#EF4444"
+                            : "#F97316"
+                          : entry.demand >= 7
+                            ? "#F59E0B"
+                            : "#3B82F6"
+                      }
+                    />
+                  ))}
+                </Bar>
+              </BarChart>
+            </ResponsiveContainer>
+          </div>
+
+          {/* Legend */}
+          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground justify-center">
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-[#3B82F6]" />
+              Normal (1–6)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-[#F59E0B]" />
+              High (7–8)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-[#F97316]" />
+              Peak (9)
+            </div>
+            <div className="flex items-center gap-1.5">
+              <div className="w-3 h-3 rounded-sm bg-[#EF4444]" />
+              Critical (10)
+            </div>
           </div>
         </CardContent>
       </Card>
