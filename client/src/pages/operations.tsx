@@ -101,8 +101,8 @@ const ALL_SKILLS = ["welding", "brazing", "assembly", "testing", "quality", "pre
 
 const ISO_ANGLE = Math.PI / 6;
 
-function IsoCube({ cx, cy, size, topColor, leftColor, rightColor, glowColor, opacity = 1 }: {
-  cx: number; cy: number; size: number; topColor: string; leftColor: string; rightColor: string; glowColor?: string; opacity?: number;
+function IsoCube({ cx, cy, size, topColor, leftColor, rightColor, glowColor, opacity = 1, strokeColor }: {
+  cx: number; cy: number; size: number; topColor: string; leftColor: string; rightColor: string; glowColor?: string; opacity?: number; strokeColor?: string;
 }) {
   const s = size / 2;
   const cos30 = Math.cos(ISO_ANGLE);
@@ -110,12 +110,13 @@ function IsoCube({ cx, cy, size, topColor, leftColor, rightColor, glowColor, opa
   const top = `${cx},${cy - s} ${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx - s * cos30},${cy - s + s * sin30}`;
   const left = `${cx - s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx - s * cos30},${cy + s * sin30}`;
   const right = `${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx + s * cos30},${cy + s * sin30}`;
+  const stroke = strokeColor || "rgba(255,255,255,0.03)";
   return (
     <g opacity={opacity}>
       {glowColor && <ellipse cx={cx} cy={cy + s * sin30} rx={size * 0.7} ry={size * 0.25} fill={glowColor} opacity={0.12} style={{ filter: "blur(8px)" }} />}
-      <polygon points={left} fill={leftColor} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} />
-      <polygon points={right} fill={rightColor} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} />
-      <polygon points={top} fill={topColor} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
+      <polygon points={left} fill={leftColor} stroke={stroke} strokeWidth={0.5} />
+      <polygon points={right} fill={rightColor} stroke={stroke} strokeWidth={0.5} />
+      <polygon points={top} fill={topColor} stroke={strokeColor || "rgba(255,255,255,0.06)"} strokeWidth={0.5} />
     </g>
   );
 }
@@ -132,10 +133,10 @@ function FlowDot({ x1, y1, x2, y2, color, dur, delay }: {
   );
 }
 
-// ── Isometric Machine Block (for canvas) ────────────────────────────────
+// ── Isometric Machine Block with positioned operators ─────────────────
 
-function MachineBlock({ cx, cy, label, sublabel, status, output, operators, size = 52 }: {
-  cx: number; cy: number; label: string; sublabel: string; status: "running" | "maintenance"; output?: string; operators?: string[]; size?: number;
+function MachineBlock({ cx, cy, label, sublabel, status, output, operators, utilization, size = 52 }: {
+  cx: number; cy: number; label: string; sublabel: string; status: "running" | "maintenance"; output?: string; operators?: { initials: string; x: number; y: number }[]; utilization?: number; size?: number;
 }) {
   const isDown = status === "maintenance";
   const accent = isDown ? "#ef4444" : "#14b8a6";
@@ -164,36 +165,35 @@ function MachineBlock({ cx, cy, label, sublabel, status, output, operators, size
       <text x={cx} y={cy - size * 0.55 + 13} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
         {sublabel}
       </text>
-      {/* Status badge */}
-      <rect x={cx - 28} y={cy + size * 0.35} width={56} height={16} rx={4} fill={isDown ? "rgba(239,68,68,0.12)" : "rgba(20,184,166,0.1)"} stroke={isDown ? "rgba(239,68,68,0.3)" : "rgba(20,184,166,0.25)"} strokeWidth={0.5} />
+      {/* Status badge with output or maintenance */}
+      <rect x={cx - 32} y={cy + size * 0.35} width={64} height={16} rx={4} fill={isDown ? "rgba(239,68,68,0.12)" : "rgba(20,184,166,0.1)"} stroke={isDown ? "rgba(239,68,68,0.3)" : "rgba(20,184,166,0.25)"} strokeWidth={0.5} />
       <text x={cx} y={cy + size * 0.35 + 11.5} textAnchor="middle" fill={isDown ? "#ef4444" : "#10b981"} fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
-        {isDown ? "⚠ Maintenance" : `✓ ${output}`}
+        {isDown ? "⚠ Bakımda" : `✓ ${output}`}
       </text>
-      {/* Operator dots orbiting */}
-      {operators?.map((name, i) => {
-        const angle = (i / (operators.length)) * Math.PI * 2;
-        const orbitRx = size * 0.7;
-        const orbitRy = size * 0.35;
-        const animDur = 8 + i * 2;
-        return (
-          <g key={name}>
-            <circle r={5} fill="#0a0a0f" stroke="rgba(255,255,255,0.15)" strokeWidth={0.5}>
-              <animate attributeName="cx" values={`${cx + Math.cos(angle) * orbitRx};${cx + Math.cos(angle + Math.PI) * orbitRx};${cx + Math.cos(angle) * orbitRx}`} dur={`${animDur}s`} repeatCount="indefinite" />
-              <animate attributeName="cy" values={`${cy + Math.sin(angle) * orbitRy};${cy + Math.sin(angle + Math.PI) * orbitRy};${cy + Math.sin(angle) * orbitRy}`} dur={`${animDur}s`} repeatCount="indefinite" />
-            </circle>
-            <text textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={5.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
-              <animate attributeName="x" values={`${cx + Math.cos(angle) * orbitRx};${cx + Math.cos(angle + Math.PI) * orbitRx};${cx + Math.cos(angle) * orbitRx}`} dur={`${animDur}s`} repeatCount="indefinite" />
-              <animate attributeName="y" values={`${cy + Math.sin(angle) * orbitRy + 2};${cy + Math.sin(angle + Math.PI) * orbitRy + 2};${cy + Math.sin(angle) * orbitRy + 2}`} dur={`${animDur}s`} repeatCount="indefinite" />
-              {name.split(" ").map(n => n[0]).join("")}
-            </text>
-          </g>
-        );
-      })}
+      {/* Utilization badge */}
+      {utilization !== undefined && !isDown && (
+        <g>
+          <rect x={cx - 18} y={cy + size * 0.35 + 20} width={36} height={12} rx={3} fill="rgba(20,184,166,0.06)" stroke="rgba(20,184,166,0.15)" strokeWidth={0.5} />
+          <text x={cx} y={cy + size * 0.35 + 29} textAnchor="middle" fill="rgba(20,184,166,0.7)" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+            %{utilization}
+          </text>
+        </g>
+      )}
+      {/* Positioned operator circles with initials */}
+      {operators?.map((op) => (
+        <g key={op.initials}>
+          <circle cx={op.x} cy={op.y} r={9} fill="#0a0a0f" stroke="rgba(255,255,255,0.15)" strokeWidth={0.5} />
+          <circle cx={op.x} cy={op.y} r={9} fill={isDown ? "rgba(239,68,68,0.06)" : "rgba(20,184,166,0.06)"} stroke={isDown ? "rgba(239,68,68,0.2)" : "rgba(20,184,166,0.2)"} strokeWidth={0.5} />
+          <text x={op.x} y={op.y + 3} textAnchor="middle" fill={isDown ? "rgba(239,68,68,0.6)" : "rgba(255,255,255,0.6)"} fontSize={6.5} fontWeight={700} fontFamily="Inter, system-ui, sans-serif">
+            {op.initials}
+          </text>
+        </g>
+      ))}
     </g>
   );
 }
 
-// ── Operations Intelligence Canvas ──────────────────────────────────────
+// ── Operations Intelligence Canvas (680px) ───────────────────────────
 
 function OperationsCanvas() {
   const { data: factories } = useQuery<any[]>({
@@ -208,10 +208,9 @@ function OperationsCanvas() {
 
   const summary = intelligence?.summary || {};
   const bottlenecks = intelligence?.bottlenecks || [];
-  const lineUtils = intelligence?.lineUtilization || [];
 
   const W = 960;
-  const H = 700;
+  const H = 680;
 
   // Seasonal months data
   const months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
@@ -231,96 +230,169 @@ function OperationsCanvas() {
         <rect width={W} height={H} fill="url(#grid-dots)" />
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* TOP: ACTION ZONE                                       */}
+        {/* TOP: AKSİYON ZONU — Action Cards with Object/Property/Button */}
         {/* ═══════════════════════════════════════════════════════ */}
         <text x={30} y={28} fill="rgba(16,185,129,0.5)" fontSize={8.5} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.15em">
           AKSİYON ZONU
         </text>
 
         {/* Action card 1: Vardiya Optimize Et */}
-        <rect x={30} y={38} width={200} height={42} rx={6} fill="rgba(16,185,129,0.04)" stroke="rgba(16,185,129,0.25)" strokeWidth={1} />
-        <text x={50} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚡ Vardiya Optimize Et</text>
+        <rect x={30} y={38} width={220} height={62} rx={6} fill="rgba(16,185,129,0.04)" stroke="rgba(16,185,129,0.25)" strokeWidth={1} />
+        <text x={46} y={56} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚡ Vardiya Optimize Et</text>
+        <text x={46} y={70} fill="rgba(255,255,255,0.35)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+          Nesne: Vardiya Planı · Tip: Eylem
+        </text>
+        <text x={46} y={82} fill="rgba(255,255,255,0.3)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          Sabah vardiyasında 2 operatör fazlası tespit edildi
+        </text>
+        {/* Action button */}
+        <rect x={46} y={87} width={70} height={14} rx={3} fill="rgba(16,185,129,0.12)" stroke="rgba(16,185,129,0.3)" strokeWidth={0.5} />
+        <text x={81} y={97} textAnchor="middle" fill="#10b981" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+          Planla →
+        </text>
 
-        {/* Action card 2: Hat 3 Bakım — pulsing */}
-        <rect x={260} y={38} width={200} height={42} rx={6} fill="rgba(245,158,11,0.04)" stroke="rgba(245,158,11,0.3)" strokeWidth={1}>
+        {/* Action card 2: Hat 3 Bakım — pulsing amber */}
+        <rect x={280} y={38} width={220} height={62} rx={6} fill="rgba(245,158,11,0.04)" stroke="rgba(245,158,11,0.3)" strokeWidth={1}>
           <animate attributeName="stroke-opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite" />
         </rect>
-        <text x={280} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚠️ Hat 3 Bakım</text>
+        <text x={296} y={56} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚠️ Hat 3 Acil Bakım</text>
+        <text x={296} y={70} fill="rgba(255,255,255,0.35)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+          Nesne: Hat 3 · Tip: Uyarı
+        </text>
+        <text x={296} y={82} fill="rgba(255,255,255,0.3)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          Panel radyatör hattı 14:08'den beri durdu
+        </text>
+        {/* Action button */}
+        <rect x={296} y={87} width={82} height={14} rx={3} fill="rgba(245,158,11,0.12)" stroke="rgba(245,158,11,0.3)" strokeWidth={0.5} />
+        <text x={337} y={97} textAnchor="middle" fill="#f59e0b" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+          Bakım Ata →
+        </text>
 
-        {/* Action card 3: Pik Sezon */}
-        <rect x={490} y={38} width={200} height={42} rx={6} fill="rgba(20,184,166,0.04)" stroke="rgba(20,184,166,0.25)" strokeWidth={1} />
-        <text x={510} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">📊 Pik Sezonu: 26 hafta</text>
+        {/* Action card 3: Pik Sezon Hazırlık */}
+        <rect x={530} y={38} width={220} height={62} rx={6} fill="rgba(20,184,166,0.04)" stroke="rgba(20,184,166,0.25)" strokeWidth={1} />
+        <text x={546} y={56} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">📊 Pik Sezonu Hazırlık</text>
+        <text x={546} y={70} fill="rgba(255,255,255,0.35)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+          Nesne: Sezon Planı · Tip: Strateji
+        </text>
+        <text x={546} y={82} fill="rgba(255,255,255,0.3)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          Pik sezona 26 hafta — kapasite planı gerekli
+        </text>
+        {/* Action button */}
+        <rect x={546} y={87} width={76} height={14} rx={3} fill="rgba(20,184,166,0.12)" stroke="rgba(20,184,166,0.3)" strokeWidth={0.5} />
+        <text x={584} y={97} textAnchor="middle" fill="#14b8a6" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+          Planla →
+        </text>
 
         {/* Flow lines from action cards DOWN into factory */}
-        {[130, 360, 590].map((x, i) => (
+        {[140, 390, 640].map((x, i) => (
           <g key={`action-flow-${i}`}>
-            <line x1={x} y1={82} x2={x} y2={140} stroke="rgba(16,185,129,0.06)" strokeWidth={1} strokeDasharray="3 3" />
-            <FlowDot x1={x} y1={82} x2={x} y2={140} color="#10b981" dur={2} delay={i * 0.5} />
+            <line x1={x} y1={102} x2={x} y2={150} stroke="rgba(16,185,129,0.06)" strokeWidth={1} strokeDasharray="3 3" />
+            <FlowDot x1={x} y1={102} x2={x} y2={150} color="#10b981" dur={2} delay={i * 0.5} />
           </g>
         ))}
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* MIDDLE: FACTORY OPERATIONS PLATFORM                    */}
+        {/* MIDDLE: FABRİKA OPERASYONLARI PLATFORMU               */}
         {/* ═══════════════════════════════════════════════════════ */}
 
         {/* Platform background */}
-        <rect x={20} y={120} width={720} height={370} rx={8} fill="#0d1117" stroke="#1a1a2e" strokeWidth={1} />
+        <rect x={20} y={130} width={720} height={340} rx={8} fill="#0d1117" stroke="#1a1a2e" strokeWidth={1} />
 
         {/* Zone labels */}
-        <text x={40} y={148} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+        <text x={40} y={155} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
           KASA ÜRETİM
         </text>
-        <text x={400} y={148} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+        <text x={400} y={155} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
           ANA FABRİKA & MONTAJ
         </text>
 
         {/* Divider line between zones */}
-        <line x1={365} y1={140} x2={365} y2={430} stroke="rgba(255,255,255,0.04)" strokeWidth={1} strokeDasharray="4 4" />
+        <line x1={365} y1={145} x2={365} y2={420} stroke="rgba(255,255,255,0.04)" strokeWidth={1} strokeDasharray="4 4" />
 
         {/* ── LEFT: Kasa Üretim ── */}
-        <MachineBlock cx={140} cy={230} label="Hat 1" sublabel="Kombi Montaj" status="running" output="47 units" operators={["Ahmet Y", "Fatma D", "Burak G"]} size={56} />
-        <MachineBlock cx={280} cy={310} label="Hat 2" sublabel="Isı Eşanjör" status="running" output="31 units" operators={["Mehmet K", "Ayşe Ç"]} size={52} />
+        <MachineBlock
+          cx={140} cy={240} label="Hat 1" sublabel="Kombi Montaj" status="running" output="47 ünite" utilization={92}
+          operators={[
+            { initials: "AY", x: 95, y: 225 },
+            { initials: "FD", x: 185, y: 225 },
+            { initials: "BG", x: 100, y: 265 },
+          ]}
+          size={56}
+        />
+        <MachineBlock
+          cx={280} cy={320} label="Hat 2" sublabel="Isı Eşanjör" status="running" output="31 ünite" utilization={87}
+          operators={[
+            { initials: "MK", x: 235, y: 305 },
+            { initials: "AÇ", x: 325, y: 305 },
+          ]}
+          size={52}
+        />
 
         {/* ── RIGHT: Ana Fabrika ── */}
-        <MachineBlock cx={500} cy={230} label="Hat 3" sublabel="Panel Radyatör" status="maintenance" operators={["Hasan A", "Elif Ş"]} size={56} />
-        <MachineBlock cx={620} cy={310} label="Hat 4" sublabel="Genleşme Tankı" status="running" output="29 units" operators={["Ali Ö", "Zeynep K", "Deniz Y"]} size={52} />
+        <MachineBlock
+          cx={500} cy={240} label="Hat 3" sublabel="Panel Radyatör" status="maintenance"
+          operators={[
+            { initials: "HA", x: 455, y: 225 },
+            { initials: "EŞ", x: 545, y: 225 },
+          ]}
+          size={56}
+        />
+        <MachineBlock
+          cx={620} cy={320} label="Hat 4" sublabel="Genleşme Tankı" status="running" output="29 ünite" utilization={88}
+          operators={[
+            { initials: "AÖ", x: 575, y: 305 },
+            { initials: "ZK", x: 665, y: 305 },
+            { initials: "DY", x: 620, y: 355 },
+          ]}
+          size={52}
+        />
 
-        {/* ── CENTER: Flow arrow Kasa → Ana Fabrika ── */}
-        <line x1={310} y1={265} x2={440} y2={265} stroke="rgba(20,184,166,0.15)" strokeWidth={1.5} strokeDasharray="6 4">
-          <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.5s" repeatCount="indefinite" />
+        {/* ── CENTER: Flow arrow Kasa → Ana Fabrika — dims when Hat 3 offline ── */}
+        <line x1={310} y1={270} x2={440} y2={270} stroke="rgba(20,184,166,0.08)" strokeWidth={1.5} strokeDasharray="6 4" opacity={0.4}>
+          <animate attributeName="stroke-dashoffset" values="0;-20" dur="3s" repeatCount="indefinite" />
         </line>
-        {/* Arrow head */}
-        <polygon points="440,265 432,260 432,270" fill="rgba(20,184,166,0.3)" />
-        <text x={375} y={258} textAnchor="middle" fill="rgba(20,184,166,0.35)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.06em">
+        {/* Arrow head - dimmed */}
+        <polygon points="440,270 432,265 432,275" fill="rgba(20,184,166,0.15)" />
+        <text x={375} y={263} textAnchor="middle" fill="rgba(20,184,166,0.2)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.06em">
           MONTAJ AKIŞI →
         </text>
-        {/* Flow dot along arrow */}
-        <FlowDot x1={310} y1={265} x2={440} y2={265} color="#14b8a6" dur={2.5} delay={0} />
+        {/* Dimmed flow dot (slower, lower opacity because Hat 3 down) */}
+        <FlowDot x1={310} y1={270} x2={440} y2={270} color="rgba(20,184,166,0.4)" dur={4} delay={0} />
 
-        {/* ── BOTTOM STRIP: 12-month timeline ── */}
-        <rect x={35} y={415} width={690} height={60} rx={6} fill="rgba(255,255,255,0.01)" stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
-        <text x={50} y={432} fill="rgba(255,255,255,0.25)" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.1em">
-          SEASONAL DEMAND TIMELINE
+        {/* ── BOTTOM STRIP: Mevsimsel Talep Zaman Çizelgesi ── */}
+        <rect x={35} y={400} width={690} height={60} rx={6} fill="rgba(255,255,255,0.01)" stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+        <text x={50} y={415} fill="rgba(255,255,255,0.25)" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.1em">
+          MEVSİMSEL TALEP ZAMANÇİZELGESİ
         </text>
         {months.map((m, i) => {
           const barX = 50 + i * 56;
           const barH = (monthDemand[i] / 10) * 25;
           const isPeak = i === 8 || i === 9; // Sep, Oct
-          const isHigh = i === 7 || i === 10; // Aug, Nov
+          const isHigh = i === 10; // Nov
           const isCurrent = i === currentMonth;
           const color = isPeak ? "#ef4444" : isHigh ? "#f59e0b" : i >= 6 && i <= 7 ? "#3b82f6" : "rgba(255,255,255,0.12)";
           return (
             <g key={m}>
-              <rect x={barX} y={460 - barH} width={40} height={barH} rx={2} fill={color} opacity={isPeak ? 0.7 : isHigh ? 0.5 : 0.3} />
-              <text x={barX + 20} y={470} textAnchor="middle" fill={isCurrent ? "white" : "rgba(255,255,255,0.3)"} fontSize={7} fontWeight={isCurrent ? 700 : 400} fontFamily="Inter, system-ui, sans-serif">
+              <rect x={barX} y={448 - barH} width={40} height={barH} rx={2} fill={color} opacity={isPeak ? 0.7 : isHigh ? 0.5 : 0.3} />
+              <text x={barX + 20} y={456} textAnchor="middle" fill={isCurrent ? "white" : "rgba(255,255,255,0.3)"} fontSize={7} fontWeight={isCurrent ? 700 : 400} fontFamily="Inter, system-ui, sans-serif">
                 {m}
               </text>
               {isCurrent && (
-                <line x1={barX + 20} y1={435} x2={barX + 20} y2={465} stroke="white" strokeWidth={1} opacity={0.6} />
+                <g>
+                  <line x1={barX + 20} y1={420} x2={barX + 20} y2={452} stroke="white" strokeWidth={1} opacity={0.6} />
+                  <text x={barX + 20} y={418} textAnchor="middle" fill="white" fontSize={6} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" opacity={0.7}>
+                    Şu An
+                  </text>
+                </g>
               )}
               {isPeak && (
-                <text x={barX + 20} y={460 - barH - 4} textAnchor="middle" fill="#ef4444" fontSize={6} fontWeight={700} fontFamily="Inter, system-ui, sans-serif">
+                <text x={barX + 20} y={448 - barH - 4} textAnchor="middle" fill="#ef4444" fontSize={6} fontWeight={700} fontFamily="Inter, system-ui, sans-serif">
                   PİK
+                </text>
+              )}
+              {isHigh && (
+                <text x={barX + 20} y={448 - barH - 4} textAnchor="middle" fill="#f59e0b" fontSize={6} fontWeight={700} fontFamily="Inter, system-ui, sans-serif">
+                  Yüksek
                 </text>
               )}
             </g>
@@ -328,80 +400,118 @@ function OperationsCanvas() {
         })}
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* RIGHT PANEL: Live Intelligence Feed                    */}
+        {/* RIGHT PANEL: Canlı İstihbarat                          */}
         {/* ═══════════════════════════════════════════════════════ */}
-        <rect x={755} y={120} width={185} height={370} rx={8} fill="#0a0a0f" stroke="#1a1a2e" strokeWidth={1} />
-        <text x={770} y={144} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
-          LIVE INTELLIGENCE
+        <rect x={755} y={130} width={185} height={340} rx={8} fill="#0a0a0f" stroke="#1a1a2e" strokeWidth={1} />
+        <text x={770} y={152} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+          CANLI İSTİHBARAT
         </text>
-        <circle cx={917} cy={140} r={3} fill="#10b981">
+        <circle cx={917} cy={148} r={3} fill="#10b981">
           <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
         </circle>
 
-        {/* Feed items */}
+        {/* 5 Alert rows with action links */}
         {[
-          { dot: "#ef4444", text: "Hat 3 durdu — 14:08", y: 168 },
-          { dot: "#f59e0b", text: "Pik sezonu 26 hafta", y: 196 },
-          { dot: "#10b981", text: `Vardiya verimi %${summary.overallUtilization || 86}`, y: 224 },
-          { dot: "#10b981", text: `${DAILY_OUTPUT.reduce((s, d) => s + d.actual, 0).toLocaleString()} haftalık üretim`, y: 252 },
-          { dot: "#f59e0b", text: `${OPERATORS.filter(o => o.utilization > 0).length} operatör aktif`, y: 280 },
+          { dot: "#ef4444", text: "Hat 3 durdu — 14:08", action: "→ Aksiyon", actionColor: "#ef4444", y: 175 },
+          { dot: "#f59e0b", text: "Pik sezonu 26 hafta", action: "→ Plan", actionColor: "#f59e0b", y: 200 },
+          { dot: "#10b981", text: `Vardiya verimi %${summary.overallUtilization || 86}`, action: "✓ Normal", actionColor: "#10b981", y: 225 },
+          { dot: "#10b981", text: `${DAILY_OUTPUT.reduce((s, d) => s + d.actual, 0).toLocaleString()} haftalık üretim`, action: "✓ Normal", actionColor: "#10b981", y: 250 },
+          { dot: "#f59e0b", text: `${OPERATORS.filter(o => o.utilization > 0).length} operatör aktif`, action: "→ İncele", actionColor: "#f59e0b", y: 275 },
         ].map((item, i) => (
           <g key={i}>
             <circle cx={775} cy={item.y} r={3.5} fill={item.dot} opacity={0.8}>
               {item.dot === "#ef4444" && <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.5s" repeatCount="indefinite" />}
             </circle>
-            <text x={788} y={item.y + 3.5} fill="rgba(255,255,255,0.6)" fontSize={9} fontFamily="Inter, system-ui, sans-serif">
+            <text x={788} y={item.y + 3.5} fill="rgba(255,255,255,0.6)" fontSize={8.5} fontFamily="Inter, system-ui, sans-serif">
               {item.text}
+            </text>
+            {/* Action link */}
+            <text x={925} y={item.y + 3.5} textAnchor="end" fill={item.actionColor} fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" opacity={0.7} style={{ cursor: "pointer" }}>
+              [{item.action}]
             </text>
           </g>
         ))}
 
-        {/* Bottleneck detail if any */}
-        {bottlenecks.length > 0 && (
-          <g>
-            <line x1={770} y1={310} x2={925} y2={310} stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} />
-            <text x={770} y={330} fill="rgba(239,68,68,0.6)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.08em">
-              BOTTLENECK DETAIL
-            </text>
-            {bottlenecks.slice(0, 3).map((b: any, i: number) => (
-              <text key={i} x={770} y={348 + i * 16} fill="rgba(255,255,255,0.4)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
-                {b.lineName?.split(" — ")[0] || `Line`}: {b.reason === "maintenance" ? "Bakım" : `%${b.avgUtilization}`}
-              </text>
-            ))}
-          </g>
-        )}
+        {/* DARBOĞAZ section */}
+        <line x1={770} y1={298} x2={925} y2={298} stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} />
+        <text x={770} y={316} fill="rgba(239,68,68,0.6)" fontSize={7.5} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.08em">
+          DARBOĞAZ
+        </text>
+        <text x={770} y={332} fill="rgba(255,255,255,0.5)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+          Hat 3 — Panel Radyatör
+        </text>
+        <text x={770} y={348} fill="rgba(255,255,255,0.35)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          Durum: Bakımda (14:08'den beri)
+        </text>
+        <text x={770} y={364} fill="rgba(239,68,68,0.6)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+          Etki: -29 units/vardiya
+        </text>
+        <text x={770} y={380} fill="rgba(239,68,68,0.5)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          Maliyet: ~₺8,400/gün
+        </text>
+        {/* Operator reassignment hint */}
+        <rect x={770} y={390} width={155} height={16} rx={3} fill="rgba(245,158,11,0.06)" stroke="rgba(245,158,11,0.15)" strokeWidth={0.5} />
+        <text x={848} y={401} textAnchor="middle" fill="rgba(245,158,11,0.6)" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+          2 operatör yeniden atanabilir
+        </text>
+        {bottlenecks.length > 0 && bottlenecks.slice(0, 2).map((b: any, i: number) => (
+          <text key={i} x={770} y={422 + i * 14} fill="rgba(255,255,255,0.25)" fontSize={7} fontFamily="Inter, system-ui, sans-serif">
+            {b.lineName?.split(" — ")[0] || "Hat"}: {b.reason === "maintenance" ? "Bakım" : `%${b.avgUtilization}`}
+          </text>
+        ))}
 
         {/* ═══════════════════════════════════════════════════════ */}
-        {/* BOTTOM: DATA SOURCES                                   */}
+        {/* BOTTOM: VERİ KAYNAKLARI — 4 cubes                     */}
         {/* ═══════════════════════════════════════════════════════ */}
-        <text x={30} y={520} fill="rgba(148,163,184,0.3)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+        <text x={30} y={498} fill="rgba(148,163,184,0.3)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
           VERİ KAYNAKLARI
         </text>
 
-        {/* 3 data source cubes */}
+        {/* 4 data source cubes */}
         {[
-          { label: "Vardiya Kayıtları", x: 160 },
-          { label: "Operatör Profilleri", x: 480 },
-          { label: "Üretim Çıktısı", x: 800 },
+          { label: "Vardiya Kayıtları", x: 120, comingSoon: false },
+          { label: "Operatör Profilleri", x: 340, comingSoon: false },
+          { label: "Üretim Çıktısı", x: 560, comingSoon: false },
+          { label: "Gerçek Zamanlı Sensör", x: 780, comingSoon: true },
         ].map((src, i) => (
           <g key={src.label}>
-            <IsoCube cx={src.x} cy={580} size={40} topColor="#1e293b" leftColor="#151d2b" rightColor="#111827" />
+            <IsoCube
+              cx={src.x} cy={560} size={38}
+              topColor={src.comingSoon ? "#1a1500" : "#1e293b"}
+              leftColor={src.comingSoon ? "#141100" : "#151d2b"}
+              rightColor={src.comingSoon ? "#100e00" : "#111827"}
+              strokeColor={src.comingSoon ? "rgba(245,158,11,0.25)" : undefined}
+            />
             {/* Icon representations */}
-            {i === 0 && <g opacity={0.4}>{[0, 5, 10].map(dx => [0, 5].map(dy => <rect key={`${dx}-${dy}`} x={src.x - 6 + dx} y={580 - 8 + dy} width={3} height={3} rx={0.5} fill="#94a3b8" />))}</g>}
-            {i === 1 && <g opacity={0.4}><circle cx={src.x} cy={580 - 6} r={4} fill="#94a3b8" /><path d={`M${src.x - 6},${580 + 3} Q${src.x},${580 - 2} ${src.x + 6},${580 + 3}`} fill="#94a3b8" /></g>}
-            {i === 2 && <g opacity={0.4}><rect x={src.x - 7} y={580 - 2} width={4} height={8} rx={1} fill="#94a3b8" /><rect x={src.x - 1} y={580 - 8} width={4} height={14} rx={1} fill="#94a3b8" /><rect x={src.x + 5} y={580 - 5} width={4} height={11} rx={1} fill="#94a3b8" /></g>}
-            <text x={src.x} y={612} textAnchor="middle" fill="rgba(148,163,184,0.4)" fontSize={8.5} fontWeight={500} fontFamily="Inter, system-ui, sans-serif">
+            {i === 0 && <g opacity={0.4}>{[0, 5, 10].map(dx => [0, 5].map(dy => <rect key={`${dx}-${dy}`} x={src.x - 6 + dx} y={560 - 8 + dy} width={3} height={3} rx={0.5} fill="#94a3b8" />))}</g>}
+            {i === 1 && <g opacity={0.4}><circle cx={src.x} cy={560 - 6} r={4} fill="#94a3b8" /><path d={`M${src.x - 6},${560 + 3} Q${src.x},${560 - 2} ${src.x + 6},${560 + 3}`} fill="#94a3b8" /></g>}
+            {i === 2 && <g opacity={0.4}><rect x={src.x - 7} y={560 - 2} width={4} height={8} rx={1} fill="#94a3b8" /><rect x={src.x - 1} y={560 - 8} width={4} height={14} rx={1} fill="#94a3b8" /><rect x={src.x + 5} y={560 - 5} width={4} height={11} rx={1} fill="#94a3b8" /></g>}
+            {i === 3 && <g opacity={0.3}><circle cx={src.x} cy={560 - 4} r={5} fill="none" stroke="#f59e0b" strokeWidth={1} /><circle cx={src.x} cy={560 - 4} r={2} fill="#f59e0b" opacity={0.4} /><line x1={src.x} y1={560 + 2} x2={src.x} y2={560 + 7} stroke="#f59e0b" strokeWidth={1} opacity={0.4} /></g>}
+            <text x={src.x} y={590} textAnchor="middle" fill={src.comingSoon ? "rgba(245,158,11,0.4)" : "rgba(148,163,184,0.4)"} fontSize={8} fontWeight={500} fontFamily="Inter, system-ui, sans-serif">
               {src.label}
             </text>
-            {/* Flow dots upward into factory platform */}
-            <FlowDot x1={src.x} y1={555} x2={src.x < 300 ? 200 : src.x < 600 ? 500 : 620} y2={420} color="#14b8a6" dur={3} delay={i * 0.7} />
-            <line x1={src.x} y1={555} x2={src.x < 300 ? 200 : src.x < 600 ? 500 : 620} y2={420} stroke="rgba(20,184,166,0.05)" strokeWidth={0.5} strokeDasharray="3 4" />
+            {/* Coming soon badge */}
+            {src.comingSoon && (
+              <g>
+                <rect x={src.x - 24} y={598} width={48} height={12} rx={3} fill="rgba(245,158,11,0.08)" stroke="rgba(245,158,11,0.2)" strokeWidth={0.5} />
+                <text x={src.x} y={607} textAnchor="middle" fill="rgba(245,158,11,0.5)" fontSize={6} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+                  coming soon
+                </text>
+              </g>
+            )}
+            {/* Flow dots upward into factory platform (skip for coming soon) */}
+            {!src.comingSoon && (
+              <g>
+                <FlowDot x1={src.x} y1={538} x2={i === 0 ? 180 : i === 1 ? 400 : 620} y2={400} color="#14b8a6" dur={3} delay={i * 0.7} />
+                <line x1={src.x} y1={538} x2={i === 0 ? 180 : i === 1 ? 400 : 620} y2={400} stroke="rgba(20,184,166,0.05)" strokeWidth={0.5} strokeDasharray="3 4" />
+              </g>
+            )}
           </g>
         ))}
 
         {/* Separator lines */}
-        <line x1={20} y1={505} x2={W - 20} y2={505} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
-        <line x1={20} y1={110} x2={W - 20} y2={110} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
+        <line x1={20} y1={485} x2={W - 20} y2={485} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
+        <line x1={20} y1={118} x2={W - 20} y2={118} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
       </svg>
     </div>
   );
@@ -415,7 +525,7 @@ function OntologyDiagram() {
     retry: 1, staleTime: 60000,
   });
   const factoryId = factories?.[0]?.id;
-  const { data: intelligence, isLoading } = useQuery<any>({
+  const { data: intelligence } = useQuery<any>({
     queryKey: ["/api/ontology/intelligence/factory/" + factoryId],
     enabled: !!factoryId, refetchInterval: 30000, retry: 1, staleTime: 15000,
   });
@@ -444,7 +554,9 @@ function OntologyDiagram() {
   return (
     <div style={{ background: "#000000", borderRadius: 12, border: "1px solid #1a1a2e", padding: "12px 16px" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-        <span style={{ color: "#14b8a6", fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>ONTOLOGY GRAPH</span>
+        <span style={{ color: "#14b8a6", fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>
+          GRİSEUS ONTOLOJİSİ — Çukurova Isı Sistemleri Fabrikası
+        </span>
         <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.3)", fontSize: 10 }}>
           {summary.totalLines} hat · {summary.totalOperators} operatör · %{summary.overallUtilization} verimlilik
         </span>
@@ -496,24 +608,24 @@ function ProductionIntelligence() {
 
   return (
     <div className="space-y-3" style={{ background: "#000000", minHeight: "100vh", padding: "16px" }}>
-      {/* Title */}
+      {/* Command Strip — Title + KPIs */}
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-xl font-bold text-white tracking-tight">Production Intelligence</h1>
-          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Single-pane factory operations · Çukurova Isı Sistemleri</p>
+          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Tek panel fabrika operasyonları · Çukurova Isı Sistemleri</p>
         </div>
         <Badge variant="outline" className="text-[10px] bg-teal-500/10 text-teal-400 border-teal-500/20">
           LIVE
         </Badge>
       </div>
 
-      {/* KPI Pills — ultra compact single row */}
+      {/* KPI Pills — Command Strip format */}
       <div className="flex gap-2">
         {[
-          { label: "Output", value: totalActual.toLocaleString(), sub: `${fulfillment}% of target`, color: fulfillment >= 100 ? "#10b981" : "#f59e0b" },
-          { label: "Lines", value: `${activeLines}/${PRODUCTION_LINES.length}`, sub: "1 maintenance", color: "#ef4444" },
-          { label: "Utilization", value: `${avgUtilization}%`, sub: "avg operator", color: "#14b8a6" },
-          { label: "On-shift", value: `${OPERATORS.filter(o => o.shift === "morning").length}`, sub: "sabah vardiyası", color: "#10b981" },
+          { label: "Üretim", value: totalActual.toLocaleString(), sub: `hedefin %${fulfillment}'i`, color: fulfillment >= 100 ? "#10b981" : "#f59e0b" },
+          { label: "Hatlar", value: `${activeLines}/${PRODUCTION_LINES.length}`, sub: "1 bakımda", color: "#ef4444" },
+          { label: "Verimlilik", value: `%${avgUtilization}`, sub: "ort. operatör", color: "#14b8a6" },
+          { label: "Vardiyada", value: `${OPERATORS.filter(o => o.shift === "morning").length}`, sub: "sabah vardiyası", color: "#10b981" },
         ].map((kpi) => (
           <div key={kpi.label} className="flex-1 rounded-lg px-3 py-2" style={{ background: "#0a0a0f", border: "1px solid #1a1a2e" }}>
             <div className="flex items-center gap-2">
