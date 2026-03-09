@@ -771,10 +771,9 @@ export default function OnboardingPage() {
     if (sections[1]) sections[1].scrollIntoView({ behavior: "smooth" });
   }, []);
 
-  const scrollToCta = useCallback(() => {
-    const el = document.getElementById("cta-section");
-    if (el) el.scrollIntoView({ behavior: "smooth" });
-  }, []);
+  const goToCukurova = useCallback(() => {
+    setLocation("/cukurova");
+  }, [setLocation]);
 
   const statCounters = [
     { n: 12, label: "Trades", delay: 0 },
@@ -793,7 +792,7 @@ export default function OnboardingPage() {
       <style>{CTA_STYLES}</style>
 
       {/* ━━━━━━━━━━ FLOATING NAVBAR ━━━━━━━━━━ */}
-      <FloatingNav scrolled={navScrolled} onGetStarted={scrollToCta} />
+      <FloatingNav scrolled={navScrolled} onGetStarted={goToCukurova} />
 
       {/* ━━━━━━━━━━ SECTION 1: HERO ━━━━━━━━━━ */}
       <section
@@ -1204,7 +1203,7 @@ export default function OnboardingPage() {
           }}
         >
           <button
-            onClick={() => handleCardClick("/cukurova")}
+            onClick={() => { setNavigating("/cukurova"); setTimeout(() => setLocation("/cukurova"), 550); }}
             className="onb-cta-card group relative w-full min-h-[300px] sm:min-h-[340px] cursor-pointer text-left"
             disabled={!!navigating}
           >
