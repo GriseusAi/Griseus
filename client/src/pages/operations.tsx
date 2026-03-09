@@ -60,91 +60,14 @@ const SHIFT_CALENDAR = [
 ];
 const ALL_SKILLS = ["welding","brazing","assembly","testing","quality","press-op","painting","packaging"];
 
-// ── Isometric Projection Helpers ────────────────────────────────────────
+// ══════════════════════════════════════════════════════════════════════════
+// ██ SVG PRIMITIVES FOR ISOMETRIC PLATFORMS                              ██
+// ══════════════════════════════════════════════════════════════════════════
 
-const COS30 = Math.cos(Math.PI / 6); // 0.866
-const SIN30 = Math.sin(Math.PI / 6); // 0.5
-
-function isoX(x: number, y: number): number { return (x - y) * COS30; }
-function isoY(x: number, y: number, z: number = 0): number { return (x + y) * SIN30 - z; }
-
-/** Compute the 4 corner points of an isometric parallelogram top face */
-function isoParallelogram(cx: number, cy: number, w: number, d: number, z: number): string {
-  // 4 corners of a rectangle in world space, projected to iso
-  const hw = w / 2, hd = d / 2;
-  const corners = [
-    [cx + isoX(-hw, -hd), cy + isoY(-hw, -hd, z)], // left
-    [cx + isoX(hw, -hd),  cy + isoY(hw, -hd, z)],  // top
-    [cx + isoX(hw, hd),   cy + isoY(hw, hd, z)],    // right
-    [cx + isoX(-hw, hd),  cy + isoY(-hw, hd, z)],   // bottom
-  ];
-  return corners.map(c => `${c[0]},${c[1]}`).join(" ");
-}
-
-/** Left side face of iso platform */
-function isoLeftFace(cx: number, cy: number, w: number, d: number, z: number, h: number): string {
-  const hw = w / 2, hd = d / 2;
-  return [
-    [cx + isoX(-hw, -hd), cy + isoY(-hw, -hd, z)],
-    [cx + isoX(-hw, hd),  cy + isoY(-hw, hd, z)],
-    [cx + isoX(-hw, hd),  cy + isoY(-hw, hd, z - h)],
-    [cx + isoX(-hw, -hd), cy + isoY(-hw, -hd, z - h)],
-  ].map(c => `${c[0]},${c[1]}`).join(" ");
-}
-
-/** Right side face of iso platform */
-function isoRightFace(cx: number, cy: number, w: number, d: number, z: number, h: number): string {
-  const hw = w / 2, hd = d / 2;
-  return [
-    [cx + isoX(-hw, hd),  cy + isoY(-hw, hd, z)],
-    [cx + isoX(hw, hd),   cy + isoY(hw, hd, z)],
-    [cx + isoX(hw, hd),   cy + isoY(hw, hd, z - h)],
-    [cx + isoX(-hw, hd),  cy + isoY(-hw, hd, z - h)],
-  ].map(c => `${c[0]},${c[1]}`).join(" ");
-}
-
-/** Point on iso platform surface */
-function isoPoint(cx: number, cy: number, gx: number, gy: number, z: number): [number, number] {
-  return [cx + isoX(gx, gy), cy + isoY(gx, gy, z)];
-}
-
-// ── Micro Cube for Data Floor ───────────────────────────────────────────
-
-function MicroCube({ cx, cy, w, h, topColor, leftColor, rightColor }: {
-  cx: number; cy: number; w: number; h: number; topColor: string; leftColor: string; rightColor: string;
-}) {
-  const hw = w / 2;
-  const top = [
-    `${cx},${cy - h}`,
-    `${cx + hw * COS30},${cy - h + hw * SIN30}`,
-    `${cx},${cy - h + hw}`,
-    `${cx - hw * COS30},${cy - h + hw * SIN30}`,
-  ].join(" ");
-  const left = [
-    `${cx - hw * COS30},${cy - h + hw * SIN30}`,
-    `${cx},${cy - h + hw}`,
-    `${cx},${cy}`,
-    `${cx - hw * COS30},${cy + hw * SIN30 - h + hw}`,
-  ].join(" ");
-  const right = [
-    `${cx + hw * COS30},${cy - h + hw * SIN30}`,
-    `${cx},${cy - h + hw}`,
-    `${cx},${cy}`,
-    `${cx + hw * COS30},${cy + hw * SIN30 - h + hw}`,
-  ].join(" ");
-  return (
-    <g>
-      <polygon points={left} fill={leftColor} />
-      <polygon points={right} fill={rightColor} />
-      <polygon points={top} fill={topColor} />
-    </g>
-  );
-}
-
-// ── Animated Particle on a path ─────────────────────────────────────────
-
-function PathParticle({ x1, y1, x2, y2, color, dur, delay, r = 2.5 }: {
-  x1: number; y1: number; x2: number; y2: number; color: string; dur: number; delay: number; r?: number;
+/** Animated dot traveling between two points */
+function FlowDot({ x1, y1, x2, y2, color, dur, delay, r = 2.5 }: {
+  x1: number; y1: number; x2: number; y2: number;
+  color: string; dur: number; delay: number; r?: number;
 }) {
   return (
     <circle r={r} fill={color} opacity={0}>
@@ -155,137 +78,18 @@ function PathParticle({ x1, y1, x2, y2, color, dur, delay, r = 2.5 }: {
   );
 }
 
-// ── "fx" Badge on connection midpoint ───────────────────────────────────
-
+/** "fx" badge on a connection midpoint */
 function FxBadge({ x, y }: { x: number; y: number }) {
   return (
     <g>
-      <rect x={x - 10} y={y - 7} width={20} height={14} rx={4} fill="#0d1520" stroke="#14b8a6" strokeWidth={0.7} opacity={0.8} />
-      <text x={x} y={y + 3} textAnchor="middle" fill="#14b8a6" fontSize={7} fontWeight={700} fontFamily="'JetBrains Mono', monospace" opacity={0.7}>fx</text>
-    </g>
-  );
-}
-
-// ── Ontology Object Node ────────────────────────────────────────────────
-
-function OntologyNode({ x, y, label, icon, glowColor = "#14b8a6", pulse = false, alert = false }: {
-  x: number; y: number; label: string; icon: string; glowColor?: string; pulse?: boolean; alert?: boolean;
-}) {
-  const r = 28;
-  return (
-    <g>
-      {/* Outer glow */}
-      <circle cx={x} cy={y} r={r + 8} fill={glowColor} opacity={0.04} style={{ filter: "blur(8px)" }} />
-      {/* Main circle */}
-      <circle cx={x} cy={y} r={r} fill="#0d1520" stroke={glowColor} strokeWidth={1.5} opacity={0.9}>
-        {pulse && <animate attributeName="stroke-opacity" values="0.5;1;0.5" dur="1.5s" repeatCount="indefinite" />}
-      </circle>
-      {/* Inner subtle glow */}
-      <circle cx={x} cy={y} r={r - 4} fill={glowColor} opacity={0.03} />
-      {/* Icon text (emoji placeholder for SVG simplicity) */}
-      <text x={x} y={y + 1} textAnchor="middle" dominantBaseline="middle" fontSize={16} opacity={0.7}>
-        {icon}
-      </text>
-      {/* Label */}
-      <text x={x} y={y + r + 14} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={9} fontWeight={600} fontFamily="system-ui, sans-serif">
-        {label}
-      </text>
-      {/* Alert badge */}
-      {alert && (
-        <g>
-          <circle cx={x + r * 0.7} cy={y - r * 0.7} r={7} fill="#ef4444">
-            <animate attributeName="opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
-          </circle>
-          <text x={x + r * 0.7} y={y - r * 0.7 + 3.5} textAnchor="middle" fill="white" fontSize={8} fontWeight={800}>!</text>
-        </g>
-      )}
-    </g>
-  );
-}
-
-// ── Circuit-Board Connection (L-shaped routing) ─────────────────────────
-
-function CircuitConnection({ x1, y1, x2, y2, color = "#14b8a6", opacity: op = 0.15, strokeWidth: sw = 1, dashed = false, particleColor, particleDur = 3, showFx = true }: {
-  x1: number; y1: number; x2: number; y2: number; color?: string; opacity?: number; strokeWidth?: number; dashed?: boolean; particleColor?: string; particleDur?: number; showFx?: boolean;
-}) {
-  // L-shaped routing: go horizontal first, then vertical
-  const mx = x2;
-  const my = y1;
-  const pathD = `M${x1},${y1} L${mx},${my} L${x2},${y2}`;
-  const midX = (x1 + mx) / 2;
-  const midY = (my + y2) / 2;
-  const fxX = (mx + x1) / 2;
-  const fxY = y1;
-
-  return (
-    <g>
-      <path d={pathD} fill="none" stroke={color} strokeWidth={sw} opacity={op} strokeDasharray={dashed ? "4 3" : "none"} />
-      {/* Particle along horizontal segment */}
-      {particleColor && (
-        <>
-          <PathParticle x1={x1} y1={y1} x2={mx} y2={my} color={particleColor} dur={particleDur * 0.6} delay={Math.random() * 2} r={2} />
-          <PathParticle x1={mx} y1={my} x2={x2} y2={y2} color={particleColor} dur={particleDur * 0.4} delay={particleDur * 0.6 + Math.random()} r={2} />
-        </>
-      )}
-      {showFx && <FxBadge x={fxX} y={fxY} />}
-    </g>
-  );
-}
-
-// ── Floating Action Card ────────────────────────────────────────────────
-
-function FloatingCard({ x, y, width, height, borderColor, title, rows, buttonText, buttonColor, targetX, targetY, particleColor, animDelay = 0 }: {
-  x: number; y: number; width: number; height: number; borderColor: string; title: string; rows: string[]; buttonText: string; buttonColor: string; targetX: number; targetY: number; particleColor: string; animDelay?: number;
-}) {
-  const cardStyle: React.CSSProperties = {
-    transform: "perspective(800px) rotateX(12deg) rotateY(-8deg)",
-    transformOrigin: "center bottom",
-  };
-
-  return (
-    <g>
-      {/* Connection line from card to platform object */}
-      <line x1={x + width / 2} y1={y + height + 4} x2={targetX} y2={targetY} stroke={borderColor} strokeWidth={0.7} opacity={0.2} strokeDasharray="3 3" />
-      <PathParticle x1={x + width / 2} y1={y + height} x2={targetX} y2={targetY} color={particleColor} dur={2.5} delay={animDelay} r={2} />
-      <PathParticle x1={x + width / 2} y1={y + height} x2={targetX} y2={targetY} color={particleColor} dur={2.5} delay={animDelay + 1.2} r={1.5} />
-
-      {/* Card shadow */}
-      <rect x={x + 3} y={y + 3} width={width} height={height} rx={8} fill="black" opacity={0.3} style={{ filter: "blur(6px)" }} />
-
-      {/* Card body — we use SVG foreignObject for CSS transform */}
-      <foreignObject x={x - 4} y={y - 4} width={width + 8} height={height + 8}>
-        <div style={cardStyle}>
-          <div style={{
-            width, height, borderRadius: 8, background: "#0d1117",
-            border: `1.5px solid ${borderColor}`, padding: "10px 12px",
-            display: "flex", flexDirection: "column", gap: 3,
-            boxShadow: `0 0 20px ${borderColor}22`,
-          }}>
-            <div style={{ color: borderColor, fontSize: 10, fontWeight: 700, fontFamily: "system-ui, sans-serif", letterSpacing: "0.04em" }}>
-              {title}
-            </div>
-            {rows.map((r, i) => (
-              <div key={i} style={{ color: "rgba(255,255,255,0.45)", fontSize: 8.5, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.4 }}>
-                {r}
-              </div>
-            ))}
-            <div style={{
-              marginTop: "auto", padding: "4px 10px", borderRadius: 4,
-              background: `${buttonColor}18`, border: `1px solid ${buttonColor}40`,
-              color: buttonColor, fontSize: 8, fontWeight: 700, fontFamily: "system-ui, sans-serif",
-              textAlign: "center", cursor: "pointer", letterSpacing: "0.03em",
-            }}>
-              {buttonText}
-            </div>
-          </div>
-        </div>
-      </foreignObject>
+      <rect x={x - 11} y={y - 8} width={22} height={16} rx={4} fill="#0d1520" stroke="#14b8a6" strokeWidth={0.7} opacity={0.85} />
+      <text x={x} y={y + 4} textAnchor="middle" fill="#14b8a6" fontSize={9} fontWeight={700} fontFamily="'JetBrains Mono', monospace" opacity={0.7}>fx</text>
     </g>
   );
 }
 
 // ══════════════════════════════════════════════════════════════════════════
-// ██ PRODUCTION INTELLIGENCE — Full Palantir Isometric Canvas            ██
+// ██ PRODUCTION INTELLIGENCE — 3-Layer Isometric Factory                 ██
 // ══════════════════════════════════════════════════════════════════════════
 
 function ProductionIntelligence() {
@@ -306,461 +110,433 @@ function ProductionIntelligence() {
   const activeLines = PRODUCTION_LINES.filter(l => l.status === "running").length;
   const avgUtil = summary.overallUtilization || 86;
 
-  // ── Canvas dimensions and center ──
-  const W = 1400, H = 1000;
-  const CX = 580, CY = 520; // center point offset left to leave room for right panel
-
-  // ── Platform Z levels ──
-  const Z_DATA = 0;
-  const Z_GOV = 80;
-  const Z_ONTO = 200;
-
-  // ── Ontology object positions on platform (grid coords) ──
-  const objs = {
-    fabrika:   isoPoint(CX, CY, 0, 0, Z_ONTO),
-    lokasyon:  isoPoint(CX, CY, -180, 0, Z_ONTO),
-    tedarikci: isoPoint(CX, CY, -300, -60, Z_ONTO),
-    hat1:      isoPoint(CX, CY, -120, -140, Z_ONTO),
-    hat2:      isoPoint(CX, CY, 0, -160, Z_ONTO),
-    hat3:      isoPoint(CX, CY, 140, -140, Z_ONTO),
-    hat4:      isoPoint(CX, CY, 260, -100, Z_ONTO),
-    operator:  isoPoint(CX, CY, 200, 60, Z_ONTO),
-    siparis:   isoPoint(CX, CY, -40, 140, Z_ONTO),
-    bakim:     isoPoint(CX, CY, 260, -20, Z_ONTO),
-  };
-
-  // Seasonal months
+  const W = 1100, H = 850;
   const months = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+
+  // ── Platform parallelogram helper ──
+  // Diamond shape: top, right, bottom, left
+  function platform(cx: number, cy: number, w: number, d: number): string {
+    return `${cx},${cy} ${cx + w / 2},${cy + d / 2} ${cx},${cy + d} ${cx - w / 2},${cy + d / 2}`;
+  }
+  // Left side face (3D depth)
+  function leftFace(cx: number, cy: number, w: number, d: number, depth: number): string {
+    return `${cx},${cy + d} ${cx - w / 2},${cy + d / 2} ${cx - w / 2},${cy + d / 2 + depth} ${cx},${cy + d + depth}`;
+  }
+  // Right side face (3D depth)
+  function rightFace(cx: number, cy: number, w: number, d: number, depth: number): string {
+    return `${cx},${cy + d} ${cx + w / 2},${cy + d / 2} ${cx + w / 2},${cy + d / 2 + depth} ${cx},${cy + d + depth}`;
+  }
+
+  // ── Platform specs ──
+  const P1 = { cx: 550, cy: 620, w: 500, d: 120, label: "KASA ÜRETİM" };
+  const P2 = { cx: 550, cy: 420, w: 560, d: 130, label: "MONTAJ & ÜRETİM" };
+  const P3 = { cx: 550, cy: 230, w: 420, d: 110, label: "İDARİ YÖNETİM" };
 
   return (
     <div style={{ background: "#000000", minHeight: "100vh", fontFamily: "system-ui, sans-serif" }}>
-      {/* CSS Keyframes */}
       <style>{`
-        @keyframes pulse-red { 0%,100% { opacity: 0.4; } 50% { opacity: 1; } }
-        @keyframes pulse-teal { 0%,100% { transform: scale(1); } 50% { transform: scale(1.03); } }
-        @keyframes float-card { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
-        @keyframes data-rise { 0% { opacity: 0; } 20% { opacity: 0.6; } 80% { opacity: 0.6; } 100% { opacity: 0; } }
         @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;600;700&display=swap');
+        @keyframes pulse-red { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+        @keyframes float-card { 0%,100% { transform: translateY(0); } 50% { transform: translateY(-5px); } }
+        @keyframes blink-dot { 0%,100% { opacity: 1; } 50% { opacity: 0; } }
       `}</style>
 
       {/* ═══ KPI STRIP ═══ */}
-      <div style={{ display: "flex", gap: 8, padding: "12px 16px", borderBottom: "1px solid #0d1520" }}>
+      <div style={{ display: "flex", gap: 10, padding: "10px 16px", height: 52, alignItems: "center", borderBottom: "1px solid #111827" }}>
         {[
-          { label: "Üretim", value: `${totalActual.toLocaleString()} ünite`, sub: `hedefin %${fulfillment}'i`, color: "#14b8a6" },
-          { label: "Hatlar", value: `${activeLines}/${PRODUCTION_LINES.length} hat`, sub: "1 bakımda", color: "#f59e0b" },
-          { label: "Verimlilik", value: `%${avgUtil}`, sub: "ort. operatör", color: "#14b8a6" },
-          { label: "Vardiyada", value: `${OPERATORS.filter(o => o.shift === "morning").length}`, sub: "sabah vardiyası", color: "#14b8a6" },
-        ].map(kpi => (
-          <div key={kpi.label} style={{ flex: 1, background: "#060810", border: "1px solid #111827", borderRadius: 8, padding: "8px 12px" }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 16, fontWeight: 700, color: "white", fontFamily: "'JetBrains Mono', monospace" }}>{kpi.value}</span>
-              <span style={{ width: 6, height: 6, borderRadius: "50%", background: kpi.color }} />
+          { dot: "#14b8a6", value: `${totalActual.toLocaleString()} ünite`, sub: `Üretim · hedef %${fulfillment}` },
+          { dot: "#f59e0b", value: `${activeLines}/${PRODUCTION_LINES.length} hat`, sub: "Hatlar · 1 bakımda" },
+          { dot: "#14b8a6", value: `%${avgUtil}`, sub: "Verimlilik · ort. operatör" },
+          { dot: "#14b8a6", value: "8", sub: "Vardiyada · sabah" },
+        ].map((kpi, i) => (
+          <div key={i} style={{ flex: 1, display: "flex", alignItems: "center", gap: 10, background: "#060810", border: "1px solid #111827", borderRadius: 8, padding: "6px 14px" }}>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: kpi.dot, flexShrink: 0 }} />
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700, color: "white", fontFamily: "'JetBrains Mono', monospace" }}>{kpi.value}</div>
+              <div style={{ fontSize: 11, color: "#888", marginTop: 1 }}>{kpi.sub}</div>
             </div>
-            <div style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 2 }}>{kpi.label} · {kpi.sub}</div>
           </div>
         ))}
-        <div style={{ display: "flex", alignItems: "center", gap: 6, padding: "0 12px" }}>
-          <span style={{ fontSize: 10, fontWeight: 600, color: "#14b8a6", letterSpacing: "0.1em" }}>LIVE</span>
-          <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", animation: "pulse-teal 2s infinite" }} />
-        </div>
       </div>
 
-      {/* ═══ MAIN CANVAS + RIGHT PANEL ═══ */}
+      {/* ═══ MAIN CONTENT: SVG + RIGHT PANEL ═══ */}
       <div style={{ display: "flex", position: "relative" }}>
 
         {/* ══ SVG CANVAS ══ */}
         <div style={{ flex: 1, overflow: "hidden" }}>
           <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
             <defs>
-              {/* Dot grid pattern */}
               <pattern id="bg-dots" width={28} height={28} patternUnits="userSpaceOnUse">
-                <circle cx={14} cy={14} r={0.8} fill="rgba(255,255,255,0.02)" />
+                <circle cx={14} cy={14} r={0.7} fill="rgba(255,255,255,0.02)" />
               </pattern>
-              {/* Teal glow filter */}
-              <filter id="glow-teal" x="-50%" y="-50%" width="200%" height="200%">
-                <feGaussianBlur stdDeviation="15" result="blur" />
-                <feFlood floodColor="#14b8a6" floodOpacity="0.2" />
+              <filter id="glow-teal" x="-30%" y="-30%" width="160%" height="160%">
+                <feGaussianBlur stdDeviation="12" result="blur" />
+                <feFlood floodColor="#14b8a6" floodOpacity="0.15" />
                 <feComposite in2="blur" operator="in" />
                 <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
               </filter>
-              {/* Red glow filter */}
-              <filter id="glow-red" x="-50%" y="-50%" width="200%" height="200%">
+              <filter id="glow-amber" x="-30%" y="-30%" width="160%" height="160%">
                 <feGaussianBlur stdDeviation="10" result="blur" />
-                <feFlood floodColor="#ef4444" floodOpacity="0.15" />
+                <feFlood floodColor="#f59e0b" floodOpacity="0.12" />
                 <feComposite in2="blur" operator="in" />
                 <feMerge><feMergeNode /><feMergeNode in="SourceGraphic" /></feMerge>
               </filter>
-              {/* Circuit grid pattern for ontology platform */}
-              <pattern id="circuit-grid" width={60} height={60} patternUnits="userSpaceOnUse">
-                <line x1={0} y1={30} x2={60} y2={30} stroke="#14b8a6" strokeWidth={0.5} opacity={0.03} />
-                <line x1={30} y1={0} x2={30} y2={60} stroke="#14b8a6" strokeWidth={0.5} opacity={0.03} />
-                <rect x={28} y={28} width={4} height={4} fill="#14b8a6" opacity={0.04} transform="rotate(45 30 30)" />
-              </pattern>
             </defs>
 
-            {/* Background */}
+            {/* Background dots */}
             <rect width={W} height={H} fill="url(#bg-dots)" />
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* LAYER 1: ENTERPRISE DATA PLATFORM (z=0)                */}
-            {/* ════════════════════════════════════════════════════════ */}
-            <g>
-              {/* Top face */}
-              <polygon points={isoParallelogram(CX, CY + 120, 600, 260, Z_DATA)} fill="#0a0f1a" stroke="#1e3a5f" strokeWidth={1} opacity={0.8} />
-              {/* Left side face */}
-              <polygon points={isoLeftFace(CX, CY + 120, 600, 260, Z_DATA, 40)} fill="#060b14" stroke="#1e3a5f" strokeWidth={0.5} opacity={0.8} />
-              {/* Right side face */}
-              <polygon points={isoRightFace(CX, CY + 120, 600, 260, Z_DATA, 40)} fill="#04080f" stroke="#1e3a5f" strokeWidth={0.5} opacity={0.8} />
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* PLATFORM 1 — KASA ÜRETİM (bottom, z=0)                    */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <polygon points={platform(P1.cx, P1.cy, P1.w, P1.d)} fill="#0a1628" stroke="#1e3a5f" strokeWidth={1.5} />
+            <polygon points={leftFace(P1.cx, P1.cy, P1.w, P1.d, 28)} fill="#060e1a" stroke="#1e3a5f" strokeWidth={0.5} />
+            <polygon points={rightFace(P1.cx, P1.cy, P1.w, P1.d, 28)} fill="#08121f" stroke="#1e3a5f" strokeWidth={0.5} />
+            {/* Side label on left face */}
+            <text x={P1.cx - P1.w / 2 - 6} y={P1.cy + P1.d / 2 + 18} fill="#4a90d9" fontSize={14} fontWeight={700}
+              fontFamily="'JetBrains Mono', monospace" textAnchor="end">
+              {P1.label}
+            </text>
 
-              {/* Micro-cube grid on top face (8x5 = 40 cubes) */}
-              {Array.from({ length: 8 }, (_, col) =>
-                Array.from({ length: 5 }, (_, row) => {
-                  const gx = -180 + col * 52;
-                  const gy = -80 + row * 40;
-                  const [px, py] = isoPoint(CX, CY + 120, gx, gy, Z_DATA + 2);
-                  const colorIdx = (col + row) % 3;
-                  const tops = ["#0d2d2d", "#0d1a2d", "#1a0d2d"];
-                  const lefts = ["#082020", "#081218", "#120818"];
-                  const rights = ["#061818", "#060e14", "#0e0614"];
-                  return (
-                    <MicroCube key={`mc${col}-${row}`} cx={px} cy={py} w={32} h={12}
-                      topColor={tops[colorIdx]} leftColor={lefts[colorIdx]} rightColor={rights[colorIdx]} />
-                  );
-                })
-              )}
+            {/* ── Object A: Hat 1 at (400, 660) ── */}
+            <circle cx={400} cy={660} r={22} fill="#0d1f38" stroke="#4a90d9" strokeWidth={1.5} />
+            <text x={400} y={665} textAnchor="middle" fontSize={18}>⚙️</text>
+            <text x={400} y={698} textAnchor="middle" fill="white" fontSize={13} fontWeight={600} fontFamily="system-ui, sans-serif">Hat 1</text>
+            <text x={400} y={712} textAnchor="middle" fill="#888" fontSize={11} fontFamily="system-ui, sans-serif">Kombi Kasa</text>
+            {/* Status badge */}
+            <rect x={362} y={717} width={76} height={18} rx={4} fill="rgba(16,185,129,0.15)" stroke="rgba(16,185,129,0.3)" strokeWidth={0.5} />
+            <text x={400} y={730} textAnchor="middle" fill="#10b981" fontSize={10} fontWeight={600} fontFamily="'JetBrains Mono', monospace">✓ 47 adet/gün</text>
 
-              {/* Side label */}
-              {(() => {
-                const [lx, ly] = isoPoint(CX, CY + 120, -300, -100, Z_DATA - 20);
-                return (
-                  <text x={lx + 10} y={ly + 20} fill="#4a7fa5" fontSize={8} fontWeight={600} fontFamily="'JetBrains Mono', monospace" letterSpacing="0.12em" opacity={0.6}
-                    transform={`rotate(-26 ${lx + 10} ${ly + 20})`}>
-                    VERİ KAYNAKLARI · MANTIK · AKSİYON
-                  </text>
-                );
-              })()}
+            {/* ── Object B: Hat 2 at (550, 645) ── */}
+            <circle cx={550} cy={645} r={22} fill="#0d1f38" stroke="#4a90d9" strokeWidth={1.5} />
+            <text x={550} y={650} textAnchor="middle" fontSize={18}>⚙️</text>
+            <text x={550} y={683} textAnchor="middle" fill="white" fontSize={13} fontWeight={600} fontFamily="system-ui, sans-serif">Hat 2</text>
+            <text x={550} y={697} textAnchor="middle" fill="#888" fontSize={11} fontFamily="system-ui, sans-serif">Eşanjör Kasa</text>
+            <rect x={512} y={702} width={76} height={18} rx={4} fill="rgba(16,185,129,0.15)" stroke="rgba(16,185,129,0.3)" strokeWidth={0.5} />
+            <text x={550} y={715} textAnchor="middle" fill="#10b981" fontSize={10} fontWeight={600} fontFamily="'JetBrains Mono', monospace">✓ 31 adet/gün</text>
 
-              {/* Data-rise particles from Layer 1 upward */}
-              {[0, 1, 2, 3, 4].map(i => {
-                const gx = -100 + i * 60;
-                const [bx, by] = isoPoint(CX, CY + 120, gx, 0, Z_DATA);
-                const [tx, ty] = isoPoint(CX, CY, gx * 0.6, 0, Z_ONTO);
-                return <PathParticle key={`rise${i}`} x1={bx} y1={by} x2={tx} y2={ty} color="#14b8a6" dur={4} delay={i * 0.8} r={1.5} />;
-              })}
-            </g>
+            {/* ── Object C: Hat 3 at (700, 660) — RED pulse ── */}
+            <circle cx={700} cy={660} r={22} fill="#1f0a0a" stroke="#ef4444" strokeWidth={1.5}>
+              <animate attributeName="stroke-opacity" values="1;0.4;1" dur="1.5s" repeatCount="indefinite" />
+            </circle>
+            <text x={700} y={665} textAnchor="middle" fontSize={18}>⚠️</text>
+            <text x={700} y={698} textAnchor="middle" fill="white" fontSize={13} fontWeight={600} fontFamily="system-ui, sans-serif">Hat 3</text>
+            <text x={700} y={712} textAnchor="middle" fill="#888" fontSize={11} fontFamily="system-ui, sans-serif">Panel Kasa</text>
+            <rect x={662} y={717} width={76} height={18} rx={4} fill="rgba(239,68,68,0.15)" stroke="rgba(239,68,68,0.3)" strokeWidth={0.5} />
+            <text x={700} y={730} textAnchor="middle" fill="#ef4444" fontSize={10} fontWeight={600} fontFamily="'JetBrains Mono', monospace">⚠ Bakımda</text>
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* LAYER 2: GOVERNANCE PLATFORM (z=80)                    */}
-            {/* ════════════════════════════════════════════════════════ */}
-            <g>
-              <polygon points={isoParallelogram(CX, CY + 60, 500, 200, Z_GOV)} fill="#080c14" stroke="#1e3a5f" strokeWidth={0.7} opacity={0.7} />
-              <polygon points={isoLeftFace(CX, CY + 60, 500, 200, Z_GOV, 25)} fill="#060a12" stroke="#1e3a5f" strokeWidth={0.3} opacity={0.7} />
-              <polygon points={isoRightFace(CX, CY + 60, 500, 200, Z_GOV, 25)} fill="#040810" stroke="#1e3a5f" strokeWidth={0.3} opacity={0.7} />
+            {/* Horizontal connecting line Hat1 → Hat2 → Hat3 */}
+            <line x1={424} y1={660} x2={528} y2={649} stroke="#4a90d9" strokeWidth={1} strokeDasharray="6 4">
+              <animate attributeName="stroke-dashoffset" values="0;-20" dur="2s" repeatCount="indefinite" />
+            </line>
+            <line x1={572} y1={649} x2={676} y2={660} stroke="#4a90d9" strokeWidth={1} strokeDasharray="6 4">
+              <animate attributeName="stroke-dashoffset" values="0;-20" dur="2s" repeatCount="indefinite" />
+            </line>
+            <FlowDot x1={424} y1={660} x2={676} y2={660} color="#4a90d9" dur={3} delay={0} r={2} />
+            <FlowDot x1={424} y1={660} x2={676} y2={660} color="#4a90d9" dur={3} delay={1.5} r={2} />
+            <text x={550} y={637} textAnchor="middle" fill="#4a90d9" fontSize={11} fontFamily="'JetBrains Mono', monospace" opacity={0.7}>
+              MONTAJ'A GÖNDERİLİYOR →
+            </text>
 
-              {/* Dot pattern overlay (simulated with circles) */}
-              {Array.from({ length: 12 }, (_, col) =>
-                Array.from({ length: 5 }, (_, row) => {
-                  const gx = -180 + col * 36;
-                  const gy = -60 + row * 30;
-                  const [px, py] = isoPoint(CX, CY + 60, gx, gy, Z_GOV + 1);
-                  return <circle key={`gov${col}-${row}`} cx={px} cy={py} r={1.2} fill="white" opacity={0.03} />;
-                })
-              )}
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* VERTICAL CONNECTORS: Platform 1 → Platform 2               */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* Hat 1 up to Montaj */}
+            <line x1={400} y1={638} x2={380} y2={558} stroke="#14b8a6" strokeWidth={1} strokeDasharray="4 4" opacity={0.3} />
+            <FlowDot x1={400} y1={636} x2={380} y2={558} color="#14b8a6" dur={2} delay={0} r={2} />
+            {/* Hat 2 up to Montaj */}
+            <line x1={550} y1={623} x2={520} y2={548} stroke="#14b8a6" strokeWidth={1} strokeDasharray="4 4" opacity={0.3} />
+            <FlowDot x1={550} y1={623} x2={520} y2={548} color="#14b8a6" dur={2} delay={0.6} r={2} />
+            {/* Hat 3 up to Bakım (amber) */}
+            <line x1={700} y1={638} x2={670} y2={555} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 4" opacity={0.3} />
+            <FlowDot x1={700} y1={638} x2={670} y2={555} color="#f59e0b" dur={2} delay={1} r={2} />
+            {/* Flow label */}
+            <text x={340} y={590} fill="#14b8a6" fontSize={11} fontFamily="'JetBrains Mono', monospace" opacity={0.5}
+              transform="rotate(-70 340 590)">Kasa Akışı ↑</text>
 
-              {/* Teal pulse line across governance platform */}
-              {(() => {
-                const [lx, ly] = isoPoint(CX, CY + 60, -200, 0, Z_GOV + 1);
-                const [rx, ry] = isoPoint(CX, CY + 60, 200, 0, Z_GOV + 1);
-                return (
-                  <line x1={lx} y1={ly} x2={rx} y2={ry} stroke="#14b8a6" strokeWidth={1} opacity={0.06}>
-                    <animate attributeName="opacity" values="0.03;0.1;0.03" dur="4s" repeatCount="indefinite" />
-                  </line>
-                );
-              })()}
-
-              {/* Side label */}
-              {(() => {
-                const [lx, ly] = isoPoint(CX, CY + 60, -250, -80, Z_GOV - 12);
-                return (
-                  <text x={lx + 10} y={ly + 15} fill="#3d5a7a" fontSize={7.5} fontWeight={600} fontFamily="'JetBrains Mono', monospace" letterSpacing="0.1em" opacity={0.5}
-                    transform={`rotate(-26 ${lx + 10} ${ly + 15})`}>
-                    YÖNETİŞİM · İNSAN + AI
-                  </text>
-                );
-              })()}
-            </g>
-
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* LAYER 3: MAIN ONTOLOGY PLATFORM (z=200)                */}
-            {/* ════════════════════════════════════════════════════════ */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* PLATFORM 2 — MONTAJ FABRİKASI (middle)                     */}
+            {/* ════════════════════════════════════════════════════════════ */}
             <g filter="url(#glow-teal)">
-              <polygon points={isoParallelogram(CX, CY, 700, 380, Z_ONTO)} fill="#0a0d14" stroke="#14b8a6" strokeWidth={1.5} opacity={0.6} />
+              <polygon points={platform(P2.cx, P2.cy, P2.w, P2.d)} fill="#0a1a14" stroke="#14b8a6" strokeWidth={1.5} />
             </g>
-            <polygon points={isoParallelogram(CX, CY, 700, 380, Z_ONTO)} fill="#0a0d14" stroke="#14b8a6" strokeWidth={1.5} opacity={0.85} />
-            <polygon points={isoLeftFace(CX, CY, 700, 380, Z_ONTO, 30)} fill="#070a10" stroke="#14b8a6" strokeWidth={0.5} opacity={0.5} />
-            <polygon points={isoRightFace(CX, CY, 700, 380, Z_ONTO, 30)} fill="#050810" stroke="#14b8a6" strokeWidth={0.5} opacity={0.5} />
+            <polygon points={platform(P2.cx, P2.cy, P2.w, P2.d)} fill="#0a1a14" stroke="#14b8a6" strokeWidth={1.5} />
+            <polygon points={leftFace(P2.cx, P2.cy, P2.w, P2.d, 30)} fill="#060f0d" stroke="#14b8a6" strokeWidth={0.5} opacity={0.7} />
+            <polygon points={rightFace(P2.cx, P2.cy, P2.w, P2.d, 30)} fill="#08150f" stroke="#14b8a6" strokeWidth={0.5} opacity={0.7} />
+            <text x={P2.cx - P2.w / 2 - 6} y={P2.cy + P2.d / 2 + 20} fill="#14b8a6" fontSize={14} fontWeight={700}
+              fontFamily="'JetBrains Mono', monospace" textAnchor="end">
+              {P2.label}
+            </text>
 
-            {/* Platform side label */}
-            {(() => {
-              const [lx, ly] = isoPoint(CX, CY, -350, -150, Z_ONTO - 15);
-              return (
-                <text x={lx + 10} y={ly + 12} fill="#14b8a6" fontSize={8} fontWeight={700} fontFamily="'JetBrains Mono', monospace" letterSpacing="0.1em" opacity={0.45}
-                  transform={`rotate(-26 ${lx + 10} ${ly + 12})`}>
-                  GRİSEUS ONTOLOJİSİ · DİJİTAL İKİZ
-                </text>
-              );
-            })()}
+            {/* ── Object D: Montaj Hattı at (370, 460) ── */}
+            <circle cx={370} cy={460} r={26} fill="#0d2420" stroke="#14b8a6" strokeWidth={2} />
+            <text x={370} y={466} textAnchor="middle" fontSize={20}>🏭</text>
+            <text x={370} y={500} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Montaj Hattı</text>
+            <text x={370} y={514} textAnchor="middle" fill="#888" fontSize={11}>Ana üretim</text>
+            <text x={370} y={530} textAnchor="middle" fill="#14b8a6" fontSize={12} fontWeight={700} fontFamily="'JetBrains Mono', monospace">107 ünite/gün</text>
 
-            {/* Circuit-board grid lines on platform surface */}
-            {Array.from({ length: 13 }, (_, i) => {
-              const gy = -180 + i * 30;
-              const [lx, ly] = isoPoint(CX, CY, -320, gy, Z_ONTO + 1);
-              const [rx, ry] = isoPoint(CX, CY, 320, gy, Z_ONTO + 1);
-              return <line key={`gh${i}`} x1={lx} y1={ly} x2={rx} y2={ry} stroke="#14b8a6" strokeWidth={0.4} opacity={0.025} />;
-            })}
-            {Array.from({ length: 13 }, (_, i) => {
-              const gx = -300 + i * 50;
-              const [tx, ty] = isoPoint(CX, CY, gx, -180, Z_ONTO + 1);
-              const [bx, by] = isoPoint(CX, CY, gx, 180, Z_ONTO + 1);
-              return <line key={`gv${i}`} x1={tx} y1={ty} x2={bx} y2={by} stroke="#14b8a6" strokeWidth={0.4} opacity={0.025} />;
-            })}
-
-            {/* ── CIRCUIT-BOARD CONNECTIONS ── */}
-            {/* Fabrika ↔ Hat 1 */}
-            <CircuitConnection x1={objs.fabrika[0]} y1={objs.fabrika[1]} x2={objs.hat1[0]} y2={objs.hat1[1]}
-              particleColor="#14b8a6" particleDur={3} />
-            {/* Fabrika ↔ Hat 2 */}
-            <CircuitConnection x1={objs.fabrika[0]} y1={objs.fabrika[1]} x2={objs.hat2[0]} y2={objs.hat2[1]}
-              particleColor="#14b8a6" particleDur={2.8} />
-            {/* Fabrika ↔ Hat 3 — RED alert */}
-            <CircuitConnection x1={objs.fabrika[0]} y1={objs.fabrika[1]} x2={objs.hat3[0]} y2={objs.hat3[1]}
-              color="#ef4444" opacity={0.25} strokeWidth={1.5} particleColor="#ef4444" particleDur={2} />
-            {/* Fabrika ↔ Hat 4 */}
-            <CircuitConnection x1={objs.fabrika[0]} y1={objs.fabrika[1]} x2={objs.hat4[0]} y2={objs.hat4[1]}
-              particleColor="#14b8a6" particleDur={3.5} />
-            {/* Fabrika ↔ Lokasyon */}
-            <CircuitConnection x1={objs.fabrika[0]} y1={objs.fabrika[1]} x2={objs.lokasyon[0]} y2={objs.lokasyon[1]}
-              particleColor="#14b8a6" particleDur={2.5} />
-            {/* Hat 3 ↔ Bakım — amber dashed */}
-            <CircuitConnection x1={objs.hat3[0]} y1={objs.hat3[1]} x2={objs.bakim[0]} y2={objs.bakim[1]}
-              color="#f59e0b" dashed particleColor="#f59e0b" particleDur={2} />
-            {/* Operatör ↔ Hats — thin gray */}
-            {[objs.hat1, objs.hat2, objs.hat3, objs.hat4].map((h, i) => (
-              <CircuitConnection key={`op-h${i}`} x1={objs.operator[0]} y1={objs.operator[1]} x2={h[0]} y2={h[1]}
-                color="#64748b" opacity={0.08} strokeWidth={0.7} showFx={false} particleColor="rgba(100,116,139,0.5)" particleDur={4} />
+            {/* ── Object E: Operatörler at (520, 442) + avatar circles ── */}
+            <circle cx={520} cy={442} r={22} fill="#0d2420" stroke="#14b8a6" strokeWidth={1.5} />
+            <text x={520} y={448} textAnchor="middle" fontSize={18}>👷</text>
+            <text x={520} y={478} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Operatörler</text>
+            <text x={520} y={492} textAnchor="middle" fill="#888" fontSize={11}>8 aktif vardiya</text>
+            {/* Small avatar initials */}
+            {["AY", "FD", "MK"].map((initials, i) => (
+              <g key={initials}>
+                <circle cx={558 + i * 24} cy={440} r={10} fill="#0a1a14" stroke="rgba(20,184,166,0.4)" strokeWidth={0.7} />
+                <text x={558 + i * 24} y={444} textAnchor="middle" fill="rgba(255,255,255,0.6)" fontSize={7} fontWeight={700} fontFamily="'JetBrains Mono', monospace">{initials}</text>
+              </g>
             ))}
-            {/* Tedarikçi ↔ Fabrika — blue */}
-            <CircuitConnection x1={objs.tedarikci[0]} y1={objs.tedarikci[1]} x2={objs.fabrika[0]} y2={objs.fabrika[1]}
-              color="#3b82f6" opacity={0.15} particleColor="#3b82f6" particleDur={3} />
-            {/* Sipariş ↔ Fabrika */}
-            <CircuitConnection x1={objs.siparis[0]} y1={objs.siparis[1]} x2={objs.fabrika[0]} y2={objs.fabrika[1]}
-              color="#3b82f6" opacity={0.12} particleColor="#3b82f6" particleDur={3.2} />
 
-            {/* ── ONTOLOGY NODES ── */}
-            <OntologyNode x={objs.fabrika[0]} y={objs.fabrika[1]} label="Fabrika" icon="🏭" />
-            <OntologyNode x={objs.lokasyon[0]} y={objs.lokasyon[1]} label="Lokasyon" icon="📍" />
-            <OntologyNode x={objs.tedarikci[0]} y={objs.tedarikci[1]} label="Tedarikçi" icon="🚛" glowColor="#3b82f6" />
-            <OntologyNode x={objs.hat1[0]} y={objs.hat1[1]} label="Hat 1" icon="⚙️" glowColor="#10b981" />
-            <OntologyNode x={objs.hat2[0]} y={objs.hat2[1]} label="Hat 2" icon="⚙️" glowColor="#10b981" />
-            <OntologyNode x={objs.hat3[0]} y={objs.hat3[1]} label="Hat 3" icon="⚙️" glowColor="#ef4444" pulse alert />
-            <OntologyNode x={objs.hat4[0]} y={objs.hat4[1]} label="Hat 4" icon="⚙️" glowColor="#10b981" />
-            <OntologyNode x={objs.operator[0]} y={objs.operator[1]} label="Operatör" icon="👤" />
-            <OntologyNode x={objs.siparis[0]} y={objs.siparis[1]} label="Sipariş" icon="📋" glowColor="#3b82f6" />
-            <OntologyNode x={objs.bakim[0]} y={objs.bakim[1]} label="Bakım" icon="🔧" glowColor="#f59e0b" />
+            {/* ── Object F: Bakım at (670, 458) — amber ── */}
+            <circle cx={670} cy={458} r={22} fill="#1a1408" stroke="#f59e0b" strokeWidth={1.5} />
+            <text x={670} y={464} textAnchor="middle" fontSize={18}>🔧</text>
+            <text x={670} y={494} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Bakım</text>
+            <text x={670} y={508} textAnchor="middle" fill="#f59e0b" fontSize={11}>Hat 3 bağlantısı</text>
+            <rect x={641} y={513} width={58} height={18} rx={4} fill="rgba(245,158,11,0.15)" stroke="rgba(245,158,11,0.3)" strokeWidth={0.5} />
+            <text x={670} y={526} textAnchor="middle" fill="#f59e0b" fontSize={10} fontWeight={600} fontFamily="'JetBrains Mono', monospace">Acil</text>
 
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* LAYER 4: FLOATING ACTION CARDS (z=400+)                */}
-            {/* ════════════════════════════════════════════════════════ */}
+            {/* ── Object G: Sevkiyat at (790, 472) ── */}
+            <circle cx={790} cy={472} r={20} fill="#0d2420" stroke="#14b8a6" strokeWidth={1.5} />
+            <text x={790} y={478} textAnchor="middle" fontSize={16}>📦</text>
+            <text x={790} y={506} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Sevkiyat</text>
+            <text x={790} y={520} textAnchor="middle" fill="#888" fontSize={11}>Hazır ürün</text>
 
-            {/* Card A: Hat 3 Acil Bakım — above Hat 3 */}
-            <FloatingCard
-              x={objs.hat3[0] - 100} y={objs.hat3[1] - 190}
-              width={200} height={120} borderColor="#ef4444"
-              title="⚠ HAT 3 — PANEL RADYATİR"
-              rows={[
-                "Durum: Bakımda · 14:08'den beri",
-                "Etki: -29 ünite/vardiya",
-                "Maliyet: ₺8,400/gün",
-              ]}
-              buttonText="⚡ Bakım Planla →"
-              buttonColor="#ef4444"
-              targetX={objs.hat3[0]} targetY={objs.hat3[1]}
-              particleColor="#ef4444"
-              animDelay={0}
-            />
+            {/* Circuit-board connections on Platform 2 */}
+            {/* D → E: horizontal L-route */}
+            <line x1={396} y1={460} x2={498} y2={460} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <line x1={498} y1={460} x2={498} y2={442} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <FlowDot x1={396} y1={460} x2={498} y2={442} color="#14b8a6" dur={2.5} delay={0} />
+            <FxBadge x={448} y={460} />
+            {/* E → F */}
+            <line x1={542} y1={442} x2={610} y2={442} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <line x1={610} y1={442} x2={648} y2={458} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <FlowDot x1={542} y1={442} x2={648} y2={458} color="#14b8a6" dur={2.5} delay={0.8} />
+            <FxBadge x={576} y={442} />
+            {/* F → G */}
+            <line x1={692} y1={458} x2={740} y2={458} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <line x1={740} y1={458} x2={770} y2={472} stroke="#14b8a6" strokeWidth={1} opacity={0.2} />
+            <FlowDot x1={692} y1={458} x2={770} y2={472} color="#14b8a6" dur={2} delay={1.5} />
+            <FxBadge x={716} y={458} />
+            {/* D → G (long route along bottom) */}
+            <line x1={370} y1={486} x2={370} y2={498} stroke="#14b8a6" strokeWidth={0.7} opacity={0.1} />
+            <line x1={370} y1={498} x2={790} y2={498} stroke="#14b8a6" strokeWidth={0.7} opacity={0.1} />
+            <line x1={790} y1={498} x2={790} y2={492} stroke="#14b8a6" strokeWidth={0.7} opacity={0.1} />
+            <FlowDot x1={370} y1={486} x2={790} y2={492} color="rgba(20,184,166,0.4)" dur={4} delay={0.5} r={1.5} />
 
-            {/* Card B: Pik Sezonu — above Fabrika */}
-            <FloatingCard
-              x={objs.fabrika[0] - 100} y={objs.fabrika[1] - 210}
-              width={200} height={120} borderColor="#14b8a6"
-              title="📊 PİK SEZONU UYARISI"
-              rows={[
-                "26 hafta · Eyl-Eki",
-                "Kapasite: %130 dolacak",
-                "Erken planlama gerekli",
-              ]}
-              buttonText="+ Teknisyen İşe Al →"
-              buttonColor="#14b8a6"
-              targetX={objs.fabrika[0]} targetY={objs.fabrika[1]}
-              particleColor="#14b8a6"
-              animDelay={0.8}
-            />
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* VERTICAL CONNECTORS: Platform 2 → Platform 3               */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <line x1={420} y1={430} x2={450} y2={370} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 4" opacity={0.25} />
+            <FlowDot x1={420} y1={430} x2={450} y2={370} color="#f59e0b" dur={2.5} delay={0} r={2} />
+            <line x1={550} y1={420} x2={555} y2={360} stroke="#f59e0b" strokeWidth={1} strokeDasharray="4 4" opacity={0.25} />
+            <FlowDot x1={550} y1={420} x2={555} y2={360} color="#f59e0b" dur={2.5} delay={0.8} r={2} />
+            <text x={415} y={398} fill="#f59e0b" fontSize={11} fontFamily="'JetBrains Mono', monospace" opacity={0.4}
+              transform="rotate(-75 415 398)">Rapor ↑</text>
 
-            {/* Card C: Vardiya Optimizasyonu — above Operatör */}
-            <FloatingCard
-              x={objs.operator[0] - 100} y={objs.operator[1] - 190}
-              width={200} height={120} borderColor="#10b981"
-              title="⚡ VARDİYA OPTİMİZASYONU"
-              rows={[
-                `%${avgUtil} verimlilik`,
-                "2 düşük performanslı operatör",
-                "Sabah vardiyası optimize edilebilir",
-              ]}
-              buttonText="Yeniden Ata →"
-              buttonColor="#10b981"
-              targetX={objs.operator[0]} targetY={objs.operator[1]}
-              particleColor="#10b981"
-              animDelay={1.5}
-            />
-
-            {/* Card D: İşgücü Tahmini — higher, right area */}
-            <FloatingCard
-              x={objs.hat4[0] + 30} y={objs.hat4[1] - 210}
-              width={190} height={110} borderColor="#14b8a6"
-              title="👷 İŞGÜCÜ TAHMİNİ"
-              rows={[
-                "Pik için 8 HVAC teknisyen",
-                "4 bölge açık pozisyon",
-              ]}
-              buttonText="Eşleştir →"
-              buttonColor="#14b8a6"
-              targetX={objs.hat4[0]} targetY={objs.hat4[1]}
-              particleColor="#14b8a6"
-              animDelay={2}
-            />
-
-            {/* Card E: Güven Skoru — right, above Bakım */}
-            <FloatingCard
-              x={objs.bakim[0] + 40} y={objs.bakim[1] - 170}
-              width={190} height={110} borderColor="#f59e0b"
-              title="🏆 GÜVEN SKORU"
-              rows={[
-                "3 operatör: skor güncellendi",
-                "Mehmet K: 94 → Öneri",
-              ]}
-              buttonText="Profil Gör →"
-              buttonColor="#f59e0b"
-              targetX={objs.bakim[0]} targetY={objs.bakim[1]}
-              particleColor="#f59e0b"
-              animDelay={2.5}
-            />
-
-            {/* ════════════════════════════════════════════════════════ */}
-            {/* SEASONAL TIMELINE STRIP (bottom of SVG)                */}
-            {/* ════════════════════════════════════════════════════════ */}
-            <g>
-              <rect x={30} y={940} width={W - 280} height={42} rx={4} fill="#060810" stroke="#111827" strokeWidth={0.5} />
-              <text x={46} y={956} fill="rgba(255,255,255,0.2)" fontSize={7} fontWeight={600} fontFamily="'JetBrains Mono', monospace" letterSpacing="0.1em">
-                MEVSİMSEL TALEP ZAMANÇİZELGESİ
-              </text>
-              {months.map((m, i) => {
-                const segW = (W - 330) / 12;
-                const sx = 46 + i * segW;
-                const isPeak = i === 8 || i === 9;
-                const isHigh = i === 10;
-                const isSummer = i === 6 || i === 7;
-                const isCurrent = i === 2;
-                const bg = isPeak ? "#2d0d0d" : isHigh ? "#2d1a0d" : isSummer ? "#0d1a2d" : "#0d1520";
-                return (
-                  <g key={m}>
-                    <rect x={sx} y={960} width={segW - 2} height={16} rx={2} fill={bg} />
-                    <text x={sx + segW / 2} y={971} textAnchor="middle" fill={isCurrent ? "white" : "rgba(255,255,255,0.3)"} fontSize={7} fontWeight={isCurrent ? 700 : 400} fontFamily="'JetBrains Mono', monospace">
-                      {m}
-                    </text>
-                    {isPeak && <text x={sx + segW / 2} y={957} textAnchor="middle" fill="#ef4444" fontSize={6} fontWeight={700} fontFamily="'JetBrains Mono', monospace">PİK</text>}
-                    {isHigh && <text x={sx + segW / 2} y={957} textAnchor="middle" fill="#f59e0b" fontSize={6} fontWeight={700}>Yüksek</text>}
-                    {isCurrent && (
-                      <g>
-                        <line x1={sx + segW / 2} y1={958} x2={sx + segW / 2} y2={978} stroke="white" strokeWidth={1} opacity={0.7} />
-                        <text x={sx + segW / 2} y={955} textAnchor="middle" fill="white" fontSize={6} fontWeight={700} opacity={0.8}>ŞU AN</text>
-                      </g>
-                    )}
-                    {!isPeak && !isHigh && !isCurrent && isSummer && (
-                      <circle cx={sx + segW / 2} cy={970} r={1.5} fill="#3b82f6" opacity={0.4} />
-                    )}
-                  </g>
-                );
-              })}
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* PLATFORM 3 — İDARİ YÖNETİM (top)                          */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <g filter="url(#glow-amber)">
+              <polygon points={platform(P3.cx, P3.cy, P3.w, P3.d)} fill="#12100a" stroke="#f59e0b" strokeWidth={1.5} />
             </g>
+            <polygon points={platform(P3.cx, P3.cy, P3.w, P3.d)} fill="#12100a" stroke="#f59e0b" strokeWidth={1.5} />
+            <polygon points={leftFace(P3.cx, P3.cy, P3.w, P3.d, 24)} fill="#0a0e06" stroke="#f59e0b" strokeWidth={0.5} opacity={0.6} />
+            <polygon points={rightFace(P3.cx, P3.cy, P3.w, P3.d, 24)} fill="#0e0c08" stroke="#f59e0b" strokeWidth={0.5} opacity={0.6} />
+            <text x={P3.cx - P3.w / 2 - 6} y={P3.cy + P3.d / 2 + 16} fill="#f59e0b" fontSize={14} fontWeight={700}
+              fontFamily="'JetBrains Mono', monospace" textAnchor="end">
+              {P3.label}
+            </text>
+
+            {/* ── Object H: Genel Müdür at (440, 262) ── */}
+            <circle cx={440} cy={262} r={22} fill="#1a1408" stroke="#f59e0b" strokeWidth={1.5} />
+            <text x={440} y={268} textAnchor="middle" fontSize={18}>👔</text>
+            <text x={440} y={298} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Genel Müdür</text>
+            <text x={440} y={312} textAnchor="middle" fill="#888" fontSize={11}>Operasyon kontrolü</text>
+
+            {/* ── Object I: Finans at (555, 248) ── */}
+            <circle cx={555} cy={248} r={22} fill="#1a1408" stroke="#f59e0b" strokeWidth={1.5} />
+            <text x={555} y={254} textAnchor="middle" fontSize={18}>📊</text>
+            <text x={555} y={284} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Finans</text>
+            <text x={555} y={298} textAnchor="middle" fill="#888" fontSize={11}>₺ akışı takibi</text>
+
+            {/* ── Object J: Planlama at (668, 262) ── */}
+            <circle cx={668} cy={262} r={22} fill="#1a1408" stroke="#f59e0b" strokeWidth={1.5} />
+            <text x={668} y={268} textAnchor="middle" fontSize={18}>📅</text>
+            <text x={668} y={298} textAnchor="middle" fill="white" fontSize={13} fontWeight={600}>Planlama</text>
+            <text x={668} y={312} textAnchor="middle" fill="#888" fontSize={11}>Sipariş yönetimi</text>
+
+            {/* Connections on Platform 3 */}
+            <line x1={462} y1={262} x2={533} y2={248} stroke="#f59e0b" strokeWidth={1} opacity={0.2} />
+            <line x1={577} y1={248} x2={646} y2={262} stroke="#f59e0b" strokeWidth={1} opacity={0.2} />
+            <FlowDot x1={462} y1={262} x2={646} y2={262} color="#f59e0b" dur={3} delay={0} r={2} />
+
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* FLOATING ACTION CARDS (above platform 3)                   */}
+            {/* ════════════════════════════════════════════════════════════ */}
+
+            {/* Card 1 — Hat 3 Acil (left) */}
+            <line x1={280} y1={175} x2={700} y2={660} stroke="#ef4444" strokeWidth={0.7} opacity={0.15} strokeDasharray="4 4" />
+            <FlowDot x1={280} y1={175} x2={700} y2={660} color="#ef4444" dur={3} delay={0} r={2} />
+            <FlowDot x1={280} y1={175} x2={700} y2={660} color="#ef4444" dur={3} delay={1.5} r={1.5} />
+            <foreignObject x={180} y={52} width={200} height={128}>
+              <div style={{ animation: "float-card 4s ease-in-out infinite" }}>
+                <div style={{
+                  background: "#0d0808", border: "1.5px solid #ef4444", borderRadius: 8,
+                  padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  <div style={{ color: "#ef4444", fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>⚠ HAT 3 ACİL</div>
+                  <div style={{ color: "white", fontSize: 12 }}>Panel Kasa · Bakımda</div>
+                  <div style={{ color: "#f87171", fontSize: 12 }}>−29 ünite/vardiya</div>
+                  <div style={{ color: "#fca5a5", fontSize: 11 }}>₺8,400/gün kayıp</div>
+                  <div onClick={() => alert("Bakım planı açılıyor...")} style={{
+                    marginTop: 2, padding: "5px 0", borderRadius: 4, background: "#ef4444",
+                    color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", cursor: "pointer",
+                  }}>Bakım Planla →</div>
+                </div>
+              </div>
+            </foreignObject>
+
+            {/* Card 2 — Pik Sezonu (center) */}
+            <line x1={545} y1={165} x2={370} y2={460} stroke="#14b8a6" strokeWidth={0.7} opacity={0.15} strokeDasharray="4 4" />
+            <FlowDot x1={545} y1={165} x2={370} y2={460} color="#14b8a6" dur={3} delay={0.5} r={2} />
+            <foreignObject x={440} y={35} width={210} height={128}>
+              <div style={{ animation: "float-card 4s ease-in-out infinite", animationDelay: "1s" }}>
+                <div style={{
+                  background: "#070d0c", border: "1.5px solid #14b8a6", borderRadius: 8,
+                  padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  <div style={{ color: "#14b8a6", fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>📊 PİK SEZONU</div>
+                  <div style={{ color: "white", fontSize: 12 }}>26 hafta kaldı · Eyl-Eki</div>
+                  <div style={{ color: "#6ee7b7", fontSize: 12 }}>%130 kapasite dolacak</div>
+                  <div style={{ color: "#94d5cc", fontSize: 11 }}>8 teknisyen gerekli</div>
+                  <div onClick={() => alert("Sezon planı açılıyor...")} style={{
+                    marginTop: 2, padding: "5px 0", borderRadius: 4, background: "#14b8a6",
+                    color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", cursor: "pointer",
+                  }}>Planla →</div>
+                </div>
+              </div>
+            </foreignObject>
+
+            {/* Card 3 — Vardiya (right) */}
+            <line x1={805} y1={165} x2={520} y2={442} stroke="#10b981" strokeWidth={0.7} opacity={0.15} strokeDasharray="4 4" />
+            <FlowDot x1={805} y1={165} x2={520} y2={442} color="#10b981" dur={3} delay={1} r={2} />
+            <foreignObject x={710} y={52} width={190} height={128}>
+              <div style={{ animation: "float-card 4s ease-in-out infinite", animationDelay: "2s" }}>
+                <div style={{
+                  background: "#070d0a", border: "1.5px solid #10b981", borderRadius: 8,
+                  padding: "10px 14px", display: "flex", flexDirection: "column", gap: 4,
+                }}>
+                  <div style={{ color: "#10b981", fontSize: 13, fontWeight: 700, fontFamily: "'JetBrains Mono', monospace" }}>⚡ VARDİYA</div>
+                  <div style={{ color: "white", fontSize: 12 }}>%{avgUtil} verimlilik</div>
+                  <div style={{ color: "#86efac", fontSize: 12 }}>2 düşük perf. operatör</div>
+                  <div style={{ color: "#888", fontSize: 11 }}>Sabah vardiyası aktif</div>
+                  <div onClick={() => alert("Vardiya yönetimi açılıyor...")} style={{
+                    marginTop: 2, padding: "5px 0", borderRadius: 4, background: "#10b981",
+                    color: "white", fontSize: 11, fontWeight: 600, textAlign: "center", cursor: "pointer",
+                  }}>Yeniden Ata →</div>
+                </div>
+              </div>
+            </foreignObject>
+
+            {/* ════════════════════════════════════════════════════════════ */}
+            {/* SEASONAL TIMELINE (bottom strip)                           */}
+            {/* ════════════════════════════════════════════════════════════ */}
+            <rect x={20} y={800} width={W - 40} height={36} rx={4} fill="#060810" stroke="#111827" strokeWidth={0.5} />
+            <text x={36} y={816} fill="rgba(255,255,255,0.25)" fontSize={10} fontWeight={600} fontFamily="'JetBrains Mono', monospace" letterSpacing="0.08em">
+              MEVSİMSEL TALEP
+            </text>
+            {months.map((m, i) => {
+              const segW = (W - 200) / 12;
+              const sx = 160 + i * segW;
+              const isPeak = i === 8 || i === 9;
+              const isHigh = i === 10;
+              const isSummer = i === 6 || i === 7;
+              const isCurrent = i === 2;
+              const bg = isPeak ? "#2d0d0d" : isHigh ? "#2d1a0d" : isSummer ? "#0d1a2d" : "#0d1520";
+              return (
+                <g key={m}>
+                  <rect x={sx} y={806} width={segW - 3} height={20} rx={3} fill={bg} />
+                  <text x={sx + segW / 2} y={820} textAnchor="middle" fill={isCurrent ? "white" : "rgba(255,255,255,0.35)"} fontSize={10} fontWeight={isCurrent ? 700 : 400} fontFamily="'JetBrains Mono', monospace">
+                    {m}
+                  </text>
+                  {isPeak && <text x={sx + segW / 2} y={804} textAnchor="middle" fill="#ef4444" fontSize={9} fontWeight={700}>PİK</text>}
+                  {isHigh && <text x={sx + segW / 2} y={804} textAnchor="middle" fill="#f59e0b" fontSize={9} fontWeight={700}>Yüksek</text>}
+                  {isCurrent && (
+                    <g>
+                      <line x1={sx + segW / 2} y1={804} x2={sx + segW / 2} y2={828} stroke="white" strokeWidth={1} opacity={0.7} />
+                      <text x={sx + segW / 2} y={802} textAnchor="middle" fill="white" fontSize={9} fontWeight={700} opacity={0.8}>ŞU AN</text>
+                    </g>
+                  )}
+                  {!isPeak && !isHigh && !isCurrent && isSummer && (
+                    <circle cx={sx + segW / 2} cy={816} r={2} fill="#3b82f6" opacity={0.5} />
+                  )}
+                </g>
+              );
+            })}
           </svg>
         </div>
 
         {/* ══ RIGHT SIDE PANEL ══ */}
         <div style={{
-          width: 220, minHeight: "calc(100vh - 56px)", background: "#040608",
-          borderLeft: "1px solid rgba(20,184,166,0.15)", padding: "16px 14px",
-          flexShrink: 0, display: "flex", flexDirection: "column", gap: 10,
+          width: 210, minHeight: "calc(100vh - 52px)", background: "#040608",
+          borderLeft: "1px solid rgba(20,184,166,0.3)", padding: "16px 14px",
+          flexShrink: 0, display: "flex", flexDirection: "column", gap: 8,
+          fontFamily: "system-ui, sans-serif",
         }}>
           {/* Header */}
           <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-            <span style={{ color: "#14b8a6", fontSize: 9, fontWeight: 700, letterSpacing: "0.12em", fontFamily: "'JetBrains Mono', monospace" }}>CANLI İSTİHBARAT</span>
-            <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#10b981", marginLeft: "auto", animation: "pulse-teal 2s infinite" }} />
+            <span style={{ color: "#14b8a6", fontSize: 11, fontWeight: 700, letterSpacing: "0.1em", fontFamily: "'JetBrains Mono', monospace" }}>CANLI İSTİHBARAT</span>
+            <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#10b981", marginLeft: "auto", animation: "blink-dot 1s infinite" }} />
           </div>
 
           {/* Alert rows */}
           {[
-            { dot: "#ef4444", text: "Hat 3 durdu — 14:08", time: "2dk önce", action: "→ Aksiyon", ac: "#ef4444" },
-            { dot: "#f59e0b", text: "Pik sezonu 26 hafta", time: "12dk önce", action: "→ Plan", ac: "#f59e0b" },
-            { dot: "#10b981", text: `Vardiya verimi %${avgUtil}`, time: "30dk önce", action: "✓ Normal", ac: "#10b981" },
-            { dot: "#10b981", text: `${totalActual.toLocaleString()} haftalık`, time: "1sa önce", action: "✓ Normal", ac: "#10b981" },
-            { dot: "#f59e0b", text: `${OPERATORS.filter(o => o.utilization > 0).length} operatör aktif`, time: "45dk önce", action: "→ İncele", ac: "#f59e0b" },
+            { dot: "#ef4444", text: "Hat 3 durdu — 14:08", action: "→ Aksiyon", ac: "#ef4444" },
+            { dot: "#f59e0b", text: "Pik sezonu 26 hafta", action: "→ Plan", ac: "#f59e0b" },
+            { dot: "#10b981", text: `Vardiya verimi %${avgUtil}`, action: "✓", ac: "#10b981" },
+            { dot: "#10b981", text: `${totalActual.toLocaleString()} haftalık üretim`, action: "✓", ac: "#10b981" },
+            { dot: "#f59e0b", text: "10 operatör aktif", action: "→ İncele", ac: "#f59e0b" },
           ].map((item, i) => (
-            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "6px 0", borderBottom: "1px solid #111827" }}>
+            <div key={i} style={{ display: "flex", alignItems: "flex-start", gap: 8, padding: "5px 0", borderBottom: "1px solid #111827" }}>
               <span style={{
-                width: 7, height: 7, borderRadius: "50%", background: item.dot, marginTop: 3, flexShrink: 0,
+                width: 7, height: 7, borderRadius: "50%", background: item.dot, marginTop: 4, flexShrink: 0,
                 animation: item.dot === "#ef4444" ? "pulse-red 1.5s infinite" : undefined,
               }} />
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ color: "rgba(255,255,255,0.6)", fontSize: 9, fontFamily: "system-ui, sans-serif", lineHeight: 1.3 }}>{item.text}</div>
-                <div style={{ display: "flex", justifyContent: "space-between", marginTop: 2 }}>
-                  <span style={{ color: "rgba(255,255,255,0.2)", fontSize: 7.5, fontFamily: "'JetBrains Mono', monospace" }}>{item.time}</span>
-                  <span style={{ color: item.ac, fontSize: 7.5, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}>[{item.action}]</span>
+              <div style={{ flex: 1 }}>
+                <div style={{ color: "rgba(255,255,255,0.65)", fontSize: 11, lineHeight: 1.3 }}>{item.text}</div>
+                <div style={{ textAlign: "right", marginTop: 2 }}>
+                  <span style={{ color: item.ac, fontSize: 11, fontWeight: 600, fontFamily: "'JetBrains Mono', monospace", cursor: "pointer" }}>[{item.action}]</span>
                 </div>
               </div>
             </div>
           ))}
 
           {/* Divider */}
-          <div style={{ height: 1, background: "rgba(239,68,68,0.15)", margin: "4px 0" }} />
+          <div style={{ height: 1, background: "rgba(239,68,68,0.2)", margin: "4px 0" }} />
 
-          {/* DARBOĞAZ section */}
+          {/* DARBOĞAZ */}
           <div>
-            <div style={{ color: "rgba(239,68,68,0.6)", fontSize: 8, fontWeight: 700, letterSpacing: "0.1em", fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>DARBOĞAZ</div>
-            <div style={{ color: "rgba(255,255,255,0.5)", fontSize: 9, marginBottom: 3, fontFamily: "system-ui, sans-serif" }}>Hat 3 — Panel Radyatör</div>
-            <div style={{ color: "rgba(255,255,255,0.3)", fontSize: 8, fontFamily: "'JetBrains Mono', monospace", lineHeight: 1.6 }}>
-              Durum: Bakımda (14:08'den beri)<br />
-              <span style={{ color: "rgba(239,68,68,0.6)" }}>Etki: -29 units/vardiya</span><br />
-              <span style={{ color: "rgba(239,68,68,0.5)" }}>Maliyet: ~₺8,400/gün</span>
-            </div>
-            <div style={{
-              marginTop: 8, padding: "5px 8px", borderRadius: 4,
-              background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)",
-              color: "rgba(245,158,11,0.6)", fontSize: 8, fontWeight: 600,
-              fontFamily: "system-ui, sans-serif", textAlign: "center",
+            <div style={{ color: "#f59e0b", fontSize: 11, fontWeight: 700, letterSpacing: "0.08em", fontFamily: "'JetBrains Mono', monospace", marginBottom: 6 }}>DARBOĞAZ</div>
+            <div style={{ color: "white", fontSize: 12, marginBottom: 3 }}>Hat 3 — Panel Kasa</div>
+            <div style={{ color: "#888", fontSize: 11, marginBottom: 3 }}>Bakımda (14:08'den beri)</div>
+            <div style={{ color: "#ef4444", fontSize: 12, marginBottom: 2 }}>Etki: −28 ünite/vardiya</div>
+            <div style={{ color: "#ef4444", fontSize: 12, marginBottom: 8 }}>Maliyet: ₺8,400/gün</div>
+            <div onClick={() => alert("Operatör yeniden atama")} style={{
+              padding: "6px 10px", borderRadius: 4,
+              background: "rgba(245,158,11,0.08)", border: "1px solid rgba(245,158,11,0.2)",
+              color: "#f59e0b", fontSize: 11, fontWeight: 600, textAlign: "center", cursor: "pointer",
             }}>
               2 operatör yeniden atanabilir
             </div>
           </div>
 
-          {/* Divider */}
-          <div style={{ height: 1, background: "#111827", margin: "4px 0" }} />
-
-          {/* Platform info */}
+          {/* Footer */}
           <div style={{ marginTop: "auto" }}>
-            <div style={{ color: "rgba(255,255,255,0.15)", fontSize: 7, fontFamily: "'JetBrains Mono', monospace", letterSpacing: "0.08em" }}>
-              GRİSEUS v0.1 · ONTOLOJİ MOTORU
+            <div style={{ color: "rgba(255,255,255,0.15)", fontSize: 9, fontFamily: "'JetBrains Mono', monospace" }}>
+              GRİSEUS v0.1 · ONTOLOJİ
             </div>
-            <div style={{ color: "rgba(255,255,255,0.1)", fontSize: 7, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
+            <div style={{ color: "rgba(255,255,255,0.1)", fontSize: 9, fontFamily: "'JetBrains Mono', monospace", marginTop: 2 }}>
               {summary.totalLines || 4} hat · {summary.totalOperators || 10} operatör
             </div>
           </div>
