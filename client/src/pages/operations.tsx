@@ -97,10 +97,94 @@ const SHIFT_CALENDAR = [
 
 const ALL_SKILLS = ["welding", "brazing", "assembly", "testing", "quality", "press-op", "painting", "packaging"];
 
-// ── Intelligence Feed (Ontology-driven) ─────────────────────────────────
+// ── Palantir-style Ontology Diagram ─────────────────────────────────────
 
-function IntelligenceFeed() {
-  // First fetch factory objects to get the factory ID
+// Isometric projection helpers
+const ISO_ANGLE = Math.PI / 6; // 30 degrees
+const isoTransform = (x: number, y: number, z: number) => ({
+  x: (x - y) * Math.cos(ISO_ANGLE),
+  y: (x + y) * Math.sin(ISO_ANGLE) - z,
+});
+
+// Isometric cube face generator
+function IsoCube({ cx, cy, size, topColor, leftColor, rightColor, glowColor, opacity = 1 }: {
+  cx: number; cy: number; size: number; topColor: string; leftColor: string; rightColor: string; glowColor?: string; opacity?: number;
+}) {
+  const s = size / 2;
+  const cos30 = Math.cos(ISO_ANGLE);
+  const sin30 = Math.sin(ISO_ANGLE);
+
+  const top = `${cx},${cy - s} ${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx - s * cos30},${cy - s + s * sin30}`;
+  const left = `${cx - s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx - s * cos30},${cy + s * sin30}`;
+  const right = `${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx + s * cos30},${cy + s * sin30}`;
+
+  return (
+    <g opacity={opacity}>
+      {glowColor && (
+        <ellipse cx={cx} cy={cy + s * sin30} rx={size * 0.7} ry={size * 0.25} fill={glowColor} opacity={0.15} style={{ filter: "blur(8px)" }} />
+      )}
+      <polygon points={left} fill={leftColor} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+      <polygon points={right} fill={rightColor} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+      <polygon points={top} fill={topColor} stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
+    </g>
+  );
+}
+
+// Flowing dot animation along a path
+function FlowDot({ x1, y1, x2, y2, color, dur, delay }: {
+  x1: number; y1: number; x2: number; y2: number; color: string; dur: number; delay: number;
+}) {
+  return (
+    <circle r={2.5} fill={color}>
+      <animate attributeName="cx" values={`${x1};${x2}`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
+      <animate attributeName="cy" values={`${y1};${y2}`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
+      <animate attributeName="opacity" values="0;0.9;0.9;0" dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
+    </circle>
+  );
+}
+
+// Ontology node with label and optional alert badge
+function OntologyNode({ cx, cy, label, sublabel, color, alert, size = 32 }: {
+  cx: number; cy: number; label: string; sublabel?: string; color: string; alert?: "warning" | "ok"; size?: number;
+}) {
+  return (
+    <g>
+      {/* Glow ring */}
+      <circle cx={cx} cy={cy} r={size * 0.7} fill="none" stroke={color} strokeWidth={0.8} opacity={0.15}>
+        <animate attributeName="r" values={`${size * 0.7};${size * 0.85};${size * 0.7}`} dur="4s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.15;0.05;0.15" dur="4s" repeatCount="indefinite" />
+      </circle>
+      {/* Node body */}
+      <IsoCube cx={cx} cy={cy} size={size} topColor={color} leftColor={`${color}cc`} rightColor={`${color}99`} glowColor={color} />
+      {/* Inner dot */}
+      <circle cx={cx} cy={cy - size * 0.15} r={3} fill="white" opacity={0.6} />
+      {/* Label */}
+      <text x={cx} y={cy + size * 0.65 + 12} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={9} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+        {label}
+      </text>
+      {sublabel && (
+        <text x={cx} y={cy + size * 0.65 + 23} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
+          {sublabel}
+        </text>
+      )}
+      {/* Alert badge */}
+      {alert === "warning" && (
+        <g>
+          <circle cx={cx + size * 0.4} cy={cy - size * 0.55} r={7} fill="#f59e0b" />
+          <text x={cx + size * 0.4} y={cy - size * 0.55 + 3.5} textAnchor="middle" fill="white" fontSize={9} fontWeight={700}>!</text>
+        </g>
+      )}
+      {alert === "ok" && (
+        <g>
+          <circle cx={cx + size * 0.4} cy={cy - size * 0.55} r={6} fill="#10b981" />
+          <text x={cx + size * 0.4} y={cy - size * 0.55 + 3} textAnchor="middle" fill="white" fontSize={7} fontWeight={700}>✓</text>
+        </g>
+      )}
+    </g>
+  );
+}
+
+function OntologyDiagram() {
   const { data: factories, isLoading: factoriesLoading, isError: factoriesError } = useQuery<any[]>({
     queryKey: ["/api/ontology/objects/factory"],
     retry: 1,
@@ -117,25 +201,23 @@ function IntelligenceFeed() {
     staleTime: 15000,
   });
 
-  // Show loading only while actively fetching
   if (factoriesLoading || (factoryId && intelligenceLoading)) {
     return (
-      <Card className="border-white/10">
-        <CardContent className="p-4">
+      <Card className="border-white/10" style={{ background: "#0a0a0f" }}>
+        <CardContent className="p-6">
           <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-blue-400 animate-pulse" />
-            <span className="text-sm text-muted-foreground">Ontology intelligence yükleniyor...</span>
+            <Zap className="h-4 w-4 text-teal-400 animate-pulse" />
+            <span className="text-sm text-muted-foreground">Ontology graph yükleniyor...</span>
           </div>
         </CardContent>
       </Card>
     );
   }
 
-  // Handle error or no data gracefully
   if (factoriesError || intelligenceError || !factories?.length || !intelligence) {
     return (
-      <Card className="border-white/10">
-        <CardContent className="p-4">
+      <Card className="border-white/10" style={{ background: "#0a0a0f" }}>
+        <CardContent className="p-6">
           <div className="flex items-center gap-2">
             <AlertTriangle className="h-4 w-4 text-amber-400" />
             <span className="text-sm text-muted-foreground">Ontology veritabanı henüz oluşturulmadı. <code className="text-xs">npm run db:push</code> çalıştırın.</span>
@@ -145,48 +227,184 @@ function IntelligenceFeed() {
     );
   }
 
-  const insights: Array<{ type: string; message: string; severity: number }> = intelligence.insights || [];
-  const iconMap: Record<string, React.ReactNode> = {
-    warning: <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />,
-    success: <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />,
-    info: <TrendingUp className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />,
-  };
-  const bgMap: Record<string, string> = {
-    warning: "border-amber-500/20 bg-amber-500/5",
-    success: "border-emerald-500/20 bg-emerald-500/5",
-    info: "border-blue-500/20 bg-blue-500/5",
-  };
+  const lineUtils = intelligence.lineUtilization || [];
+  const bottleneckIds = new Set((intelligence.bottlenecks || []).map((b: any) => b.lineId));
+  const summary = intelligence.summary || {};
+
+  // Layout constants for the 3-layer diagram
+  const W = 780;
+  const H = 520;
+
+  // ── DATA LAYER (bottom) ──────────────────────────────
+  const dataY = 430;
+  const dataSources = [
+    { label: "Vardiya Kayıtları", x: 160 },
+    { label: "Operatör Profilleri", x: 390 },
+    { label: "Üretim Çıktısı", x: 620 },
+  ];
+
+  // ── ONTOLOGY LAYER (middle) ──────────────────────────
+  const ontoY = 240;
+  const ontologyNodes = [
+    { label: "Fabrika", sublabel: "Çukurova", x: 80, alert: undefined as "warning" | "ok" | undefined },
+    { label: "Lokasyon", sublabel: "2 bina", x: 210 },
+    { label: "Hat 1", sublabel: `%${lineUtils[0]?.avgUtilization ?? "—"}`, x: 320, alert: (bottleneckIds.has(lineUtils[0]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
+    { label: "Hat 2", sublabel: `%${lineUtils[1]?.avgUtilization ?? "—"}`, x: 410, alert: (bottleneckIds.has(lineUtils[1]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
+    { label: "Hat 3", sublabel: `%${lineUtils[2]?.avgUtilization ?? "—"}`, x: 500, alert: (bottleneckIds.has(lineUtils[2]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
+    { label: "Hat 4", sublabel: `%${lineUtils[3]?.avgUtilization ?? "—"}`, x: 590, alert: (bottleneckIds.has(lineUtils[3]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
+    { label: "Operatör", sublabel: `${summary.totalOperators ?? 10}`, x: 700 },
+  ];
+
+  // ── ACTION LAYER (top) ───────────────────────────────
+  const actionY = 62;
+  const actions = [
+    { label: "Darboğaz Tespiti", x: 160, icon: "⚠️" },
+    { label: "Vardiya Optimizasyonu", x: 390, icon: "📊" },
+    { label: "Maliyet Simülasyonu", x: 620, icon: "💰" },
+  ];
+
+  // Connection edges for ontology layer
+  const ontoEdges = [
+    [0, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 6], [3, 6], [4, 6], [5, 6],
+  ];
 
   return (
-    <Card className="border-white/10">
-      <CardHeader className="pb-2">
+    <Card className="border-white/10 overflow-hidden" style={{ background: "#0a0a0f" }}>
+      <CardHeader className="pb-1">
         <CardTitle className="text-base flex items-center gap-2">
-          <Zap className="h-4 w-4 text-blue-400" />
-          Intelligence Feed
-          <Badge variant="outline" className="ml-auto text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
+          <Zap className="h-4 w-4 text-teal-400" />
+          Ontology Graph
+          <Badge variant="outline" className="ml-auto text-xs bg-teal-500/10 text-teal-400 border-teal-500/20">
             LIVE
           </Badge>
         </CardTitle>
         <p className="text-xs text-muted-foreground">
-          {intelligence.summary?.totalLines} hat · {intelligence.summary?.totalOperators} operatör · Genel verimlilik %{intelligence.summary?.overallUtilization}
+          {summary.totalLines} hat · {summary.totalOperators} operatör · Genel verimlilik %{summary.overallUtilization}
         </p>
       </CardHeader>
-      <CardContent className="space-y-2">
-        {insights.map((insight, i) => (
-          <div
-            key={i}
-            className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${bgMap[insight.type] || bgMap.info}`}
-          >
-            {iconMap[insight.type] || iconMap.info}
-            <span className="text-sm leading-snug">{insight.message}</span>
-          </div>
-        ))}
-        {insights.length === 0 && (
-          <div className="flex items-center gap-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
-            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
-            <span className="text-sm">Tüm hatlar optimal çalışıyor</span>
-          </div>
-        )}
+      <CardContent className="p-2 pt-0">
+        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxHeight: 460 }} className="overflow-visible">
+          <defs>
+            {/* Ontology layer glow filter */}
+            <filter id="onto-glow" x="-20%" y="-20%" width="140%" height="140%">
+              <feGaussianBlur stdDeviation="12" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
+
+          {/* ═══ LAYER LABELS ═══ */}
+          {/* Action label */}
+          <text x={28} y={actionY - 28} fill="rgba(16,185,129,0.6)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+            AKSİYON & KARAR
+          </text>
+          {/* Ontology label */}
+          <text x={28} y={ontoY - 58} fill="rgba(20,184,166,0.6)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+            GRİSEUS ONTOLOGY
+          </text>
+          {/* Data label */}
+          <text x={28} y={dataY - 38} fill="rgba(148,163,184,0.4)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+            VERİ KAYNAKLARI
+          </text>
+
+          {/* ═══ ONTOLOGY LAYER BACKGROUND (teal glow zone) ═══ */}
+          <rect x={20} y={ontoY - 55} width={W - 40} height={120} rx={12} fill="rgba(20,184,166,0.03)" stroke="rgba(20,184,166,0.12)" strokeWidth={1} />
+          {/* Inner glow */}
+          <ellipse cx={W / 2} cy={ontoY} rx={300} ry={40} fill="rgba(20,184,166,0.04)" style={{ filter: "blur(20px)" }} />
+
+          {/* ═══ DATA LAYER — isometric boxes ═══ */}
+          {dataSources.map((src, i) => (
+            <g key={src.label}>
+              <IsoCube cx={src.x} cy={dataY} size={42} topColor="#1e293b" leftColor="#172032" rightColor="#131b28" />
+              {/* Grid/person/chart icon (simplified geometric) */}
+              {i === 0 && (
+                <g opacity={0.5}>
+                  {[0, 5, 10].map(dx => [0, 5, 10].map(dy => (
+                    <rect key={`${dx}-${dy}`} x={src.x - 7 + dx} y={dataY - 12 + dy} width={3} height={3} rx={0.5} fill="#94a3b8" />
+                  )))}
+                </g>
+              )}
+              {i === 1 && (
+                <g opacity={0.5}>
+                  <circle cx={src.x} cy={dataY - 10} r={4} fill="#94a3b8" />
+                  <path d={`M${src.x - 6},${dataY + 2} Q${src.x},${dataY - 3} ${src.x + 6},${dataY + 2}`} fill="#94a3b8" />
+                </g>
+              )}
+              {i === 2 && (
+                <g opacity={0.5}>
+                  <rect x={src.x - 8} y={dataY - 4} width={4} height={10} rx={1} fill="#94a3b8" />
+                  <rect x={src.x - 2} y={dataY - 10} width={4} height={16} rx={1} fill="#94a3b8" />
+                  <rect x={src.x + 4} y={dataY - 7} width={4} height={13} rx={1} fill="#94a3b8" />
+                </g>
+              )}
+              <text x={src.x} y={dataY + 36} textAnchor="middle" fill="rgba(148,163,184,0.5)" fontSize={9} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+                {src.label}
+              </text>
+            </g>
+          ))}
+
+          {/* ═══ FLOW LINES: Data → Ontology ═══ */}
+          {dataSources.map((src, i) => {
+            const targetX = i === 0 ? 210 : i === 1 ? 410 : 590;
+            return (
+              <g key={`data-flow-${i}`}>
+                <line x1={src.x} y1={dataY - 28} x2={targetX} y2={ontoY + 40} stroke="rgba(20,184,166,0.08)" strokeWidth={1} strokeDasharray="3 4" />
+                <FlowDot x1={src.x} y1={dataY - 28} x2={targetX} y2={ontoY + 40} color="#14b8a6" dur={2.5} delay={i * 0.6} />
+              </g>
+            );
+          })}
+
+          {/* ═══ ONTOLOGY LAYER — nodes and edges ═══ */}
+          {/* Edges first (behind nodes) */}
+          {ontoEdges.map(([from, to], i) => {
+            const a = ontologyNodes[from];
+            const b = ontologyNodes[to];
+            return (
+              <g key={`edge-${i}`}>
+                <line x1={a.x} y1={ontoY} x2={b.x} y2={ontoY} stroke="rgba(20,184,166,0.18)" strokeWidth={1.2} />
+                <FlowDot x1={a.x} y1={ontoY} x2={b.x} y2={ontoY} color="#14b8a6" dur={2 + i * 0.2} delay={i * 0.3} />
+              </g>
+            );
+          })}
+
+          {/* Nodes */}
+          {ontologyNodes.map((node) => (
+            <OntologyNode
+              key={node.label}
+              cx={node.x}
+              cy={ontoY}
+              label={node.label}
+              sublabel={node.sublabel}
+              color="#14b8a6"
+              alert={node.alert}
+              size={28}
+            />
+          ))}
+
+          {/* ═══ FLOW LINES: Ontology → Actions ═══ */}
+          {actions.map((action, i) => {
+            const sourceX = i === 0 ? 320 : i === 1 ? 500 : 590;
+            return (
+              <g key={`onto-flow-${i}`}>
+                <line x1={sourceX} y1={ontoY - 35} x2={action.x} y2={actionY + 30} stroke="rgba(16,185,129,0.08)" strokeWidth={1} strokeDasharray="3 4" />
+                <FlowDot x1={sourceX} y1={ontoY - 35} x2={action.x} y2={actionY + 30} color="#10b981" dur={2.2} delay={i * 0.5} />
+              </g>
+            );
+          })}
+
+          {/* ═══ ACTION LAYER — floating cards ═══ */}
+          {actions.map((action) => (
+            <g key={action.label}>
+              <rect x={action.x - 72} y={actionY - 18} width={144} height={38} rx={8} fill="rgba(16,185,129,0.05)" stroke="rgba(16,185,129,0.2)" strokeWidth={1} />
+              <text x={action.x} y={actionY + 6} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={10.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+                {action.icon} {action.label}
+              </text>
+            </g>
+          ))}
+
+          {/* ═══ LAYER SEPARATOR LINES ═══ */}
+          <line x1={20} y1={ontoY + 62} x2={W - 20} y2={ontoY + 62} stroke="rgba(255,255,255,0.03)" strokeWidth={1} strokeDasharray="6 4" />
+          <line x1={20} y1={ontoY - 70} x2={W - 20} y2={ontoY - 70} stroke="rgba(255,255,255,0.03)" strokeWidth={1} strokeDasharray="6 4" />
+        </svg>
       </CardContent>
     </Card>
   );
@@ -284,8 +502,8 @@ function ProductionIntelligence() {
         </Card>
       </div>
 
-      {/* Intelligence Feed — computed from ontology graph */}
-      <IntelligenceFeed />
+      {/* Ontology Diagram — Palantir-style architecture visualization */}
+      <OntologyDiagram />
 
       {/* Production Lines */}
       <div className="grid lg:grid-cols-2 gap-4">
