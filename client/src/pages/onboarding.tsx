@@ -1,381 +1,271 @@
 import { useLocation } from "wouter";
-import { useState, useCallback, useEffect } from "react";
+import { ChevronDown } from "lucide-react";
+import { useEffect, useRef, useState, useCallback } from "react";
 
-/* ─────────────────── STYLES ─────────────────── */
+/* ───────────────────────── ANIMATED COUNTER ───────────────────────── */
 
-const STYLES = `
-@keyframes float {
-  0%, 100% { transform: translateY(0); }
-  50% { transform: translateY(-6px); }
-}
-@keyframes pulse-dot {
-  0%, 100% { opacity: 1; }
-  50% { opacity: 0.4; }
-}
-@keyframes fade-in-up {
-  from { opacity: 0; transform: translateY(24px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-@keyframes smoke {
-  0% { opacity: 0.4; transform: translateY(0) scaleX(1); }
-  100% { opacity: 0; transform: translateY(-18px) scaleX(1.5); }
-}
-`;
-
-/* ─────── ISOMETRIC BUILDING COMPONENT ─────── */
-
-function IsometricBuilding({
-  label,
-  color,
-  x,
-  y,
-  w,
-  h,
-  depth,
-  delay,
-  onClick,
+function AnimatedCounter({
+  end,
+  duration = 1800,
+  suffix = "",
   active,
 }: {
-  label: string;
-  color: string;
-  x: number;
-  y: number;
-  w: number;
-  h: number;
-  depth: number;
-  delay: number;
-  onClick: () => void;
+  end: number;
+  duration?: number;
+  suffix?: string;
   active: boolean;
 }) {
-  const topColor = color;
-  const rightColor =
-    color === "#3B82F6"
-      ? "#2563EB"
-      : color === "#10B981"
-        ? "#059669"
-        : "#D97706";
-  const frontColor =
-    color === "#3B82F6"
-      ? "#1D4ED8"
-      : color === "#10B981"
-        ? "#047857"
-        : "#B45309";
+  const [value, setValue] = useState(0);
+  const raf = useRef<number>(0);
+
+  useEffect(() => {
+    if (!active) {
+      setValue(0);
+      return;
+    }
+    const start = performance.now();
+    const tick = (now: number) => {
+      const elapsed = now - start;
+      const progress = Math.min(elapsed / duration, 1);
+      // ease-out cubic
+      const ease = 1 - Math.pow(1 - progress, 3);
+      setValue(Math.round(ease * end));
+      if (progress < 1) raf.current = requestAnimationFrame(tick);
+    };
+    raf.current = requestAnimationFrame(tick);
+    return () => cancelAnimationFrame(raf.current);
+  }, [active, end, duration]);
 
   return (
-    <g
-      onClick={onClick}
-      className="cursor-pointer"
-      style={{
-        animation: `fade-in-up 0.8s ease-out ${delay}ms both`,
-      }}
-    >
-      {/* Glow effect on hover/active */}
-      {active && (
-        <ellipse
-          cx={x + w / 2}
-          cy={y + 10}
-          rx={w * 0.7}
-          ry={16}
-          fill={color}
-          opacity={0.15}
-          style={{ filter: "blur(12px)" }}
-        />
-      )}
-
-      {/* Top face (isometric) */}
-      <polygon
-        points={`${x + w / 2},${y - depth} ${x + w},${y - depth / 2} ${x + w / 2},${y} ${x},${y - depth / 2}`}
-        fill={topColor}
-        opacity={active ? 0.95 : 0.7}
-        style={{ transition: "opacity 0.3s" }}
-      />
-
-      {/* Front face */}
-      <polygon
-        points={`${x},${y - depth / 2} ${x + w / 2},${y} ${x + w / 2},${y + h} ${x},${y + h - depth / 2}`}
-        fill={frontColor}
-        opacity={active ? 0.95 : 0.7}
-        style={{ transition: "opacity 0.3s" }}
-      />
-
-      {/* Right face */}
-      <polygon
-        points={`${x + w / 2},${y} ${x + w},${y - depth / 2} ${x + w},${y + h - depth / 2} ${x + w / 2},${y + h}`}
-        fill={rightColor}
-        opacity={active ? 0.95 : 0.7}
-        style={{ transition: "opacity 0.3s" }}
-      />
-
-      {/* Windows on front face */}
-      {Array.from({ length: Math.floor(h / 22) }).map((_, i) => (
-        <rect
-          key={`fw-${i}`}
-          x={x + 8}
-          y={y - depth / 2 + 12 + i * 22}
-          width={w / 2 - 16}
-          height={8}
-          rx={1}
-          fill="rgba(255,255,255,0.08)"
-        />
-      ))}
-
-      {/* Windows on right face */}
-      {Array.from({ length: Math.floor(h / 22) }).map((_, i) => (
-        <rect
-          key={`rw-${i}`}
-          x={x + w / 2 + 8}
-          y={y - depth / 2 + 12 + i * 22}
-          width={w / 2 - 16}
-          height={8}
-          rx={1}
-          fill="rgba(255,255,255,0.05)"
-        />
-      ))}
-
-      {/* Smoke/chimney for factory building */}
-      {label === "Ana Fabrika & Montaj" && (
-        <>
-          <rect
-            x={x + w / 2 - 4}
-            y={y - depth - 14}
-            width={8}
-            height={14}
-            rx={1}
-            fill={rightColor}
-            opacity={0.8}
-          />
-          <circle
-            cx={x + w / 2}
-            cy={y - depth - 18}
-            r={4}
-            fill="rgba(255,255,255,0.15)"
-            style={{ animation: "smoke 2s ease-out infinite" }}
-          />
-        </>
-      )}
-
-      {/* Label */}
-      <text
-        x={x + w / 2}
-        y={y + h + 18}
-        textAnchor="middle"
-        fill="rgba(255,255,255,0.7)"
-        fontSize={11}
-        fontWeight={500}
-        letterSpacing="0.02em"
-      >
-        {label}
-      </text>
-
-      {/* Active indicator dot */}
-      <circle
-        cx={x + w / 2}
-        cy={y + h + 28}
-        r={3}
-        fill={active ? color : "rgba(255,255,255,0.15)"}
-        style={{ animation: active ? "pulse-dot 1.5s ease-in-out infinite" : "none" }}
-      />
-    </g>
+    <span className="tabular-nums">
+      {value}
+      {suffix}
+    </span>
   );
 }
 
-/* ─────── MAIN PAGE ─────── */
+/* ──────────────────── INTERSECTION OBSERVER HOOK ──────────────────── */
+
+function useInView(threshold = 0.25) {
+  const ref = useRef<HTMLDivElement>(null);
+  const [inView, setInView] = useState(false);
+
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const obs = new IntersectionObserver(
+      ([e]) => {
+        if (e.isIntersecting) setInView(true);
+      },
+      { threshold },
+    );
+    obs.observe(el);
+    return () => obs.disconnect();
+  }, [threshold]);
+
+  return { ref, inView };
+}
+
+/* ──────────────────── PARTICLE GRID BACKGROUND ────────────────────── */
+
+function ParticleGrid() {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+
+    let animId: number;
+    const dots: { x: number; y: number; vx: number; vy: number }[] = [];
+    const DOTS = 60;
+
+    const resize = () => {
+      canvas.width = canvas.offsetWidth * devicePixelRatio;
+      canvas.height = canvas.offsetHeight * devicePixelRatio;
+      ctx.scale(devicePixelRatio, devicePixelRatio);
+    };
+    resize();
+
+    for (let i = 0; i < DOTS; i++) {
+      dots.push({
+        x: Math.random() * canvas.offsetWidth,
+        y: Math.random() * canvas.offsetHeight,
+        vx: (Math.random() - 0.5) * 0.3,
+        vy: (Math.random() - 0.5) * 0.3,
+      });
+    }
+
+    const draw = () => {
+      const w = canvas.offsetWidth;
+      const h = canvas.offsetHeight;
+      ctx.clearRect(0, 0, w, h);
+
+      for (const d of dots) {
+        d.x += d.vx;
+        d.y += d.vy;
+        if (d.x < 0 || d.x > w) d.vx *= -1;
+        if (d.y < 0 || d.y > h) d.vy *= -1;
+      }
+
+      // lines
+      for (let i = 0; i < dots.length; i++) {
+        for (let j = i + 1; j < dots.length; j++) {
+          const dx = dots[i].x - dots[j].x;
+          const dy = dots[i].y - dots[j].y;
+          const dist = Math.sqrt(dx * dx + dy * dy);
+          if (dist < 140) {
+            ctx.beginPath();
+            ctx.moveTo(dots[i].x, dots[i].y);
+            ctx.lineTo(dots[j].x, dots[j].y);
+            ctx.strokeStyle = `rgba(59,130,246,${0.08 * (1 - dist / 140)})`;
+            ctx.lineWidth = 0.5;
+            ctx.stroke();
+          }
+        }
+      }
+
+      // dots
+      for (const d of dots) {
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = "rgba(59,130,246,0.25)";
+        ctx.fill();
+      }
+
+      animId = requestAnimationFrame(draw);
+    };
+    draw();
+
+    window.addEventListener("resize", resize);
+    return () => {
+      cancelAnimationFrame(animId);
+      window.removeEventListener("resize", resize);
+    };
+  }, []);
+
+  return (
+    <canvas
+      ref={canvasRef}
+      className="absolute inset-0 w-full h-full pointer-events-none"
+    />
+  );
+}
+
+/* ──────────────────────── MAIN PAGE ──────────────────────────────── */
 
 export default function OnboardingPage() {
   const [, setLocation] = useLocation();
-  const [ready, setReady] = useState(false);
-  const [hovered, setHovered] = useState<string | null>(null);
-  const [navigating, setNavigating] = useState<string | null>(null);
 
+  const hero = useInView(0.3);
+
+  // Stagger hero counters
+  const [heroReady, setHeroReady] = useState(false);
   useEffect(() => {
-    const t = setTimeout(() => setReady(true), 200);
+    const t = setTimeout(() => setHeroReady(true), 300);
     return () => clearTimeout(t);
   }, []);
 
-  const handleBuildingClick = useCallback(
-    (path: string) => {
-      if (navigating) return;
-      setNavigating(path);
-      setTimeout(() => setLocation(path), 500);
-    },
-    [navigating, setLocation],
-  );
-
-  const buildings = [
-    {
-      label: "Kasa Üretim",
-      color: "#3B82F6",
-      x: 40,
-      y: 100,
-      w: 110,
-      h: 70,
-      depth: 40,
-      delay: 400,
-      path: "/login",
-    },
-    {
-      label: "Ana Fabrika & Montaj",
-      color: "#10B981",
-      x: 195,
-      y: 80,
-      w: 140,
-      h: 90,
-      depth: 50,
-      delay: 600,
-      path: "/login",
-    },
-    {
-      label: "Yönetim",
-      color: "#F59E0B",
-      x: 385,
-      y: 105,
-      w: 100,
-      h: 55,
-      depth: 35,
-      delay: 800,
-      path: "/login",
-    },
+  const statCounters = [
+    { n: 12, label: "Trades", delay: 0 },
+    { n: 29, label: "Certifications", delay: 200 },
+    { n: 96, label: "Wage Data Points", delay: 400 },
+    { n: 28, label: "Phase Requirements", delay: 600 },
+    { n: 18, label: "Cross-Trade Pathways", delay: 800 },
   ];
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex flex-col items-center justify-center overflow-hidden"
-      style={{
-        background: "linear-gradient(145deg, #0F172A 0%, #1A1A2E 50%, #0F172A 100%)",
-      }}
-    >
-      <style>{STYLES}</style>
-
-      {/* ── Header ── */}
-      <div
-        className="text-center mb-8 transition-all duration-1000"
+    <div className="fixed inset-0 z-50 overflow-hidden">
+      {/* ━━━━━━━━━━ HERO ━━━━━━━━━━ */}
+      <section
+        ref={hero.ref}
+        className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
         style={{
-          opacity: ready ? 1 : 0,
-          transform: ready ? "translateY(0)" : "translateY(-20px)",
+          background:
+            "linear-gradient(145deg, #0F172A 0%, #1A1A2E 50%, #0F172A 100%)",
         }}
       >
-        <h1 className="text-sm sm:text-base font-semibold tracking-[0.25em] uppercase text-blue-400/80 mb-1">
-          Çukurova Isı Sistemleri
-        </h1>
-        <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white tracking-wide">
-          OPERATIONS INTELLIGENCE PLATFORM
-        </h2>
-      </div>
+        <ParticleGrid />
 
-      {/* ── Stats bar ── */}
-      <div
-        className="flex items-center gap-3 sm:gap-6 mb-10 transition-all duration-1000 delay-200"
-        style={{
-          opacity: ready ? 1 : 0,
-          transform: ready ? "translateY(0)" : "translateY(10px)",
-        }}
-      >
-        {[
-          { value: "3", label: "hat aktif", color: "#10B981" },
-          { value: "12", label: "operatör", color: "#3B82F6" },
-          { value: "Pik sezon", label: "26 hafta", color: "#F59E0B" },
-        ].map((s, i) => (
-          <div key={i} className="flex items-center gap-2 sm:gap-3">
-            {i > 0 && (
-              <div className="w-px h-5 bg-white/10 mr-1 sm:mr-2" />
-            )}
-            <div
-              className="w-2 h-2 rounded-full"
-              style={{ backgroundColor: s.color, animation: "pulse-dot 2s ease-in-out infinite", animationDelay: `${i * 300}ms` }}
-            />
-            <div className="text-sm sm:text-base">
-              <span className="text-white font-semibold">{s.value}</span>{" "}
-              <span className="text-slate-400 text-xs sm:text-sm">{s.label}</span>
-            </div>
-          </div>
-        ))}
-      </div>
-
-      {/* ── Isometric Factory SVG ── */}
-      <div
-        className="w-full max-w-[560px] px-4 transition-all duration-1000 delay-300"
-        style={{
-          opacity: ready ? 1 : 0,
-          transform: ready ? "translateY(0) scale(1)" : "translateY(30px) scale(0.95)",
-          animation: ready ? "float 6s ease-in-out infinite" : "none",
-          animationDelay: "1.5s",
-        }}
-      >
-        <svg
-          viewBox="0 0 530 260"
-          className="w-full"
-          onMouseLeave={() => setHovered(null)}
+        {/* Logo */}
+        <div
+          className="relative z-10 mb-12 transition-all duration-1000"
+          style={{
+            opacity: heroReady ? 1 : 0,
+            transform: heroReady ? "translateY(0)" : "translateY(20px)",
+          }}
         >
-          {/* Ground plane */}
-          <polygon
-            points="265,230 530,180 265,130 0,180"
-            fill="rgba(255,255,255,0.02)"
-            stroke="rgba(255,255,255,0.06)"
-            strokeWidth={0.5}
-          />
-          {/* Ground grid lines */}
-          {[0.25, 0.5, 0.75].map((f) => (
-            <line
-              key={f}
-              x1={265 * f}
-              y1={180 - (180 - 130) * f}
-              x2={265 + 265 * f}
-              y2={180 + (230 - 180) * f}
-              stroke="rgba(255,255,255,0.03)"
-              strokeWidth={0.5}
-            />
+          <h1 className="text-lg font-medium tracking-[0.3em] uppercase text-blue-400/70 text-center">
+            Griseus
+          </h1>
+        </div>
+
+        {/* Animated counters */}
+        <div className="relative z-10 flex flex-wrap justify-center gap-x-6 gap-y-4 sm:gap-x-10 mb-14 max-w-4xl">
+          {statCounters.map((s, i) => (
+            <div
+              key={s.label}
+              className="text-center transition-all duration-700"
+              style={{
+                opacity: heroReady ? 1 : 0,
+                transform: heroReady ? "translateY(0)" : "translateY(30px)",
+                transitionDelay: `${s.delay}ms`,
+              }}
+            >
+              <div
+                className="text-4xl sm:text-5xl lg:text-6xl font-bold text-white mb-1"
+                style={{
+                  textShadow: heroReady
+                    ? "0 0 40px rgba(59,130,246,0.3)"
+                    : "none",
+                  transition: "text-shadow 1.5s",
+                }}
+              >
+                <AnimatedCounter
+                  end={s.n}
+                  active={heroReady}
+                  duration={1400 + i * 200}
+                />
+              </div>
+              <div className="text-xs sm:text-sm text-slate-400 font-medium tracking-wide uppercase">
+                {s.label}
+              </div>
+            </div>
           ))}
+        </div>
 
-          {/* Buildings */}
-          {buildings.map((b) => (
-            <IsometricBuilding
-              key={b.label}
-              {...b}
-              onClick={() => handleBuildingClick(b.path)}
-              active={hovered === b.label || navigating === b.path}
-            />
-          ))}
+        {/* Tagline */}
+        <div
+          className="relative z-10 text-center max-w-2xl transition-all duration-1000 delay-[1100ms]"
+          style={{
+            opacity: heroReady ? 1 : 0,
+            transform: heroReady ? "translateY(0)" : "translateY(20px)",
+          }}
+        >
+          <p className="text-lg sm:text-xl text-slate-300 font-light leading-relaxed">
+            This is not a job board.{" "}
+            <span className="text-white font-medium">
+              This is workforce intelligence.
+            </span>
+          </p>
+        </div>
 
-          {/* Interactive hover areas (invisible, on top) */}
-          {buildings.map((b) => (
-            <rect
-              key={`hover-${b.label}`}
-              x={b.x}
-              y={b.y - b.depth}
-              width={b.w}
-              height={b.h + b.depth + 35}
-              fill="transparent"
-              onMouseEnter={() => setHovered(b.label)}
-              className="cursor-pointer"
-            />
-          ))}
-        </svg>
-      </div>
-
-      {/* ── Bottom text ── */}
-      <div
-        className="mt-6 text-center transition-all duration-1000 delay-[1200ms]"
-        style={{
-          opacity: ready ? 1 : 0,
-          transform: ready ? "translateY(0)" : "translateY(10px)",
-        }}
-      >
-        <p className="text-sm text-slate-500 tracking-wide">
-          Bir bölüme girmek için tıklayın
-        </p>
-      </div>
-
-      {/* ── Sign in link ── */}
-      <button
-        onClick={() => setLocation("/login")}
-        className="mt-6 text-xs text-slate-600 hover:text-slate-400 transition-colors"
-        style={{
-          opacity: ready ? 1 : 0,
-          transition: "opacity 1s 1.5s, color 0.2s",
-        }}
-      >
-        Giriş yap →
-      </button>
+        {/* Bottom prompt */}
+        <div
+          className="absolute bottom-8 left-1/2 -translate-x-1/2 z-10 flex flex-col items-center gap-2 text-slate-500 transition-all duration-1000 delay-[1400ms]"
+          style={{
+            opacity: heroReady ? 1 : 0,
+          }}
+        >
+          <button
+            onClick={() => setLocation("/login")}
+            className="text-xs tracking-widest uppercase hover:text-slate-300 transition-colors cursor-pointer"
+          >
+            Sign in to get started
+          </button>
+        </div>
+      </section>
     </div>
   );
 }
