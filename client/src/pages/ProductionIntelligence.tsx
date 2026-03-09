@@ -38,7 +38,8 @@ function IsometricCube({
   return (
     <g
       style={{
-        cursor: onClick ? "pointer" : "default",
+        cursor: "pointer",
+        pointerEvents: "all",
         opacity: 0,
         animation: `cubeIn 0.8s cubic-bezier(0.16,1,0.3,1) ${delay}s forwards`,
       }}
