@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import { useState, useMemo } from "react";
 import { useLocation } from "wouter";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -101,36 +101,44 @@ const ALL_SKILLS = ["welding", "brazing", "assembly", "testing", "quality", "pre
 
 function IntelligenceFeed() {
   // First fetch factory objects to get the factory ID
-  const { data: factories } = useQuery<any[]>({
+  const { data: factories, isLoading: factoriesLoading, isError: factoriesError } = useQuery<any[]>({
     queryKey: ["/api/ontology/objects/factory"],
-    queryFn: async () => {
-      const res = await fetch("/api/ontology/objects/factory");
-      if (!res.ok) return [];
-      return res.json();
-    },
+    retry: 1,
+    staleTime: 60000,
   });
 
   const factoryId = factories?.[0]?.id;
 
-  const { data: intelligence, isLoading } = useQuery<any>({
-    queryKey: ["/api/ontology/intelligence/factory", factoryId],
-    queryFn: async () => {
-      if (!factoryId) return null;
-      const res = await fetch(`/api/ontology/intelligence/factory/${factoryId}`);
-      if (!res.ok) return null;
-      return res.json();
-    },
+  const { data: intelligence, isLoading: intelligenceLoading, isError: intelligenceError } = useQuery<any>({
+    queryKey: ["/api/ontology/intelligence/factory/" + factoryId],
     enabled: !!factoryId,
-    refetchInterval: 30000, // refresh every 30s
+    refetchInterval: 30000,
+    retry: 1,
+    staleTime: 15000,
   });
 
-  if (isLoading || !intelligence) {
+  // Show loading only while actively fetching
+  if (factoriesLoading || (factoryId && intelligenceLoading)) {
     return (
       <Card className="border-white/10">
         <CardContent className="p-4">
           <div className="flex items-center gap-2">
             <Zap className="h-4 w-4 text-blue-400 animate-pulse" />
             <span className="text-sm text-muted-foreground">Ontology intelligence yükleniyor...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  // Handle error or no data gracefully
+  if (factoriesError || intelligenceError || !factories?.length || !intelligence) {
+    return (
+      <Card className="border-white/10">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <AlertTriangle className="h-4 w-4 text-amber-400" />
+            <span className="text-sm text-muted-foreground">Ontology veritabanı henüz oluşturulmadı. <code className="text-xs">npm run db:push</code> çalıştırın.</span>
           </div>
         </CardContent>
       </Card>
