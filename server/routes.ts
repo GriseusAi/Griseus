@@ -7,12 +7,15 @@ import {
   insertCertificationSchema, insertTradeCertificationSchema, insertProjectPhaseSchema,
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
   insertProjectScheduleSchema, insertProjectAssignmentSchema, insertServiceAppointmentSchema,
+  insertOntologyObjectSchema, insertOntologyLinkSchema, insertOntologyActionSchema,
+  ontologyObjects, ontologyLinks,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
 import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
-import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment } from "@shared/schema";
+import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment, OntologyObject, OntologyLink } from "@shared/schema";
+import { db } from "./db";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -1600,6 +1603,413 @@ export async function registerRoutes(
       });
 
       res.json(matched);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // ── ONTOLOGY ENGINE ─────────────────────────────────────────────────
+  // ══════════════════════════════════════════════════════════════════════
+
+  // Seed ontology on first request if empty
+  async function seedOntologyIfEmpty() {
+    const existing = await storage.getAllOntologyObjects();
+    if (existing.length > 0) return;
+
+    // Factory
+    const [factory] = await db.insert(ontologyObjects).values({
+      objectType: "factory",
+      objectId: "cukurova-isi",
+      name: "Çukurova Isı Sistemleri",
+      properties: { city: "Adana", sector: "HVAC Manufacturing", founded: 1985, employees: 120 },
+    }).returning();
+
+    // 2 Locations
+    const [locKasa] = await db.insert(ontologyObjects).values({
+      objectType: "location",
+      objectId: "loc-kasa",
+      name: "Kasa Üretim",
+      properties: { type: "production", area_m2: 2400, description: "Yeni bina — kasa, sac kesim, büküm" },
+    }).returning();
+
+    const [locAna] = await db.insert(ontologyObjects).values({
+      objectType: "location",
+      objectId: "loc-ana",
+      name: "Ana Fabrika & Montaj",
+      properties: { type: "production", area_m2: 5600, description: "Ana üretim — montaj, test, paketleme" },
+    }).returning();
+
+    // 4 Production Lines (2 per location)
+    const lineData = [
+      { objectId: "line-1", name: "Hat 1 — Kombi Montaj", locationId: locKasa.id, properties: { product: "Wall-hung Boilers", capacity: 120, status: "running", shift_count: 2 } },
+      { objectId: "line-2", name: "Hat 2 — Isı Eşanjör", locationId: locKasa.id, properties: { product: "Plate Heat Exchangers", capacity: 80, status: "running", shift_count: 2 } },
+      { objectId: "line-3", name: "Hat 3 — Panel Radyatör", locationId: locAna.id, properties: { product: "Steel Panel Radiators", capacity: 200, status: "maintenance", shift_count: 2 } },
+      { objectId: "line-4", name: "Hat 4 — Genleşme Tankı", locationId: locAna.id, properties: { product: "Expansion Vessels", capacity: 300, status: "running", shift_count: 2 } },
+    ];
+
+    const lines: OntologyObject[] = [];
+    for (const ld of lineData) {
+      const [line] = await db.insert(ontologyObjects).values({
+        objectType: "production_line",
+        objectId: ld.objectId,
+        name: ld.name,
+        properties: ld.properties,
+      }).returning();
+      lines.push(line);
+
+      // Link line → LOCATED_IN → location
+      await db.insert(ontologyLinks).values({
+        fromType: "production_line", fromId: line.id,
+        linkType: "LOCATED_IN",
+        toType: "location", toId: ld.locationId,
+      });
+    }
+
+    // Location → BELONGS_TO → Factory
+    for (const loc of [locKasa, locAna]) {
+      await db.insert(ontologyLinks).values({
+        fromType: "location", fromId: loc.id,
+        linkType: "BELONGS_TO",
+        toType: "factory", toId: factory.id,
+      });
+    }
+
+    // 3 Shifts
+    const shiftData = [
+      { objectId: "shift-morning", name: "Sabah Vardiyası", properties: { time: "06:00–14:00", code: "morning" } },
+      { objectId: "shift-afternoon", name: "Öğleden Sonra Vardiyası", properties: { time: "14:00–22:00", code: "afternoon" } },
+      { objectId: "shift-night", name: "Gece Vardiyası", properties: { time: "22:00–06:00", code: "night" } },
+    ];
+
+    const shifts: OntologyObject[] = [];
+    for (const sd of shiftData) {
+      const [shift] = await db.insert(ontologyObjects).values({
+        objectType: "shift",
+        objectId: sd.objectId,
+        name: sd.name,
+        properties: sd.properties,
+      }).returning();
+      shifts.push(shift);
+    }
+
+    // 10 Operators
+    const operatorData = [
+      { objectId: "op-1", name: "Ahmet Yıldız", lineIdx: 0, shiftIdx: 0, properties: { skills: ["welding", "assembly", "testing"], utilization: 92 } },
+      { objectId: "op-2", name: "Fatma Demir", lineIdx: 0, shiftIdx: 0, properties: { skills: ["assembly", "quality"], utilization: 88 } },
+      { objectId: "op-3", name: "Mehmet Kaya", lineIdx: 1, shiftIdx: 0, properties: { skills: ["welding", "brazing", "testing"], utilization: 95 } },
+      { objectId: "op-4", name: "Ayşe Çelik", lineIdx: 1, shiftIdx: 1, properties: { skills: ["assembly", "packaging"], utilization: 78 } },
+      { objectId: "op-5", name: "Hasan Arslan", lineIdx: 2, shiftIdx: 0, properties: { skills: ["press-op", "welding", "painting"], utilization: 45 } },
+      { objectId: "op-6", name: "Elif Şahin", lineIdx: 2, shiftIdx: 0, properties: { skills: ["quality", "testing", "painting"], utilization: 40 } },
+      { objectId: "op-7", name: "Ali Öztürk", lineIdx: 3, shiftIdx: 0, properties: { skills: ["welding", "assembly"], utilization: 85 } },
+      { objectId: "op-8", name: "Zeynep Koç", lineIdx: 3, shiftIdx: 1, properties: { skills: ["assembly", "testing", "packaging"], utilization: 91 } },
+      { objectId: "op-9", name: "Emre Aydın", lineIdx: 0, shiftIdx: 1, properties: { skills: ["welding", "testing"], utilization: 82 } },
+      { objectId: "op-10", name: "Deniz Yılmaz", lineIdx: 3, shiftIdx: 0, properties: { skills: ["press-op", "welding", "assembly"], utilization: 87 } },
+    ];
+
+    for (const od of operatorData) {
+      const [op] = await db.insert(ontologyObjects).values({
+        objectType: "operator",
+        objectId: od.objectId,
+        name: od.name,
+        properties: od.properties,
+      }).returning();
+
+      // operator → ASSIGNED_TO → production_line
+      await db.insert(ontologyLinks).values({
+        fromType: "operator", fromId: op.id,
+        linkType: "ASSIGNED_TO",
+        toType: "production_line", toId: lines[od.lineIdx].id,
+      });
+
+      // operator → WORKS_ON → shift
+      await db.insert(ontologyLinks).values({
+        fromType: "operator", fromId: op.id,
+        linkType: "WORKS_ON",
+        toType: "shift", toId: shifts[od.shiftIdx].id,
+      });
+    }
+
+    // Flow link: Kasa Üretim → FEEDS_INTO → Ana Fabrika
+    await db.insert(ontologyLinks).values({
+      fromType: "location", fromId: locKasa.id,
+      linkType: "FEEDS_INTO",
+      toType: "location", toId: locAna.id,
+    });
+
+    console.log("[ontology] Seeded Çukurova ontology: 1 factory, 2 locations, 4 lines, 3 shifts, 10 operators");
+  }
+
+  // Seed on startup
+  seedOntologyIfEmpty().catch(err => console.error("[ontology] Seed error:", err));
+
+  // ── GET /api/ontology/objects/:type ─────────────────────────────────
+  app.get("/api/ontology/objects/:type", async (req, res) => {
+    try {
+      const objects = await storage.getOntologyObjectsByType(req.params.type);
+      res.json(objects);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── GET /api/ontology/graph/:type/:id ───────────────────────────────
+  // Returns object + all outgoing and incoming links with resolved objects
+  app.get("/api/ontology/graph/:type/:id", async (req, res) => {
+    try {
+      const obj = await storage.getOntologyObject(req.params.id);
+      if (!obj) return res.status(404).json({ message: "Object not found" });
+
+      const [outgoing, incoming] = await Promise.all([
+        storage.getOntologyLinksFrom(obj.id),
+        storage.getOntologyLinksTo(obj.id),
+      ]);
+
+      // Resolve linked object details
+      const linkedIds = new Set<string>();
+      outgoing.forEach(l => linkedIds.add(l.toId));
+      incoming.forEach(l => linkedIds.add(l.fromId));
+
+      const allObjects = await storage.getAllOntologyObjects();
+      const objectMap = new Map(allObjects.map(o => [o.id, o]));
+
+      const resolvedOutgoing = outgoing.map(l => ({
+        ...l,
+        target: objectMap.get(l.toId) || null,
+      }));
+
+      const resolvedIncoming = incoming.map(l => ({
+        ...l,
+        source: objectMap.get(l.fromId) || null,
+      }));
+
+      res.json({
+        object: obj,
+        outgoing: resolvedOutgoing,
+        incoming: resolvedIncoming,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── POST /api/ontology/actions ──────────────────────────────────────
+  app.post("/api/ontology/actions", async (req, res) => {
+    try {
+      const data = insertOntologyActionSchema.parse(req.body);
+      const action = await storage.createOntologyAction(data);
+      res.status(201).json(action);
+    } catch (error: any) {
+      if (error instanceof z.ZodError) {
+        return res.status(400).json({ message: error.errors.map((e: any) => e.message).join(", ") });
+      }
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── GET /api/ontology/intelligence/factory/:id ──────────────────────
+  // Computes live intelligence from the ontology graph
+  app.get("/api/ontology/intelligence/factory/:id", async (req, res) => {
+    try {
+      const allObjects = await storage.getAllOntologyObjects();
+      const allLinks = await storage.getAllOntologyLinks();
+
+      const factory = allObjects.find(o => o.id === req.params.id && o.objectType === "factory");
+      if (!factory) return res.status(404).json({ message: "Factory not found" });
+
+      // Build graph index
+      const objectMap = new Map(allObjects.map(o => [o.id, o]));
+      const linksByFrom = new Map<string, OntologyLink[]>();
+      const linksByTo = new Map<string, OntologyLink[]>();
+      for (const l of allLinks) {
+        if (!linksByFrom.has(l.fromId)) linksByFrom.set(l.fromId, []);
+        linksByFrom.get(l.fromId)!.push(l);
+        if (!linksByTo.has(l.toId)) linksByTo.set(l.toId, []);
+        linksByTo.get(l.toId)!.push(l);
+      }
+
+      // Find locations belonging to factory
+      const locations = allObjects.filter(o =>
+        o.objectType === "location" &&
+        (linksByFrom.get(o.id) || []).some(l => l.linkType === "BELONGS_TO" && l.toId === factory.id)
+      );
+
+      // Find lines per location
+      const productionLines = allObjects.filter(o =>
+        o.objectType === "production_line" &&
+        (linksByFrom.get(o.id) || []).some(l =>
+          l.linkType === "LOCATED_IN" && locations.some(loc => loc.id === l.toId)
+        )
+      );
+
+      // Find operators per line
+      const operators = allObjects.filter(o => o.objectType === "operator");
+
+      // Compute per-line utilization
+      const lineUtilization = productionLines.map(line => {
+        const lineOperators = operators.filter(op =>
+          (linksByFrom.get(op.id) || []).some(l => l.linkType === "ASSIGNED_TO" && l.toId === line.id)
+        );
+
+        const props = line.properties as any;
+        const capacity = props?.capacity || 100;
+        const status = props?.status || "unknown";
+
+        const avgUtil = lineOperators.length > 0
+          ? Math.round(lineOperators.reduce((sum, op) => sum + ((op.properties as any)?.utilization || 0), 0) / lineOperators.length)
+          : 0;
+
+        return {
+          lineId: line.id,
+          lineName: line.name,
+          status,
+          capacity,
+          operatorCount: lineOperators.length,
+          avgUtilization: avgUtil,
+          operators: lineOperators.map(op => ({
+            id: op.id,
+            name: op.name,
+            utilization: (op.properties as any)?.utilization || 0,
+            skills: (op.properties as any)?.skills || [],
+          })),
+        };
+      });
+
+      // Detect underperforming operators (< 60% utilization)
+      const underperforming = operators
+        .filter(op => {
+          const util = (op.properties as any)?.utilization || 0;
+          return util > 0 && util < 60;
+        })
+        .map(op => ({
+          id: op.id,
+          name: op.name,
+          utilization: (op.properties as any)?.utilization || 0,
+          assignedLine: (() => {
+            const link = (linksByFrom.get(op.id) || []).find(l => l.linkType === "ASSIGNED_TO");
+            return link ? objectMap.get(link.toId)?.name || "Unknown" : "Unassigned";
+          })(),
+        }));
+
+      // Bottleneck detection: lines with < 75% avg utilization or in maintenance
+      const bottlenecks = lineUtilization
+        .filter(l => l.status === "maintenance" || l.avgUtilization < 75)
+        .map(l => ({
+          lineId: l.lineId,
+          lineName: l.lineName,
+          reason: l.status === "maintenance" ? "maintenance" : "low_utilization",
+          avgUtilization: l.avgUtilization,
+          status: l.status,
+        }));
+
+      // Shift coverage gaps: lines with only 1 shift covered
+      const shifts = allObjects.filter(o => o.objectType === "shift");
+      const shiftCoverage = productionLines.map(line => {
+        const lineOps = operators.filter(op =>
+          (linksByFrom.get(op.id) || []).some(l => l.linkType === "ASSIGNED_TO" && l.toId === line.id)
+        );
+        const coveredShiftIds = new Set<string>();
+        lineOps.forEach(op => {
+          (linksByFrom.get(op.id) || []).forEach(l => {
+            if (l.linkType === "WORKS_ON") coveredShiftIds.add(l.toId);
+          });
+        });
+        return {
+          lineId: line.id,
+          lineName: line.name,
+          totalShifts: shifts.length,
+          coveredShifts: coveredShiftIds.size,
+          gap: shifts.length - coveredShiftIds.size,
+        };
+      }).filter(s => s.gap > 0);
+
+      // Generate intelligence feed items
+      const insights: Array<{ type: "warning" | "success" | "info"; message: string; severity: number }> = [];
+
+      // Bottleneck alerts
+      for (const b of bottlenecks) {
+        if (b.reason === "maintenance") {
+          insights.push({
+            type: "warning",
+            message: `${b.lineName} bakımda — üretim durdu`,
+            severity: 3,
+          });
+        } else {
+          insights.push({
+            type: "warning",
+            message: `${b.lineName} bu hafta %${b.avgUtilization} kapasitede — darboğaz tespit edildi`,
+            severity: 2,
+          });
+        }
+      }
+
+      // Underperformance alerts
+      for (const u of underperforming) {
+        insights.push({
+          type: "warning",
+          message: `${u.name} (%${u.utilization} verimlilik) — ${u.assignedLine} hattında düşük performans`,
+          severity: 1,
+        });
+      }
+
+      // Shift coverage
+      const fullyCovered = productionLines.length - shiftCoverage.length;
+      if (fullyCovered > 0) {
+        insights.push({
+          type: "success",
+          message: `Vardiya örtüşmesi optimal — ${fullyCovered} hat tam kadro`,
+          severity: 0,
+        });
+      }
+      for (const sc of shiftCoverage) {
+        insights.push({
+          type: "warning",
+          message: `${sc.lineName} — ${sc.gap} vardiya boşluğu tespit edildi`,
+          severity: 2,
+        });
+      }
+
+      // Seasonal forecast (hardcoded peak: September, ~26 weeks from March)
+      const now = new Date();
+      const peakMonth = 8; // September (0-indexed)
+      const peakDate = new Date(now.getFullYear(), peakMonth, 1);
+      if (peakDate < now) peakDate.setFullYear(peakDate.getFullYear() + 1);
+      const weeksUntilPeak = Math.round((peakDate.getTime() - now.getTime()) / (7 * 24 * 60 * 60 * 1000));
+
+      const activeLineCount = lineUtilization.filter(l => l.status === "running").length;
+      const totalCapacity = lineUtilization.filter(l => l.status === "running").reduce((s, l) => s + l.capacity, 0);
+      const peakDemandMultiplier = 1.3;
+      const projectedCapacityNeeded = Math.round(totalCapacity * peakDemandMultiplier);
+
+      insights.push({
+        type: "info",
+        message: `Eylül surge'üne ${weeksUntilPeak} hafta kaldı — mevcut kadroyla %${Math.round(peakDemandMultiplier * 100)} kapasiteye ulaşılır`,
+        severity: 0,
+      });
+
+      // Overall factory health
+      const overallUtilization = lineUtilization.length > 0
+        ? Math.round(lineUtilization.reduce((s, l) => s + l.avgUtilization, 0) / lineUtilization.length)
+        : 0;
+
+      res.json({
+        factory: { id: factory.id, name: factory.name, properties: factory.properties },
+        locations: locations.map(l => ({ id: l.id, name: l.name, properties: l.properties })),
+        lineUtilization,
+        underperforming,
+        bottlenecks,
+        shiftCoverage,
+        insights: insights.sort((a, b) => b.severity - a.severity),
+        summary: {
+          totalLines: productionLines.length,
+          activeLines: activeLineCount,
+          totalOperators: operators.length,
+          overallUtilization,
+          totalCapacity,
+          peakCapacityNeeded: projectedCapacityNeeded,
+          weeksUntilPeak,
+        },
+      });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }

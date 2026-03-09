@@ -1,5 +1,6 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -96,6 +97,93 @@ const SHIFT_CALENDAR = [
 
 const ALL_SKILLS = ["welding", "brazing", "assembly", "testing", "quality", "press-op", "painting", "packaging"];
 
+// ── Intelligence Feed (Ontology-driven) ─────────────────────────────────
+
+function IntelligenceFeed() {
+  // First fetch factory objects to get the factory ID
+  const { data: factories } = useQuery<any[]>({
+    queryKey: ["/api/ontology/objects/factory"],
+    queryFn: async () => {
+      const res = await fetch("/api/ontology/objects/factory");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const factoryId = factories?.[0]?.id;
+
+  const { data: intelligence, isLoading } = useQuery<any>({
+    queryKey: ["/api/ontology/intelligence/factory", factoryId],
+    queryFn: async () => {
+      if (!factoryId) return null;
+      const res = await fetch(`/api/ontology/intelligence/factory/${factoryId}`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!factoryId,
+    refetchInterval: 30000, // refresh every 30s
+  });
+
+  if (isLoading || !intelligence) {
+    return (
+      <Card className="border-white/10">
+        <CardContent className="p-4">
+          <div className="flex items-center gap-2">
+            <Zap className="h-4 w-4 text-blue-400 animate-pulse" />
+            <span className="text-sm text-muted-foreground">Ontology intelligence yükleniyor...</span>
+          </div>
+        </CardContent>
+      </Card>
+    );
+  }
+
+  const insights: Array<{ type: string; message: string; severity: number }> = intelligence.insights || [];
+  const iconMap: Record<string, React.ReactNode> = {
+    warning: <AlertTriangle className="h-4 w-4 text-amber-400 shrink-0 mt-0.5" />,
+    success: <CheckCircle2 className="h-4 w-4 text-emerald-400 shrink-0 mt-0.5" />,
+    info: <TrendingUp className="h-4 w-4 text-blue-400 shrink-0 mt-0.5" />,
+  };
+  const bgMap: Record<string, string> = {
+    warning: "border-amber-500/20 bg-amber-500/5",
+    success: "border-emerald-500/20 bg-emerald-500/5",
+    info: "border-blue-500/20 bg-blue-500/5",
+  };
+
+  return (
+    <Card className="border-white/10">
+      <CardHeader className="pb-2">
+        <CardTitle className="text-base flex items-center gap-2">
+          <Zap className="h-4 w-4 text-blue-400" />
+          Intelligence Feed
+          <Badge variant="outline" className="ml-auto text-xs bg-blue-500/10 text-blue-400 border-blue-500/20">
+            LIVE
+          </Badge>
+        </CardTitle>
+        <p className="text-xs text-muted-foreground">
+          {intelligence.summary?.totalLines} hat · {intelligence.summary?.totalOperators} operatör · Genel verimlilik %{intelligence.summary?.overallUtilization}
+        </p>
+      </CardHeader>
+      <CardContent className="space-y-2">
+        {insights.map((insight, i) => (
+          <div
+            key={i}
+            className={`flex items-start gap-2.5 p-2.5 rounded-lg border ${bgMap[insight.type] || bgMap.info}`}
+          >
+            {iconMap[insight.type] || iconMap.info}
+            <span className="text-sm leading-snug">{insight.message}</span>
+          </div>
+        ))}
+        {insights.length === 0 && (
+          <div className="flex items-center gap-2 p-2.5 rounded-lg border border-emerald-500/20 bg-emerald-500/5">
+            <CheckCircle2 className="h-4 w-4 text-emerald-400" />
+            <span className="text-sm">Tüm hatlar optimal çalışıyor</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Production Intelligence ─────────────────────────────────────────────
 
 function ProductionIntelligence() {
@@ -187,6 +275,9 @@ function ProductionIntelligence() {
           </CardContent>
         </Card>
       </div>
+
+      {/* Intelligence Feed — computed from ontology graph */}
+      <IntelligenceFeed />
 
       {/* Production Lines */}
       <div className="grid lg:grid-cols-2 gap-4">

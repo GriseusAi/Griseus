@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -357,3 +357,47 @@ export const serviceAppointments = pgTable("service_appointments", {
 export const insertServiceAppointmentSchema = createInsertSchema(serviceAppointments).omit({ id: true, createdAt: true });
 export type InsertServiceAppointment = z.infer<typeof insertServiceAppointmentSchema>;
 export type ServiceAppointment = typeof serviceAppointments.$inferSelect;
+
+// --- Manufacturing Ontology Engine ---
+
+export const ontologyObjects = pgTable("ontology_objects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  objectType: text("object_type").notNull(), // "factory" | "location" | "production_line" | "operator" | "shift" | "task"
+  objectId: varchar("object_id").notNull(), // references actual entity or internal key
+  name: text("name").notNull(),
+  properties: jsonb("properties").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertOntologyObjectSchema = createInsertSchema(ontologyObjects).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertOntologyObject = z.infer<typeof insertOntologyObjectSchema>;
+export type OntologyObject = typeof ontologyObjects.$inferSelect;
+
+export const ontologyLinks = pgTable("ontology_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  fromType: text("from_type").notNull(),
+  fromId: varchar("from_id").notNull(),
+  linkType: text("link_type").notNull(), // "BELONGS_TO" | "ASSIGNED_TO" | "RUNS_ON" | "LOCATED_IN" | "WORKS_ON" | "PART_OF"
+  toType: text("to_type").notNull(),
+  toId: varchar("to_id").notNull(),
+});
+
+export const insertOntologyLinkSchema = createInsertSchema(ontologyLinks).omit({ id: true });
+export type InsertOntologyLink = z.infer<typeof insertOntologyLinkSchema>;
+export type OntologyLink = typeof ontologyLinks.$inferSelect;
+
+export const ontologyActions = pgTable("ontology_actions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actionType: text("action_type").notNull(), // "ASSIGN_OPERATOR" | "REASSIGN_SHIFT" | "FLAG_UNDERPERFORMANCE" | "RUN_SIMULATION"
+  actorId: varchar("actor_id"),
+  targetType: text("target_type").notNull(),
+  targetId: varchar("target_id").notNull(),
+  payload: jsonb("payload").default({}),
+  result: jsonb("result").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertOntologyActionSchema = createInsertSchema(ontologyActions).omit({ id: true, createdAt: true });
+export type InsertOntologyAction = z.infer<typeof insertOntologyActionSchema>;
+export type OntologyAction = typeof ontologyActions.$inferSelect;

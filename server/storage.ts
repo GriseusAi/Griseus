@@ -20,15 +20,18 @@ import {
   type WorkerCertification, type InsertWorkerCertification,
   type ProjectSchedule, type InsertProjectSchedule,
   type ServiceAppointment, type InsertServiceAppointment,
+  type OntologyObject, type InsertOntologyObject,
+  type OntologyLink, type InsertOntologyLink,
+  type OntologyAction, type InsertOntologyAction,
   users, workers, projects, workOrders, jobApplications, projectAssignments, chatMessages,
   trades, skills, certifications, tradesCertifications, tradeAdjacencies,
   certificationRequirements, wageData, phaseTradeRequirements,
   projectPhases, projectPhasesTrades,
   workerSkills, workerCertifications, passwordResetCodes, projectSchedules,
-  serviceAppointments,
+  serviceAppointments, ontologyObjects, ontologyLinks, ontologyActions,
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, and, gt, asc, or } from "drizzle-orm";
+import { eq, and, gt, asc, or, desc } from "drizzle-orm";
 
 export interface IStorage {
   getUser(id: string): Promise<User | undefined>;
@@ -129,6 +132,18 @@ export interface IStorage {
   getServiceAppointment(id: string): Promise<ServiceAppointment | undefined>;
   createServiceAppointment(appointment: InsertServiceAppointment): Promise<ServiceAppointment>;
   updateServiceAppointmentStatus(id: string, status: string): Promise<ServiceAppointment | undefined>;
+
+  // Ontology Engine
+  getOntologyObjectsByType(objectType: string): Promise<OntologyObject[]>;
+  getOntologyObject(id: string): Promise<OntologyObject | undefined>;
+  createOntologyObject(obj: InsertOntologyObject): Promise<OntologyObject>;
+  getOntologyLinksFrom(fromId: string): Promise<OntologyLink[]>;
+  getOntologyLinksTo(toId: string): Promise<OntologyLink[]>;
+  createOntologyLink(link: InsertOntologyLink): Promise<OntologyLink>;
+  getOntologyActions(targetId?: string): Promise<OntologyAction[]>;
+  createOntologyAction(action: InsertOntologyAction): Promise<OntologyAction>;
+  getAllOntologyObjects(): Promise<OntologyObject[]>;
+  getAllOntologyLinks(): Promise<OntologyLink[]>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -499,6 +514,57 @@ export class DatabaseStorage implements IStorage {
       .where(eq(serviceAppointments.id, id))
       .returning();
     return updated;
+  }
+
+  // ── Ontology Engine ──────────────────────────────────────────────────
+
+  async getOntologyObjectsByType(objectType: string): Promise<OntologyObject[]> {
+    return db.select().from(ontologyObjects).where(eq(ontologyObjects.objectType, objectType));
+  }
+
+  async getOntologyObject(id: string): Promise<OntologyObject | undefined> {
+    const [obj] = await db.select().from(ontologyObjects).where(eq(ontologyObjects.id, id));
+    return obj;
+  }
+
+  async createOntologyObject(obj: InsertOntologyObject): Promise<OntologyObject> {
+    const [created] = await db.insert(ontologyObjects).values(obj).returning();
+    return created;
+  }
+
+  async getOntologyLinksFrom(fromId: string): Promise<OntologyLink[]> {
+    return db.select().from(ontologyLinks).where(eq(ontologyLinks.fromId, fromId));
+  }
+
+  async getOntologyLinksTo(toId: string): Promise<OntologyLink[]> {
+    return db.select().from(ontologyLinks).where(eq(ontologyLinks.toId, toId));
+  }
+
+  async createOntologyLink(link: InsertOntologyLink): Promise<OntologyLink> {
+    const [created] = await db.insert(ontologyLinks).values(link).returning();
+    return created;
+  }
+
+  async getOntologyActions(targetId?: string): Promise<OntologyAction[]> {
+    if (targetId) {
+      return db.select().from(ontologyActions)
+        .where(eq(ontologyActions.targetId, targetId))
+        .orderBy(desc(ontologyActions.createdAt));
+    }
+    return db.select().from(ontologyActions).orderBy(desc(ontologyActions.createdAt));
+  }
+
+  async createOntologyAction(action: InsertOntologyAction): Promise<OntologyAction> {
+    const [created] = await db.insert(ontologyActions).values(action).returning();
+    return created;
+  }
+
+  async getAllOntologyObjects(): Promise<OntologyObject[]> {
+    return db.select().from(ontologyObjects);
+  }
+
+  async getAllOntologyLinks(): Promise<OntologyLink[]> {
+    return db.select().from(ontologyLinks);
   }
 }
 
