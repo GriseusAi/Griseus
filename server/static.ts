@@ -16,8 +16,15 @@ export function serveStatic(app: Express) {
     immutable: true,
   }));
 
-  // All other static files — short cache
-  app.use(express.static(distPath));
+  // All other static files — no-cache on HTML so browsers always fetch fresh index.html
+  app.use(express.static(distPath, {
+    setHeaders: (res, filePath) => {
+      if (filePath.endsWith(".html")) {
+        res.set("Cache-Control", "no-cache, no-store, must-revalidate");
+        res.set("Pragma", "no-cache");
+      }
+    },
+  }));
 
   // SPA fallback — always serve fresh index.html
   app.use("/{*path}", (_req, res) => {
