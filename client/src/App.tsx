@@ -37,6 +37,7 @@ import AdminProjects from "@/pages/admin/projects";
 import AdminProjectDetail from "@/pages/admin/project-detail";
 import AdminSettings from "@/pages/admin/settings";
 import Operations from "@/pages/operations";
+import OperationsOverview from "@/pages/operations-overview";
 import { OperationsSidebar } from "@/components/operations-sidebar";
 
 function DesktopRouter() {
@@ -199,6 +200,7 @@ function OperationsLayout() {
 
 function AuthenticatedOperations() {
   const { user, isLoading } = useUser();
+  const [location] = useLocation();
 
   if (isLoading) {
     return (
@@ -210,6 +212,11 @@ function AuthenticatedOperations() {
 
   if (!user) {
     return <Redirect to="/login" />;
+  }
+
+  // Overview page renders full-screen without sidebar
+  if (location === "/operations/overview") {
+    return <OperationsOverview />;
   }
 
   return <OperationsLayout />;
@@ -231,7 +238,7 @@ function AuthenticatedAdmin() {
   }
 
   if (user.role !== "admin") {
-    const dest = user.role === "worker" ? "/mobile" : user.companyType === "manufacturing" ? "/operations" : "/dashboard";
+    const dest = user.role === "worker" ? "/mobile" : user.companyType === "manufacturing" ? "/operations/overview" : "/dashboard";
     return <Redirect to={dest} />;
   }
 
