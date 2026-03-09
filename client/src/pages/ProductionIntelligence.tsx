@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 
 /* ═══════════════════════════════════════════════════════════════════════
    PRODUCTION INTELLIGENCE — Overview + Kasa Uretim Drill-Down
@@ -540,7 +541,10 @@ function KasaProductCard({ card, index }: { card: KasaCard; index: number }) {
    ═══════════════════════════════════════════════════════════════════════ */
 
 export default function ProductionIntelligence() {
+  const [, setLocation] = useLocation();
   const [activeView, setActiveView] = useState<"overview" | "kasa">("overview");
+
+  const handleKasaClick = () => setLocation("/kasa-uretim");
 
   return (
     <div style={{ width: "100%", height: "100vh", overflow: "hidden", position: "relative" }}>
@@ -570,7 +574,7 @@ export default function ProductionIntelligence() {
           inset: 0,
         }}
       >
-        <OverviewScreen onKasaClick={() => setActiveView("kasa")} />
+        <OverviewScreen onKasaClick={handleKasaClick} />
       </div>
 
       {/* KASA DRILL-DOWN LAYER */}
