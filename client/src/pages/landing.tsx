@@ -41,9 +41,9 @@ export default function LandingPage() {
             <Link href="/login" className="text-sm text-slate-400 hover:text-white transition-colors">
               Login
             </Link>
-            <Link href="/" className="text-sm px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors">
-              Plan Your Project Workforce
-            </Link>
+            <a href="#waitlist" className="text-sm px-5 py-2 rounded-full bg-blue-500 hover:bg-blue-600 text-white font-medium transition-colors">
+              Join Waitlist
+            </a>
           </div>
         </div>
       </nav>
@@ -59,14 +59,14 @@ export default function LandingPage() {
 
           {/* Heading */}
           <h1 className="landing-fade-in landing-fade-in-delay-1 text-5xl sm:text-6xl lg:text-7xl font-extrabold text-white leading-[1.1] tracking-tight mb-6">
-            The Right Worker.<br />
-            <span className="text-blue-400">The Right Phase. The Right Certification.</span>
+            Workforce Intelligence<br />
+            <span className="text-blue-400">for Manufacturing</span>
           </h1>
 
           {/* Tagline */}
           <p className="landing-fade-in landing-fade-in-delay-2 text-lg sm:text-xl text-slate-400 max-w-2xl mx-auto mb-12 leading-relaxed">
-            Griseus maps your data center project phases to the exact trades and certifications
-            you need &mdash; before shortages become delays.
+            Optimize your production floor &mdash; right operator, right shift, right line.
+            Built for Turkish industrial manufacturers.
           </p>
 
           {/* Waitlist Form */}
@@ -99,24 +99,6 @@ export default function LandingPage() {
             )}
             <p className="mt-4 text-xs text-slate-400/60">No spam. We'll notify you when we launch.</p>
           </div>
-
-          {/* Stats */}
-          <div className="landing-fade-in landing-fade-in-delay-4 flex items-center justify-center gap-8 sm:gap-12 mt-16 pt-8 border-t border-white/10">
-            <div className="text-center">
-              <div className="text-4xl font-extrabold text-white font-mono">500+</div>
-              <div className="text-xs text-slate-400 mt-1">Workers Ready</div>
-            </div>
-            <div className="w-px h-8 bg-white/10"></div>
-            <div className="text-center">
-              <div className="text-4xl font-extrabold text-white font-mono">12</div>
-              <div className="text-xs text-slate-400 mt-1">Markets</div>
-            </div>
-            <div className="w-px h-8 bg-white/10"></div>
-            <div className="text-center">
-              <div className="text-4xl font-extrabold text-white font-mono">48h</div>
-              <div className="text-xs text-slate-400 mt-1">Avg. Placement</div>
-            </div>
-          </div>
         </div>
       </section>
 
@@ -124,45 +106,38 @@ export default function LandingPage() {
       <section className="relative py-24 sm:py-32">
         <div className="max-w-6xl mx-auto px-6">
           <div className="max-w-2xl mb-16">
-            <p className="text-sm font-medium text-blue-400 mb-3 tracking-wide uppercase">How it works</p>
+            <p className="text-sm font-medium text-blue-400 mb-3 tracking-wide uppercase">What we do</p>
             <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-              Phase-based workforce intelligence
+              Smarter workforce decisions for your production floor
             </h2>
             <p className="text-slate-400 leading-relaxed">
-              Plan workforce by phase. Know which trades and certifications you need at every stage
-              of your data center build &mdash; from civil work to commissioning.
+              From shift planning to seasonal forecasting, Griseus gives manufacturing
+              leaders the intelligence to make the right call &mdash; before it's too late.
             </p>
           </div>
 
-          <div className="grid sm:grid-cols-2 gap-4">
+          <div className="grid sm:grid-cols-3 gap-4">
             {[
               {
                 icon: (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 6A2.25 2.25 0 016 3.75h2.25A2.25 2.25 0 0110.5 6v2.25a2.25 2.25 0 01-2.25 2.25H6a2.25 2.25 0 01-2.25-2.25V6zM3.75 15.75A2.25 2.25 0 016 13.5h2.25a2.25 2.25 0 012.25 2.25V18a2.25 2.25 0 01-2.25 2.25H6A2.25 2.25 0 013.75 18v-2.25zM13.5 6a2.25 2.25 0 012.25-2.25H18A2.25 2.25 0 0120.25 6v2.25A2.25 2.25 0 0118 10.5h-2.25a2.25 2.25 0 01-2.25-2.25V6zM13.5 15.75a2.25 2.25 0 012.25-2.25H18a2.25 2.25 0 012.25 2.25V18A2.25 2.25 0 0118 20.25h-2.25A2.25 2.25 0 0113.5 18v-2.25z" />
                 ),
-                title: "Phase-to-Trade Mapping",
-                desc: "Our ontology maps every data center construction phase to the exact trades and certifications required. No guessing, no shortages.",
+                title: "Production Line Optimization",
+                desc: "Maximize output per operator. Assign the right people to the right lines based on skills, experience, and real-time production data.",
               },
               {
                 icon: (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M3.75 13.5l10.5-11.25L12 10.5h8.25L9.75 21.75 12 13.5H3.75z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
                 ),
-                title: "Workforce Matching",
-                desc: "Match certified workers to your project phase. Our algorithm considers trade, certifications, location, and availability.",
+                title: "Seasonal Demand Forecasting",
+                desc: "Prepare for peak season before it hits. Model demand curves and workforce needs so you're never caught understaffed.",
               },
               {
                 icon: (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+                  <path strokeLinecap="round" strokeLinejoin="round" d="M12 6v12m-3-2.818l.879.659c1.171.879 3.07.879 4.242 0 1.172-.879 1.172-2.303 0-3.182C13.536 12.219 12.768 12 12 12c-.725 0-1.45-.22-2.003-.659-1.106-.879-1.106-2.303 0-3.182s2.9-.879 4.006 0l.415.33M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
                 ),
-                title: "Compliance Built-In",
-                desc: "Automated tracking of OSHA, NFPA 70E, and site-specific safety certifications. Real-time compliance dashboards for every active project.",
-              },
-              {
-                icon: (
-                  <path strokeLinecap="round" strokeLinejoin="round" d="M7.5 14.25v2.25m3-4.5v4.5m3-6.75v6.75m3-9v9M6 20.25h12A2.25 2.25 0 0020.25 18V6A2.25 2.25 0 0018 3.75H6A2.25 2.25 0 003.75 6v12A2.25 2.25 0 006 20.25z" />
-                ),
-                title: "Proactive Planning",
-                desc: "Know your workforce needs 6-8 weeks before each phase starts. Source the right certifications before shortages become delays.",
+                title: "Financial Simulation",
+                desc: "Model workforce changes before committing. See the cost impact of adding shifts, hiring temps, or restructuring lines.",
               },
             ].map((feature) => (
               <div key={feature.title} className="landing-card-hover group p-6 rounded-2xl border border-white/10 bg-[#1A1A2E]">
@@ -179,6 +154,26 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* Pilot Program */}
+      <section className="relative py-24">
+        <div className="max-w-4xl mx-auto px-6">
+          <div className="relative rounded-2xl border border-emerald-500/20 bg-emerald-500/5 p-10 sm:p-14 text-center overflow-hidden">
+            <div className="relative z-10">
+              <div className="inline-flex items-center gap-2 px-4 py-1.5 rounded-full border border-emerald-500/20 bg-emerald-500/10 mb-6">
+                <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse"></span>
+                <span className="text-xs font-medium text-emerald-400 tracking-wide uppercase">Pilot Program</span>
+              </div>
+              <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
+                Live in production
+              </h2>
+              <p className="text-slate-400 max-w-xl mx-auto mb-2 leading-relaxed text-lg">
+                Currently piloting with <span className="text-white font-semibold">Cukurova Isi Sistemleri</span> &mdash; one of Turkey's largest HVAC manufacturers.
+              </p>
+            </div>
+          </div>
+        </div>
+      </section>
+
       {/* CTA Banner */}
       <section className="relative py-24">
         <div className="max-w-4xl mx-auto px-6">
@@ -186,16 +181,16 @@ export default function LandingPage() {
             <div className="relative z-10">
               <p className="text-sm font-medium text-blue-400 mb-3 font-mono">// launching soon</p>
               <h2 className="text-3xl sm:text-4xl font-bold text-white mb-4">
-                Phase-based workforce planning for data center construction
+                Workforce intelligence built for the production floor
               </h2>
               <p className="text-slate-400 max-w-xl mx-auto mb-8 leading-relaxed">
-                Whether you're building a hyperscale campus or a single facility,
-                Griseus maps every phase to the workforce you need.
+                Whether you run a single factory or multiple production sites,
+                Griseus optimizes every shift, every line, every operator.
               </p>
               <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-                <Link href="/" className="inline-flex px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98]">
-                  Plan Your Project Workforce
-                </Link>
+                <a href="#waitlist" className="inline-flex px-8 py-3 rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-medium transition-all hover:shadow-lg hover:shadow-blue-500/20 active:scale-[0.98]">
+                  Join the Waitlist
+                </a>
                 <Link href="/login" className="inline-flex px-8 py-3 rounded-xl border border-white/10 hover:border-white/20 text-white hover:text-white text-sm font-medium transition-all">
                   Login to Dashboard
                 </Link>
