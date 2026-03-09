@@ -28,6 +28,7 @@ import Team from "@/pages/team";
 import PhasePlanner from "@/pages/phase-planner";
 import MapView from "@/pages/map-view";
 import Scheduling from "@/pages/scheduling";
+import ProductionIntelligence from "@/pages/ProductionIntelligence";
 import MobileJobs from "@/pages/mobile-jobs";
 import MobilePassport from "@/pages/mobile-passport";
 import MobileSquad from "@/pages/mobile-squad";
@@ -53,6 +54,7 @@ function DesktopRouter() {
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
         <Switch>
+          <Route path="/production-intelligence" component={ProductionIntelligence} />
           <Route path="/phase-planner" component={PhasePlanner} />
           <Route path="/dashboard" component={Dashboard} />
           <Route path="/projects" component={Projects} />
