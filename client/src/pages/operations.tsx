@@ -97,45 +97,34 @@ const SHIFT_CALENDAR = [
 
 const ALL_SKILLS = ["welding", "brazing", "assembly", "testing", "quality", "press-op", "painting", "packaging"];
 
-// ── Palantir-style Ontology Diagram ─────────────────────────────────────
+// ── SVG Primitives ──────────────────────────────────────────────────────
 
-// Isometric projection helpers
-const ISO_ANGLE = Math.PI / 6; // 30 degrees
-const isoTransform = (x: number, y: number, z: number) => ({
-  x: (x - y) * Math.cos(ISO_ANGLE),
-  y: (x + y) * Math.sin(ISO_ANGLE) - z,
-});
+const ISO_ANGLE = Math.PI / 6;
 
-// Isometric cube face generator
 function IsoCube({ cx, cy, size, topColor, leftColor, rightColor, glowColor, opacity = 1 }: {
   cx: number; cy: number; size: number; topColor: string; leftColor: string; rightColor: string; glowColor?: string; opacity?: number;
 }) {
   const s = size / 2;
   const cos30 = Math.cos(ISO_ANGLE);
   const sin30 = Math.sin(ISO_ANGLE);
-
   const top = `${cx},${cy - s} ${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx - s * cos30},${cy - s + s * sin30}`;
   const left = `${cx - s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx - s * cos30},${cy + s * sin30}`;
   const right = `${cx + s * cos30},${cy - s + s * sin30} ${cx},${cy} ${cx},${cy + s * sin30 * 2} ${cx + s * cos30},${cy + s * sin30}`;
-
   return (
     <g opacity={opacity}>
-      {glowColor && (
-        <ellipse cx={cx} cy={cy + s * sin30} rx={size * 0.7} ry={size * 0.25} fill={glowColor} opacity={0.15} style={{ filter: "blur(8px)" }} />
-      )}
-      <polygon points={left} fill={leftColor} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
-      <polygon points={right} fill={rightColor} stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
-      <polygon points={top} fill={topColor} stroke="rgba(255,255,255,0.08)" strokeWidth={0.5} />
+      {glowColor && <ellipse cx={cx} cy={cy + s * sin30} rx={size * 0.7} ry={size * 0.25} fill={glowColor} opacity={0.12} style={{ filter: "blur(8px)" }} />}
+      <polygon points={left} fill={leftColor} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} />
+      <polygon points={right} fill={rightColor} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} />
+      <polygon points={top} fill={topColor} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
     </g>
   );
 }
 
-// Flowing dot animation along a path
 function FlowDot({ x1, y1, x2, y2, color, dur, delay }: {
   x1: number; y1: number; x2: number; y2: number; color: string; dur: number; delay: number;
 }) {
   return (
-    <circle r={2.5} fill={color}>
+    <circle r={2} fill={color}>
       <animate attributeName="cx" values={`${x1};${x2}`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
       <animate attributeName="cy" values={`${y1};${y2}`} dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
       <animate attributeName="opacity" values="0;0.9;0.9;0" dur={`${dur}s`} begin={`${delay}s`} repeatCount="indefinite" />
@@ -143,274 +132,357 @@ function FlowDot({ x1, y1, x2, y2, color, dur, delay }: {
   );
 }
 
-// Ontology node with label and optional alert badge
-function OntologyNode({ cx, cy, label, sublabel, color, alert, size = 32 }: {
-  cx: number; cy: number; label: string; sublabel?: string; color: string; alert?: "warning" | "ok"; size?: number;
+// ── Isometric Machine Block (for canvas) ────────────────────────────────
+
+function MachineBlock({ cx, cy, label, sublabel, status, output, operators, size = 52 }: {
+  cx: number; cy: number; label: string; sublabel: string; status: "running" | "maintenance"; output?: string; operators?: string[]; size?: number;
 }) {
+  const isDown = status === "maintenance";
+  const accent = isDown ? "#ef4444" : "#14b8a6";
+  const topC = isDown ? "#1a0808" : "#0a1a1a";
+  const leftC = isDown ? "#120505" : "#071414";
+  const rightC = isDown ? "#0f0404" : "#051010";
+
   return (
     <g>
-      {/* Glow ring */}
-      <circle cx={cx} cy={cy} r={size * 0.7} fill="none" stroke={color} strokeWidth={0.8} opacity={0.15}>
-        <animate attributeName="r" values={`${size * 0.7};${size * 0.85};${size * 0.7}`} dur="4s" repeatCount="indefinite" />
-        <animate attributeName="opacity" values="0.15;0.05;0.15" dur="4s" repeatCount="indefinite" />
+      {/* Glow under machine */}
+      <ellipse cx={cx} cy={cy + size * 0.3} rx={size * 0.8} ry={size * 0.22} fill={accent} opacity={isDown ? 0.08 : 0.06} style={{ filter: "blur(10px)" }}>
+        {isDown && <animate attributeName="opacity" values="0.04;0.12;0.04" dur="2s" repeatCount="indefinite" />}
+      </ellipse>
+      {/* Machine body */}
+      <IsoCube cx={cx} cy={cy} size={size} topColor={topC} leftColor={leftC} rightColor={rightC} />
+      {/* Top accent line */}
+      <line x1={cx - size * 0.43} y1={cy - size * 0.25} x2={cx + size * 0.43} y2={cy - size * 0.25} stroke={accent} strokeWidth={1.5} opacity={0.7} />
+      {/* Status indicator */}
+      <circle cx={cx + size * 0.35} cy={cy - size * 0.45} r={4} fill={isDown ? "#ef4444" : "#10b981"}>
+        {isDown && <animate attributeName="opacity" values="1;0.3;1" dur="1.2s" repeatCount="indefinite" />}
       </circle>
-      {/* Node body */}
-      <IsoCube cx={cx} cy={cy} size={size} topColor={color} leftColor={`${color}cc`} rightColor={`${color}99`} glowColor={color} />
-      {/* Inner dot */}
-      <circle cx={cx} cy={cy - size * 0.15} r={3} fill="white" opacity={0.6} />
       {/* Label */}
-      <text x={cx} y={cy + size * 0.65 + 12} textAnchor="middle" fill="rgba(255,255,255,0.7)" fontSize={9} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+      <text x={cx} y={cy - size * 0.55} textAnchor="middle" fill="white" fontSize={10} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" opacity={0.9}>
         {label}
       </text>
-      {sublabel && (
-        <text x={cx} y={cy + size * 0.65 + 23} textAnchor="middle" fill="rgba(255,255,255,0.3)" fontSize={7.5} fontFamily="Inter, system-ui, sans-serif">
-          {sublabel}
-        </text>
-      )}
-      {/* Alert badge */}
-      {alert === "warning" && (
-        <g>
-          <circle cx={cx + size * 0.4} cy={cy - size * 0.55} r={7} fill="#f59e0b" />
-          <text x={cx + size * 0.4} y={cy - size * 0.55 + 3.5} textAnchor="middle" fill="white" fontSize={9} fontWeight={700}>!</text>
-        </g>
-      )}
-      {alert === "ok" && (
-        <g>
-          <circle cx={cx + size * 0.4} cy={cy - size * 0.55} r={6} fill="#10b981" />
-          <text x={cx + size * 0.4} y={cy - size * 0.55 + 3} textAnchor="middle" fill="white" fontSize={7} fontWeight={700}>✓</text>
-        </g>
-      )}
+      <text x={cx} y={cy - size * 0.55 + 13} textAnchor="middle" fill="rgba(255,255,255,0.35)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+        {sublabel}
+      </text>
+      {/* Status badge */}
+      <rect x={cx - 28} y={cy + size * 0.35} width={56} height={16} rx={4} fill={isDown ? "rgba(239,68,68,0.12)" : "rgba(20,184,166,0.1)"} stroke={isDown ? "rgba(239,68,68,0.3)" : "rgba(20,184,166,0.25)"} strokeWidth={0.5} />
+      <text x={cx} y={cy + size * 0.35 + 11.5} textAnchor="middle" fill={isDown ? "#ef4444" : "#10b981"} fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+        {isDown ? "⚠ Maintenance" : `✓ ${output}`}
+      </text>
+      {/* Operator dots orbiting */}
+      {operators?.map((name, i) => {
+        const angle = (i / (operators.length)) * Math.PI * 2;
+        const orbitRx = size * 0.7;
+        const orbitRy = size * 0.35;
+        const animDur = 8 + i * 2;
+        return (
+          <g key={name}>
+            <circle r={5} fill="#0a0a0f" stroke="rgba(255,255,255,0.15)" strokeWidth={0.5}>
+              <animate attributeName="cx" values={`${cx + Math.cos(angle) * orbitRx};${cx + Math.cos(angle + Math.PI) * orbitRx};${cx + Math.cos(angle) * orbitRx}`} dur={`${animDur}s`} repeatCount="indefinite" />
+              <animate attributeName="cy" values={`${cy + Math.sin(angle) * orbitRy};${cy + Math.sin(angle + Math.PI) * orbitRy};${cy + Math.sin(angle) * orbitRy}`} dur={`${animDur}s`} repeatCount="indefinite" />
+            </circle>
+            <text textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={5.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+              <animate attributeName="x" values={`${cx + Math.cos(angle) * orbitRx};${cx + Math.cos(angle + Math.PI) * orbitRx};${cx + Math.cos(angle) * orbitRx}`} dur={`${animDur}s`} repeatCount="indefinite" />
+              <animate attributeName="y" values={`${cy + Math.sin(angle) * orbitRy + 2};${cy + Math.sin(angle + Math.PI) * orbitRy + 2};${cy + Math.sin(angle) * orbitRy + 2}`} dur={`${animDur}s`} repeatCount="indefinite" />
+              {name.split(" ").map(n => n[0]).join("")}
+            </text>
+          </g>
+        );
+      })}
     </g>
   );
 }
 
-function OntologyDiagram() {
-  const { data: factories, isLoading: factoriesLoading, isError: factoriesError } = useQuery<any[]>({
+// ── Operations Intelligence Canvas ──────────────────────────────────────
+
+function OperationsCanvas() {
+  const { data: factories } = useQuery<any[]>({
     queryKey: ["/api/ontology/objects/factory"],
-    retry: 1,
-    staleTime: 60000,
+    retry: 1, staleTime: 60000,
   });
-
   const factoryId = factories?.[0]?.id;
-
-  const { data: intelligence, isLoading: intelligenceLoading, isError: intelligenceError } = useQuery<any>({
+  const { data: intelligence } = useQuery<any>({
     queryKey: ["/api/ontology/intelligence/factory/" + factoryId],
-    enabled: !!factoryId,
-    refetchInterval: 30000,
-    retry: 1,
-    staleTime: 15000,
+    enabled: !!factoryId, refetchInterval: 30000, retry: 1, staleTime: 15000,
   });
 
-  if (factoriesLoading || (factoryId && intelligenceLoading)) {
-    return (
-      <Card className="border-white/10" style={{ background: "#0a0a0f" }}>
-        <CardContent className="p-6">
-          <div className="flex items-center gap-2">
-            <Zap className="h-4 w-4 text-teal-400 animate-pulse" />
-            <span className="text-sm text-muted-foreground">Ontology graph yükleniyor...</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const summary = intelligence?.summary || {};
+  const bottlenecks = intelligence?.bottlenecks || [];
+  const lineUtils = intelligence?.lineUtilization || [];
 
-  if (factoriesError || intelligenceError || !factories?.length || !intelligence) {
-    return (
-      <Card className="border-white/10" style={{ background: "#0a0a0f" }}>
-        <CardContent className="p-6">
-          <div className="flex items-center gap-2">
-            <AlertTriangle className="h-4 w-4 text-amber-400" />
-            <span className="text-sm text-muted-foreground">Ontology veritabanı henüz oluşturulmadı. <code className="text-xs">npm run db:push</code> çalıştırın.</span>
-          </div>
-        </CardContent>
-      </Card>
-    );
-  }
+  const W = 960;
+  const H = 700;
+
+  // Seasonal months data
+  const months = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+  const monthDemand = [3, 2, 3, 4, 4, 5, 5, 6, 10, 9, 7, 6];
+  const currentMonth = 2; // March (0-indexed)
+
+  return (
+    <div style={{ background: "#000000", borderRadius: 12, border: "1px solid #1a1a2e", overflow: "hidden" }}>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+        <defs>
+          <pattern id="grid-dots" width={20} height={20} patternUnits="userSpaceOnUse">
+            <circle cx={10} cy={10} r={0.5} fill="rgba(255,255,255,0.03)" />
+          </pattern>
+        </defs>
+
+        {/* Background grid */}
+        <rect width={W} height={H} fill="url(#grid-dots)" />
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* TOP: ACTION ZONE                                       */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        <text x={30} y={28} fill="rgba(16,185,129,0.5)" fontSize={8.5} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.15em">
+          AKSİYON ZONU
+        </text>
+
+        {/* Action card 1: Vardiya Optimize Et */}
+        <rect x={30} y={38} width={200} height={42} rx={6} fill="rgba(16,185,129,0.04)" stroke="rgba(16,185,129,0.25)" strokeWidth={1} />
+        <text x={50} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚡ Vardiya Optimize Et</text>
+
+        {/* Action card 2: Hat 3 Bakım — pulsing */}
+        <rect x={260} y={38} width={200} height={42} rx={6} fill="rgba(245,158,11,0.04)" stroke="rgba(245,158,11,0.3)" strokeWidth={1}>
+          <animate attributeName="stroke-opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite" />
+        </rect>
+        <text x={280} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">⚠️ Hat 3 Bakım</text>
+
+        {/* Action card 3: Pik Sezon */}
+        <rect x={490} y={38} width={200} height={42} rx={6} fill="rgba(20,184,166,0.04)" stroke="rgba(20,184,166,0.25)" strokeWidth={1} />
+        <text x={510} y={63} fill="#e8eaf0" fontSize={11} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">📊 Pik Sezonu: 26 hafta</text>
+
+        {/* Flow lines from action cards DOWN into factory */}
+        {[130, 360, 590].map((x, i) => (
+          <g key={`action-flow-${i}`}>
+            <line x1={x} y1={82} x2={x} y2={140} stroke="rgba(16,185,129,0.06)" strokeWidth={1} strokeDasharray="3 3" />
+            <FlowDot x1={x} y1={82} x2={x} y2={140} color="#10b981" dur={2} delay={i * 0.5} />
+          </g>
+        ))}
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* MIDDLE: FACTORY OPERATIONS PLATFORM                    */}
+        {/* ═══════════════════════════════════════════════════════ */}
+
+        {/* Platform background */}
+        <rect x={20} y={120} width={720} height={370} rx={8} fill="#0d1117" stroke="#1a1a2e" strokeWidth={1} />
+
+        {/* Zone labels */}
+        <text x={40} y={148} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+          KASA ÜRETİM
+        </text>
+        <text x={400} y={148} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+          ANA FABRİKA & MONTAJ
+        </text>
+
+        {/* Divider line between zones */}
+        <line x1={365} y1={140} x2={365} y2={430} stroke="rgba(255,255,255,0.04)" strokeWidth={1} strokeDasharray="4 4" />
+
+        {/* ── LEFT: Kasa Üretim ── */}
+        <MachineBlock cx={140} cy={230} label="Hat 1" sublabel="Kombi Montaj" status="running" output="47 units" operators={["Ahmet Y", "Fatma D", "Burak G"]} size={56} />
+        <MachineBlock cx={280} cy={310} label="Hat 2" sublabel="Isı Eşanjör" status="running" output="31 units" operators={["Mehmet K", "Ayşe Ç"]} size={52} />
+
+        {/* ── RIGHT: Ana Fabrika ── */}
+        <MachineBlock cx={500} cy={230} label="Hat 3" sublabel="Panel Radyatör" status="maintenance" operators={["Hasan A", "Elif Ş"]} size={56} />
+        <MachineBlock cx={620} cy={310} label="Hat 4" sublabel="Genleşme Tankı" status="running" output="29 units" operators={["Ali Ö", "Zeynep K", "Deniz Y"]} size={52} />
+
+        {/* ── CENTER: Flow arrow Kasa → Ana Fabrika ── */}
+        <line x1={310} y1={265} x2={440} y2={265} stroke="rgba(20,184,166,0.15)" strokeWidth={1.5} strokeDasharray="6 4">
+          <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.5s" repeatCount="indefinite" />
+        </line>
+        {/* Arrow head */}
+        <polygon points="440,265 432,260 432,270" fill="rgba(20,184,166,0.3)" />
+        <text x={375} y={258} textAnchor="middle" fill="rgba(20,184,166,0.35)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.06em">
+          MONTAJ AKIŞI →
+        </text>
+        {/* Flow dot along arrow */}
+        <FlowDot x1={310} y1={265} x2={440} y2={265} color="#14b8a6" dur={2.5} delay={0} />
+
+        {/* ── BOTTOM STRIP: 12-month timeline ── */}
+        <rect x={35} y={415} width={690} height={60} rx={6} fill="rgba(255,255,255,0.01)" stroke="rgba(255,255,255,0.04)" strokeWidth={0.5} />
+        <text x={50} y={432} fill="rgba(255,255,255,0.25)" fontSize={7} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.1em">
+          SEASONAL DEMAND TIMELINE
+        </text>
+        {months.map((m, i) => {
+          const barX = 50 + i * 56;
+          const barH = (monthDemand[i] / 10) * 25;
+          const isPeak = i === 8 || i === 9; // Sep, Oct
+          const isHigh = i === 7 || i === 10; // Aug, Nov
+          const isCurrent = i === currentMonth;
+          const color = isPeak ? "#ef4444" : isHigh ? "#f59e0b" : i >= 6 && i <= 7 ? "#3b82f6" : "rgba(255,255,255,0.12)";
+          return (
+            <g key={m}>
+              <rect x={barX} y={460 - barH} width={40} height={barH} rx={2} fill={color} opacity={isPeak ? 0.7 : isHigh ? 0.5 : 0.3} />
+              <text x={barX + 20} y={470} textAnchor="middle" fill={isCurrent ? "white" : "rgba(255,255,255,0.3)"} fontSize={7} fontWeight={isCurrent ? 700 : 400} fontFamily="Inter, system-ui, sans-serif">
+                {m}
+              </text>
+              {isCurrent && (
+                <line x1={barX + 20} y1={435} x2={barX + 20} y2={465} stroke="white" strokeWidth={1} opacity={0.6} />
+              )}
+              {isPeak && (
+                <text x={barX + 20} y={460 - barH - 4} textAnchor="middle" fill="#ef4444" fontSize={6} fontWeight={700} fontFamily="Inter, system-ui, sans-serif">
+                  PİK
+                </text>
+              )}
+            </g>
+          );
+        })}
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* RIGHT PANEL: Live Intelligence Feed                    */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        <rect x={755} y={120} width={185} height={370} rx={8} fill="#0a0a0f" stroke="#1a1a2e" strokeWidth={1} />
+        <text x={770} y={144} fill="rgba(20,184,166,0.5)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+          LIVE INTELLIGENCE
+        </text>
+        <circle cx={917} cy={140} r={3} fill="#10b981">
+          <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+        </circle>
+
+        {/* Feed items */}
+        {[
+          { dot: "#ef4444", text: "Hat 3 durdu — 14:08", y: 168 },
+          { dot: "#f59e0b", text: "Pik sezonu 26 hafta", y: 196 },
+          { dot: "#10b981", text: `Vardiya verimi %${summary.overallUtilization || 86}`, y: 224 },
+          { dot: "#10b981", text: `${DAILY_OUTPUT.reduce((s, d) => s + d.actual, 0).toLocaleString()} haftalık üretim`, y: 252 },
+          { dot: "#f59e0b", text: `${OPERATORS.filter(o => o.utilization > 0).length} operatör aktif`, y: 280 },
+        ].map((item, i) => (
+          <g key={i}>
+            <circle cx={775} cy={item.y} r={3.5} fill={item.dot} opacity={0.8}>
+              {item.dot === "#ef4444" && <animate attributeName="opacity" values="0.8;0.3;0.8" dur="1.5s" repeatCount="indefinite" />}
+            </circle>
+            <text x={788} y={item.y + 3.5} fill="rgba(255,255,255,0.6)" fontSize={9} fontFamily="Inter, system-ui, sans-serif">
+              {item.text}
+            </text>
+          </g>
+        ))}
+
+        {/* Bottleneck detail if any */}
+        {bottlenecks.length > 0 && (
+          <g>
+            <line x1={770} y1={310} x2={925} y2={310} stroke="rgba(255,255,255,0.05)" strokeWidth={0.5} />
+            <text x={770} y={330} fill="rgba(239,68,68,0.6)" fontSize={7.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.08em">
+              BOTTLENECK DETAIL
+            </text>
+            {bottlenecks.slice(0, 3).map((b: any, i: number) => (
+              <text key={i} x={770} y={348 + i * 16} fill="rgba(255,255,255,0.4)" fontSize={8} fontFamily="Inter, system-ui, sans-serif">
+                {b.lineName?.split(" — ")[0] || `Line`}: {b.reason === "maintenance" ? "Bakım" : `%${b.avgUtilization}`}
+              </text>
+            ))}
+          </g>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════ */}
+        {/* BOTTOM: DATA SOURCES                                   */}
+        {/* ═══════════════════════════════════════════════════════ */}
+        <text x={30} y={520} fill="rgba(148,163,184,0.3)" fontSize={8} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
+          VERİ KAYNAKLARI
+        </text>
+
+        {/* 3 data source cubes */}
+        {[
+          { label: "Vardiya Kayıtları", x: 160 },
+          { label: "Operatör Profilleri", x: 480 },
+          { label: "Üretim Çıktısı", x: 800 },
+        ].map((src, i) => (
+          <g key={src.label}>
+            <IsoCube cx={src.x} cy={580} size={40} topColor="#1e293b" leftColor="#151d2b" rightColor="#111827" />
+            {/* Icon representations */}
+            {i === 0 && <g opacity={0.4}>{[0, 5, 10].map(dx => [0, 5].map(dy => <rect key={`${dx}-${dy}`} x={src.x - 6 + dx} y={580 - 8 + dy} width={3} height={3} rx={0.5} fill="#94a3b8" />))}</g>}
+            {i === 1 && <g opacity={0.4}><circle cx={src.x} cy={580 - 6} r={4} fill="#94a3b8" /><path d={`M${src.x - 6},${580 + 3} Q${src.x},${580 - 2} ${src.x + 6},${580 + 3}`} fill="#94a3b8" /></g>}
+            {i === 2 && <g opacity={0.4}><rect x={src.x - 7} y={580 - 2} width={4} height={8} rx={1} fill="#94a3b8" /><rect x={src.x - 1} y={580 - 8} width={4} height={14} rx={1} fill="#94a3b8" /><rect x={src.x + 5} y={580 - 5} width={4} height={11} rx={1} fill="#94a3b8" /></g>}
+            <text x={src.x} y={612} textAnchor="middle" fill="rgba(148,163,184,0.4)" fontSize={8.5} fontWeight={500} fontFamily="Inter, system-ui, sans-serif">
+              {src.label}
+            </text>
+            {/* Flow dots upward into factory platform */}
+            <FlowDot x1={src.x} y1={555} x2={src.x < 300 ? 200 : src.x < 600 ? 500 : 620} y2={420} color="#14b8a6" dur={3} delay={i * 0.7} />
+            <line x1={src.x} y1={555} x2={src.x < 300 ? 200 : src.x < 600 ? 500 : 620} y2={420} stroke="rgba(20,184,166,0.05)" strokeWidth={0.5} strokeDasharray="3 4" />
+          </g>
+        ))}
+
+        {/* Separator lines */}
+        <line x1={20} y1={505} x2={W - 20} y2={505} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
+        <line x1={20} y1={110} x2={W - 20} y2={110} stroke="rgba(255,255,255,0.03)" strokeWidth={0.5} strokeDasharray="6 4" />
+      </svg>
+    </div>
+  );
+}
+
+// ── Ontology Graph (compact, dark) ──────────────────────────────────────
+
+function OntologyDiagram() {
+  const { data: factories } = useQuery<any[]>({
+    queryKey: ["/api/ontology/objects/factory"],
+    retry: 1, staleTime: 60000,
+  });
+  const factoryId = factories?.[0]?.id;
+  const { data: intelligence, isLoading } = useQuery<any>({
+    queryKey: ["/api/ontology/intelligence/factory/" + factoryId],
+    enabled: !!factoryId, refetchInterval: 30000, retry: 1, staleTime: 15000,
+  });
+
+  if (!intelligence) return null;
 
   const lineUtils = intelligence.lineUtilization || [];
   const bottleneckIds = new Set((intelligence.bottlenecks || []).map((b: any) => b.lineId));
   const summary = intelligence.summary || {};
 
-  // Layout constants for the 3-layer diagram
   const W = 780;
-  const H = 520;
+  const H = 140;
 
-  // ── DATA LAYER (bottom) ──────────────────────────────
-  const dataY = 430;
-  const dataSources = [
-    { label: "Vardiya Kayıtları", x: 160 },
-    { label: "Operatör Profilleri", x: 390 },
-    { label: "Üretim Çıktısı", x: 620 },
+  const nodes = [
+    { label: "Fabrika", x: 60 },
+    { label: "Lokasyon", x: 170 },
+    { label: "Hat 1", x: 280, alert: bottleneckIds.has(lineUtils[0]?.lineId) },
+    { label: "Hat 2", x: 370, alert: bottleneckIds.has(lineUtils[1]?.lineId) },
+    { label: "Hat 3", x: 460, alert: bottleneckIds.has(lineUtils[2]?.lineId) },
+    { label: "Hat 4", x: 550, alert: bottleneckIds.has(lineUtils[3]?.lineId) },
+    { label: "Operatör", x: 660 },
+    { label: "Vardiya", x: 740 },
   ];
-
-  // ── ONTOLOGY LAYER (middle) ──────────────────────────
-  const ontoY = 240;
-  const ontologyNodes = [
-    { label: "Fabrika", sublabel: "Çukurova", x: 80, alert: undefined as "warning" | "ok" | undefined },
-    { label: "Lokasyon", sublabel: "2 bina", x: 210 },
-    { label: "Hat 1", sublabel: `%${lineUtils[0]?.avgUtilization ?? "—"}`, x: 320, alert: (bottleneckIds.has(lineUtils[0]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
-    { label: "Hat 2", sublabel: `%${lineUtils[1]?.avgUtilization ?? "—"}`, x: 410, alert: (bottleneckIds.has(lineUtils[1]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
-    { label: "Hat 3", sublabel: `%${lineUtils[2]?.avgUtilization ?? "—"}`, x: 500, alert: (bottleneckIds.has(lineUtils[2]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
-    { label: "Hat 4", sublabel: `%${lineUtils[3]?.avgUtilization ?? "—"}`, x: 590, alert: (bottleneckIds.has(lineUtils[3]?.lineId) ? "warning" : "ok") as "warning" | "ok" },
-    { label: "Operatör", sublabel: `${summary.totalOperators ?? 10}`, x: 700 },
-  ];
-
-  // ── ACTION LAYER (top) ───────────────────────────────
-  const actionY = 62;
-  const actions = [
-    { label: "Darboğaz Tespiti", x: 160, icon: "⚠️" },
-    { label: "Vardiya Optimizasyonu", x: 390, icon: "📊" },
-    { label: "Maliyet Simülasyonu", x: 620, icon: "💰" },
-  ];
-
-  // Connection edges for ontology layer
-  const ontoEdges = [
-    [0, 1], [1, 2], [1, 3], [1, 4], [1, 5], [2, 6], [3, 6], [4, 6], [5, 6],
-  ];
+  const edges = [[0,1],[1,2],[1,3],[1,4],[1,5],[2,6],[3,6],[4,6],[5,6],[6,7]];
 
   return (
-    <Card className="border-white/10 overflow-hidden" style={{ background: "#0a0a0f" }}>
-      <CardHeader className="pb-1">
-        <CardTitle className="text-base flex items-center gap-2">
-          <Zap className="h-4 w-4 text-teal-400" />
-          Ontology Graph
-          <Badge variant="outline" className="ml-auto text-xs bg-teal-500/10 text-teal-400 border-teal-500/20">
-            LIVE
-          </Badge>
-        </CardTitle>
-        <p className="text-xs text-muted-foreground">
-          {summary.totalLines} hat · {summary.totalOperators} operatör · Genel verimlilik %{summary.overallUtilization}
-        </p>
-      </CardHeader>
-      <CardContent className="p-2 pt-0">
-        <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ maxHeight: 460 }} className="overflow-visible">
-          <defs>
-            {/* Ontology layer glow filter */}
-            <filter id="onto-glow" x="-20%" y="-20%" width="140%" height="140%">
-              <feGaussianBlur stdDeviation="12" result="blur" />
-              <feComposite in="SourceGraphic" in2="blur" operator="over" />
-            </filter>
-          </defs>
-
-          {/* ═══ LAYER LABELS ═══ */}
-          {/* Action label */}
-          <text x={28} y={actionY - 28} fill="rgba(16,185,129,0.6)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
-            AKSİYON & KARAR
-          </text>
-          {/* Ontology label */}
-          <text x={28} y={ontoY - 58} fill="rgba(20,184,166,0.6)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
-            GRİSEUS ONTOLOGY
-          </text>
-          {/* Data label */}
-          <text x={28} y={dataY - 38} fill="rgba(148,163,184,0.4)" fontSize={9} fontWeight={700} fontFamily="Inter, system-ui, sans-serif" letterSpacing="0.12em">
-            VERİ KAYNAKLARI
-          </text>
-
-          {/* ═══ ONTOLOGY LAYER BACKGROUND (teal glow zone) ═══ */}
-          <rect x={20} y={ontoY - 55} width={W - 40} height={120} rx={12} fill="rgba(20,184,166,0.03)" stroke="rgba(20,184,166,0.12)" strokeWidth={1} />
-          {/* Inner glow */}
-          <ellipse cx={W / 2} cy={ontoY} rx={300} ry={40} fill="rgba(20,184,166,0.04)" style={{ filter: "blur(20px)" }} />
-
-          {/* ═══ DATA LAYER — isometric boxes ═══ */}
-          {dataSources.map((src, i) => (
-            <g key={src.label}>
-              <IsoCube cx={src.x} cy={dataY} size={42} topColor="#1e293b" leftColor="#172032" rightColor="#131b28" />
-              {/* Grid/person/chart icon (simplified geometric) */}
-              {i === 0 && (
-                <g opacity={0.5}>
-                  {[0, 5, 10].map(dx => [0, 5, 10].map(dy => (
-                    <rect key={`${dx}-${dy}`} x={src.x - 7 + dx} y={dataY - 12 + dy} width={3} height={3} rx={0.5} fill="#94a3b8" />
-                  )))}
-                </g>
-              )}
-              {i === 1 && (
-                <g opacity={0.5}>
-                  <circle cx={src.x} cy={dataY - 10} r={4} fill="#94a3b8" />
-                  <path d={`M${src.x - 6},${dataY + 2} Q${src.x},${dataY - 3} ${src.x + 6},${dataY + 2}`} fill="#94a3b8" />
-                </g>
-              )}
-              {i === 2 && (
-                <g opacity={0.5}>
-                  <rect x={src.x - 8} y={dataY - 4} width={4} height={10} rx={1} fill="#94a3b8" />
-                  <rect x={src.x - 2} y={dataY - 10} width={4} height={16} rx={1} fill="#94a3b8" />
-                  <rect x={src.x + 4} y={dataY - 7} width={4} height={13} rx={1} fill="#94a3b8" />
-                </g>
-              )}
-              <text x={src.x} y={dataY + 36} textAnchor="middle" fill="rgba(148,163,184,0.5)" fontSize={9} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
-                {src.label}
-              </text>
-            </g>
-          ))}
-
-          {/* ═══ FLOW LINES: Data → Ontology ═══ */}
-          {dataSources.map((src, i) => {
-            const targetX = i === 0 ? 210 : i === 1 ? 410 : 590;
-            return (
-              <g key={`data-flow-${i}`}>
-                <line x1={src.x} y1={dataY - 28} x2={targetX} y2={ontoY + 40} stroke="rgba(20,184,166,0.08)" strokeWidth={1} strokeDasharray="3 4" />
-                <FlowDot x1={src.x} y1={dataY - 28} x2={targetX} y2={ontoY + 40} color="#14b8a6" dur={2.5} delay={i * 0.6} />
+    <div style={{ background: "#000000", borderRadius: 12, border: "1px solid #1a1a2e", padding: "12px 16px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+        <span style={{ color: "#14b8a6", fontSize: 8, fontWeight: 700, letterSpacing: "0.12em", textTransform: "uppercase" as const }}>ONTOLOGY GRAPH</span>
+        <span style={{ marginLeft: "auto", color: "rgba(255,255,255,0.3)", fontSize: 10 }}>
+          {summary.totalLines} hat · {summary.totalOperators} operatör · %{summary.overallUtilization} verimlilik
+        </span>
+      </div>
+      <svg viewBox={`0 0 ${W} ${H}`} width="100%" style={{ display: "block" }}>
+        {/* Glow background */}
+        <ellipse cx={W / 2} cy={H / 2} rx={300} ry={35} fill="rgba(20,184,166,0.03)" style={{ filter: "blur(20px)" }} />
+        {/* Edges */}
+        {edges.map(([from, to], i) => (
+          <g key={`e${i}`}>
+            <line x1={nodes[from].x} y1={H / 2} x2={nodes[to].x} y2={H / 2} stroke="rgba(20,184,166,0.12)" strokeWidth={1} />
+            <FlowDot x1={nodes[from].x} y1={H / 2} x2={nodes[to].x} y2={H / 2} color="#14b8a6" dur={2.5} delay={i * 0.25} />
+          </g>
+        ))}
+        {/* Nodes */}
+        {nodes.map((n) => (
+          <g key={n.label}>
+            <circle cx={n.x} cy={H / 2} r={16} fill="rgba(20,184,166,0.06)" stroke="rgba(20,184,166,0.25)" strokeWidth={1}>
+              <animate attributeName="r" values="16;18;16" dur="4s" repeatCount="indefinite" />
+            </circle>
+            <circle cx={n.x} cy={H / 2} r={3} fill="#14b8a6" opacity={0.6} />
+            <text x={n.x} y={H / 2 + 30} textAnchor="middle" fill="rgba(255,255,255,0.5)" fontSize={8} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+              {n.label}
+            </text>
+            {n.alert && (
+              <g>
+                <circle cx={n.x + 12} cy={H / 2 - 14} r={5} fill="#f59e0b" />
+                <text x={n.x + 12} y={H / 2 - 11} textAnchor="middle" fill="white" fontSize={7} fontWeight={800}>!</text>
               </g>
-            );
-          })}
-
-          {/* ═══ ONTOLOGY LAYER — nodes and edges ═══ */}
-          {/* Edges first (behind nodes) */}
-          {ontoEdges.map(([from, to], i) => {
-            const a = ontologyNodes[from];
-            const b = ontologyNodes[to];
-            return (
-              <g key={`edge-${i}`}>
-                <line x1={a.x} y1={ontoY} x2={b.x} y2={ontoY} stroke="rgba(20,184,166,0.18)" strokeWidth={1.2} />
-                <FlowDot x1={a.x} y1={ontoY} x2={b.x} y2={ontoY} color="#14b8a6" dur={2 + i * 0.2} delay={i * 0.3} />
-              </g>
-            );
-          })}
-
-          {/* Nodes */}
-          {ontologyNodes.map((node) => (
-            <OntologyNode
-              key={node.label}
-              cx={node.x}
-              cy={ontoY}
-              label={node.label}
-              sublabel={node.sublabel}
-              color="#14b8a6"
-              alert={node.alert}
-              size={28}
-            />
-          ))}
-
-          {/* ═══ FLOW LINES: Ontology → Actions ═══ */}
-          {actions.map((action, i) => {
-            const sourceX = i === 0 ? 320 : i === 1 ? 500 : 590;
-            return (
-              <g key={`onto-flow-${i}`}>
-                <line x1={sourceX} y1={ontoY - 35} x2={action.x} y2={actionY + 30} stroke="rgba(16,185,129,0.08)" strokeWidth={1} strokeDasharray="3 4" />
-                <FlowDot x1={sourceX} y1={ontoY - 35} x2={action.x} y2={actionY + 30} color="#10b981" dur={2.2} delay={i * 0.5} />
-              </g>
-            );
-          })}
-
-          {/* ═══ ACTION LAYER — floating cards ═══ */}
-          {actions.map((action) => (
-            <g key={action.label}>
-              <rect x={action.x - 72} y={actionY - 18} width={144} height={38} rx={8} fill="rgba(16,185,129,0.05)" stroke="rgba(16,185,129,0.2)" strokeWidth={1} />
-              <text x={action.x} y={actionY + 6} textAnchor="middle" fill="rgba(255,255,255,0.8)" fontSize={10.5} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
-                {action.icon} {action.label}
-              </text>
-            </g>
-          ))}
-
-          {/* ═══ LAYER SEPARATOR LINES ═══ */}
-          <line x1={20} y1={ontoY + 62} x2={W - 20} y2={ontoY + 62} stroke="rgba(255,255,255,0.03)" strokeWidth={1} strokeDasharray="6 4" />
-          <line x1={20} y1={ontoY - 70} x2={W - 20} y2={ontoY - 70} stroke="rgba(255,255,255,0.03)" strokeWidth={1} strokeDasharray="6 4" />
-        </svg>
-      </CardContent>
-    </Card>
+            )}
+          </g>
+        ))}
+      </svg>
+    </div>
   );
 }
 
-// ── Production Intelligence ─────────────────────────────────────────────
+// ── Production Intelligence (Palantir-style) ────────────────────────────
 
 function ProductionIntelligence() {
   const totalTarget = DAILY_OUTPUT.reduce((s, d) => s + d.target, 0);
@@ -423,298 +495,41 @@ function ProductionIntelligence() {
   );
 
   return (
-    <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-2xl font-bold">Production Intelligence</h1>
-        <p className="text-sm text-muted-foreground mt-1">Real-time production line monitoring and operator performance</p>
-      </div>
-
-      {/* KPI Cards */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <Card className="border-white/10">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Weekly Output</p>
-                <p className="text-2xl font-bold mt-1">{totalActual.toLocaleString()}</p>
-              </div>
-              <div className={`p-2 rounded-lg ${fulfillment >= 100 ? "bg-emerald-500/10" : "bg-amber-500/10"}`}>
-                {fulfillment >= 100 ? (
-                  <TrendingUp className="h-5 w-5 text-emerald-400" />
-                ) : (
-                  <TrendingDown className="h-5 w-5 text-amber-400" />
-                )}
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className={fulfillment >= 100 ? "text-emerald-400" : "text-amber-400"}>{fulfillment}%</span> of target
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/10">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Active Lines</p>
-                <p className="text-2xl font-bold mt-1">
-                  {activeLines}/{PRODUCTION_LINES.length}
-                </p>
-              </div>
-              <div className="p-2 rounded-lg bg-blue-500/10">
-                <Factory className="h-5 w-5 text-blue-400" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              <span className="text-amber-400">1 in maintenance</span>
-            </p>
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/10">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">Operator Utilization</p>
-                <p className="text-2xl font-bold mt-1">{avgUtilization}%</p>
-              </div>
-              <div className="p-2 rounded-lg bg-violet-500/10">
-                <Users className="h-5 w-5 text-violet-400" />
-              </div>
-            </div>
-            <Progress value={avgUtilization} className="mt-2 h-1.5" />
-          </CardContent>
-        </Card>
-
-        <Card className="border-white/10">
-          <CardContent className="p-4">
-            <div className="flex items-center justify-between">
-              <div>
-                <p className="text-xs text-muted-foreground">On-shift Now</p>
-                <p className="text-2xl font-bold mt-1">{OPERATORS.filter((o) => o.shift === "morning").length}</p>
-              </div>
-              <div className="p-2 rounded-lg bg-emerald-500/10">
-                <Clock className="h-5 w-5 text-emerald-400" />
-              </div>
-            </div>
-            <p className="text-xs text-muted-foreground mt-2">Morning shift active</p>
-          </CardContent>
-        </Card>
-      </div>
-
-      {/* Ontology Diagram — Palantir-style architecture visualization */}
-      <OntologyDiagram />
-
-      {/* Production Lines */}
-      <div className="grid lg:grid-cols-2 gap-4">
-        {PRODUCTION_LINES.map((line) => {
-          const lineOps = OPERATORS.filter((o) => o.line === line.id);
-          const lineUtil =
-            lineOps.length > 0 ? Math.round(lineOps.reduce((s, o) => s + o.utilization, 0) / lineOps.length) : 0;
-          return (
-            <Card key={line.id} className="border-white/10">
-              <CardContent className="p-4">
-                <div className="flex items-start justify-between mb-3">
-                  <div>
-                    <h3 className="font-semibold">{line.name}</h3>
-                    <p className="text-xs text-muted-foreground">{line.product}</p>
-                  </div>
-                  <Badge
-                    variant="outline"
-                    className={
-                      line.status === "running"
-                        ? "bg-emerald-500/10 text-emerald-400 border-emerald-500/20"
-                        : "bg-amber-500/10 text-amber-400 border-amber-500/20"
-                    }
-                  >
-                    {line.status === "running" ? (
-                      <CheckCircle2 className="h-3 w-3 mr-1" />
-                    ) : (
-                      <AlertTriangle className="h-3 w-3 mr-1" />
-                    )}
-                    {line.status}
-                  </Badge>
-                </div>
-                <div className="grid grid-cols-3 gap-3 text-center">
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <p className="text-lg font-bold">{line.capacity}</p>
-                    <p className="text-[10px] text-muted-foreground">units/day</p>
-                  </div>
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <p className="text-lg font-bold">{lineOps.length}</p>
-                    <p className="text-[10px] text-muted-foreground">operators</p>
-                  </div>
-                  <div className="bg-white/5 rounded-lg p-2">
-                    <p className="text-lg font-bold">{lineUtil}%</p>
-                    <p className="text-[10px] text-muted-foreground">utilization</p>
-                  </div>
-                </div>
-              </CardContent>
-            </Card>
-          );
-        })}
-      </div>
-
-      {/* Daily Output Chart */}
-      <Card className="border-white/10">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Target className="h-4 w-4 text-primary" />
-            Daily Output — Target vs Actual
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[280px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={DAILY_OUTPUT}>
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="day" stroke="#64748b" fontSize={12} />
-                <YAxis stroke="#64748b" fontSize={12} />
-                <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
-                  labelStyle={{ color: "#fff" }}
-                />
-                <Legend />
-                <Bar dataKey="target" fill="#3B82F6" radius={[4, 4, 0, 0]} opacity={0.4} name="Target" />
-                <Bar dataKey="actual" fill="#22C55E" radius={[4, 4, 0, 0]} name="Actual" />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Operator Utilization */}
-      <Card className="border-white/10">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <Zap className="h-4 w-4 text-violet-400" />
-            Operator Utilization
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[250px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart
-                data={OPERATORS.filter((o) => o.utilization > 0).sort((a, b) => b.utilization - a.utilization)}
-                layout="vertical"
-              >
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis type="number" domain={[0, 100]} stroke="#64748b" fontSize={12} />
-                <YAxis dataKey="name" type="category" stroke="#64748b" fontSize={11} width={120} />
-                <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
-                  formatter={(v: number) => `${v}%`}
-                />
-                <Bar dataKey="utilization" fill="#8B5CF6" radius={[0, 4, 4, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          </div>
-        </CardContent>
-      </Card>
-
-      {/* Seasonal Demand Forecast */}
-      <SeasonalDemandForecast />
-    </div>
-  );
-}
-
-// ── Seasonal Demand Forecast ────────────────────────────────────────────
-
-const SEASONAL_DEMAND = [
-  { month: "Jan", demand: 3 },
-  { month: "Feb", demand: 2 },
-  { month: "Mar", demand: 3 },
-  { month: "Apr", demand: 4 },
-  { month: "May", demand: 4 },
-  { month: "Jun", demand: 5 },
-  { month: "Jul", demand: 5 },
-  { month: "Aug", demand: 6 },
-  { month: "Sep", demand: 10 },
-  { month: "Oct", demand: 9 },
-  { month: "Nov", demand: 7 },
-  { month: "Dec", demand: 6 },
-];
-
-function SeasonalDemandForecast() {
-  const peakMonths = new Set(["Sep", "Oct"]);
-
-  return (
-    <div className="space-y-4">
-      {/* Peak Season Banner */}
-      <div className="flex items-center gap-3 p-4 rounded-xl border border-amber-500/30 bg-amber-500/5">
-        <div className="p-2 rounded-lg bg-amber-500/10 shrink-0">
-          <AlertTriangle className="h-5 w-5 text-amber-400" />
-        </div>
+    <div className="space-y-3" style={{ background: "#000000", minHeight: "100vh", padding: "16px" }}>
+      {/* Title */}
+      <div className="flex items-center justify-between">
         <div>
-          <p className="font-semibold text-amber-400">Peak season in 26 weeks — recommend hiring 8 additional technicians now</p>
-          <p className="text-xs text-muted-foreground mt-0.5">
-            Sep–Oct demand index reaches 9–10. Current workforce will be at 130% capacity without reinforcement.
-          </p>
+          <h1 className="text-xl font-bold text-white tracking-tight">Production Intelligence</h1>
+          <p className="text-xs mt-0.5" style={{ color: "rgba(255,255,255,0.3)" }}>Single-pane factory operations · Çukurova Isı Sistemleri</p>
         </div>
+        <Badge variant="outline" className="text-[10px] bg-teal-500/10 text-teal-400 border-teal-500/20">
+          LIVE
+        </Badge>
       </div>
 
-      {/* Forecast Chart */}
-      <Card className="border-white/10">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-base flex items-center gap-2">
-            <TrendingUp className="h-4 w-4 text-amber-400" />
-            Seasonal Demand Forecast — 12-Month Outlook
-          </CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="h-[320px]">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={SEASONAL_DEMAND} barCategoryGap="15%">
-                <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
-                <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
-                <YAxis domain={[0, 10]} stroke="#64748b" fontSize={12} tickCount={6} />
-                <Tooltip
-                  contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }}
-                  labelStyle={{ color: "#fff" }}
-                  formatter={(v: number) => [`${v} / 10`, "Demand Index"]}
-                />
-                <ReferenceLine y={7} stroke="#F59E0B" strokeDasharray="5 5" label={{ value: "High demand threshold", fill: "#F59E0B", fontSize: 11, position: "insideTopRight" }} />
-                <Bar dataKey="demand" radius={[4, 4, 0, 0]}>
-                  {SEASONAL_DEMAND.map((entry) => (
-                    <Cell
-                      key={entry.month}
-                      fill={
-                        peakMonths.has(entry.month)
-                          ? entry.demand >= 10
-                            ? "#EF4444"
-                            : "#F97316"
-                          : entry.demand >= 7
-                            ? "#F59E0B"
-                            : "#3B82F6"
-                      }
-                    />
-                  ))}
-                </Bar>
-              </BarChart>
-            </ResponsiveContainer>
+      {/* KPI Pills — ultra compact single row */}
+      <div className="flex gap-2">
+        {[
+          { label: "Output", value: totalActual.toLocaleString(), sub: `${fulfillment}% of target`, color: fulfillment >= 100 ? "#10b981" : "#f59e0b" },
+          { label: "Lines", value: `${activeLines}/${PRODUCTION_LINES.length}`, sub: "1 maintenance", color: "#ef4444" },
+          { label: "Utilization", value: `${avgUtilization}%`, sub: "avg operator", color: "#14b8a6" },
+          { label: "On-shift", value: `${OPERATORS.filter(o => o.shift === "morning").length}`, sub: "sabah vardiyası", color: "#10b981" },
+        ].map((kpi) => (
+          <div key={kpi.label} className="flex-1 rounded-lg px-3 py-2" style={{ background: "#0a0a0f", border: "1px solid #1a1a2e" }}>
+            <div className="flex items-center gap-2">
+              <span className="text-lg font-bold text-white">{kpi.value}</span>
+              <span style={{ width: 5, height: 5, borderRadius: "50%", background: kpi.color, display: "inline-block" }} />
+            </div>
+            <p style={{ fontSize: 10, color: "rgba(255,255,255,0.3)", marginTop: 1 }}>{kpi.label} · {kpi.sub}</p>
           </div>
+        ))}
+      </div>
 
-          {/* Legend */}
-          <div className="flex items-center gap-4 mt-3 text-xs text-muted-foreground justify-center">
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-[#3B82F6]" />
-              Normal (1–6)
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-[#F59E0B]" />
-              High (7–8)
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-[#F97316]" />
-              Peak (9)
-            </div>
-            <div className="flex items-center gap-1.5">
-              <div className="w-3 h-3 rounded-sm bg-[#EF4444]" />
-              Critical (10)
-            </div>
-          </div>
-        </CardContent>
-      </Card>
+      {/* Operations Intelligence Canvas */}
+      <OperationsCanvas />
+
+      {/* Ontology Graph */}
+      <OntologyDiagram />
     </div>
   );
 }
@@ -726,7 +541,6 @@ function WorkforceScheduling() {
 
   const filteredOps = selectedLine === "all" ? OPERATORS : OPERATORS.filter((o) => o.line === selectedLine);
 
-  // Skills matrix data for radar chart
   const skillCounts = ALL_SKILLS.map((skill) => ({
     skill,
     count: filteredOps.filter((o) => o.skills.includes(skill)).length,
@@ -754,7 +568,6 @@ function WorkforceScheduling() {
         </Select>
       </div>
 
-      {/* Shift Calendar */}
       <Card className="border-white/10">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
@@ -782,28 +595,13 @@ function WorkforceScheduling() {
                   <tr key={row.day} className="border-b border-white/5">
                     <td className="py-3 pr-4 font-medium">{row.day}</td>
                     <td className="text-center py-3 px-4">
-                      <Badge
-                        variant="outline"
-                        className="bg-blue-500/10 text-blue-400 border-blue-500/20 min-w-[40px] justify-center"
-                      >
-                        {row.morning}
-                      </Badge>
+                      <Badge variant="outline" className="bg-blue-500/10 text-blue-400 border-blue-500/20 min-w-[40px] justify-center">{row.morning}</Badge>
                     </td>
                     <td className="text-center py-3 px-4">
-                      <Badge
-                        variant="outline"
-                        className="bg-violet-500/10 text-violet-400 border-violet-500/20 min-w-[40px] justify-center"
-                      >
-                        {row.afternoon}
-                      </Badge>
+                      <Badge variant="outline" className="bg-violet-500/10 text-violet-400 border-violet-500/20 min-w-[40px] justify-center">{row.afternoon}</Badge>
                     </td>
                     <td className="text-center py-3 px-4">
-                      <Badge
-                        variant="outline"
-                        className="bg-gray-500/10 text-gray-400 border-gray-500/20 min-w-[40px] justify-center"
-                      >
-                        {row.night}
-                      </Badge>
+                      <Badge variant="outline" className="bg-gray-500/10 text-gray-400 border-gray-500/20 min-w-[40px] justify-center">{row.night}</Badge>
                     </td>
                     <td className="text-center py-3 px-4 font-semibold">{row.morning + row.afternoon + row.night}</td>
                   </tr>
@@ -814,7 +612,6 @@ function WorkforceScheduling() {
         </CardContent>
       </Card>
 
-      {/* Technician Assignments */}
       <Card className="border-white/10">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
@@ -827,22 +624,14 @@ function WorkforceScheduling() {
             {filteredOps.map((op) => {
               const line = PRODUCTION_LINES.find((l) => l.id === op.line);
               return (
-                <div
-                  key={op.id}
-                  className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-card hover:border-white/20 transition-all"
-                >
+                <div key={op.id} className="flex items-center gap-3 p-3 rounded-lg border border-white/10 bg-card hover:border-white/20 transition-all">
                   <div className="w-9 h-9 rounded-full bg-primary/10 border border-primary/20 flex items-center justify-center text-xs font-bold text-primary shrink-0">
-                    {op.name
-                      .split(" ")
-                      .map((n) => n[0])
-                      .join("")}
+                    {op.name.split(" ").map((n) => n[0]).join("")}
                   </div>
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2">
                       <span className="text-sm font-medium truncate">{op.name}</span>
-                      <span
-                        className={`w-2 h-2 rounded-full shrink-0 ${op.utilization > 0 ? "bg-emerald-400" : "bg-gray-400"}`}
-                      />
+                      <span className={`w-2 h-2 rounded-full shrink-0 ${op.utilization > 0 ? "bg-emerald-400" : "bg-gray-400"}`} />
                     </div>
                     <div className="flex items-center gap-3 text-xs text-muted-foreground mt-0.5">
                       <span>{line?.name.split(" — ")[0]}</span>
@@ -852,9 +641,7 @@ function WorkforceScheduling() {
                   </div>
                   <div className="flex flex-wrap gap-1 max-w-[200px] justify-end">
                     {op.skills.map((s) => (
-                      <Badge key={s} variant="outline" className="text-[10px] border-white/10 capitalize">
-                        {s}
-                      </Badge>
+                      <Badge key={s} variant="outline" className="text-[10px] border-white/10 capitalize">{s}</Badge>
                     ))}
                   </div>
                 </div>
@@ -864,7 +651,6 @@ function WorkforceScheduling() {
         </CardContent>
       </Card>
 
-      {/* Skills Matrix Radar */}
       <Card className="border-white/10">
         <CardHeader className="pb-2">
           <CardTitle className="text-base flex items-center gap-2">
@@ -899,15 +685,14 @@ function FinancialSimulation() {
   const line = PRODUCTION_LINES.find((l) => l.id === targetLine)!;
   const currentOps = OPERATORS.filter((o) => o.line === targetLine).length;
 
-  // Simulation model (simplified)
-  const operatorCostPerDay = 2800; // TRY per operator per day
-  const unitRevenue = targetLine === "L1" ? 450 : targetLine === "L2" ? 320 : targetLine === "L3" ? 180 : 95; // TRY per unit
-  const marginalOutputPerOperator = Math.round(line.capacity * 0.12); // each new operator adds ~12% of line capacity
+  const operatorCostPerDay = 2800;
+  const unitRevenue = targetLine === "L1" ? 450 : targetLine === "L2" ? 320 : targetLine === "L3" ? 180 : 95;
+  const marginalOutputPerOperator = Math.round(line.capacity * 0.12);
   const projectedOutputIncrease = addOperators * marginalOutputPerOperator;
   const additionalDailyCost = addOperators * operatorCostPerDay;
   const additionalDailyRevenue = projectedOutputIncrease * unitRevenue;
   const netDailyImpact = additionalDailyRevenue - additionalDailyCost;
-  const monthlyImpact = netDailyImpact * 22; // working days
+  const monthlyImpact = netDailyImpact * 22;
 
   const scenarioData = Array.from({ length: 6 }, (_, i) => {
     const month = i + 1;
@@ -931,7 +716,6 @@ function FinancialSimulation() {
         </p>
       </div>
 
-      {/* Scenario Builder */}
       <Card className="border-primary/20 bg-primary/5">
         <CardHeader className="pb-3">
           <CardTitle className="text-base flex items-center gap-2">
@@ -944,121 +728,41 @@ function FinancialSimulation() {
             <div>
               <Label>Target Production Line</Label>
               <Select value={targetLine} onValueChange={(v) => { setTargetLine(v); setSimulated(false); }}>
-                <SelectTrigger className="mt-1">
-                  <SelectValue />
-                </SelectTrigger>
+                <SelectTrigger className="mt-1"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {PRODUCTION_LINES.map((l) => (
-                    <SelectItem key={l.id} value={l.id}>
-                      {l.name}
-                    </SelectItem>
+                    <SelectItem key={l.id} value={l.id}>{l.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label>
-                Add Operators: <span className="text-primary font-bold">{addOperators}</span>
-              </Label>
-              <Slider
-                value={[addOperators]}
-                onValueChange={(v) => { setAddOperators(v[0]); setSimulated(false); }}
-                min={1}
-                max={8}
-                step={1}
-                className="mt-3"
-              />
-              <div className="flex justify-between text-[10px] text-muted-foreground mt-1">
-                <span>1</span>
-                <span>8</span>
-              </div>
+              <Label>Add Operators: <span className="text-primary font-bold">{addOperators}</span></Label>
+              <Slider value={[addOperators]} onValueChange={(v) => { setAddOperators(v[0]); setSimulated(false); }} min={1} max={8} step={1} className="mt-3" />
+              <div className="flex justify-between text-[10px] text-muted-foreground mt-1"><span>1</span><span>8</span></div>
             </div>
           </div>
-
           <div className="bg-background/50 rounded-lg p-4 border text-sm space-y-1">
-            <p className="text-muted-foreground">
-              Current state: <span className="text-foreground font-medium">{line.name}</span> has{" "}
-              <span className="text-foreground font-medium">{currentOps} operators</span> producing{" "}
-              <span className="text-foreground font-medium">{line.capacity} units/day</span>
-            </p>
-            <p className="text-muted-foreground">
-              Scenario: Add <span className="text-primary font-medium">{addOperators} operators</span> →{" "}
-              <span className="text-foreground font-medium">+{projectedOutputIncrease} units/day</span> projected increase
-            </p>
+            <p className="text-muted-foreground">Current state: <span className="text-foreground font-medium">{line.name}</span> has <span className="text-foreground font-medium">{currentOps} operators</span> producing <span className="text-foreground font-medium">{line.capacity} units/day</span></p>
+            <p className="text-muted-foreground">Scenario: Add <span className="text-primary font-medium">{addOperators} operators</span> → <span className="text-foreground font-medium">+{projectedOutputIncrease} units/day</span> projected increase</p>
           </div>
-
           <Button onClick={() => setSimulated(true)} className="w-full" disabled={simulated}>
-            {simulated ? (
-              <>
-                <CheckCircle2 className="h-4 w-4 mr-2" />
-                Simulation Complete
-              </>
-            ) : (
-              <>
-                <Play className="h-4 w-4 mr-2" />
-                Run Simulation
-              </>
-            )}
+            {simulated ? <><CheckCircle2 className="h-4 w-4 mr-2" />Simulation Complete</> : <><Play className="h-4 w-4 mr-2" />Run Simulation</>}
           </Button>
         </CardContent>
       </Card>
 
-      {/* Results */}
       {simulated && (
         <>
-          {/* Impact KPIs */}
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-            <Card className="border-white/10">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Output Increase</p>
-                <p className="text-2xl font-bold mt-1 flex items-center gap-1">
-                  +{projectedOutputIncrease}
-                  <ArrowUpRight className="h-4 w-4 text-emerald-400" />
-                </p>
-                <p className="text-xs text-muted-foreground">units/day</p>
-              </CardContent>
-            </Card>
-            <Card className="border-white/10">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Daily Cost</p>
-                <p className="text-2xl font-bold mt-1 flex items-center gap-1">
-                  +₺{additionalDailyCost.toLocaleString()}
-                  <ArrowDownRight className="h-4 w-4 text-red-400" />
-                </p>
-                <p className="text-xs text-muted-foreground">per day</p>
-              </CardContent>
-            </Card>
-            <Card className="border-white/10">
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Daily Revenue</p>
-                <p className="text-2xl font-bold mt-1 flex items-center gap-1">
-                  +₺{additionalDailyRevenue.toLocaleString()}
-                  <ArrowUpRight className="h-4 w-4 text-emerald-400" />
-                </p>
-                <p className="text-xs text-muted-foreground">per day</p>
-              </CardContent>
-            </Card>
-            <Card className={`border-white/10 ${netDailyImpact >= 0 ? "" : "border-red-500/20"}`}>
-              <CardContent className="p-4">
-                <p className="text-xs text-muted-foreground">Monthly Net Impact</p>
-                <p
-                  className={`text-2xl font-bold mt-1 ${monthlyImpact >= 0 ? "text-emerald-400" : "text-red-400"}`}
-                >
-                  {monthlyImpact >= 0 ? "+" : ""}₺{(monthlyImpact / 1000).toFixed(0)}K
-                </p>
-                <p className="text-xs text-muted-foreground">per month (22 working days)</p>
-              </CardContent>
-            </Card>
+            <Card className="border-white/10"><CardContent className="p-4"><p className="text-xs text-muted-foreground">Output Increase</p><p className="text-2xl font-bold mt-1 flex items-center gap-1">+{projectedOutputIncrease}<ArrowUpRight className="h-4 w-4 text-emerald-400" /></p><p className="text-xs text-muted-foreground">units/day</p></CardContent></Card>
+            <Card className="border-white/10"><CardContent className="p-4"><p className="text-xs text-muted-foreground">Daily Cost</p><p className="text-2xl font-bold mt-1 flex items-center gap-1">+₺{additionalDailyCost.toLocaleString()}<ArrowDownRight className="h-4 w-4 text-red-400" /></p><p className="text-xs text-muted-foreground">per day</p></CardContent></Card>
+            <Card className="border-white/10"><CardContent className="p-4"><p className="text-xs text-muted-foreground">Daily Revenue</p><p className="text-2xl font-bold mt-1 flex items-center gap-1">+₺{additionalDailyRevenue.toLocaleString()}<ArrowUpRight className="h-4 w-4 text-emerald-400" /></p><p className="text-xs text-muted-foreground">per day</p></CardContent></Card>
+            <Card className={`border-white/10 ${netDailyImpact >= 0 ? "" : "border-red-500/20"}`}><CardContent className="p-4"><p className="text-xs text-muted-foreground">Monthly Net Impact</p><p className={`text-2xl font-bold mt-1 ${monthlyImpact >= 0 ? "text-emerald-400" : "text-red-400"}`}>{monthlyImpact >= 0 ? "+" : ""}₺{(monthlyImpact / 1000).toFixed(0)}K</p><p className="text-xs text-muted-foreground">per month (22 working days)</p></CardContent></Card>
           </div>
 
-          {/* Revenue Projection Chart */}
           <Card className="border-white/10">
-            <CardHeader className="pb-2">
-              <CardTitle className="text-base flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-emerald-400" />
-                6-Month Revenue Projection (₺K)
-              </CardTitle>
-            </CardHeader>
+            <CardHeader className="pb-2"><CardTitle className="text-base flex items-center gap-2"><TrendingUp className="h-4 w-4 text-emerald-400" />6-Month Revenue Projection (₺K)</CardTitle></CardHeader>
             <CardContent>
               <div className="h-[300px]">
                 <ResponsiveContainer width="100%" height="100%">
@@ -1066,85 +770,29 @@ function FinancialSimulation() {
                     <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.06)" />
                     <XAxis dataKey="month" stroke="#64748b" fontSize={12} />
                     <YAxis stroke="#64748b" fontSize={12} />
-                    <Tooltip
-                      contentStyle={{
-                        background: "#1e293b",
-                        border: "1px solid rgba(255,255,255,0.1)",
-                        borderRadius: "8px",
-                      }}
-                      formatter={(v: number) => `₺${v}K`}
-                    />
+                    <Tooltip contentStyle={{ background: "#1e293b", border: "1px solid rgba(255,255,255,0.1)", borderRadius: "8px" }} formatter={(v: number) => `₺${v}K`} />
                     <Legend />
-                    <Line
-                      type="monotone"
-                      dataKey="currentRevenue"
-                      stroke="#64748b"
-                      strokeDasharray="5 5"
-                      name="Current Revenue"
-                      dot={false}
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="projectedRevenue"
-                      stroke="#22C55E"
-                      strokeWidth={2}
-                      name="Projected Revenue"
-                    />
-                    <Line
-                      type="monotone"
-                      dataKey="additionalCost"
-                      stroke="#EF4444"
-                      strokeDasharray="3 3"
-                      name="Additional Cost"
-                    />
+                    <Line type="monotone" dataKey="currentRevenue" stroke="#64748b" strokeDasharray="5 5" name="Current Revenue" dot={false} />
+                    <Line type="monotone" dataKey="projectedRevenue" stroke="#22C55E" strokeWidth={2} name="Projected Revenue" />
+                    <Line type="monotone" dataKey="additionalCost" stroke="#EF4444" strokeDasharray="3 3" name="Additional Cost" />
                   </LineChart>
                 </ResponsiveContainer>
               </div>
             </CardContent>
           </Card>
 
-          {/* ROI Summary */}
           <Card className="border-emerald-500/20 bg-emerald-500/5">
             <CardContent className="p-6">
-              <h3 className="font-semibold text-lg mb-3 flex items-center gap-2">
-                <DollarSign className="h-5 w-5 text-emerald-400" />
-                ROI Summary
-              </h3>
+              <h3 className="font-semibold text-lg mb-3 flex items-center gap-2"><DollarSign className="h-5 w-5 text-emerald-400" />ROI Summary</h3>
               <div className="grid sm:grid-cols-3 gap-4 text-sm">
-                <div>
-                  <p className="text-muted-foreground">Payback Period</p>
-                  <p className="text-lg font-bold mt-0.5">
-                    {netDailyImpact > 0 ? `${Math.ceil(additionalDailyCost / netDailyImpact)} days` : "N/A"}
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">6-Month Net Profit</p>
-                  <p className={`text-lg font-bold mt-0.5 ${monthlyImpact >= 0 ? "text-emerald-400" : "text-red-400"}`}>
-                    {monthlyImpact >= 0 ? "+" : ""}₺{((monthlyImpact * 6) / 1000).toFixed(0)}K
-                  </p>
-                </div>
-                <div>
-                  <p className="text-muted-foreground">Recommendation</p>
-                  <p className="text-lg font-bold mt-0.5">
-                    {netDailyImpact > 0 ? (
-                      <span className="text-emerald-400 flex items-center gap-1">
-                        <CheckCircle2 className="h-4 w-4" /> Profitable
-                      </span>
-                    ) : (
-                      <span className="text-red-400 flex items-center gap-1">
-                        <AlertTriangle className="h-4 w-4" /> Not Recommended
-                      </span>
-                    )}
-                  </p>
-                </div>
+                <div><p className="text-muted-foreground">Payback Period</p><p className="text-lg font-bold mt-0.5">{netDailyImpact > 0 ? `${Math.ceil(additionalDailyCost / netDailyImpact)} days` : "N/A"}</p></div>
+                <div><p className="text-muted-foreground">6-Month Net Profit</p><p className={`text-lg font-bold mt-0.5 ${monthlyImpact >= 0 ? "text-emerald-400" : "text-red-400"}`}>{monthlyImpact >= 0 ? "+" : ""}₺{((monthlyImpact * 6) / 1000).toFixed(0)}K</p></div>
+                <div><p className="text-muted-foreground">Recommendation</p><p className="text-lg font-bold mt-0.5">{netDailyImpact > 0 ? <span className="text-emerald-400 flex items-center gap-1"><CheckCircle2 className="h-4 w-4" /> Profitable</span> : <span className="text-red-400 flex items-center gap-1"><AlertTriangle className="h-4 w-4" /> Not Recommended</span>}</p></div>
               </div>
             </CardContent>
           </Card>
 
-          <Button variant="outline" onClick={() => setSimulated(false)} className="w-full">
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset & Try New Scenario
-          </Button>
+          <Button variant="outline" onClick={() => setSimulated(false)} className="w-full"><RotateCcw className="h-4 w-4 mr-2" />Reset & Try New Scenario</Button>
         </>
       )}
     </div>
