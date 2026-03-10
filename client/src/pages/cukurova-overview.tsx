@@ -1,398 +1,627 @@
+import { motion } from "framer-motion";
 import { useEffect, useRef, useState } from "react";
 
-/* ──────────────────── PARTICLE GRID BACKGROUND ────────────────────── */
-
-function ParticleGrid() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
-
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let animId: number;
-    const dots: { x: number; y: number; vx: number; vy: number }[] = [];
-    const DOTS = 60;
-
-    const resize = () => {
-      canvas.width = canvas.offsetWidth * devicePixelRatio;
-      canvas.height = canvas.offsetHeight * devicePixelRatio;
-      ctx.scale(devicePixelRatio, devicePixelRatio);
-    };
-    resize();
-
-    for (let i = 0; i < DOTS; i++) {
-      dots.push({
-        x: Math.random() * canvas.offsetWidth,
-        y: Math.random() * canvas.offsetHeight,
-        vx: (Math.random() - 0.5) * 0.3,
-        vy: (Math.random() - 0.5) * 0.3,
-      });
-    }
-
-    const draw = () => {
-      const w = canvas.offsetWidth;
-      const h = canvas.offsetHeight;
-      ctx.clearRect(0, 0, w, h);
-
-      for (const d of dots) {
-        d.x += d.vx;
-        d.y += d.vy;
-        if (d.x < 0 || d.x > w) d.vx *= -1;
-        if (d.y < 0 || d.y > h) d.vy *= -1;
-      }
-
-      for (let i = 0; i < dots.length; i++) {
-        for (let j = i + 1; j < dots.length; j++) {
-          const dx = dots[i].x - dots[j].x;
-          const dy = dots[i].y - dots[j].y;
-          const dist = Math.sqrt(dx * dx + dy * dy);
-          if (dist < 140) {
-            ctx.beginPath();
-            ctx.moveTo(dots[i].x, dots[i].y);
-            ctx.lineTo(dots[j].x, dots[j].y);
-            ctx.strokeStyle = `rgba(59,130,246,${0.08 * (1 - dist / 140)})`;
-            ctx.lineWidth = 0.5;
-            ctx.stroke();
-          }
-        }
-      }
-
-      for (const d of dots) {
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, 1.5, 0, Math.PI * 2);
-        ctx.fillStyle = "rgba(59,130,246,0.25)";
-        ctx.fill();
-      }
-
-      animId = requestAnimationFrame(draw);
-    };
-    draw();
-
-    window.addEventListener("resize", resize);
-    return () => {
-      cancelAnimationFrame(animId);
-      window.removeEventListener("resize", resize);
-    };
-  }, []);
-
+// ── Smoke Particle System ────────────────────────────────────────────────
+function SmokeParticles({ x, y, count = 6 }: { x: number; y: number; count?: number }) {
   return (
-    <canvas
-      ref={canvasRef}
-      className="absolute inset-0 w-full h-full pointer-events-none"
-    />
+    <g>
+      {Array.from({ length: count }).map((_, i) => (
+        <circle
+          key={i}
+          r={2 + Math.random() * 2}
+          fill="rgba(180,190,210,0.15)"
+          cx={x + (Math.random() - 0.5) * 8}
+          cy={y}
+        >
+          <animate
+            attributeName="cy"
+            values={`${y};${y - 30 - Math.random() * 20}`}
+            dur={`${2.5 + Math.random() * 2}s`}
+            begin={`${i * 0.4}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="cx"
+            values={`${x + (Math.random() - 0.5) * 8};${x + (Math.random() - 0.5) * 20}`}
+            dur={`${2.5 + Math.random() * 2}s`}
+            begin={`${i * 0.4}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="opacity"
+            values="0;0.25;0"
+            dur={`${2.5 + Math.random() * 2}s`}
+            begin={`${i * 0.4}s`}
+            repeatCount="indefinite"
+          />
+          <animate
+            attributeName="r"
+            values={`${2 + Math.random() * 2};${4 + Math.random() * 3}`}
+            dur={`${2.5 + Math.random() * 2}s`}
+            begin={`${i * 0.4}s`}
+            repeatCount="indefinite"
+          />
+        </circle>
+      ))}
+    </g>
   );
 }
 
-/* ──────────────── ISOMETRIC 3D FACTORY ──────────────── */
+// ── Pulsing Status Dot ───────────────────────────────────────────────────
+function StatusDot({ x, y }: { x: number; y: number }) {
+  return (
+    <g>
+      <circle cx={x} cy={y} r={5} fill="#10b981" opacity={0.3}>
+        <animate attributeName="r" values="5;10;5" dur="2s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="0.3;0.08;0.3" dur="2s" repeatCount="indefinite" />
+      </circle>
+      <circle cx={x} cy={y} r={3.5} fill="#10b981" />
+    </g>
+  );
+}
 
-function IsometricFactory({ ready }: { ready: boolean }) {
-  const [hovered, setHovered] = useState<string | null>(null);
+// ── Window Lights ────────────────────────────────────────────────────────
+function WindowGrid({
+  x, y, cols, rows, w, h, gap,
+}: { x: number; y: number; cols: number; rows: number; w: number; h: number; gap: number }) {
+  return (
+    <g>
+      {Array.from({ length: rows }).map((_, r) =>
+        Array.from({ length: cols }).map((_, c) => {
+          const flickerDur = 3 + Math.random() * 4;
+          const delay = Math.random() * 3;
+          const baseOpacity = 0.3 + Math.random() * 0.5;
+          return (
+            <rect
+              key={`${r}-${c}`}
+              x={x + c * (w + gap)}
+              y={y + r * (h + gap)}
+              width={w}
+              height={h}
+              rx={0.5}
+              fill="#f59e0b"
+              opacity={baseOpacity}
+            >
+              <animate
+                attributeName="opacity"
+                values={`${baseOpacity};${baseOpacity * 0.4};${baseOpacity}`}
+                dur={`${flickerDur}s`}
+                begin={`${delay}s`}
+                repeatCount="indefinite"
+              />
+            </rect>
+          );
+        })
+      )}
+    </g>
+  );
+}
 
-  const buildings = [
-    { id: "kasa", label: "Kasa Üretim", x: 60, y: 120, w: 120, h: 80, d: 45, color: "59,130,246", delay: 400 },
-    { id: "fabrika", label: "Ana Fabrika & Montaj", x: 220, y: 95, w: 160, h: 100, d: 55, color: "16,185,129", delay: 600 },
-    { id: "yonetim", label: "Yönetim", x: 420, y: 125, w: 100, h: 60, d: 38, color: "245,158,11", delay: 800 },
-  ];
+// ── Isometric Building Component ─────────────────────────────────────────
+function IsometricBuilding({
+  label,
+  sublabel,
+  x, y,
+  width, height, depth,
+  roofColor, wallLeftColor, wallRightColor, accentColor,
+  hovered,
+  onHover,
+  onLeave,
+  chimneyX,
+  windowConfig,
+  statusDotOffset,
+}: {
+  label: string;
+  sublabel: string;
+  x: number; y: number;
+  width: number; height: number; depth: number;
+  roofColor: string; wallLeftColor: string; wallRightColor: string; accentColor: string;
+  hovered: boolean;
+  onHover: () => void;
+  onLeave: () => void;
+  chimneyX?: number;
+  windowConfig?: { x: number; y: number; cols: number; rows: number };
+  statusDotOffset?: { x: number; y: number };
+}) {
+  // Isometric projection helpers
+  const isoX = (lx: number, ly: number) => (lx - ly) * 0.866;
+  const isoY = (lx: number, ly: number, lz: number) => (lx + ly) * 0.5 - lz;
+
+  const hw = width / 2;
+  const hd = depth / 2;
+
+  // Top face
+  const topFace = [
+    [isoX(-hw, -hd), isoY(-hw, -hd, height)],
+    [isoX(hw, -hd), isoY(hw, -hd, height)],
+    [isoX(hw, hd), isoY(hw, hd, height)],
+    [isoX(-hw, hd), isoY(-hw, hd, height)],
+  ].map(p => `${p[0]},${p[1]}`).join(" ");
+
+  // Left face
+  const leftFace = [
+    [isoX(-hw, hd), isoY(-hw, hd, height)],
+    [isoX(-hw, hd), isoY(-hw, hd, 0)],
+    [isoX(-hw, -hd), isoY(-hw, -hd, 0)],
+    [isoX(-hw, -hd), isoY(-hw, -hd, height)],
+  ].map(p => `${p[0]},${p[1]}`).join(" ");
+
+  // Right face
+  const rightFace = [
+    [isoX(-hw, hd), isoY(-hw, hd, height)],
+    [isoX(-hw, hd), isoY(-hw, hd, 0)],
+    [isoX(hw, hd), isoY(hw, hd, 0)],
+    [isoX(hw, hd), isoY(hw, hd, height)],
+  ].map(p => `${p[0]},${p[1]}`).join(" ");
+
+  const liftY = hovered ? -6 : 0;
+  const glowOpacity = hovered ? 0.5 : 0;
 
   return (
-    <svg viewBox="0 0 580 300" className="w-full max-w-[600px]">
-      {/* Ground plane */}
-      <polygon
-        points="290,260 580,200 290,140 0,200"
-        fill="rgba(255,255,255,0.015)"
-        stroke="rgba(255,255,255,0.04)"
-        strokeWidth={0.5}
+    <g
+      transform={`translate(${x}, ${y + liftY})`}
+      style={{ cursor: "default", transition: "transform 0.3s ease" }}
+      onMouseEnter={onHover}
+      onMouseLeave={onLeave}
+    >
+      {/* Glow effect */}
+      <ellipse
+        cx={0}
+        cy={isoY(0, 0, 0) + 8}
+        rx={width * 0.7}
+        ry={depth * 0.25}
+        fill={accentColor}
+        opacity={glowOpacity}
+        style={{ transition: "opacity 0.3s ease", filter: "blur(12px)" }}
       />
 
-      {/* Ground grid */}
-      {[0.2, 0.4, 0.6, 0.8].map((f) => (
-        <line
-          key={`h-${f}`}
-          x1={290 - 290 * f}
-          y1={200 - 60 * f}
-          x2={290 + 290 * f}
-          y2={200 - 60 * f}
-          stroke="rgba(255,255,255,0.025)"
-          strokeWidth={0.5}
+      {/* Shadow */}
+      <ellipse
+        cx={0}
+        cy={isoY(0, 0, 0) + 4}
+        rx={width * 0.6}
+        ry={depth * 0.2}
+        fill="rgba(0,0,0,0.4)"
+        style={{ filter: "blur(8px)" }}
+      />
+
+      {/* Left wall */}
+      <polygon points={leftFace} fill={wallLeftColor} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
+
+      {/* Right wall */}
+      <polygon points={rightFace} fill={wallRightColor} stroke="rgba(255,255,255,0.06)" strokeWidth={0.5} />
+
+      {/* Top face */}
+      <polygon points={topFace} fill={roofColor} stroke="rgba(255,255,255,0.1)" strokeWidth={0.5} />
+
+      {/* Accent stripe on top edge */}
+      <line
+        x1={isoX(-hw, -hd)}
+        y1={isoY(-hw, -hd, height)}
+        x2={isoX(hw, -hd)}
+        y2={isoY(hw, -hd, height)}
+        stroke={accentColor}
+        strokeWidth={2}
+        opacity={hovered ? 1 : 0.6}
+        style={{ transition: "opacity 0.3s ease" }}
+      />
+      <line
+        x1={isoX(-hw, -hd)}
+        y1={isoY(-hw, -hd, height)}
+        x2={isoX(-hw, hd)}
+        y2={isoY(-hw, hd, height)}
+        stroke={accentColor}
+        strokeWidth={1.5}
+        opacity={hovered ? 0.8 : 0.4}
+        style={{ transition: "opacity 0.3s ease" }}
+      />
+
+      {/* Windows */}
+      {windowConfig && (
+        <WindowGrid
+          x={windowConfig.x}
+          y={windowConfig.y}
+          cols={windowConfig.cols}
+          rows={windowConfig.rows}
+          w={6}
+          h={5}
+          gap={4}
         />
-      ))}
+      )}
 
-      {buildings.map((b) => {
-        const isHovered = hovered === b.id;
-        const baseOpacity = isHovered ? 1 : 0.75;
-        const glowOpacity = isHovered ? 0.12 : 0;
+      {/* Chimney */}
+      {chimneyX != null && (
+        <>
+          <rect
+            x={chimneyX}
+            y={isoY(0, 0, height) - 22}
+            width={6}
+            height={18}
+            fill={wallLeftColor}
+            stroke="rgba(255,255,255,0.05)"
+            strokeWidth={0.5}
+          />
+          <SmokeParticles x={chimneyX + 3} y={isoY(0, 0, height) - 24} />
+        </>
+      )}
 
-        return (
-          <g
-            key={b.id}
-            onMouseEnter={() => setHovered(b.id)}
-            onMouseLeave={() => setHovered(null)}
-            className="cursor-default"
-            style={{
-              opacity: ready ? 1 : 0,
-              transform: ready ? "translateY(0)" : "translateY(20px)",
-              transition: `opacity 0.8s ease ${b.delay}ms, transform 0.8s ease ${b.delay}ms`,
-            }}
+      {/* Status dot */}
+      <StatusDot
+        x={statusDotOffset?.x ?? isoX(hw, -hd) - 4}
+        y={statusDotOffset?.y ?? isoY(hw, -hd, height) - 8}
+      />
+
+      {/* Tooltip label */}
+      {hovered && (
+        <g>
+          <rect
+            x={-60}
+            y={isoY(0, 0, height) - 52}
+            width={120}
+            height={36}
+            rx={6}
+            fill="rgba(15,15,25,0.92)"
+            stroke={accentColor}
+            strokeWidth={1}
+          />
+          <text
+            x={0}
+            y={isoY(0, 0, height) - 38}
+            textAnchor="middle"
+            fill="white"
+            fontSize={11}
+            fontWeight={600}
+            fontFamily="Inter, system-ui, sans-serif"
           >
-            {/* Glow */}
-            <ellipse
-              cx={b.x + b.w / 2}
-              cy={b.y + b.h + 8}
-              rx={b.w * 0.6}
-              ry={14}
-              fill={`rgba(${b.color},${glowOpacity})`}
-              style={{ filter: "blur(10px)", transition: "fill 0.3s" }}
-            />
-
-            {/* Top face — glass effect */}
-            <polygon
-              points={`${b.x + b.w / 2},${b.y - b.d} ${b.x + b.w},${b.y - b.d / 2} ${b.x + b.w / 2},${b.y} ${b.x},${b.y - b.d / 2}`}
-              fill={`rgba(${b.color},${baseOpacity * 0.35})`}
-              stroke={`rgba(${b.color},${baseOpacity * 0.5})`}
-              strokeWidth={0.5}
-              style={{ transition: "fill 0.3s, stroke 0.3s" }}
-            />
-
-            {/* Front face — glass */}
-            <polygon
-              points={`${b.x},${b.y - b.d / 2} ${b.x + b.w / 2},${b.y} ${b.x + b.w / 2},${b.y + b.h} ${b.x},${b.y + b.h - b.d / 2}`}
-              fill={`rgba(${b.color},${baseOpacity * 0.15})`}
-              stroke={`rgba(${b.color},${baseOpacity * 0.3})`}
-              strokeWidth={0.5}
-              style={{ transition: "fill 0.3s, stroke 0.3s" }}
-            />
-
-            {/* Right face — glass */}
-            <polygon
-              points={`${b.x + b.w / 2},${b.y} ${b.x + b.w},${b.y - b.d / 2} ${b.x + b.w},${b.y + b.h - b.d / 2} ${b.x + b.w / 2},${b.y + b.h}`}
-              fill={`rgba(${b.color},${baseOpacity * 0.1})`}
-              stroke={`rgba(${b.color},${baseOpacity * 0.25})`}
-              strokeWidth={0.5}
-              style={{ transition: "fill 0.3s, stroke 0.3s" }}
-            />
-
-            {/* Window strips — front */}
-            {Array.from({ length: Math.floor(b.h / 24) }).map((_, i) => (
-              <line
-                key={`fw-${i}`}
-                x1={b.x + 10}
-                y1={b.y - b.d / 2 + 16 + i * 24}
-                x2={b.x + b.w / 2 - 10}
-                y2={b.y + 16 + i * 24}
-                stroke={`rgba(${b.color},${baseOpacity * 0.2})`}
-                strokeWidth={4}
-                strokeLinecap="round"
-                style={{ transition: "stroke 0.3s" }}
-              />
-            ))}
-
-            {/* Window strips — right */}
-            {Array.from({ length: Math.floor(b.h / 24) }).map((_, i) => (
-              <line
-                key={`rw-${i}`}
-                x1={b.x + b.w / 2 + 10}
-                y1={b.y + 16 + i * 24}
-                x2={b.x + b.w - 10}
-                y2={b.y - b.d / 2 + 16 + i * 24}
-                stroke={`rgba(${b.color},${baseOpacity * 0.12})`}
-                strokeWidth={3}
-                strokeLinecap="round"
-                style={{ transition: "stroke 0.3s" }}
-              />
-            ))}
-
-            {/* Chimney for main factory */}
-            {b.id === "fabrika" && (
-              <>
-                <rect
-                  x={b.x + b.w / 2 - 5}
-                  y={b.y - b.d - 18}
-                  width={10}
-                  height={18}
-                  rx={1}
-                  fill={`rgba(${b.color},${baseOpacity * 0.2})`}
-                  stroke={`rgba(${b.color},${baseOpacity * 0.3})`}
-                  strokeWidth={0.5}
-                />
-                <circle
-                  cx={b.x + b.w / 2}
-                  cy={b.y - b.d - 22}
-                  r={5}
-                  fill={`rgba(${b.color},0.08)`}
-                  style={{ filter: "blur(3px)" }}
-                >
-                  <animate
-                    attributeName="cy"
-                    values={`${b.y - b.d - 22};${b.y - b.d - 38}`}
-                    dur="3s"
-                    repeatCount="indefinite"
-                  />
-                  <animate attributeName="opacity" values="0.15;0" dur="3s" repeatCount="indefinite" />
-                  <animate attributeName="r" values="5;12" dur="3s" repeatCount="indefinite" />
-                </circle>
-              </>
-            )}
-
-            {/* Label */}
-            <text
-              x={b.x + b.w / 2}
-              y={b.y + b.h + 20}
-              textAnchor="middle"
-              fill={`rgba(${b.color},${isHovered ? 0.9 : 0.55})`}
-              fontSize={11}
-              fontWeight={500}
-              letterSpacing="0.03em"
-              style={{ transition: "fill 0.3s" }}
-            >
-              {b.label}
-            </text>
-
-            {/* Active indicator */}
-            <circle
-              cx={b.x + b.w / 2}
-              cy={b.y + b.h + 30}
-              r={2.5}
-              fill={`rgba(${b.color},${isHovered ? 0.8 : 0.3})`}
-              style={{ transition: "fill 0.3s" }}
-            >
-              <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
-            </circle>
-
-            {/* Connection lines between buildings */}
-            {b.id === "kasa" && (
-              <line
-                x1={b.x + b.w}
-                y1={b.y + b.h / 2}
-                x2={220}
-                y2={95 + 100 / 2}
-                stroke="rgba(255,255,255,0.05)"
-                strokeWidth={0.5}
-                strokeDasharray="4 4"
-              />
-            )}
-            {b.id === "fabrika" && (
-              <line
-                x1={b.x + b.w}
-                y1={b.y + b.h / 2}
-                x2={420}
-                y2={125 + 60 / 2}
-                stroke="rgba(255,255,255,0.05)"
-                strokeWidth={0.5}
-                strokeDasharray="4 4"
-              />
-            )}
-          </g>
-        );
-      })}
-    </svg>
+            {label}
+          </text>
+          <text
+            x={0}
+            y={isoY(0, 0, height) - 24}
+            textAnchor="middle"
+            fill="rgba(255,255,255,0.5)"
+            fontSize={8.5}
+            fontFamily="Inter, system-ui, sans-serif"
+          >
+            {sublabel}
+          </text>
+        </g>
+      )}
+    </g>
   );
 }
 
-/* ──────────────────────── MAIN PAGE ──────────────────────────────── */
-
-export default function CukurovaOverview() {
-  const [ready, setReady] = useState(false);
-
-  useEffect(() => {
-    const t = setTimeout(() => setReady(true), 300);
-    return () => clearTimeout(t);
-  }, []);
+// ── Flow Arrow ───────────────────────────────────────────────────────────
+function FlowArrow({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
+  const midX = (x1 + x2) / 2;
+  const midY = (y1 + y2) / 2;
+  const dx = x2 - x1;
+  const dy = y2 - y1;
+  const len = Math.sqrt(dx * dx + dy * dy);
+  const nx = dx / len;
+  const ny = dy / len;
 
   return (
-    <div className="fixed inset-0 z-50 overflow-hidden">
-      <section
-        className="relative min-h-screen flex flex-col items-center justify-center px-6 overflow-hidden"
+    <g>
+      {/* Dashed path */}
+      <line
+        x1={x1}
+        y1={y1}
+        x2={x2}
+        y2={y2}
+        stroke="rgba(56,189,248,0.25)"
+        strokeWidth={2}
+        strokeDasharray="6 4"
+      >
+        <animate attributeName="stroke-dashoffset" values="0;-20" dur="1.5s" repeatCount="indefinite" />
+      </line>
+
+      {/* Moving dot */}
+      <circle r={3.5} fill="#38bdf8">
+        <animate attributeName="cx" values={`${x1};${x2}`} dur="2.5s" repeatCount="indefinite" />
+        <animate attributeName="cy" values={`${y1};${y2}`} dur="2.5s" repeatCount="indefinite" />
+        <animate attributeName="opacity" values="1;0.6;1" dur="2.5s" repeatCount="indefinite" />
+      </circle>
+
+      {/* Arrowhead */}
+      <polygon
+        points={`${x2},${y2} ${x2 - nx * 8 - ny * 4},${y2 - ny * 8 + nx * 4} ${x2 - nx * 8 + ny * 4},${y2 - ny * 8 - nx * 4}`}
+        fill="rgba(56,189,248,0.5)"
+      />
+
+      {/* Label */}
+      <text
+        x={midX}
+        y={midY - 12}
+        textAnchor="middle"
+        fill="rgba(56,189,248,0.5)"
+        fontSize={8}
+        fontFamily="Inter, system-ui, sans-serif"
+        letterSpacing="0.05em"
+      >
+        KASA AKIŞI
+      </text>
+    </g>
+  );
+}
+
+// ── Grid Pattern ─────────────────────────────────────────────────────────
+function IsometricGrid() {
+  const lines = [];
+  for (let i = -10; i <= 10; i++) {
+    lines.push(
+      <line
+        key={`a${i}`}
+        x1={i * 40 * 0.866 - 10 * 40 * 0.866}
+        y1={i * 40 * 0.5 + 10 * 40 * 0.5}
+        x2={i * 40 * 0.866 + 10 * 40 * 0.866}
+        y2={i * 40 * 0.5 - 10 * 40 * 0.5}
+        stroke="rgba(255,255,255,0.02)"
+        strokeWidth={0.5}
+      />
+    );
+    lines.push(
+      <line
+        key={`b${i}`}
+        x1={-i * 40 * 0.866 - 10 * 40 * 0.866}
+        y1={i * 40 * 0.5 + 10 * 40 * 0.5}
+        x2={-i * 40 * 0.866 + 10 * 40 * 0.866}
+        y2={i * 40 * 0.5 - 10 * 40 * 0.5}
+        stroke="rgba(255,255,255,0.02)"
+        strokeWidth={0.5}
+      />
+    );
+  }
+  return <g>{lines}</g>;
+}
+
+// ── Main Component ───────────────────────────────────────────────────────
+export default function CukurovaOverview() {
+  const [hovered, setHovered] = useState<string | null>(null);
+
+  return (
+    <div
+      style={{
+        background: "#0a0a0f",
+        minHeight: "100vh",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        fontFamily: "Inter, system-ui, -apple-system, sans-serif",
+        overflow: "hidden",
+        position: "relative",
+      }}
+    >
+      {/* Ambient gradient orbs */}
+      <div
         style={{
-          background:
-            "linear-gradient(145deg, #0F172A 0%, #1A1A2E 50%, #0F172A 100%)",
+          position: "absolute",
+          top: "20%",
+          left: "30%",
+          width: 400,
+          height: 400,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(56,189,248,0.04) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+      <div
+        style={{
+          position: "absolute",
+          bottom: "20%",
+          right: "25%",
+          width: 500,
+          height: 500,
+          borderRadius: "50%",
+          background: "radial-gradient(circle, rgba(139,92,246,0.03) 0%, transparent 70%)",
+          pointerEvents: "none",
+        }}
+      />
+
+      {/* Header */}
+      <motion.div
+        initial={{ opacity: 0, y: -20 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.6, ease: "easeOut" }}
+        style={{ textAlign: "center", marginBottom: 12, position: "relative", zIndex: 10 }}
+      >
+        <h1
+          style={{
+            fontSize: 22,
+            fontWeight: 700,
+            color: "rgba(255,255,255,0.95)",
+            letterSpacing: "-0.02em",
+            margin: 0,
+          }}
+        >
+          Çukurova Isı Sistemleri
+        </h1>
+        <p
+          style={{
+            fontSize: 13,
+            color: "rgba(255,255,255,0.35)",
+            letterSpacing: "0.08em",
+            textTransform: "uppercase",
+            margin: "4px 0 0 0",
+            fontWeight: 500,
+          }}
+        >
+          Operations Intelligence Platform
+        </p>
+      </motion.div>
+
+      {/* Status bar */}
+      <motion.div
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.3, duration: 0.5 }}
+        style={{
+          display: "flex",
+          gap: 20,
+          marginBottom: 32,
+          position: "relative",
+          zIndex: 10,
         }}
       >
-        <ParticleGrid />
+        {[
+          { label: "3 hat aktif", dot: "#10b981" },
+          { label: "12 operatör", dot: "#38bdf8" },
+          { label: "Pik sezon 26 hafta", dot: "#f59e0b" },
+        ].map((item) => (
+          <div
+            key={item.label}
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 6,
+              fontSize: 12,
+              color: "rgba(255,255,255,0.45)",
+              fontWeight: 500,
+            }}
+          >
+            <span
+              style={{
+                width: 6,
+                height: 6,
+                borderRadius: "50%",
+                background: item.dot,
+                display: "inline-block",
+              }}
+            />
+            {item.label}
+          </div>
+        ))}
+      </motion.div>
 
-        {/* ── Title ── */}
-        <div
-          className="relative z-10 mb-3 text-center transition-all duration-1000"
-          style={{
-            opacity: ready ? 1 : 0,
-            transform: ready ? "translateY(0)" : "translateY(20px)",
-          }}
+      {/* Isometric SVG Scene */}
+      <motion.div
+        initial={{ opacity: 0, scale: 0.95 }}
+        animate={{ opacity: 1, scale: 1 }}
+        transition={{ delay: 0.2, duration: 0.7, ease: "easeOut" }}
+        style={{ position: "relative", zIndex: 10 }}
+      >
+        <svg
+          viewBox="-400 -220 800 440"
+          width={800}
+          height={440}
+          style={{ maxWidth: "90vw", overflow: "visible" }}
         >
-          <h1 className="text-sm sm:text-base font-semibold tracking-[0.3em] uppercase text-blue-400/70">
-            Çukurova Isı Sistemleri
-          </h1>
-        </div>
+          <defs>
+            <filter id="glow-teal">
+              <feGaussianBlur stdDeviation="4" result="blur" />
+              <feComposite in="SourceGraphic" in2="blur" operator="over" />
+            </filter>
+          </defs>
 
-        <div
-          className="relative z-10 mb-10 text-center transition-all duration-1000 delay-150"
-          style={{
-            opacity: ready ? 1 : 0,
-            transform: ready ? "translateY(0)" : "translateY(20px)",
-          }}
-        >
-          <h2 className="text-xl sm:text-2xl lg:text-3xl font-bold text-white tracking-wide">
-            OPERATIONS INTELLIGENCE PLATFORM
-          </h2>
-        </div>
+          {/* Isometric grid */}
+          <IsometricGrid />
 
-        {/* ── Stats ── */}
-        <div
-          className="relative z-10 flex items-center gap-4 sm:gap-8 mb-12 transition-all duration-1000 delay-300"
-          style={{
-            opacity: ready ? 1 : 0,
-            transform: ready ? "translateY(0)" : "translateY(15px)",
-          }}
-        >
-          {[
-            { value: "3", label: "hat aktif", color: "16,185,129" },
-            { value: "12", label: "operatör", color: "59,130,246" },
-            { value: "Pik sezon", label: "26 hafta", color: "245,158,11" },
-          ].map((s, i) => (
-            <div key={i} className="flex items-center gap-3">
-              {i > 0 && <div className="w-px h-5 bg-white/10" />}
-              <div className="flex items-center gap-2">
-                <div className="relative">
-                  <div
-                    className="w-2 h-2 rounded-full"
-                    style={{ backgroundColor: `rgba(${s.color},0.8)` }}
-                  />
-                  <div
-                    className="absolute inset-0 w-2 h-2 rounded-full animate-ping"
-                    style={{ backgroundColor: `rgba(${s.color},0.4)` }}
-                  />
-                </div>
-                <span className="text-white font-semibold text-sm sm:text-base">{s.value}</span>
-                <span className="text-slate-400 text-xs sm:text-sm">{s.label}</span>
-              </div>
-            </div>
-          ))}
-        </div>
+          {/* Ground plane */}
+          <ellipse
+            cx={0}
+            cy={120}
+            rx={350}
+            ry={60}
+            fill="rgba(255,255,255,0.01)"
+            stroke="rgba(255,255,255,0.03)"
+            strokeWidth={0.5}
+          />
 
-        {/* ── Isometric Factory ── */}
-        <div
-          className="relative z-10 w-full max-w-[600px] px-4 transition-all duration-1000 delay-500"
-          style={{
-            opacity: ready ? 1 : 0,
-            transform: ready ? "translateY(0) scale(1)" : "translateY(30px) scale(0.97)",
-          }}
-        >
-          <IsometricFactory ready={ready} />
-        </div>
+          {/* Building 1: Kasa Üretim */}
+          <IsometricBuilding
+            label="Kasa Üretim"
+            sublabel="Production Intelligence"
+            x={-180}
+            y={30}
+            width={100}
+            height={70}
+            depth={80}
+            roofColor="#1e293b"
+            wallLeftColor="#1a2332"
+            wallRightColor="#151d2b"
+            accentColor="#38bdf8"
+            hovered={hovered === "kasa"}
+            onHover={() => setHovered("kasa")}
+            onLeave={() => setHovered(null)}
+            chimneyX={-20}
+            windowConfig={{ x: -48, y: -12, cols: 4, rows: 2 }}
+            statusDotOffset={{ x: 50, y: -48 }}
+          />
 
-        {/* ── Bottom label ── */}
-        <div
-          className="relative z-10 mt-8 text-center transition-all duration-1000"
-          style={{
-            opacity: ready ? 1 : 0,
-            transitionDelay: "1200ms",
-          }}
-        >
-          <p className="text-sm text-slate-500 tracking-wide">
-            Tesis genel görünümü
-          </p>
-        </div>
-      </section>
+          {/* Flow arrow */}
+          <FlowArrow x1={-100} y1={40} x2={40} y2={10} />
+
+          {/* Building 2: Ana Fabrika & Montaj */}
+          <IsometricBuilding
+            label="Ana Fabrika & Montaj"
+            sublabel="Workforce Scheduling"
+            x={140}
+            y={0}
+            width={140}
+            height={90}
+            depth={100}
+            roofColor="#1e293b"
+            wallLeftColor="#1a2332"
+            wallRightColor="#151d2b"
+            accentColor="#8b5cf6"
+            hovered={hovered === "fabrika"}
+            onHover={() => setHovered("fabrika")}
+            onLeave={() => setHovered(null)}
+            chimneyX={30}
+            windowConfig={{ x: -60, y: -25, cols: 5, rows: 3 }}
+            statusDotOffset={{ x: 72, y: -60 }}
+          />
+
+          {/* Building 3: Yönetim */}
+          <IsometricBuilding
+            label="Yönetim"
+            sublabel="Financial Simulation"
+            x={260}
+            y={-100}
+            width={70}
+            height={50}
+            depth={55}
+            roofColor="#1e293b"
+            wallLeftColor="#1f2937"
+            wallRightColor="#1a2332"
+            accentColor="#f59e0b"
+            hovered={hovered === "yonetim"}
+            onHover={() => setHovered("yonetim")}
+            onLeave={() => setHovered(null)}
+            windowConfig={{ x: -28, y: -5, cols: 3, rows: 2 }}
+            statusDotOffset={{ x: 34, y: -35 }}
+          />
+
+          {/* Building labels (always visible) */}
+          <text x={-180} y={115} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={10} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+            Kasa Üretim
+          </text>
+          <text x={140} y={105} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={10} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+            Ana Fabrika & Montaj
+          </text>
+          <text x={260} y={-10} textAnchor="middle" fill="rgba(255,255,255,0.4)" fontSize={9} fontWeight={600} fontFamily="Inter, system-ui, sans-serif">
+            Yönetim
+          </text>
+        </svg>
+      </motion.div>
+
+      {/* Bottom label */}
+      <motion.p
+        initial={{ opacity: 0 }}
+        animate={{ opacity: 1 }}
+        transition={{ delay: 0.8, duration: 0.5 }}
+        style={{
+          fontSize: 12,
+          color: "rgba(255,255,255,0.25)",
+          marginTop: 24,
+          letterSpacing: "0.04em",
+          position: "relative",
+          zIndex: 10,
+        }}
+      >
+        Tesis genel görünümü
+      </motion.p>
     </div>
   );
 }
