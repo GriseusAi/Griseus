@@ -380,7 +380,7 @@ export default function CukurovaOverview() {
           <IsometricFactory ready={ready} />
         </div>
 
-        {/* ── Bottom prompt ── */}
+        {/* ── Bottom label ── */}
         <div
           className="relative z-10 mt-8 text-center transition-all duration-1000"
           style={{
@@ -389,7 +389,7 @@ export default function CukurovaOverview() {
           }}
         >
           <p className="text-sm text-slate-500 tracking-wide">
-            Bir bölüme girmek için tıklayın
+            Tesis genel görünümü
           </p>
         </div>
       </section>
