@@ -10,6 +10,7 @@ import CukurovaOverview from "@/pages/cukurova-overview";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ForgotPasswordPage from "@/pages/forgot-password";
+import EnginePage from "@/pages/engine";
 
 function AppContent() {
   const [location] = useLocation();
@@ -29,6 +30,7 @@ function AppContent() {
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
           <Route path="/forgot-password" component={ForgotPasswordPage} />
+          <Route path="/engine" component={EnginePage} />
           <Route>{() => <OnboardingPage />}</Route>
         </Switch>
       </motion.div>
