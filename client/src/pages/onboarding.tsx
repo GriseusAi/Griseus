@@ -358,13 +358,19 @@ function FloatingNav({
         </span>
         <div className="flex items-center gap-3 sm:gap-4">
           <button
-            onClick={onGetStarted}
+            onClick={() => setLocation("/login")}
+            className="px-4 sm:px-5 py-2 rounded-full text-xs sm:text-sm font-medium text-slate-300 hover:text-white border border-white/10 hover:border-white/25 transition-all hover:scale-105 active:scale-95"
+          >
+            Sign In
+          </button>
+          <button
+            onClick={() => setLocation("/register")}
             className="onb-nav-btn relative px-4 sm:px-6 py-2 rounded-full text-xs sm:text-sm font-semibold text-white transition-all hover:scale-105 active:scale-95"
             style={{
               background: "linear-gradient(135deg, #3B82F6, #10B981)",
             }}
           >
-            Get Started
+            Sign Up
           </button>
         </div>
       </div>

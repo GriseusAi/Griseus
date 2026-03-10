@@ -7,6 +7,9 @@ import { ThemeProvider } from "@/lib/theme";
 import { motion, AnimatePresence } from "framer-motion";
 import OnboardingPage from "@/pages/onboarding";
 import CukurovaOverview from "@/pages/cukurova-overview";
+import LoginPage from "@/pages/login";
+import RegisterPage from "@/pages/register";
+import ForgotPasswordPage from "@/pages/forgot-password";
 
 function AppContent() {
   const [location] = useLocation();
@@ -23,6 +26,9 @@ function AppContent() {
         <Switch>
           <Route path="/" component={OnboardingPage} />
           <Route path="/cukurova" component={CukurovaOverview} />
+          <Route path="/login" component={LoginPage} />
+          <Route path="/register" component={RegisterPage} />
+          <Route path="/forgot-password" component={ForgotPasswordPage} />
           <Route>{() => <OnboardingPage />}</Route>
         </Switch>
       </motion.div>

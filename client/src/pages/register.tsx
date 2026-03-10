@@ -70,7 +70,7 @@ export default function RegisterPage() {
       const res = await apiRequest("POST", "/api/register", body);
       const user = await res.json();
       await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      setLocation(user.role === "company" ? "/dashboard" : "/mobile");
+      setLocation("/cukurova");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     }
