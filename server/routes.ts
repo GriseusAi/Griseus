@@ -2535,19 +2535,33 @@ export async function registerRoutes(
     try {
       if (!req.file) return res.status(400).json({ success: false, error: "Dosya yüklenmedi" });
 
-      const fileName = req.file.originalname;
+      // Fix multer latin1 encoding for Turkish characters
+      const rawName = req.file.originalname;
+      const fileName = Buffer.from(rawName, 'latin1').toString('utf8');
       const buffer = req.file.buffer;
+
+      console.log("[Ingest] Raw filename:", rawName);
+      console.log("[Ingest] Decoded filename:", fileName);
+
+      // Check file extension
+      const ext = fileName.toLowerCase().split('.').pop();
+      if (!ext || !['xls', 'xlsx', 'csv'].includes(ext)) {
+        return res.status(400).json({ success: false, error: `Desteklenmeyen dosya formatı: .${ext}. Desteklenen: .xls, .xlsx, .csv` });
+      }
 
       // Detect parser from filename
       const parser = detectParser(fileName);
       if (!parser) return res.status(400).json(getIngestError(fileName));
 
-      // Parse the file
+      console.log("[Ingest] Matched parser:", parser.name);
+
+      // Parse the file — use "binary" type for .xls compatibility
       const wb = XLSX.read(buffer, { type: "buffer" });
       const result = await parser.fn(wb, fileName);
 
       res.json(result);
     } catch (error: any) {
+      console.error("[Ingest] Parse error:", error);
       res.status(500).json({ success: false, error: error.message || "Bilinmeyen hata" });
     }
   });
