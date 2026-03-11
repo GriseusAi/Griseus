@@ -2429,5 +2429,98 @@ export async function registerRoutes(
     }
   });
 
+  // POST /api/v1/forecast/weekly — Haftalık üretim tahmini
+  app.post("/api/v1/forecast/weekly", async (req, res) => {
+    try {
+      const { line_id, planned_qty } = req.body;
+      if (!line_id || !planned_qty) return res.status(400).json({ message: "line_id and planned_qty are required" });
+
+      const lineId = Number(line_id);
+      const planQty = Number(planned_qty);
+
+      const [line] = await db.select().from(productionLines).where(eq(productionLines.id, lineId));
+      if (!line) return res.status(404).json({ message: "Line not found" });
+
+      const scheds = await db.select().from(schedules).where(eq(schedules.lineId, lineId));
+      if (scheds.length === 0) return res.json({ line_id: lineId, line_name: line.name, message: "No schedule data" });
+
+      // Gerçekleşme oranları
+      const realizationRates = scheds
+        .filter((s) => (s.plannedQty || 0) > 0)
+        .map((s) => (s.actualQty || 0) / (s.plannedQty || 1));
+      const avgRealizationRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
+      const minRate = Math.min(...realizationRates);
+      const maxRate = Math.max(...realizationRates);
+
+      // Tahmin
+      const predictedOutput = Math.round(planQty * avgRealizationRate);
+      const gap = predictedOutput - planQty;
+      const isRealistic = avgRealizationRate >= 0.85;
+      const confidence = Math.round(avgRealizationRate * 100);
+
+      // Senaryolar
+      const baseUnitTime = Number(line.currentUnitTimeMin) || 1;
+      const theoreticalUnitTime = Number(line.capacityUnitTimeMin) || baseUnitTime;
+      const unitTimeImprovedRate = avgRealizationRate * (baseUnitTime / theoreticalUnitTime);
+      const crewBoostRate = Math.min(avgRealizationRate * 1.15, 1.0);
+
+      const scenarios = [
+        {
+          name: "Mevcut Durum",
+          description: "Mevcut performans ile devam",
+          predicted_output: predictedOutput,
+          realization_rate: Math.round(avgRealizationRate * 100),
+        },
+        {
+          name: "Birim Süre İyileştirme",
+          description: `Birim süre ${baseUnitTime}dk → ${theoreticalUnitTime}dk`,
+          predicted_output: Math.round(planQty * Math.min(unitTimeImprovedRate, 1.0)),
+          realization_rate: Math.round(Math.min(unitTimeImprovedRate, 1.0) * 100),
+        },
+        {
+          name: "+2 Kadro",
+          description: "Ek 2 personel ile verimlilik artışı",
+          predicted_output: Math.round(planQty * crewBoostRate),
+          realization_rate: Math.round(crewBoostRate * 100),
+        },
+      ];
+
+      // Öneri
+      let recommendation = "";
+      if (avgRealizationRate >= 0.95) {
+        recommendation = "Mevcut performans hedeflere çok yakın. Planlanan miktar gerçekçi.";
+      } else if (avgRealizationRate >= 0.85) {
+        recommendation = `Ortalama gerçekleşme %${confidence}. Plan miktarını %${Math.round((1 / avgRealizationRate - 1) * 100)} artırarak hedefi tutturabilirsiniz.`;
+      } else {
+        recommendation = `Gerçekleşme oranı düşük (%${confidence}). Birim süre iyileştirmesi veya kadro takviyesi önerilir.`;
+      }
+
+      // Haftalık tarihçe (son 8 hafta)
+      const weeklyHistory = scheds.slice(-8).map((s) => ({
+        period: s.periodValue,
+        planned: s.plannedQty || 0,
+        actual: s.actualQty || 0,
+        realization_pct: (s.plannedQty || 0) > 0 ? Math.round(((s.actualQty || 0) / (s.plannedQty || 1)) * 100) : 0,
+      }));
+
+      res.json({
+        line_id: lineId,
+        line_name: line.name,
+        planned_qty: planQty,
+        avg_realization_rate: Math.round(avgRealizationRate * 100),
+        predicted_output: predictedOutput,
+        gap,
+        is_realistic: isRealistic,
+        confidence,
+        scenarios,
+        recommendation,
+        weekly_history: weeklyHistory,
+        stats: { min_rate: Math.round(minRate * 100), max_rate: Math.round(maxRate * 100), total_weeks: scheds.length },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   return httpServer;
 }

@@ -50,6 +50,14 @@ interface BottleneckResult {
   worst_week: { period_value: string; planned: number; actual: number; deviation_pct: number };
   insights: string[];
 }
+interface ForecastResult {
+  line_name: string; planned_qty: number; avg_realization_rate: number;
+  predicted_output: number; gap: number; is_realistic: boolean; confidence: number;
+  scenarios: { name: string; description: string; predicted_output: number; realization_rate: number }[];
+  recommendation: string;
+  weekly_history: { period: string; planned: number; actual: number; realization_pct: number }[];
+  stats: { min_rate: number; max_rate: number; total_weeks: number };
+}
 interface WorkforceRisk {
   total_workers: number; unique_capabilities: number; risk_score: number; risk_level: string;
   single_point_failures: { capability_name: string; sole_worker_name: string }[];
@@ -211,6 +219,10 @@ export default function OntologyMap() {
   const [simBaselines, setSimBaselines] = useState({ worker_count: 7, unit_time_min: 13, daily_hours: 9, monthly_days: 22, production_months: 10 });
   const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [bottleneck, setBottleneck] = useState<BottleneckResult | null>(null);
+  const [forecastLineId, setForecastLineId] = useState<number>(1);
+  const [forecastPlanQty, setForecastPlanQty] = useState<string>("");
+  const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
+  const [forecastLoading, setForecastLoading] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Load fonts ──
@@ -558,9 +570,21 @@ export default function OntologyMap() {
           if (arr.length === 0) return 0;
           return Math.round(arr.map(s => { const p = s.plannedQty || 1; return ((s.actualQty || 0) - p) / p * 100; }).reduce((a, b) => a + b, 0) / arr.length);
         };
-        const eTotal = eScheds.reduce((s: number, x: any) => s + (x.plannedQty || 0), 0);
-        const eActual = eScheds.reduce((s: number, x: any) => s + (x.actualQty || 0), 0);
-        const realizationPct = eTotal > 0 ? Math.round((eActual / eTotal) * 100) : 0;
+
+        const runForecast = async () => {
+          const qty = Number(forecastPlanQty);
+          if (!qty || qty <= 0) return;
+          setForecastLoading(true);
+          try {
+            const r = await fetch("/api/v1/forecast/weekly", {
+              method: "POST", headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ line_id: forecastLineId, planned_qty: qty }),
+            });
+            const data = await r.json();
+            setForecastResult(data);
+          } catch { /* ignore */ }
+          setForecastLoading(false);
+        };
 
         return (
           <div>
@@ -571,6 +595,109 @@ export default function OntologyMap() {
                 <KV label="Gazlı sapma" value={`%${avgDev(gScheds)}`} color={avgDev(gScheds) < -15 ? C.err : C.ok} />
               </>}
             </PanelSection>
+
+            {/* Plan Girişi */}
+            <PanelSection title="Haftalık Plan Tahmini" color={C.schedule}>
+              <div style={{ display: "flex", gap: 6, marginBottom: 10 }}>
+                {[{ id: 1, label: "Elektrikli" }, { id: 2, label: "Gazlı" }].map((l) => (
+                  <button key={l.id} onClick={() => { setForecastLineId(l.id); setForecastResult(null); }}
+                    style={{ flex: 1, padding: "6px 0", fontSize: 11, fontWeight: 600, fontFamily: mono, border: `1px solid ${forecastLineId === l.id ? C.schedule : "#333"}`,
+                      background: forecastLineId === l.id ? `${C.schedule}15` : "transparent", color: forecastLineId === l.id ? C.schedule : C.mid,
+                      borderRadius: 6, cursor: "pointer", transition: "all 0.2s" }}>
+                    {l.label}
+                  </button>
+                ))}
+              </div>
+              <div style={{ display: "flex", gap: 6 }}>
+                <input type="number" placeholder="Plan miktarı" value={forecastPlanQty}
+                  onChange={(e) => setForecastPlanQty(e.target.value)}
+                  onKeyDown={(e) => e.key === "Enter" && runForecast()}
+                  style={{ flex: 1, padding: "8px 10px", fontSize: 12, fontFamily: mono, background: "rgba(255,255,255,0.03)",
+                    border: "1px solid #333", borderRadius: 6, color: C.white, outline: "none" }} />
+                <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
+                  style={{ padding: "8px 14px", fontSize: 11, fontWeight: 700, fontFamily: mono, background: forecastLoading ? "#333" : C.schedule,
+                    color: "#000", border: "none", borderRadius: 6, cursor: forecastLoading ? "wait" : "pointer", whiteSpace: "nowrap" }}>
+                  {forecastLoading ? "..." : "Tahmin Et"}
+                </button>
+              </div>
+            </PanelSection>
+
+            {/* Tahmin Sonucu */}
+            {forecastResult && forecastResult.predicted_output && (
+              <>
+                <PanelSection title="Tahmin Sonucu" color={forecastResult.is_realistic ? C.ok : C.warn}>
+                  <div style={{ display: "flex", justifyContent: "center", alignItems: "center", gap: 16, marginBottom: 12 }}>
+                    <div style={{ textAlign: "center" }}>
+                      <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.ok : C.warn} size={64} stroke={5} />
+                      <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono, color: C.white, marginTop: -44 }}>{forecastResult.confidence}%</div>
+                      <div style={{ fontSize: 9, color: C.dim, marginTop: 28 }}>Güven</div>
+                    </div>
+                    <div>
+                      <KV label="Plan" value={fmt(forecastResult.planned_qty)} />
+                      <KV label="Tahmin" value={fmt(forecastResult.predicted_output)} color={forecastResult.gap >= 0 ? C.ok : C.err} />
+                      <KV label="Fark" value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} color={forecastResult.gap >= 0 ? C.ok : C.err} />
+                    </div>
+                  </div>
+                </PanelSection>
+
+                {/* Senaryolar */}
+                <PanelSection title="Senaryolar">
+                  <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                    {forecastResult.scenarios.map((sc, i) => (
+                      <div key={i} style={{ padding: "10px 12px", background: i === 0 ? `${C.schedule}08` : "rgba(255,255,255,0.02)",
+                        border: `1px solid ${i === 0 ? `${C.schedule}25` : "#222"}`, borderRadius: 8 }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                          <span style={{ fontSize: 11, fontWeight: 600, color: C.white }}>{sc.name}</span>
+                          <span style={{ fontSize: 12, fontFamily: mono, fontWeight: 700, color: sc.realization_rate >= 90 ? C.ok : sc.realization_rate >= 75 ? C.warn : C.err }}>
+                            %{sc.realization_rate}
+                          </span>
+                        </div>
+                        <div style={{ fontSize: 10, color: C.mid }}>{sc.description}</div>
+                        <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, marginTop: 4 }}>Tahmin: {fmt(sc.predicted_output)} adet</div>
+                      </div>
+                    ))}
+                  </div>
+                </PanelSection>
+
+                {/* Öneri */}
+                <PanelSection title="Öneri">
+                  <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.6, padding: "10px 12px", background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.12)", borderRadius: 8 }}>
+                    {forecastResult.recommendation}
+                  </div>
+                </PanelSection>
+
+                {/* Haftalık Tarihçe */}
+                {forecastResult.weekly_history.length > 0 && (
+                  <PanelSection title="Son Haftalar">
+                    <div style={{ overflowX: "auto" }}>
+                      <table style={{ width: "100%", fontSize: 10, fontFamily: mono, borderCollapse: "collapse" }}>
+                        <thead>
+                          <tr style={{ borderBottom: "1px solid #222" }}>
+                            <th style={{ padding: "4px 6px", textAlign: "left", color: C.dim, fontWeight: 500 }}>Hafta</th>
+                            <th style={{ padding: "4px 6px", textAlign: "right", color: C.dim, fontWeight: 500 }}>Plan</th>
+                            <th style={{ padding: "4px 6px", textAlign: "right", color: C.dim, fontWeight: 500 }}>Gerçek</th>
+                            <th style={{ padding: "4px 6px", textAlign: "right", color: C.dim, fontWeight: 500 }}>%</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {forecastResult.weekly_history.map((wh, i) => (
+                            <tr key={i} style={{ borderBottom: "1px solid #111" }}>
+                              <td style={{ padding: "4px 6px", color: C.mid }}>{wh.period}</td>
+                              <td style={{ padding: "4px 6px", textAlign: "right", color: C.white }}>{wh.planned}</td>
+                              <td style={{ padding: "4px 6px", textAlign: "right", color: C.white }}>{wh.actual}</td>
+                              <td style={{ padding: "4px 6px", textAlign: "right", color: wh.realization_pct >= 90 ? C.ok : wh.realization_pct >= 75 ? C.warn : C.err }}>
+                                {wh.realization_pct}%
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  </PanelSection>
+                )}
+              </>
+            )}
+
             {bottleneck && (
               <PanelSection title="Darboğaz" color={C.warn}>
                 <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
@@ -583,13 +710,6 @@ export default function OntologyMap() {
                 {bottleneck.insights.map((ins, i) => (
                   <div key={i} style={{ fontSize: 11, color: C.mid, marginTop: 6, display: "flex", gap: 5 }}><span style={{ color: C.warn }}>⚠</span> {ins}</div>
                 ))}
-              </PanelSection>
-            )}
-            {realizationPct > 0 && (
-              <PanelSection title="Insight">
-                <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.6, padding: "10px 12px", background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.12)", borderRadius: 8 }}>
-                  ⚡ Bu ürün karmasında ortalama gerçekleşme oranı <span style={{ color: C.white, fontWeight: 600 }}>%{realizationPct}</span>. Planlama buna göre ayarlanmalı.
-                </div>
               </PanelSection>
             )}
           </div>
