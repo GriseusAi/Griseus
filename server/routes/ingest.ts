@@ -35,24 +35,15 @@ const SUPPORTED = ["Elektrikli İmalat", "Gazlı İmalat", "Kapasite", "Personel
 
 type ParserFn = (wb: XLSX.WorkBook, fileName: string) => Promise<IngestResult>;
 
-function normalizeTurkish(str: string): string {
-  return str.toLowerCase()
-    .replace(/İ/g, "i").replace(/ı/g, "i")
-    .replace(/Ş/g, "s").replace(/ş/g, "s")
-    .replace(/Ç/g, "c").replace(/ç/g, "c")
-    .replace(/Ü/g, "u").replace(/ü/g, "u")
-    .replace(/Ö/g, "o").replace(/ö/g, "o")
-    .replace(/Ğ/g, "g").replace(/ğ/g, "g");
-}
-
 export function detectParser(fileName: string): { name: string; fn: ParserFn } | null {
-  const n = normalizeTurkish(fileName);
-  if (n.includes("elektrikli") || n.includes("elektrik")) return { name: "ElektrikliParser", fn: parseElektrikli };
-  if (n.includes("gazli") || n.includes("gazl")) return { name: "GazliParser", fn: parseGazli };
-  if (n.includes("kapasite")) return { name: "KapasiteParser", fn: parseKapasite };
-  if (n.includes("personel")) return { name: "PersonelParser", fn: parsePersonel };
-  if (n.includes("kpi")) return { name: "KPIParser", fn: parseKPI };
-  if (n.includes("is_akis") || n.includes("is akis") || n.includes("netsis")) return { name: "IsAkisParser", fn: parseIsAkis };
+  const f = fileName.toUpperCase();
+  const lo = fileName.toLowerCase();
+  if (f.includes("ELEKT") || lo.includes("elekt")) return { name: "ElektrikliParser", fn: parseElektrikli };
+  if (f.includes("GAZL") || lo.includes("gazl")) return { name: "GazliParser", fn: parseGazli };
+  if (f.includes("KAPAS") || lo.includes("kapas")) return { name: "KapasiteParser", fn: parseKapasite };
+  if (f.includes("PERSON") || lo.includes("person")) return { name: "PersonelParser", fn: parsePersonel };
+  if (f.includes("KPI") || lo.includes("kpi")) return { name: "KPIParser", fn: parseKPI };
+  if (f.includes("AKIS") || lo.includes("akis") || f.includes("NETSIS") || lo.includes("netsis")) return { name: "IsAkisParser", fn: parseIsAkis };
   return null;
 }
 
