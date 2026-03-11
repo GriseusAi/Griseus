@@ -20,7 +20,7 @@ import { db } from "./db";
 import { eq, and, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { detectParser, getIngestError } from "./routes/ingest";
+import { detectParser, getIngestError, resetToSeed } from "./routes/ingest";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -2611,6 +2611,16 @@ export async function registerRoutes(
         deleted_schedules: deletedSch,
         message: `${deletedOps} duplicate operations + ${deletedSch} duplicate schedules silindi`,
       });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
+    }
+  });
+
+  // ── POST /api/v1/ingest/reset — reset to seed data ─────────────────
+  app.post("/api/v1/ingest/reset", async (_req, res) => {
+    try {
+      const result = await resetToSeed();
+      res.json({ success: true, message: "Veriler sıfırlandı", operations: result.operations, schedules: result.schedules });
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message });
     }

@@ -4,6 +4,7 @@ import { eq, and } from "drizzle-orm";
 import {
   operations, schedules, productionLines, capacityMetrics,
   geWorkers, workerCapabilities, kpiDefinitions, kpiRecords,
+  facilities, products,
 } from "@shared/schema";
 
 /* ═══════════════════════════════════════════════════════════════════════
@@ -594,4 +595,68 @@ async function parseIsAkis(wb: XLSX.WorkBook, fileName: string): Promise<IngestR
     tables_affected: [...tables],
     summary: `${processed} kişi için yetki matrisi güncellendi (${inserted} yetki)`,
   };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   RESET TO SEED
+   ═══════════════════════════════════════════════════════════════════════ */
+
+export async function resetToSeed(): Promise<{ operations: number; schedules: number }> {
+  // Clear tables
+  await db.delete(operations);
+  await db.delete(schedules);
+
+  // Get line IDs
+  const lines = await db.select().from(productionLines);
+  const elek = lines.find(l => (l.type || "").toLowerCase() === "elektrikli");
+  const gaz = lines.find(l => (l.type || "").toLowerCase() === "gazli");
+  if (!elek || !gaz) throw new Error("Production lines not found");
+
+  // Seed operations — monthly 2025
+  const elektrikliMonthly = [1104, 1343, 979, 733, 1179, 817, 813, 1811, 1415, 2144, 1350, 717];
+  const gazliMonthly = [528, 390, 617, 215, 351, 602, 319, 545, 445, 662, 296, 121];
+
+  await db.insert(operations).values(
+    elektrikliMonthly.map((qty, i) => ({
+      lineId: elek.id, workOrderNo: `ELK-2025-${String(i + 1).padStart(2, "0")}`,
+      plannedDate: `2025-${String(i + 1).padStart(2, "0")}-01`, actualQty: qty, status: "completed",
+    }))
+  );
+  await db.insert(operations).values(
+    gazliMonthly.map((qty, i) => ({
+      lineId: gaz.id, workOrderNo: `GAZ-2025-${String(i + 1).padStart(2, "0")}`,
+      plannedDate: `2025-${String(i + 1).padStart(2, "0")}-01`, actualQty: qty, status: "completed",
+    }))
+  );
+
+  // Seed schedules — weekly plan vs actual
+  const devPct = (p: number, a: number) => p === 0 ? "0" : String(Math.round(((a - p) / p) * 100));
+
+  const elektrikliWeekly: [string, number, number][] = [
+    ["H40", 539, 539], ["H41", 550, 550], ["H42", 598, 598],
+    ["H43", 635, 572], ["H44", 275, 237], ["H45", 530, 476],
+    ["H46", 457, 357], ["H47", 436, 156], ["H48", 510, 220],
+    ["H49", 440, 403], ["H50", 437, 67], ["H51", 140, 140],
+  ];
+  const gazliWeekly: [string, number, number][] = [
+    ["H40", 189, 189], ["H41", 165, 134], ["H42", 168, 168],
+    ["H43", 177, 132], ["H44", 178, 118], ["H45", 130, 102],
+    ["H46", 146, 134], ["H47", 155, 135], ["H48", 100, 80],
+    ["H49", 120, 90], ["H50", 111, 1],
+  ];
+
+  await db.insert(schedules).values(
+    elektrikliWeekly.map(([week, planned, actual]) => ({
+      lineId: elek.id, periodType: "weekly", periodValue: week,
+      plannedQty: planned, actualQty: actual, deviationPct: devPct(planned, actual),
+    }))
+  );
+  await db.insert(schedules).values(
+    gazliWeekly.map(([week, planned, actual]) => ({
+      lineId: gaz.id, periodType: "weekly", periodValue: week,
+      plannedQty: planned, actualQty: actual, deviationPct: devPct(planned, actual),
+    }))
+  );
+
+  return { operations: elektrikliMonthly.length + gazliMonthly.length, schedules: elektrikliWeekly.length + gazliWeekly.length };
 }
