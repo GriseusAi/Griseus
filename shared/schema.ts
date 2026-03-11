@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb, serial, numeric, date } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -401,3 +401,152 @@ export const ontologyActions = pgTable("ontology_actions", {
 export const insertOntologyActionSchema = createInsertSchema(ontologyActions).omit({ id: true, createdAt: true });
 export type InsertOntologyAction = z.infer<typeof insertOntologyActionSchema>;
 export type OntologyAction = typeof ontologyActions.$inferSelect;
+
+// =============================================
+// --- Griseus Engine: Katman 02 - Ontology Database Schema ---
+// =============================================
+
+export const facilities = pgTable("facilities", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  name: text("name").notNull(),
+  type: text("type"), // factory, warehouse, office
+  location: text("location"),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertFacilitySchema = createInsertSchema(facilities).omit({ id: true, createdAt: true });
+export type InsertFacility = z.infer<typeof insertFacilitySchema>;
+export type Facility = typeof facilities.$inferSelect;
+
+export const productionLines = pgTable("production_lines", {
+  id: serial("id").primaryKey(),
+  facilityId: integer("facility_id").references(() => facilities.id),
+  name: text("name").notNull(),
+  type: text("type"), // elektrikli, gazli
+  workerCount: integer("worker_count"),
+  capacityUnitTimeMin: numeric("capacity_unit_time_min"), // teorik kapasite birim suresi dakika
+  currentUnitTimeMin: numeric("current_unit_time_min"), // mevcut birim suresi dakika
+  dailyHours: numeric("daily_hours").default("9"),
+  monthlyDays: integer("monthly_days").default(22),
+  productionMonths: integer("production_months").default(10),
+  status: text("status").default("active"),
+});
+
+export const insertProductionLineSchema = createInsertSchema(productionLines).omit({ id: true });
+export type InsertProductionLine = z.infer<typeof insertProductionLineSchema>;
+export type ProductionLine = typeof productionLines.$inferSelect;
+
+export const geWorkers = pgTable("ge_workers", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  name: text("name").notNull(),
+  department: text("department"),
+  hireDate: date("hire_date"),
+  status: text("status").default("active"),
+  trustScore: numeric("trust_score"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertGeWorkerSchema = createInsertSchema(geWorkers).omit({ id: true, createdAt: true });
+export type InsertGeWorker = z.infer<typeof insertGeWorkerSchema>;
+export type GeWorker = typeof geWorkers.$inferSelect;
+
+export const workerCapabilities = pgTable("worker_capabilities", {
+  id: serial("id").primaryKey(),
+  workerId: integer("worker_id").references(() => geWorkers.id),
+  capabilityName: text("capability_name").notNull(),
+  capabilityType: text("capability_type"), // skill, certification, authorization
+  level: integer("level").default(1),
+});
+
+export const insertWorkerCapabilitySchema = createInsertSchema(workerCapabilities).omit({ id: true });
+export type InsertWorkerCapability = z.infer<typeof insertWorkerCapabilitySchema>;
+export type WorkerCapability = typeof workerCapabilities.$inferSelect;
+
+export const products = pgTable("products", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  sku: text("sku"),
+  name: text("name").notNull(),
+  category: text("category"),
+  baseUnitTimeMin: numeric("base_unit_time_min"),
+});
+
+export const insertProductSchema = createInsertSchema(products).omit({ id: true });
+export type InsertProduct = z.infer<typeof insertProductSchema>;
+export type Product = typeof products.$inferSelect;
+
+export const operations = pgTable("operations", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id").references(() => productionLines.id),
+  productId: integer("product_id").references(() => products.id),
+  workOrderNo: text("work_order_no"),
+  serialRange: text("serial_range"),
+  plannedQty: integer("planned_qty"),
+  actualQty: integer("actual_qty"),
+  plannedDate: date("planned_date"),
+  actualDate: date("actual_date"),
+  status: text("status").default("completed"),
+  notes: text("notes"),
+});
+
+export const insertOperationSchema = createInsertSchema(operations).omit({ id: true });
+export type InsertOperation = z.infer<typeof insertOperationSchema>;
+export type Operation = typeof operations.$inferSelect;
+
+export const capacityMetrics = pgTable("capacity_metrics", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id").references(() => productionLines.id),
+  period: text("period"), // weekly, monthly, yearly
+  periodValue: text("period_value"), // H40, 2025-01, 2025
+  theoreticalMax: integer("theoretical_max"),
+  actualOutput: integer("actual_output"),
+  utilizationPct: numeric("utilization_pct"),
+  calculatedAt: timestamp("calculated_at").defaultNow(),
+});
+
+export const insertCapacityMetricSchema = createInsertSchema(capacityMetrics).omit({ id: true, calculatedAt: true });
+export type InsertCapacityMetric = z.infer<typeof insertCapacityMetricSchema>;
+export type CapacityMetric = typeof capacityMetrics.$inferSelect;
+
+export const schedules = pgTable("schedules", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id").references(() => productionLines.id),
+  periodType: text("period_type"), // weekly, monthly
+  periodValue: text("period_value"),
+  plannedQty: integer("planned_qty"),
+  actualQty: integer("actual_qty"),
+  deviationPct: numeric("deviation_pct"),
+});
+
+export const insertScheduleSchema = createInsertSchema(schedules).omit({ id: true });
+export type InsertSchedule = z.infer<typeof insertScheduleSchema>;
+export type Schedule = typeof schedules.$inferSelect;
+
+export const kpiDefinitions = pgTable("kpi_definitions", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  name: text("name").notNull(),
+  formula: text("formula"),
+  unit: text("unit"),
+  category: text("category"),
+});
+
+export const insertKpiDefinitionSchema = createInsertSchema(kpiDefinitions).omit({ id: true });
+export type InsertKpiDefinition = z.infer<typeof insertKpiDefinitionSchema>;
+export type KpiDefinition = typeof kpiDefinitions.$inferSelect;
+
+export const kpiRecords = pgTable("kpi_records", {
+  id: serial("id").primaryKey(),
+  kpiId: integer("kpi_id").references(() => kpiDefinitions.id),
+  period: text("period"),
+  target: numeric("target"),
+  actual: numeric("actual"),
+  achievementPct: numeric("achievement_pct"),
+});
+
+export const insertKpiRecordSchema = createInsertSchema(kpiRecords).omit({ id: true });
+export type InsertKpiRecord = z.infer<typeof insertKpiRecordSchema>;
+export type KpiRecord = typeof kpiRecords.$inferSelect;
