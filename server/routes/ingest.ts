@@ -84,6 +84,12 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
   const lineId = await getLineId("elektrikli");
   if (!lineId) throw new Error("Elektrikli hat bulunamadı");
 
+  // Önce bu hat'ın mevcut verilerini toptan sil
+  console.log("[ElektrikliParser] Deleting all existing data for lineId:", lineId);
+  await db.delete(operations).where(eq(operations.lineId, lineId));
+  await db.delete(schedules).where(eq(schedules.lineId, lineId));
+  console.log("[ElektrikliParser] Cleared operations + schedules for lineId:", lineId);
+
   let processed = 0, inserted = 0, updated = 0;
   const tables: Set<string> = new Set();
 
@@ -130,14 +136,10 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
     }
   }
 
-  // Write operations (monthly aggregates) — delete-then-insert
+  // Write operations (monthly aggregates)
   for (const mt of monthlyTotals) {
     const monthIdx = monthNames.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
-
-    // Delete existing records for this line+period
-    await db.delete(operations)
-      .where(and(eq(operations.lineId, lineId), eq(operations.plannedDate, periodDate)));
 
     await db.insert(operations).values({
       lineId, actualQty: mt.qty, plannedDate: periodDate,
@@ -190,10 +192,6 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
       processed++;
       const deviationPct = plannedQty > 0 ? String(Math.round(((actualQty - plannedQty) / plannedQty) * 100)) : "0";
 
-      // Delete existing records for this line+period
-      await db.delete(schedules)
-        .where(and(eq(schedules.lineId, lineId), eq(schedules.periodValue, periodValue)));
-
       await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
       inserted++;
       tables.add("schedules");
@@ -215,6 +213,12 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
 async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestResult> {
   const lineId = await getLineId("gazli");
   if (!lineId) throw new Error("Gazlı hat bulunamadı");
+
+  // Önce bu hat'ın mevcut verilerini toptan sil
+  console.log("[GazliParser] Deleting all existing data for lineId:", lineId);
+  await db.delete(operations).where(eq(operations.lineId, lineId));
+  await db.delete(schedules).where(eq(schedules.lineId, lineId));
+  console.log("[GazliParser] Cleared operations + schedules for lineId:", lineId);
 
   let processed = 0, inserted = 0, updated = 0;
   const tables: Set<string> = new Set();
@@ -254,13 +258,10 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
     }
   }
 
-  // Write operations (monthly aggregates) — delete-then-insert
+  // Write operations (monthly aggregates)
   for (const mt of monthlyTotals) {
     const monthIdx = monthNames.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
-
-    await db.delete(operations)
-      .where(and(eq(operations.lineId, lineId), eq(operations.plannedDate, periodDate)));
 
     await db.insert(operations).values({
       lineId, actualQty: mt.qty, plannedDate: periodDate,
@@ -306,9 +307,6 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
     if (plannedQty > 0 || actualQty > 0) {
       processed++;
       const deviationPct = plannedQty > 0 ? String(Math.round(((actualQty - plannedQty) / plannedQty) * 100)) : "0";
-
-      await db.delete(schedules)
-        .where(and(eq(schedules.lineId, lineId), eq(schedules.periodValue, periodValue)));
 
       await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
       inserted++;
