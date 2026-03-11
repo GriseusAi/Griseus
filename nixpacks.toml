@@ -8,4 +8,4 @@ cmds = ["npm ci --include=dev"]
 cmds = ["npm run build"]
 
 [start]
-cmd = "npm run start"
+cmd = "node dist/index.cjs"
