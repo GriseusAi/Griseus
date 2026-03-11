@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import {
   BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer,
@@ -392,6 +393,7 @@ function ChartTooltip({ active, payload, label }: any) {
    ═══════════════════════════════════════════════════════════════════════════ */
 
 export default function CukurovaOverview() {
+  const [, navigate] = useLocation();
   const [chartTab, setChartTab] = useState(0);
   const [weeklyLine, setWeeklyLine] = useState<"e" | "g">("e");
   const [produktTab, setProduktTab] = useState<"e" | "g">("e");
@@ -463,6 +465,17 @@ export default function CukurovaOverview() {
                 <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.ok, display: "inline-block", boxShadow: `0 0 6px ${C.ok}` }} />
                 Canlı Pilot
               </span>
+              <button onClick={() => navigate("/cukurova-sim")} style={{
+                display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 20,
+                background: "rgba(129,140,248,0.08)", border: "1px solid rgba(129,140,248,0.25)",
+                fontSize: 12, fontWeight: 600, color: C.elektrik, cursor: "pointer", fontFamily: sans,
+                transition: "all 0.2s",
+              }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(129,140,248,0.15)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = "rgba(129,140,248,0.08)"; }}
+              >
+                Simülasyon →
+              </button>
               {["Kapasite", "Üretim", "Netsis"].map((s) => (
                 <span key={s} style={{ padding: "4px 10px", borderRadius: 6, fontSize: 11, fontWeight: 500, background: "rgba(255,255,255,0.04)", color: C.dim, border: `1px solid ${C.cardBorder}` }}>{s}</span>
               ))}

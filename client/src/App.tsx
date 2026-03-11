@@ -11,6 +11,7 @@ import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ForgotPasswordPage from "@/pages/forgot-password";
 import EnginePage from "@/pages/engine";
+import CukurovaSim from "@/pages/cukurova-sim";
 
 function AppContent() {
   const [location] = useLocation();
@@ -31,6 +32,7 @@ function AppContent() {
           <Route path="/register" component={RegisterPage} />
           <Route path="/forgot-password" component={ForgotPasswordPage} />
           <Route path="/engine" component={EnginePage} />
+          <Route path="/cukurova-sim" component={CukurovaSim} />
           <Route>{() => <OnboardingPage />}</Route>
         </Switch>
       </motion.div>
