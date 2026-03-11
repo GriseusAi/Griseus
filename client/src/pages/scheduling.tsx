@@ -41,11 +41,38 @@ import {
   Thermometer,
   ShieldCheck,
   AlertTriangle,
+  Save,
+  CheckCircle,
+  ClipboardList,
+  Cpu,
 } from "lucide-react";
 
 const GEBZE_CENTER: [number, number] = [40.7833, 29.4333];
 
 // ─── Types ───────────────────────────────────────────────────────────
+
+interface WeeklyPlan {
+  id: number;
+  lineId: number | null;
+  weekLabel: string;
+  plannedQty: number;
+  predictedQty: number | null;
+  actualQty: number | null;
+  realizationRate: string | null;
+  predictionAccuracy: string | null;
+  status: string;
+  notes: string | null;
+  createdAt: string;
+  completedAt: string | null;
+}
+
+interface PlanAccuracy {
+  total_plans: number;
+  completed_plans: number;
+  avg_realization_rate: number;
+  avg_prediction_accuracy: number;
+  trend: string;
+}
 
 interface TechnicianStats {
   technicianId: string;
@@ -322,6 +349,332 @@ function EmptyState({ workers }: { workers: Worker[] }) {
           </div>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ─── Weekly Plans Panel ──────────────────────────────────────────────
+
+function WeeklyPlansPanel() {
+  const { toast } = useToast();
+  const [actualInput, setActualInput] = useState<Record<number, string>>({});
+  const [showInput, setShowInput] = useState<Record<number, boolean>>({});
+  const [planSaved, setPlanSaved] = useState(false);
+  const [savePlanData, setSavePlanData] = useState<{ planned_qty: string; predicted_qty: string }>({ planned_qty: "", predicted_qty: "" });
+
+  const currentWeek = (() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 1);
+    const diff = now.getTime() - start.getTime();
+    const oneWeek = 604800000;
+    const weekNum = Math.ceil((diff / oneWeek) + 1);
+    return `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
+  })();
+
+  const { data: plans = [], refetch: refetchPlans } = useQuery<WeeklyPlan[]>({
+    queryKey: ["/api/v1/plans"],
+  });
+
+  const { data: accuracy, refetch: refetchAccuracy } = useQuery<PlanAccuracy>({
+    queryKey: ["/api/v1/plans/accuracy"],
+  });
+
+  const createPlanMutation = useMutation({
+    mutationFn: async (data: { line_id?: number; week_label: string; planned_qty: number; predicted_qty: number }) => {
+      const res = await apiRequest("POST", "/api/v1/plans/create", data);
+      return res.json();
+    },
+    onSuccess: () => {
+      setPlanSaved(true);
+      refetchPlans();
+      toast({ title: "Plan kaydedildi!", description: "Hafta sonunda gerçekleşeni girin." });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Hata", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const completePlanMutation = useMutation({
+    mutationFn: async ({ id, actual_qty }: { id: number; actual_qty: number }) => {
+      const res = await apiRequest("PUT", `/api/v1/plans/${id}/complete`, { actual_qty });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      refetchPlans();
+      refetchAccuracy();
+      const rate = Math.round((data.realization_rate || 0) * 100);
+      const acc = data.prediction_accuracy ? Math.round(data.prediction_accuracy * 100) : null;
+      toast({ title: "Plan tamamlandı!", description: `Gerçekleşme: %${rate}${acc != null ? ` · Motor doğruluğu: %${acc}` : ""}` });
+    },
+    onError: (error: Error) => {
+      toast({ title: "Hata", description: error.message, variant: "destructive" });
+    },
+  });
+
+  const activePlans = plans.filter(p => p.status === "planned");
+  const completedPlans = plans.filter(p => p.status === "completed").slice(0, 10);
+
+  const rateColor = (rate: number) => {
+    if (rate >= 0.9) return "#34d399";
+    if (rate >= 0.7) return "#fbbf24";
+    return "#ef4444";
+  };
+
+  const accColor = (acc: number) => acc >= 0.9 ? "#34d399" : "#fbbf24";
+
+  return (
+    <div className="space-y-4 mt-6">
+      {/* Divider */}
+      <div className="flex items-center gap-3 pt-2">
+        <div className="h-px flex-1 bg-border" />
+        <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wider">Haftalık Plan Yönetimi</span>
+        <div className="h-px flex-1 bg-border" />
+      </div>
+
+      {/* BÖLÜM 1 — PLAN KAYDET */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Save className="h-4 w-4" />
+            Bu Haftanın Planını Kaydet
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Hafta: {currentWeek} — Planlanan ve motorun tahmin ettiği miktarı girerek kaydedin
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-end gap-3">
+            <div className="flex-1">
+              <Label className="text-xs">Planlanan Miktar</Label>
+              <Input
+                type="number"
+                placeholder="örn: 500"
+                value={savePlanData.planned_qty}
+                onChange={(e) => setSavePlanData(prev => ({ ...prev, planned_qty: e.target.value }))}
+                disabled={planSaved}
+              />
+            </div>
+            <div className="flex-1">
+              <Label className="text-xs">Motor Tahmini</Label>
+              <Input
+                type="number"
+                placeholder="örn: 480"
+                value={savePlanData.predicted_qty}
+                onChange={(e) => setSavePlanData(prev => ({ ...prev, predicted_qty: e.target.value }))}
+                disabled={planSaved}
+              />
+            </div>
+            <Button
+              disabled={planSaved || !savePlanData.planned_qty || !savePlanData.predicted_qty || createPlanMutation.isPending}
+              onClick={() => {
+                createPlanMutation.mutate({
+                  week_label: currentWeek,
+                  planned_qty: parseInt(savePlanData.planned_qty),
+                  predicted_qty: parseInt(savePlanData.predicted_qty),
+                });
+              }}
+              style={{
+                padding: "12px 24px",
+                borderRadius: 10,
+                background: planSaved ? "rgba(52,211,153,0.15)" : "#34d399",
+                color: planSaved ? "#34d399" : "#000",
+                fontWeight: 600,
+                fontSize: 14,
+                border: planSaved ? "1px solid rgba(52,211,153,0.3)" : "none",
+              }}
+            >
+              {planSaved ? "Kaydedildi ✓" : createPlanMutation.isPending ? "Kaydediliyor..." : "Bu Planı Kaydet"}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* BÖLÜM 2 — AKTİF PLANLAR */}
+      {activePlans.length > 0 && (
+        <Card style={{ border: "1px solid rgba(251,191,36,0.3)" }}>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <ClipboardList className="h-4 w-4 text-amber-500" />
+              Aktif Planlar
+            </CardTitle>
+            <CardDescription className="text-xs">
+              Hafta sonunda gerçekleşen miktarı girin
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-3">
+            {activePlans.map(plan => (
+              <div
+                key={plan.id}
+                style={{
+                  padding: "12px 16px",
+                  borderRadius: 10,
+                  background: "rgba(251,191,36,0.05)",
+                  border: "1px solid rgba(251,191,36,0.2)",
+                }}
+              >
+                <div className="flex items-center justify-between mb-2">
+                  <div>
+                    <span className="text-sm font-semibold">{plan.weekLabel}</span>
+                    <span className="text-xs text-muted-foreground ml-3">Plan: {plan.plannedQty}</span>
+                    {plan.predictedQty && (
+                      <span className="text-xs text-muted-foreground ml-2">· Motor: {plan.predictedQty}</span>
+                    )}
+                  </div>
+                  {!showInput[plan.id] ? (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-xs"
+                      onClick={() => setShowInput(prev => ({ ...prev, [plan.id]: true }))}
+                    >
+                      Gerçekleşeni Gir
+                    </Button>
+                  ) : (
+                    <div className="flex items-center gap-2">
+                      <Input
+                        type="number"
+                        className="w-24 h-8 text-xs"
+                        placeholder="Gerçek"
+                        value={actualInput[plan.id] || ""}
+                        onChange={(e) => setActualInput(prev => ({ ...prev, [plan.id]: e.target.value }))}
+                      />
+                      <Button
+                        size="sm"
+                        className="h-8 text-xs"
+                        disabled={!actualInput[plan.id] || completePlanMutation.isPending}
+                        onClick={() => {
+                          completePlanMutation.mutate({
+                            id: plan.id,
+                            actual_qty: parseInt(actualInput[plan.id]),
+                          });
+                        }}
+                      >
+                        Kaydet
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            ))}
+          </CardContent>
+        </Card>
+      )}
+
+      {/* BÖLÜM 3 — GEÇMİŞ PLANLAR */}
+      {completedPlans.length > 0 && (
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-semibold flex items-center gap-2">
+              <CheckCircle className="h-4 w-4 text-green-500" />
+              Geçmiş Planlar
+            </CardTitle>
+            <CardDescription className="text-xs">Son {completedPlans.length} tamamlanan plan</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="overflow-auto">
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="border-b text-muted-foreground">
+                    <th className="text-left py-2 px-2 font-medium">Hafta</th>
+                    <th className="text-right py-2 px-2 font-medium">Plan</th>
+                    <th className="text-right py-2 px-2 font-medium">Tahmin</th>
+                    <th className="text-right py-2 px-2 font-medium">Gerçek</th>
+                    <th className="text-right py-2 px-2 font-medium">Oran</th>
+                    <th className="text-right py-2 px-2 font-medium">Motor Doğruluğu</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {completedPlans.map(plan => {
+                    const rate = plan.realizationRate ? parseFloat(plan.realizationRate) : 0;
+                    const acc = plan.predictionAccuracy ? parseFloat(plan.predictionAccuracy) : null;
+                    return (
+                      <tr key={plan.id} className="border-b border-border/50">
+                        <td className="py-2 px-2 font-medium">{plan.weekLabel}</td>
+                        <td className="py-2 px-2 text-right">{plan.plannedQty}</td>
+                        <td className="py-2 px-2 text-right">{plan.predictedQty ?? "—"}</td>
+                        <td className="py-2 px-2 text-right font-semibold">{plan.actualQty}</td>
+                        <td className="py-2 px-2 text-right font-semibold" style={{ color: rateColor(rate) }}>
+                          %{Math.round(rate * 100)}
+                        </td>
+                        <td className="py-2 px-2 text-right font-semibold" style={{ color: acc != null ? accColor(acc) : undefined }}>
+                          {acc != null ? `%${Math.round(acc * 100)}` : "—"}
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* BÖLÜM 4 — MOTOR PERFORMANSI */}
+      <Card>
+        <CardHeader className="pb-2">
+          <CardTitle className="text-sm font-semibold flex items-center gap-2">
+            <Cpu className="h-4 w-4 text-indigo-500" />
+            Motor Performansı
+          </CardTitle>
+          <CardDescription className="text-xs">
+            Tahmin motorunun doğruluk metrikleri
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          {accuracy && accuracy.completed_plans > 0 ? (
+            <div className="flex items-center gap-8">
+              <div className="text-center">
+                <div className="relative inline-block">
+                  <svg width={120} height={120} style={{ transform: "rotate(-90deg)" }}>
+                    <circle cx={60} cy={60} r={50} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth={10} />
+                    <circle
+                      cx={60} cy={60} r={50} fill="none"
+                      stroke={accuracy.avg_prediction_accuracy >= 0.9 ? "#34d399" : accuracy.avg_prediction_accuracy >= 0.7 ? "#fbbf24" : "#ef4444"}
+                      strokeWidth={10}
+                      strokeDasharray={2 * Math.PI * 50}
+                      strokeDashoffset={2 * Math.PI * 50 * (1 - accuracy.avg_prediction_accuracy)}
+                      strokeLinecap="round"
+                      style={{ transition: "stroke-dashoffset 1s ease" }}
+                    />
+                  </svg>
+                  <div style={{ position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%) rotate(0deg)" }}>
+                    <div className="text-2xl font-bold">%{Math.round(accuracy.avg_prediction_accuracy * 100)}</div>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">Motor Doğruluğu</p>
+              </div>
+              <div className="space-y-3 flex-1">
+                <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                  <span className="text-xs text-muted-foreground">Tamamlanan Plan</span>
+                  <span className="text-sm font-bold">{accuracy.completed_plans}</span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                  <span className="text-xs text-muted-foreground">Ort. Gerçekleşme Oranı</span>
+                  <span className="text-sm font-bold" style={{ color: rateColor(accuracy.avg_realization_rate) }}>
+                    %{Math.round(accuracy.avg_realization_rate * 100)}
+                  </span>
+                </div>
+                <div className="flex items-center justify-between p-2 rounded-lg bg-muted/50">
+                  <span className="text-xs text-muted-foreground">Trend</span>
+                  <span className="text-sm font-bold">
+                    {accuracy.trend === "improving" ? "İyileşiyor" : accuracy.trend === "declining" ? "Kötüleşiyor" : "Stabil"}
+                  </span>
+                </div>
+              </div>
+            </div>
+          ) : (
+            <div className="text-center py-6">
+              <Cpu className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+              <p className="text-sm text-muted-foreground">
+                Henüz tamamlanan plan yok. Plan ekleyip gerçekleşeni girdiğinizde motor performansı burada görünecek.
+              </p>
+            </div>
+          )}
+          <p className="text-[10px] text-muted-foreground text-center mt-3 italic">
+            Her tamamlanan plan motorun tahmin kalitesini artırır
+          </p>
+        </CardContent>
+      </Card>
     </div>
   );
 }
@@ -679,6 +1032,8 @@ export default function Scheduling() {
                   </CardContent>
                 </Card>
               </div>
+              {/* Weekly Plans Panel */}
+              <WeeklyPlansPanel />
             </TabsContent>
 
             {/* ── Appointments Tab ── */}

@@ -550,3 +550,24 @@ export const kpiRecords = pgTable("kpi_records", {
 export const insertKpiRecordSchema = createInsertSchema(kpiRecords).omit({ id: true });
 export type InsertKpiRecord = z.infer<typeof insertKpiRecordSchema>;
 export type KpiRecord = typeof kpiRecords.$inferSelect;
+
+// --- Weekly Production Plans (Actions Layer) ---
+
+export const weeklyPlans = pgTable("weekly_plans", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id"),
+  weekLabel: text("week_label").notNull(),
+  plannedQty: integer("planned_qty").notNull(),
+  predictedQty: integer("predicted_qty"),
+  actualQty: integer("actual_qty"),
+  realizationRate: numeric("realization_rate"),
+  predictionAccuracy: numeric("prediction_accuracy"),
+  status: text("status").notNull().default("planned"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+});
+
+export const insertWeeklyPlanSchema = createInsertSchema(weeklyPlans).omit({ id: true, createdAt: true, completedAt: true });
+export type InsertWeeklyPlan = z.infer<typeof insertWeeklyPlanSchema>;
+export type WeeklyPlan = typeof weeklyPlans.$inferSelect;

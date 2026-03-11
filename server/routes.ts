@@ -8,7 +8,7 @@ import {
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
   insertProjectScheduleSchema, insertProjectAssignmentSchema, insertServiceAppointmentSchema,
   insertOntologyObjectSchema, insertOntologyLinkSchema, insertOntologyActionSchema,
-  ontologyObjects, ontologyLinks,
+  ontologyObjects, ontologyLinks, weeklyPlans,
   facilities, productionLines, products, operations, schedules, capacityMetrics, geWorkers, workerCapabilities,
 } from "@shared/schema";
 import { z } from "zod";
@@ -17,7 +17,7 @@ import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
 import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment, OntologyObject, OntologyLink } from "@shared/schema";
 import { db } from "./db";
-import { eq, sql, sum } from "drizzle-orm";
+import { eq, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { detectParser, getIngestError } from "./routes/ingest";
@@ -2549,6 +2549,124 @@ export async function registerRoutes(
       res.json(result);
     } catch (error: any) {
       res.status(500).json({ success: false, error: error.message || "Bilinmeyen hata" });
+    }
+  });
+
+  // ── POST /api/v1/plans/create ───────────────────────────────────────
+  app.post("/api/v1/plans/create", async (req, res) => {
+    try {
+      const { line_id, week_label, planned_qty, predicted_qty } = req.body;
+      if (!week_label || !planned_qty) {
+        return res.status(400).json({ message: "week_label and planned_qty are required" });
+      }
+      const [plan] = await db.insert(weeklyPlans).values({
+        lineId: line_id ?? null,
+        weekLabel: week_label,
+        plannedQty: planned_qty,
+        predictedQty: predicted_qty ?? null,
+        status: "planned",
+      }).returning();
+      res.status(201).json({ success: true, plan_id: plan.id, message: "Plan kaydedildi" });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── PUT /api/v1/plans/:id/complete ────────────────────────────────────
+  app.put("/api/v1/plans/:id/complete", async (req, res) => {
+    try {
+      const planId = parseInt(req.params.id);
+      const { actual_qty } = req.body;
+      if (actual_qty == null) {
+        return res.status(400).json({ message: "actual_qty is required" });
+      }
+
+      const existing = await db.select().from(weeklyPlans).where(eq(weeklyPlans.id, planId)).limit(1);
+      if (existing.length === 0) {
+        return res.status(404).json({ message: "Plan not found" });
+      }
+      const plan = existing[0];
+
+      const realizationRate = plan.plannedQty > 0
+        ? (actual_qty / plan.plannedQty).toFixed(4)
+        : "0";
+      const predictionAccuracy = plan.predictedQty && plan.predictedQty > 0
+        ? (1 - Math.abs(actual_qty - plan.predictedQty) / plan.predictedQty).toFixed(4)
+        : null;
+
+      await db.update(weeklyPlans)
+        .set({
+          actualQty: actual_qty,
+          realizationRate: realizationRate,
+          predictionAccuracy: predictionAccuracy,
+          status: "completed",
+          completedAt: new Date(),
+        })
+        .where(eq(weeklyPlans.id, planId));
+
+      res.json({
+        success: true,
+        realization_rate: parseFloat(realizationRate),
+        prediction_accuracy: predictionAccuracy ? parseFloat(predictionAccuracy) : null,
+        message: "Plan tamamlandı",
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── GET /api/v1/plans ─────────────────────────────────────────────────
+  app.get("/api/v1/plans", async (req, res) => {
+    try {
+      const lineId = req.query.line_id ? parseInt(req.query.line_id as string) : null;
+      let plans;
+      if (lineId) {
+        plans = await db.select().from(weeklyPlans)
+          .where(eq(weeklyPlans.lineId, lineId))
+          .orderBy(desc(weeklyPlans.createdAt));
+      } else {
+        plans = await db.select().from(weeklyPlans)
+          .orderBy(desc(weeklyPlans.createdAt));
+      }
+      res.json(plans);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── GET /api/v1/plans/accuracy ────────────────────────────────────────
+  app.get("/api/v1/plans/accuracy", async (req, res) => {
+    try {
+      const allPlans = await db.select().from(weeklyPlans);
+      const completed = allPlans.filter(p => p.status === "completed");
+
+      const avgRealizationRate = completed.length > 0
+        ? completed.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / completed.length
+        : 0;
+      const completedWithAccuracy = completed.filter(p => p.predictionAccuracy != null);
+      const avgPredictionAccuracy = completedWithAccuracy.length > 0
+        ? completedWithAccuracy.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / completedWithAccuracy.length
+        : 0;
+
+      // Trend: compare last 3 vs previous 3
+      let trend = "neutral";
+      if (completedWithAccuracy.length >= 6) {
+        const recent3 = completedWithAccuracy.slice(0, 3);
+        const prev3 = completedWithAccuracy.slice(3, 6);
+        const recentAvg = recent3.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / 3;
+        const prevAvg = prev3.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / 3;
+        trend = recentAvg > prevAvg ? "improving" : recentAvg < prevAvg ? "declining" : "stable";
+      }
+
+      res.json({
+        total_plans: allPlans.length,
+        completed_plans: completed.length,
+        avg_realization_rate: parseFloat(avgRealizationRate.toFixed(4)),
+        avg_prediction_accuracy: parseFloat(avgPredictionAccuracy.toFixed(4)),
+        trend,
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
     }
   });
 
