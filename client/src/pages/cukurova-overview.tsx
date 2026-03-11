@@ -272,30 +272,28 @@ function IsometricScene({ onKasaClick }: { onKasaClick: () => void }) {
    DASHBOARD COMPONENTS
    ═══════════════════════════════════════════════════════════════════════════ */
 
-const monthlyData = [
-  { ay: "Oca", e: 1104, g: 528 }, { ay: "Şub", e: 1343, g: 390 }, { ay: "Mar", e: 979, g: 617 },
-  { ay: "Nis", e: 733, g: 215 }, { ay: "May", e: 1179, g: 351 }, { ay: "Haz", e: 817, g: 602 },
-  { ay: "Tem", e: 813, g: 319 }, { ay: "Ağu", e: 1811, g: 545 }, { ay: "Eyl", e: 1415, g: 445 },
-  { ay: "Eki", e: 2144, g: 662 }, { ay: "Kas", e: 1350, g: 296 }, { ay: "Ara", e: 717, g: 121 },
-];
-
-const weeklyElektrik = [
-  { h: "H40", plan: 539, gercek: 539 }, { h: "H41", plan: 550, gercek: 550 },
-  { h: "H42", plan: 598, gercek: 598 }, { h: "H43", plan: 635, gercek: 572 },
-  { h: "H44", plan: 275, gercek: 237 }, { h: "H45", plan: 530, gercek: 476 },
-  { h: "H46", plan: 457, gercek: 357 }, { h: "H47", plan: 436, gercek: 156 },
-  { h: "H48", plan: 510, gercek: 220 }, { h: "H49", plan: 440, gercek: 403 },
-  { h: "H50", plan: 437, gercek: 67 }, { h: "H51", plan: 140, gercek: 140 },
-];
-
-const weeklyGaz = [
-  { h: "H40", plan: 189, gercek: 189 }, { h: "H41", plan: 165, gercek: 134 },
-  { h: "H42", plan: 168, gercek: 168 }, { h: "H43", plan: 177, gercek: 132 },
-  { h: "H44", plan: 178, gercek: 118 }, { h: "H45", plan: 130, gercek: 102 },
-  { h: "H46", plan: 146, gercek: 134 }, { h: "H47", plan: 155, gercek: 135 },
-  { h: "H48", plan: 100, gercek: 80 }, { h: "H49", plan: 120, gercek: 90 },
-  { h: "H50", plan: 111, gercek: 1 },
-];
+/* Dashboard data types — populated from API */
+interface LineSummary {
+  id: number;
+  name: string;
+  type: string;
+  workerCount: number;
+  capacityUnitTimeMin: string;
+  currentUnitTimeMin: string;
+  totalOutput: number;
+  theoreticalMax: number;
+  utilizationPct: number;
+}
+interface DashboardData {
+  totalProduction: number;
+  lines: LineSummary[];
+  monthlyData: { ay: string; e: number; g: number }[];
+  weeklySchedules: {
+    elektrikli: { h: string; plan: number; gercek: number }[];
+    gazli: { h: string; plan: number; gercek: number }[];
+  };
+  peakMonth: { ay: string; total: number };
+}
 
 const produktElektrik = [
   { name: "GSS20P", pct: 34 }, { name: "GSS40P", pct: 18 }, { name: "GSN20/40", pct: 15 },
@@ -398,6 +396,8 @@ export default function CukurovaOverview() {
   const [weeklyLine, setWeeklyLine] = useState<"e" | "g">("e");
   const [produktTab, setProduktTab] = useState<"e" | "g">("e");
   const [ready, setReady] = useState(false);
+  const [data, setData] = useState<DashboardData | null>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
     if (!document.querySelector('link[href*="DM+Sans"]')) {
@@ -410,9 +410,23 @@ export default function CukurovaOverview() {
     return () => clearTimeout(t);
   }, []);
 
+  useEffect(() => {
+    fetch("/api/v1/dashboard/summary")
+      .then((r) => r.json())
+      .then((d) => { setData(d); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, []);
+
   const card = (extra?: React.CSSProperties): React.CSSProperties => ({
     background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 14, padding: 20, ...extra,
   });
+
+  // Derive from API data
+  const elektrikLine = data?.lines.find((l) => l.type === "elektrikli");
+  const gazliLine = data?.lines.find((l) => l.type === "gazli");
+  const monthlyData = data?.monthlyData || [];
+  const weeklyElektrik = data?.weeklySchedules.elektrikli || [];
+  const weeklyGaz = data?.weeklySchedules.gazli || [];
 
   const weeklyData = weeklyLine === "e" ? weeklyElektrik : weeklyGaz;
   const lineColor = weeklyLine === "e" ? C.elektrik : C.gaz;
@@ -457,12 +471,15 @@ export default function CukurovaOverview() {
         </header>
 
         {/* ════ METRIC CARDS ════ */}
+        {loading ? (
+          <div style={{ textAlign: "center", padding: 40, color: C.dim, fontSize: 14 }}>Veriler yükleniyor...</div>
+        ) : (
         <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: 14, marginBottom: 24 }}>
           {[
-            { label: "Toplam Üretim", value: 19496, sub: "2025 YTD", color: C.white },
-            { label: "Elektrikli Hat", value: 14405, sub: "7 çalışan · 59 hafta", color: C.elektrik },
-            { label: "Gazlı Hat", value: 5091, sub: "9 çalışan · 59 hafta", color: C.gaz },
-            { label: "Pik Ay", value: 2806, sub: "Ekim 2025", color: C.warn },
+            { label: "Toplam Üretim", value: data?.totalProduction || 0, sub: "2025 YTD", color: C.white },
+            { label: "Elektrikli Hat", value: elektrikLine?.totalOutput || 0, sub: `${elektrikLine?.workerCount || 0} çalışan`, color: C.elektrik },
+            { label: "Gazlı Hat", value: gazliLine?.totalOutput || 0, sub: `${gazliLine?.workerCount || 0} çalışan`, color: C.gaz },
+            { label: "Pik Ay", value: data?.peakMonth.total || 0, sub: `${data?.peakMonth.ay || ""} 2025`, color: C.warn },
           ].map((m) => (
             <div key={m.label} style={card()}>
               <div style={{ fontSize: 12, color: C.dim, marginBottom: 8, fontWeight: 500 }}>{m.label}</div>
@@ -471,6 +488,7 @@ export default function CukurovaOverview() {
             </div>
           ))}
         </div>
+        )}
 
         {/* ════ CAPACITY + DELIVERY ROW ════ */}
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 14, marginBottom: 24 }}>
@@ -478,8 +496,8 @@ export default function CukurovaOverview() {
             <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 16 }}>Kapasite Kullanımı</div>
             <div style={{ display: "flex", justifyContent: "space-around", flexWrap: "wrap", gap: 20 }}>
               {[
-                { label: "Elektrikli", pct: 64, color: C.elektrik, workers: 7, capMin: "8.3dk", actMin: "13dk" },
-                { label: "Gazlı", pct: 87, color: C.gaz, workers: 9, capMin: "19dk", actMin: "21dk" },
+                { label: "Elektrikli", pct: elektrikLine?.utilizationPct || 0, color: C.elektrik, workers: elektrikLine?.workerCount || 0, capMin: `${elektrikLine?.capacityUnitTimeMin || "0"}dk`, actMin: `${elektrikLine?.currentUnitTimeMin || "0"}dk` },
+                { label: "Gazlı", pct: gazliLine?.utilizationPct || 0, color: C.gaz, workers: gazliLine?.workerCount || 0, capMin: `${gazliLine?.capacityUnitTimeMin || "0"}dk`, actMin: `${gazliLine?.currentUnitTimeMin || "0"}dk` },
               ].map((h) => (
                 <div key={h.label} style={{ textAlign: "center" }}>
                   <div style={{ position: "relative", display: "inline-block" }}>
@@ -501,8 +519,8 @@ export default function CukurovaOverview() {
             <div style={card({ flex: 1 })}>
               <div style={{ fontSize: 14, fontWeight: 600, marginBottom: 14 }}>Teslimat Oranları</div>
               <div style={{ display: "flex", gap: 20 }}>
-                <DeliveryBar delivered={4765} total={5547} color={C.elektrik} label="Elektrikli" />
-                <DeliveryBar delivered={1183} total={1639} color={C.gaz} label="Gazlı" />
+                <DeliveryBar delivered={weeklyElektrik.reduce((s, w) => s + w.gercek, 0)} total={weeklyElektrik.reduce((s, w) => s + w.plan, 0)} color={C.elektrik} label="Elektrikli" />
+                <DeliveryBar delivered={weeklyGaz.reduce((s, w) => s + w.gercek, 0)} total={weeklyGaz.reduce((s, w) => s + w.plan, 0)} color={C.gaz} label="Gazlı" />
               </div>
             </div>
             <div style={{ ...card(), background: "rgba(251,191,36,0.04)", border: "1px solid rgba(251,191,36,0.15)" }}>
@@ -510,7 +528,7 @@ export default function CukurovaOverview() {
                 <span style={{ fontSize: 18, lineHeight: 1, flexShrink: 0 }}>⚠</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 600, color: C.warn, marginBottom: 4 }}>Darboğaz Uyarısı</div>
-                  <p style={{ fontSize: 12, color: C.mid, margin: 0, lineHeight: 1.6 }}>Elektrikli hatta birim üretim süresi kapasiteden %57 yavaş (13dk vs 8.3dk). H47–H50 arası sevk oranı kritik düşüş gösteriyor.</p>
+                  <p style={{ fontSize: 12, color: C.mid, margin: 0, lineHeight: 1.6 }}>Elektrikli hatta birim üretim süresi kapasiteden %{elektrikLine ? Math.round(((Number(elektrikLine.currentUnitTimeMin) - Number(elektrikLine.capacityUnitTimeMin)) / Number(elektrikLine.capacityUnitTimeMin)) * 100) : 0} yavaş ({elektrikLine?.currentUnitTimeMin || 0}dk vs {elektrikLine?.capacityUnitTimeMin || 0}dk). H47–H50 arası sevk oranı kritik düşüş gösteriyor.</p>
                 </div>
               </div>
             </div>

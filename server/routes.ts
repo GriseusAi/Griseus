@@ -9,6 +9,7 @@ import {
   insertProjectScheduleSchema, insertProjectAssignmentSchema, insertServiceAppointmentSchema,
   insertOntologyObjectSchema, insertOntologyLinkSchema, insertOntologyActionSchema,
   ontologyObjects, ontologyLinks,
+  facilities, productionLines, products, operations, schedules, capacityMetrics, geWorkers, workerCapabilities,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
@@ -16,6 +17,7 @@ import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
 import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment, OntologyObject, OntologyLink } from "@shared/schema";
 import { db } from "./db";
+import { eq, sql, sum } from "drizzle-orm";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -2009,6 +2011,159 @@ export async function registerRoutes(
           peakCapacityNeeded: projectedCapacityNeeded,
           weeksUntilPeak,
         },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Griseus Engine API v1
+  // ══════════════════════════════════════════════════════════════════════
+
+  app.get("/api/v1/facilities", async (_req, res) => {
+    try {
+      const rows = await db.select().from(facilities);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/facilities/:id/lines", async (req, res) => {
+    try {
+      const rows = await db.select().from(productionLines).where(eq(productionLines.facilityId, Number(req.params.id)));
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/lines/:id/capacity", async (req, res) => {
+    try {
+      const rows = await db.select().from(capacityMetrics).where(eq(capacityMetrics.lineId, Number(req.params.id)));
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/lines/:id/operations", async (req, res) => {
+    try {
+      const rows = await db.select().from(operations).where(eq(operations.lineId, Number(req.params.id)));
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/schedules", async (req, res) => {
+    try {
+      const lineId = req.query.line_id ? Number(req.query.line_id) : null;
+      const rows = lineId
+        ? await db.select().from(schedules).where(eq(schedules.lineId, lineId))
+        : await db.select().from(schedules);
+      res.json(rows);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/workers", async (req, res) => {
+    try {
+      const workerRows = await db.select().from(geWorkers);
+      const capRows = await db.select().from(workerCapabilities);
+      const capMap = new Map<number, typeof capRows>();
+      for (const c of capRows) {
+        if (!capMap.has(c.workerId!)) capMap.set(c.workerId!, []);
+        capMap.get(c.workerId!)!.push(c);
+      }
+      const result = workerRows.map((w) => ({
+        ...w,
+        capabilities: capMap.get(w.id) || [],
+      }));
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  app.get("/api/v1/dashboard/summary", async (_req, res) => {
+    try {
+      // Lines with capacity
+      const lines = await db.select().from(productionLines);
+      const caps = await db.select().from(capacityMetrics);
+      const ops = await db.select().from(operations);
+      const scheds = await db.select().from(schedules);
+
+      // Build line summaries
+      const lineSummaries = lines.map((line) => {
+        const lineOps = ops.filter((o) => o.lineId === line.id);
+        const totalOutput = lineOps.reduce((s, o) => s + (o.actualQty || 0), 0);
+        const cap = caps.find((c) => c.lineId === line.id);
+        return {
+          id: line.id,
+          name: line.name,
+          type: line.type,
+          workerCount: line.workerCount,
+          capacityUnitTimeMin: line.capacityUnitTimeMin,
+          currentUnitTimeMin: line.currentUnitTimeMin,
+          totalOutput,
+          theoreticalMax: cap?.theoreticalMax || 0,
+          utilizationPct: cap?.utilizationPct ? Number(cap.utilizationPct) : 0,
+        };
+      });
+
+      const totalProduction = lineSummaries.reduce((s, l) => s + l.totalOutput, 0);
+
+      // Monthly data grouped by month
+      const monthNames = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+      const monthlyMap = new Map<number, { e: number; g: number }>();
+      for (let i = 1; i <= 12; i++) monthlyMap.set(i, { e: 0, g: 0 });
+
+      for (const op of ops) {
+        if (!op.plannedDate) continue;
+        const month = new Date(op.plannedDate).getMonth() + 1;
+        const entry = monthlyMap.get(month)!;
+        const line = lines.find((l) => l.id === op.lineId);
+        if (line?.type === "elektrikli") entry.e += op.actualQty || 0;
+        else if (line?.type === "gazli") entry.g += op.actualQty || 0;
+      }
+
+      const monthlyData = Array.from(monthlyMap.entries())
+        .filter(([_, v]) => v.e > 0 || v.g > 0)
+        .map(([m, v]) => ({ ay: monthNames[m - 1], e: v.e, g: v.g }));
+
+      // Weekly schedules grouped by line type
+      const weeklySchedules = {
+        elektrikli: scheds
+          .filter((s) => {
+            const line = lines.find((l) => l.id === s.lineId);
+            return line?.type === "elektrikli";
+          })
+          .map((s) => ({ h: s.periodValue, plan: s.plannedQty || 0, gercek: s.actualQty || 0 })),
+        gazli: scheds
+          .filter((s) => {
+            const line = lines.find((l) => l.id === s.lineId);
+            return line?.type === "gazli";
+          })
+          .map((s) => ({ h: s.periodValue, plan: s.plannedQty || 0, gercek: s.actualQty || 0 })),
+      };
+
+      // Peak month
+      let peakMonth = { ay: "", total: 0 };
+      for (const md of monthlyData) {
+        const total = md.e + md.g;
+        if (total > peakMonth.total) peakMonth = { ay: md.ay, total };
+      }
+
+      res.json({
+        totalProduction,
+        lines: lineSummaries,
+        monthlyData,
+        weeklySchedules,
+        capacityMetrics: caps,
+        peakMonth,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
