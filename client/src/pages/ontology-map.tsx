@@ -223,6 +223,7 @@ export default function OntologyMap() {
   const [forecastPlanQty, setForecastPlanQty] = useState<string>("");
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
+  const [planSaved, setPlanSaved] = useState(false);
 
   // ── Upload state ──
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -584,6 +585,7 @@ export default function OntologyMap() {
           const qty = Number(forecastPlanQty);
           if (!qty || qty <= 0) return;
           setForecastLoading(true);
+          setPlanSaved(false);
           try {
             const r = await fetch("/api/v1/forecast/weekly", {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -704,6 +706,46 @@ export default function OntologyMap() {
                     </div>
                   </PanelSection>
                 )}
+
+                {/* Bu Planı Kaydet */}
+                <button
+                  disabled={planSaved}
+                  onClick={async () => {
+                    const now = new Date();
+                    const start = new Date(now.getFullYear(), 0, 1);
+                    const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+                    const weekLabel = `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
+                    try {
+                      const r = await fetch("/api/v1/plans/create", {
+                        method: "POST",
+                        headers: { "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                          line_id: forecastLineId,
+                          week_label: weekLabel,
+                          planned_qty: forecastResult.planned_qty,
+                          predicted_qty: forecastResult.predicted_output,
+                        }),
+                      });
+                      if (r.ok) setPlanSaved(true);
+                    } catch { /* ignore */ }
+                  }}
+                  style={{
+                    padding: "12px 24px",
+                    borderRadius: 10,
+                    background: planSaved ? "rgba(52,211,153,0.15)" : "#34d399",
+                    color: planSaved ? "#34d399" : "#000",
+                    fontWeight: 600,
+                    fontSize: 14,
+                    width: "100%",
+                    marginTop: 16,
+                    border: planSaved ? "1px solid rgba(52,211,153,0.3)" : "none",
+                    cursor: planSaved ? "default" : "pointer",
+                    fontFamily: sans,
+                    transition: "all 0.2s",
+                  }}
+                >
+                  {planSaved ? "Kaydedildi ✓" : "Bu Planı Kaydet"}
+                </button>
               </>
             )}
 
