@@ -17,7 +17,7 @@ import { hashPassword } from "./index";
 import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type ProjectMatchResult } from "./matching";
 import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment, OntologyObject, OntologyLink } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, sql, sum } from "drizzle-orm";
+import { eq, and, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { detectParser, getIngestError } from "./routes/ingest";
@@ -2563,6 +2563,56 @@ export async function registerRoutes(
     } catch (error: any) {
       console.error("[Ingest] Parse error:", error);
       res.status(500).json({ success: false, error: error.message || "Bilinmeyen hata" });
+    }
+  });
+
+  // ── POST /api/v1/ingest/dedup — one-time duplicate cleanup ──────────
+  app.post("/api/v1/ingest/dedup", async (_req, res) => {
+    try {
+      let deletedOps = 0, deletedSch = 0;
+
+      // Clean operations: keep lowest id per (line_id, planned_date)
+      const allOps = await db.select().from(operations);
+      const opsMap = new Map<string, number[]>();
+      for (const op of allOps) {
+        const key = `${op.lineId}_${op.plannedDate}`;
+        if (!opsMap.has(key)) opsMap.set(key, []);
+        opsMap.get(key)!.push(op.id);
+      }
+      for (const [, ids] of opsMap) {
+        if (ids.length <= 1) continue;
+        ids.sort((a, b) => a - b);
+        for (let i = 1; i < ids.length; i++) {
+          await db.delete(operations).where(eq(operations.id, ids[i]));
+          deletedOps++;
+        }
+      }
+
+      // Clean schedules: keep lowest id per (line_id, period_value)
+      const allSch = await db.select().from(schedules);
+      const schMap = new Map<string, number[]>();
+      for (const s of allSch) {
+        const key = `${s.lineId}_${s.periodValue}`;
+        if (!schMap.has(key)) schMap.set(key, []);
+        schMap.get(key)!.push(s.id);
+      }
+      for (const [, ids] of schMap) {
+        if (ids.length <= 1) continue;
+        ids.sort((a, b) => a - b);
+        for (let i = 1; i < ids.length; i++) {
+          await db.delete(schedules).where(eq(schedules.id, ids[i]));
+          deletedSch++;
+        }
+      }
+
+      res.json({
+        success: true,
+        deleted_operations: deletedOps,
+        deleted_schedules: deletedSch,
+        message: `${deletedOps} duplicate operations + ${deletedSch} duplicate schedules silindi`,
+      });
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message });
     }
   });
 

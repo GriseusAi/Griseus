@@ -129,25 +129,20 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
     }
   }
 
-  // Write operations (monthly aggregates)
+  // Write operations (monthly aggregates) — delete-then-insert
   for (const mt of monthlyTotals) {
     const monthIdx = monthNames.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
 
-    // Check if exists
-    const existing = await db.select().from(operations)
+    // Delete existing records for this line+period
+    await db.delete(operations)
       .where(and(eq(operations.lineId, lineId), eq(operations.plannedDate, periodDate)));
 
-    if (existing.length > 0) {
-      await db.update(operations).set({ actualQty: mt.qty }).where(eq(operations.id, existing[0].id));
-      updated++;
-    } else {
-      await db.insert(operations).values({
-        lineId, actualQty: mt.qty, plannedDate: periodDate,
-        status: "completed", notes: `Excel import: ${mt.month}`,
-      });
-      inserted++;
-    }
+    await db.insert(operations).values({
+      lineId, actualQty: mt.qty, plannedDate: periodDate,
+      status: "completed", notes: `Excel import: ${mt.month}`,
+    });
+    inserted++;
     tables.add("operations");
   }
 
@@ -194,16 +189,12 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
       processed++;
       const deviationPct = plannedQty > 0 ? String(Math.round(((actualQty - plannedQty) / plannedQty) * 100)) : "0";
 
-      const existing = await db.select().from(schedules)
+      // Delete existing records for this line+period
+      await db.delete(schedules)
         .where(and(eq(schedules.lineId, lineId), eq(schedules.periodValue, periodValue)));
 
-      if (existing.length > 0) {
-        await db.update(schedules).set({ plannedQty, actualQty, deviationPct }).where(eq(schedules.id, existing[0].id));
-        updated++;
-      } else {
-        await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
-        inserted++;
-      }
+      await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
+      inserted++;
       tables.add("schedules");
     }
   }
@@ -262,23 +253,19 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
     }
   }
 
+  // Write operations (monthly aggregates) — delete-then-insert
   for (const mt of monthlyTotals) {
     const monthIdx = monthNames.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
 
-    const existing = await db.select().from(operations)
+    await db.delete(operations)
       .where(and(eq(operations.lineId, lineId), eq(operations.plannedDate, periodDate)));
 
-    if (existing.length > 0) {
-      await db.update(operations).set({ actualQty: mt.qty }).where(eq(operations.id, existing[0].id));
-      updated++;
-    } else {
-      await db.insert(operations).values({
-        lineId, actualQty: mt.qty, plannedDate: periodDate,
-        status: "completed", notes: `Excel import: ${mt.month}`,
-      });
-      inserted++;
-    }
+    await db.insert(operations).values({
+      lineId, actualQty: mt.qty, plannedDate: periodDate,
+      status: "completed", notes: `Excel import: ${mt.month}`,
+    });
+    inserted++;
     tables.add("operations");
   }
 
@@ -319,16 +306,11 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
       processed++;
       const deviationPct = plannedQty > 0 ? String(Math.round(((actualQty - plannedQty) / plannedQty) * 100)) : "0";
 
-      const existing = await db.select().from(schedules)
+      await db.delete(schedules)
         .where(and(eq(schedules.lineId, lineId), eq(schedules.periodValue, periodValue)));
 
-      if (existing.length > 0) {
-        await db.update(schedules).set({ plannedQty, actualQty, deviationPct }).where(eq(schedules.id, existing[0].id));
-        updated++;
-      } else {
-        await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
-        inserted++;
-      }
+      await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
+      inserted++;
       tables.add("schedules");
     }
   }
@@ -511,6 +493,13 @@ async function parseKPI(wb: XLSX.WorkBook, fileName: string): Promise<IngestResu
 
     if (target || actual) {
       const achievementPct = target && actual ? String(Math.round((actual / target) * 100)) : null;
+
+      // Delete existing records for this KPI + period
+      if (period) {
+        await db.delete(kpiRecords)
+          .where(and(eq(kpiRecords.kpiId, kpiDef.id), eq(kpiRecords.period, period)));
+      }
+
       await db.insert(kpiRecords).values({
         kpiId: kpiDef.id, period,
         target: target ? String(target) : null,
