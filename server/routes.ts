@@ -18,6 +18,9 @@ import { findWorkersForProject, findJobsForWorker, type WorkerMatchResult, type 
 import type { Worker, Project, Trade, Skill, Certification, TradeAdjacency, CertificationRequirement, WageData, PhaseTradeRequirement, ProjectPhase, User, ProjectSchedule, ServiceAppointment, OntologyObject, OntologyLink } from "@shared/schema";
 import { db } from "./db";
 import { eq, sql, sum } from "drizzle-orm";
+import multer from "multer";
+import * as XLSX from "xlsx";
+import { detectParser, getIngestError } from "./routes/ingest";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -2519,6 +2522,33 @@ export async function registerRoutes(
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════
+  // Griseus Ingest — Excel/CSV Upload
+  // ══════════════════════════════════════════════════════════════════════
+
+  const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+  app.post("/api/v1/ingest/upload", upload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ success: false, error: "Dosya yüklenmedi" });
+
+      const fileName = req.file.originalname;
+      const buffer = req.file.buffer;
+
+      // Detect parser from filename
+      const parser = detectParser(fileName);
+      if (!parser) return res.status(400).json(getIngestError(fileName));
+
+      // Parse the file
+      const wb = XLSX.read(buffer, { type: "buffer" });
+      const result = await parser.fn(wb, fileName);
+
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ success: false, error: error.message || "Bilinmeyen hata" });
     }
   });
 

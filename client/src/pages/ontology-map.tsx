@@ -223,6 +223,15 @@ export default function OntologyMap() {
   const [forecastPlanQty, setForecastPlanQty] = useState<string>("");
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
+
+  // ── Upload state ──
+  const [uploadOpen, setUploadOpen] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
+  const [uploadDragging, setUploadDragging] = useState(false);
+  const [uploadLoading, setUploadLoading] = useState(false);
+  const [uploadResult, setUploadResult] = useState<any>(null);
+  const [uploadError, setUploadError] = useState<string>("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   // ── Load fonts ──
@@ -797,7 +806,15 @@ export default function OntologyMap() {
             }}>{tab.label}</button>
           ))}
         </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => { setUploadOpen(true); setUploadFile(null); setUploadResult(null); setUploadError(""); }}
+            style={{ padding: "6px 14px", fontSize: 11, fontWeight: 600, fontFamily: mono, background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.08)"; e.currentTarget.style.color = C.white; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; e.currentTarget.style.color = C.mid; }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
+            Dosya Yükle
+          </button>
           <span style={{ fontSize: 12, color: C.mid, fontWeight: 500 }}>Çukurova Isı Sistemleri</span>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.ok, display: "inline-block", boxShadow: `0 0 6px ${C.ok}`, animation: "ontoPulse 2s ease-in-out infinite" }} />
         </div>
@@ -903,6 +920,128 @@ export default function OntologyMap() {
           <span style={{ fontSize: 10, color: C.dim }}>Powered by Griseus Engine v1</span>
         </div>
       </div>
+
+      {/* ════ UPLOAD MODAL ════ */}
+      {uploadOpen && (
+        <div style={{ position: "fixed", inset: 0, zIndex: 9999, display: "flex", alignItems: "center", justifyContent: "center" }}
+          onClick={(e) => { if (e.target === e.currentTarget) setUploadOpen(false); }}>
+          {/* Overlay */}
+          <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.7)", backdropFilter: "blur(4px)" }} />
+          {/* Modal */}
+          <div style={{ position: "relative", width: 480, maxWidth: "90vw", background: "rgba(15,15,20,0.95)", border: `1px solid rgba(255,255,255,0.08)`,
+            borderRadius: 16, padding: 32, fontFamily: sans }}>
+            {/* Close */}
+            <button onClick={() => setUploadOpen(false)} style={{ position: "absolute", top: 16, right: 16, background: "none", border: "none", color: C.dim, fontSize: 18, cursor: "pointer" }}>✕</button>
+            <div style={{ fontSize: 18, fontWeight: 700, color: C.white, marginBottom: 4 }}>Veri Yükle</div>
+            <div style={{ fontSize: 12, color: C.mid, marginBottom: 20 }}>Excel veya CSV dosyası sürükleyin</div>
+
+            {/* Drop zone */}
+            {!uploadResult && !uploadError && (
+              <>
+                <div
+                  onDragOver={(e) => { e.preventDefault(); setUploadDragging(true); }}
+                  onDragLeave={() => setUploadDragging(false)}
+                  onDrop={(e) => {
+                    e.preventDefault(); setUploadDragging(false);
+                    const f = e.dataTransfer.files[0];
+                    if (f) setUploadFile(f);
+                  }}
+                  onClick={() => fileInputRef.current?.click()}
+                  style={{
+                    border: `2px dashed ${uploadDragging ? C.facility : uploadFile ? C.ok : "#333"}`,
+                    borderRadius: 12, padding: "40px 20px", textAlign: "center", cursor: "pointer",
+                    background: uploadDragging ? "rgba(52,211,153,0.04)" : "rgba(255,255,255,0.02)",
+                    transition: "all 0.2s", marginBottom: 16,
+                  }}>
+                  <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
+                    onChange={(e) => { const f = e.target.files?.[0]; if (f) setUploadFile(f); }} />
+                  {uploadFile ? (
+                    <div>
+                      <div style={{ fontSize: 28, marginBottom: 8 }}>📄</div>
+                      <div style={{ fontSize: 13, color: C.white, fontWeight: 600 }}>{uploadFile.name}</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{(uploadFile.size / 1024).toFixed(0)} KB</div>
+                    </div>
+                  ) : (
+                    <div>
+                      <div style={{ fontSize: 28, marginBottom: 8, opacity: 0.4 }}>📁</div>
+                      <div style={{ fontSize: 12, color: C.mid }}>Dosyayı buraya sürükleyin veya tıklayın</div>
+                      <div style={{ fontSize: 11, color: C.dim, marginTop: 6 }}>.xlsx, .xls, .csv</div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Upload button */}
+                <button
+                  disabled={!uploadFile || uploadLoading}
+                  onClick={async () => {
+                    if (!uploadFile) return;
+                    setUploadLoading(true); setUploadError(""); setUploadResult(null);
+                    try {
+                      const fd = new FormData();
+                      fd.append("file", uploadFile);
+                      const r = await fetch("/api/v1/ingest/upload", { method: "POST", body: fd });
+                      const data = await r.json();
+                      if (data.success) {
+                        setUploadResult(data);
+                        setTimeout(() => { window.location.reload(); }, 2000);
+                      } else {
+                        setUploadError(data.error || "Bilinmeyen hata");
+                      }
+                    } catch (err: any) {
+                      setUploadError(err.message || "Bağlantı hatası");
+                    }
+                    setUploadLoading(false);
+                  }}
+                  style={{
+                    width: "100%", padding: "12px 0", fontSize: 13, fontWeight: 700, fontFamily: mono,
+                    background: !uploadFile ? "#222" : uploadLoading ? "#333" : C.facility,
+                    color: !uploadFile ? C.dim : "#000", border: "none", borderRadius: 8,
+                    cursor: !uploadFile ? "not-allowed" : uploadLoading ? "wait" : "pointer",
+                    transition: "all 0.2s",
+                  }}>
+                  {uploadLoading ? "Yükleniyor..." : "Yükle"}
+                </button>
+              </>
+            )}
+
+            {/* Success result */}
+            {uploadResult && (
+              <div style={{ padding: 20, background: "rgba(52,211,153,0.06)", border: `1px solid rgba(52,211,153,0.2)`, borderRadius: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.ok, marginBottom: 12 }}>Yükleme Başarılı</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <KV label="Parser" value={uploadResult.parser_used} color={C.facility} />
+                  <KV label="İşlenen kayıt" value={uploadResult.records_processed} />
+                  <KV label="Eklenen" value={uploadResult.records_inserted} color={C.ok} />
+                  <KV label="Güncellenen" value={uploadResult.records_updated} color={C.warn} />
+                  <KV label="Tablolar" value={uploadResult.tables_affected?.join(", ")} />
+                </div>
+                <div style={{ fontSize: 11, color: C.mid, marginTop: 12, lineHeight: 1.6, padding: "8px 10px", background: "rgba(255,255,255,0.03)", borderRadius: 6 }}>
+                  {uploadResult.summary}
+                </div>
+                <div style={{ fontSize: 10, color: C.dim, marginTop: 10, textAlign: "center" }}>Sayfa 2 saniye sonra yenileniyor...</div>
+              </div>
+            )}
+
+            {/* Error */}
+            {uploadError && (
+              <div style={{ padding: 20, background: "rgba(239,68,68,0.06)", border: `1px solid rgba(239,68,68,0.2)`, borderRadius: 12 }}>
+                <div style={{ fontSize: 14, fontWeight: 700, color: C.err, marginBottom: 8 }}>Hata</div>
+                <div style={{ fontSize: 12, color: C.mid }}>{uploadError}</div>
+                <button onClick={() => { setUploadError(""); setUploadFile(null); }}
+                  style={{ marginTop: 12, padding: "8px 16px", fontSize: 11, fontWeight: 600, fontFamily: mono,
+                    background: "rgba(255,255,255,0.06)", border: `1px solid #333`, borderRadius: 6, color: C.mid, cursor: "pointer" }}>
+                  Tekrar Dene
+                </button>
+              </div>
+            )}
+
+            {/* Supported formats */}
+            <div style={{ fontSize: 10, color: C.dim, marginTop: 16, textAlign: "center", lineHeight: 1.6 }}>
+              Desteklenen dosyalar: Elektrikli/Gazlı İmalat Raporu, Kapasite, Personel Listesi, KPI, İş Akış
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* ── Keyframes ── */}
       <style>{`
