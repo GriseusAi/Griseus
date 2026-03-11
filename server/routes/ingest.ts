@@ -35,14 +35,24 @@ const SUPPORTED = ["Elektrikli İmalat", "Gazlı İmalat", "Kapasite", "Personel
 
 type ParserFn = (wb: XLSX.WorkBook, fileName: string) => Promise<IngestResult>;
 
+function normalizeTurkish(str: string): string {
+  return str.toLowerCase()
+    .replace(/İ/g, "i").replace(/ı/g, "i")
+    .replace(/Ş/g, "s").replace(/ş/g, "s")
+    .replace(/Ç/g, "c").replace(/ç/g, "c")
+    .replace(/Ü/g, "u").replace(/ü/g, "u")
+    .replace(/Ö/g, "o").replace(/ö/g, "o")
+    .replace(/Ğ/g, "g").replace(/ğ/g, "g");
+}
+
 export function detectParser(fileName: string): { name: string; fn: ParserFn } | null {
-  const upper = fileName.toUpperCase().replace(/İ/g, "I").replace(/Ş/g, "S");
-  if (upper.includes("ELEKTRIKLI") || upper.includes("ELEKTRİKLİ")) return { name: "ElektrikliParser", fn: parseElektrikli };
-  if (upper.includes("GAZLI")) return { name: "GazliParser", fn: parseGazli };
-  if (upper.includes("KAPASITE") || upper.includes("KAPASİTE")) return { name: "KapasiteParser", fn: parseKapasite };
-  if (upper.includes("PERSONEL")) return { name: "PersonelParser", fn: parsePersonel };
-  if (upper.includes("KPI")) return { name: "KPIParser", fn: parseKPI };
-  if (upper.includes("IS_AKIS") || upper.includes("İŞ_AKIŞ") || upper.includes("IS AKIS") || upper.includes("İŞ AKIŞ")) return { name: "IsAkisParser", fn: parseIsAkis };
+  const n = normalizeTurkish(fileName);
+  if (n.includes("elektrikli") || n.includes("elektrik")) return { name: "ElektrikliParser", fn: parseElektrikli };
+  if (n.includes("gazli") || n.includes("gazl")) return { name: "GazliParser", fn: parseGazli };
+  if (n.includes("kapasite")) return { name: "KapasiteParser", fn: parseKapasite };
+  if (n.includes("personel")) return { name: "PersonelParser", fn: parsePersonel };
+  if (n.includes("kpi")) return { name: "KPIParser", fn: parseKPI };
+  if (n.includes("is_akis") || n.includes("is akis") || n.includes("netsis")) return { name: "IsAkisParser", fn: parseIsAkis };
   return null;
 }
 
