@@ -203,7 +203,6 @@ export default function EnginePage() {
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
-  const [schedStep, setSchedStep] = useState<1 | 2 | 3 | 4>(1);
   const [motorAccuracy, setMotorAccuracy] = useState<MotorAccuracy | null>(null);
   const [completeLoading, setCompleteLoading] = useState<number | null>(null);
   const [completeInputs, setCompleteInputs] = useState<Record<number, string>>({});
@@ -1131,279 +1130,179 @@ export default function EnginePage() {
                 </PanelSection>
               )}
 
-              {/* Schedules — 4-Step Feedback Loop */}
+              {/* Schedules — Single Flow */}
               {ontoNode === "schedules" && (
                 <>
-                  {/* Step tabs */}
-                  <div style={{ display: "flex", gap: 2, marginBottom: 10 }}>
-                    {([
-                      [1, "Plan"], [2, "Tahmin"], [3, "Aktif"], [4, "Motor"],
-                    ] as [number, string][]).map(([n, label]) => (
-                      <button key={n} onClick={() => { setSchedStep(n as 1|2|3|4); if (n >= 3) fetchMotorAccuracy(); }}
-                        style={{ flex: 1, padding: "5px 0", fontSize: 9, fontFamily: mono, fontWeight: schedStep === n ? 700 : 400,
-                          borderRadius: 5, cursor: "pointer", border: `1px solid ${schedStep === n ? "#fb923c40" : C.cardBorder}`,
-                          background: schedStep === n ? "rgba(251,146,60,0.12)" : "transparent", color: schedStep === n ? "#fb923c" : C.dim,
-                        }}>{n}. {label}</button>
+                  {/* Motor accuracy badge — always visible top-right */}
+                  {motorAccuracy && motorAccuracy.completed_plans > 0 && (
+                    <div style={{ position: "absolute", top: 8, right: 8, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}>
+                      <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={28} stroke={3} />
+                      <div>
+                        <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
+                        <div style={{ fontSize: 7, color: C.dim }}>Motor Dogrulugu</div>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 1. Hat secici — big toggle */}
+                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                    {linesData.map((line: any) => (
+                      <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); }} style={{
+                        flex: 1, padding: "12px 0", fontSize: 13, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
+                        background: forecastLineId === line.id ? "rgba(251,146,60,0.15)" : "transparent",
+                        border: `2px solid ${forecastLineId === line.id ? "#fb923c" : C.cardBorder}`,
+                        color: forecastLineId === line.id ? "#fb923c" : C.dim, textAlign: "center", transition: "all 0.2s",
+                      }}>{line.name || `Hat ${line.id}`}</button>
                     ))}
                   </div>
 
-                  {/* Step 1: Plan Input */}
-                  {schedStep === 1 && (
-                    <PanelSection title="Yeni Haftalik Plan" color="#fb923c">
-                      <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
-                        {linesData.map((line: any) => (
-                          <button key={line.id} onClick={() => setForecastLineId(line.id)} style={{
-                            flex: 1, padding: "4px 0", fontSize: 9, fontFamily: mono, borderRadius: 5, cursor: "pointer",
-                            background: forecastLineId === line.id ? "rgba(251,146,60,0.12)" : "transparent",
-                            border: `1px solid ${forecastLineId === line.id ? "#fb923c40" : C.cardBorder}`,
-                            color: forecastLineId === line.id ? "#fb923c" : C.dim, textAlign: "center",
-                          }}>{line.name || `Hat ${line.id}`}</button>
-                        ))}
-                      </div>
-                      <div style={{ textAlign: "center", marginBottom: 8 }}>
-                        <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef Miktar"
-                          style={{ width: "100%", padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                            color: C.white, fontSize: 22, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                        <div style={{ fontSize: 9, color: C.dim, marginTop: 4 }}>Haftalik uretim hedefi (adet)</div>
-                      </div>
-                      <button onClick={() => { runForecast(); setSchedStep(2); }} disabled={forecastLoading || !forecastPlanQty}
-                        style={{ width: "100%", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                          background: "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
-                          opacity: !forecastPlanQty ? 0.4 : 1,
-                        }}>Motor'a Sor</button>
-                    </PanelSection>
-                  )}
+                  {/* 2. Plan input */}
+                  <PanelSection title="Bu hafta ne planliyorsunuz?" color="#fb923c">
+                    <div style={{ textAlign: "center", marginBottom: 8 }}>
+                      <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
+                        style={{ width: "100%", padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
+                          color: C.white, fontSize: 22, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                      <div style={{ fontSize: 9, color: C.dim, marginTop: 4 }}>Haftalik uretim hedefi (adet)</div>
+                    </div>
+                    <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
+                      style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                        background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
+                        opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
+                      }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
+                  </PanelSection>
 
-                  {/* Step 2: Forecast Result */}
-                  {schedStep === 2 && (
+                  {/* 3. Motor tahmini — inline result */}
+                  {forecastResult && (
                     <PanelSection title="Motor Tahmini" color="#fb923c">
-                      {forecastLoading ? (
-                        <div style={{ textAlign: "center", padding: 20, color: C.dim }}>Hesaplaniyor...</div>
-                      ) : forecastResult ? (
-                        <div>
-                          {/* Motor generation badge */}
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                            <span style={{ fontSize: 8, fontFamily: mono, padding: "2px 6px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
-                              Motor Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
-                            </span>
-                            {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
-                              <span style={{ fontSize: 8, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
-                                {forecastResult.accuracy_trend === "improving" ? "Gelisor" : "Dusuk"}
-                              </span>
-                            )}
-                          </div>
-                          {/* 3 big metrics */}
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
-                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
-                            <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
-                            <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} />
-                          </div>
-                          {/* Confidence ring */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                            <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
-                            <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
-                          </div>
-                          {/* Seasonal info */}
-                          {(forecastResult.seasonal_factor != null || forecastResult.historical_same_week != null) && (
-                            <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
-                              {forecastResult.seasonal_factor != null && (
-                                <div style={{ flex: 1, padding: "4px 6px", borderRadius: 5, background: "rgba(129,140,248,0.08)", border: `1px solid rgba(129,140,248,0.15)`, fontSize: 8, fontFamily: mono, textAlign: "center" }}>
-                                  <div style={{ color: C.indigo, fontWeight: 700 }}>%{forecastResult.seasonal_factor}</div>
-                                  <div style={{ color: C.dim }}>Ay Ort.</div>
-                                </div>
-                              )}
-                              {forecastResult.historical_same_week != null && (
-                                <div style={{ flex: 1, padding: "4px 6px", borderRadius: 5, background: "rgba(251,191,36,0.08)", border: `1px solid rgba(251,191,36,0.15)`, fontSize: 8, fontFamily: mono, textAlign: "center" }}>
-                                  <div style={{ color: C.amber, fontWeight: 700 }}>%{forecastResult.historical_same_week}</div>
-                                  <div style={{ color: C.dim }}>Hafta Ort.</div>
-                                </div>
-                              )}
-                            </div>
-                          )}
-                          {/* Risk flags */}
-                          {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
-                            <div style={{ marginBottom: 8 }}>
-                              {forecastResult.risk_flags.map((flag, i) => (
-                                <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
-                                  {flag}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {/* Scenarios */}
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
-                            {forecastResult.scenarios.map((s, i) => (
-                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 9, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 2 }}>
-                                <span style={{ color: C.mid }}>{s.name}</span>
-                                <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
-                              </div>
-                            ))}
-                          </div>
-                          {/* Save plan */}
-                          <button disabled={planSaved} onClick={async () => {
-                            const now = new Date();
-                            const start = new Date(now.getFullYear(), 0, 1);
-                            const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
-                            const weekLabel = `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
-                            try {
-                              const r = await fetch("/api/v1/plans/create", { method: "POST", headers: { "Content-Type": "application/json" },
-                                body: JSON.stringify({ line_id: forecastLineId, week_label: weekLabel, planned_qty: Number(forecastPlanQty), predicted_qty: forecastResult.predicted_output,
-                                  motor_generation: forecastResult.motor_generation || 0, predicted_rate: forecastResult.avg_realization_rate }) });
-                              if (r.ok) { setPlanSaved(true); fetchMotorAccuracy(); }
-                            } catch { /* */ }
-                          }} style={{
-                            width: "100%", padding: "10px", borderRadius: 8, fontSize: 11, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
-                            background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000", border: planSaved ? `1px solid ${C.green}30` : "none",
-                          }}>{planSaved ? "Kaydedildi — Aktif Planlar'a Git" : "Bu Plani Kaydet"}</button>
-                          {planSaved && (
-                            <button onClick={() => setSchedStep(3)} style={{ width: "100%", marginTop: 4, padding: "6px", borderRadius: 6, fontSize: 10, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.mid }}>
-                              Aktif Planlara Git →
-                            </button>
-                          )}
-                        </div>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: 16, color: C.dim }}>
-                          <div style={{ fontSize: 10, marginBottom: 6 }}>Henuz tahmin yapilmadi</div>
-                          <button onClick={() => setSchedStep(1)} style={{ padding: "6px 12px", borderRadius: 6, fontSize: 10, background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c", cursor: "pointer" }}>
-                            Plan Gir
-                          </button>
-                        </div>
-                      )}
-                    </PanelSection>
-                  )}
-
-                  {/* Step 3: Active Plans */}
-                  {schedStep === 3 && (
-                    <PanelSection title="Aktif Planlar" color="#fb923c">
-                      {motorAccuracy && motorAccuracy.active_list.length > 0 ? (
-                        <div style={{ maxHeight: 350, overflowY: "auto" }}>
-                          {motorAccuracy.active_list.map(p => (
-                            <div key={p.id} style={{ padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 6 }}>
-                              <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                                <span style={{ fontSize: 10, fontWeight: 600, color: "#fb923c", fontFamily: mono }}>{p.week_label}</span>
-                                <span style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>Hat {p.line_id}</span>
-                              </div>
-                              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.mid, marginBottom: 6 }}>
-                                <span>Plan: {fmt(p.planned_qty)}</span>
-                                {p.predicted_qty && <span>Tahmin: {fmt(p.predicted_qty)}</span>}
-                              </div>
-                              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-                                <input type="number" value={completeInputs[p.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Gerceklesen" style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 10, fontFamily: mono, outline: "none" }} />
-                                <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
-                                  style={{ padding: "6px 10px", borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
-                                  {completeLoading === p.id ? "..." : "Tamamla"}
-                                </button>
-                              </div>
-                              {/* Deviation reason & notes */}
-                              <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
-                                <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  style={{ flex: 1, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
-                                  <option value="">Sapma Nedeni (opsiyonel)</option>
-                                  <option value="personnel">Personel</option>
-                                  <option value="material">Malzeme</option>
-                                  <option value="machine">Makine</option>
-                                  <option value="holiday">Tatil</option>
-                                  <option value="demand">Talep</option>
-                                  <option value="other">Diger</option>
-                                </select>
-                              </div>
-                              {deviationReasons[p.id] && (
-                                <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
-                              )}
+                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                        <span style={{ fontSize: 8, fontFamily: mono, padding: "2px 6px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
+                          Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
+                        </span>
+                        {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
+                          <span style={{ fontSize: 8, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
+                            {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
+                          </span>
+                        )}
+                      </div>
+                      {/* Big metrics */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
+                        <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
+                        <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
+                        <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} />
+                      </div>
+                      {/* Recommendation */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                        <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
+                        <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
+                      </div>
+                      {/* Risk flags */}
+                      {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
+                        <div style={{ marginBottom: 8 }}>
+                          {forecastResult.risk_flags.map((flag, i) => (
+                            <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                              {flag}
                             </div>
                           ))}
                         </div>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: 16, color: C.dim }}>
-                          <div style={{ fontSize: 10, marginBottom: 6 }}>Aktif plan yok</div>
-                          <button onClick={() => setSchedStep(1)} style={{ padding: "6px 12px", borderRadius: 6, fontSize: 10, background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c", cursor: "pointer" }}>
-                            Yeni Plan Olustur
-                          </button>
-                        </div>
                       )}
+                      {/* Scenarios */}
+                      <div style={{ marginBottom: 8 }}>
+                        <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
+                        {forecastResult.scenarios.map((s, i) => (
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 9, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 2 }}>
+                            <span style={{ color: C.mid }}>{s.name}</span>
+                            <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
+                          </div>
+                        ))}
+                      </div>
                     </PanelSection>
                   )}
 
-                  {/* Step 4: Motor Performance */}
-                  {schedStep === 4 && (
-                    <PanelSection title="Motor Performansi" color="#fb923c">
-                      {motorAccuracy ? (
-                        <div>
-                          {/* Big accuracy ring */}
-                          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-                            <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={64} stroke={5} />
-                            <div>
-                              <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
-                              <div style={{ fontSize: 9, color: C.dim }}>Ortalama Tahmin Isabeti</div>
-                              <div style={{ fontSize: 8, fontFamily: mono, marginTop: 2, color: motorAccuracy.trend === "improving" ? C.green : motorAccuracy.trend === "declining" ? C.err : C.mid }}>
-                                {motorAccuracy.trend === "improving" ? "Gelisiyor" : motorAccuracy.trend === "declining" ? "Gerileme" : "Stabil"} · Gen {motorAccuracy.motor_generation}
-                              </div>
-                            </div>
+                  {/* 4. Save plan */}
+                  {forecastResult && (
+                    <button disabled={planSaved} onClick={async () => {
+                      const now = new Date();
+                      const start = new Date(now.getFullYear(), 0, 1);
+                      const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+                      const weekLabel = `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
+                      try {
+                        const r = await fetch("/api/v1/plans/create", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+                          body: JSON.stringify({ line_id: forecastLineId, week_label: weekLabel, planned_qty: Number(forecastPlanQty), predicted_qty: forecastResult.predicted_output,
+                            motor_generation: forecastResult.motor_generation || 0, predicted_rate: forecastResult.avg_realization_rate }) });
+                        if (r.ok) { setPlanSaved(true); fetchMotorAccuracy(); }
+                        else if (r.status === 409) { alert("Bu hat icin bu hafta zaten bir plan mevcut."); }
+                        else { const t = await r.text(); alert("Hata: " + (t || r.statusText)); }
+                      } catch { alert("Ag hatasi"); }
+                    }} style={{
+                      width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
+                      background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000",
+                      border: planSaved ? `1px solid ${C.green}30` : "none", marginBottom: 12, transition: "all 0.2s",
+                    }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
+                  )}
+
+                  {/* 5. Son 3 plan — ozet tablo */}
+                  {motorAccuracy && motorAccuracy.history.length > 0 && (
+                    <PanelSection title="Son Planlar" color="#fb923c">
+                      <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, marginBottom: 6 }}>
+                        {forecastLineId === 1 ? "Elektrikli" : "Gazli"} hatti
+                      </div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", marginBottom: 4, borderBottom: `1px solid ${C.cardBorder}` }}>
+                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
+                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
+                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
+                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
+                      </div>
+                      {motorAccuracy.history.slice(0, 3).map((h, i) => (
+                        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
+                          <span style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>{h.week}</span>
+                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
+                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.actual ?? "-"}</span>
+                          <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", fontWeight: 600,
+                            color: h.prediction_accuracy != null && h.prediction_accuracy >= 0.9 ? C.green : h.prediction_accuracy != null && h.prediction_accuracy >= 0.7 ? "#fb923c" : C.err }}>
+                            {h.prediction_accuracy != null ? `%${Math.round(h.prediction_accuracy * 100)}` : "-"}
+                          </span>
+                        </div>
+                      ))}
+                    </PanelSection>
+                  )}
+
+                  {/* Active plans — complete flow inline */}
+                  {motorAccuracy && motorAccuracy.active_list.length > 0 && (
+                    <PanelSection title="Aktif Planlar" color={C.amber}>
+                      {motorAccuracy.active_list.map(p => (
+                        <div key={p.id} style={{ padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 6 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+                            <span style={{ fontSize: 10, fontWeight: 600, color: "#fb923c", fontFamily: mono }}>{p.week_label}</span>
+                            <span style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>Hat {p.line_id}</span>
                           </div>
-                          {/* Stats row */}
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 10 }}>
-                            <MetricCard value={`${motorAccuracy.completed_plans}`} label="Tamamlanan" color={C.green} />
-                            <MetricCard value={`%${Math.round(motorAccuracy.avg_realization_rate * 100)}`} label="Gerceklesme" color={C.indigo} />
-                            <MetricCard value={`%${Math.round(motorAccuracy.best_accuracy * 100)}`} label="En Iyi" color="#fb923c" />
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.mid, marginBottom: 6 }}>
+                            <span>Plan: {fmt(p.planned_qty)}</span>
+                            {p.predicted_qty && <span>Tahmin: {fmt(p.predicted_qty)}</span>}
                           </div>
-                          {/* Top deviation reason */}
-                          {motorAccuracy.top_deviation && (
-                            <div style={{ padding: "6px 8px", marginBottom: 8, borderRadius: 6, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.15)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                              <span style={{ fontSize: 9, color: C.amber }}>En sik sapma nedeni</span>
-                              <span style={{ fontSize: 10, fontWeight: 700, fontFamily: mono, color: C.amber }}>{motorAccuracy.top_deviation.count} kez: {motorAccuracy.top_deviation.label}</span>
-                            </div>
-                          )}
-                          {/* Risk flags */}
-                          {motorAccuracy.risk_flags && motorAccuracy.risk_flags.length > 0 && (
-                            <div style={{ marginBottom: 8 }}>
-                              {motorAccuracy.risk_flags.map((flag, i) => (
-                                <div key={i} style={{ padding: "3px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: C.err }}>
-                                  {flag}
-                                </div>
-                              ))}
-                            </div>
-                          )}
-                          {/* Monthly realization bar chart */}
-                          {motorAccuracy.monthly_avg && motorAccuracy.monthly_avg.some(m => m.count > 0) && (
-                            <div style={{ marginBottom: 10 }}>
-                              <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 6 }}>AYLIK GERCEKLESME</div>
-                              <ResponsiveContainer width="100%" height={100}>
-                                <BarChart data={motorAccuracy.monthly_avg} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
-                                  <XAxis dataKey="label" tick={{ fontSize: 7, fill: C.dim }} axisLine={false} tickLine={false} />
-                                  <YAxis hide domain={[0, 1.2]} />
-                                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 6, fontSize: 9, color: C.white }}
-                                    formatter={(v: number) => [`%${Math.round(v * 100)}`, "Ort. Gerceklesme"]} />
-                                  <Bar dataKey="avg_rate" radius={[3, 3, 0, 0]}
-                                    fill="#fb923c" fillOpacity={0.7} />
-                                </BarChart>
-                              </ResponsiveContainer>
-                            </div>
-                          )}
-                          {/* History table */}
-                          {motorAccuracy.history.length > 0 && (
-                            <div>
-                              <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>GECMIS</div>
-                              <div style={{ maxHeight: 100, overflowY: "auto" }}>
-                                {motorAccuracy.history.map((h, i) => (
-                                  <div key={i} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr 50px", gap: 4, padding: "3px 0", fontSize: 8, fontFamily: mono, borderBottom: `1px solid ${C.cardBorder}` }}>
-                                    <span style={{ color: C.mid }}>{h.week}</span>
-                                    <span style={{ color: C.dim }}>P:{h.planned} T:{h.predicted ?? "-"}</span>
-                                    <span style={{ color: C.white }}>G:{h.actual ?? "-"}</span>
-                                    <span style={{ textAlign: "right", fontWeight: 600, color: h.prediction_accuracy != null && h.prediction_accuracy >= 0.9 ? C.green : h.prediction_accuracy != null && h.prediction_accuracy >= 0.7 ? "#fb923c" : C.err }}>
-                                      {h.prediction_accuracy != null ? `%${Math.round(h.prediction_accuracy * 100)}` : "-"}
-                                    </span>
-                                  </div>
-                                ))}
-                              </div>
-                            </div>
+                          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                            <input type="number" value={completeInputs[p.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                              placeholder="Gerceklesen" style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 10, fontFamily: mono, outline: "none" }} />
+                            <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
+                              style={{ padding: "6px 10px", borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
+                              {completeLoading === p.id ? "..." : "Tamamla"}
+                            </button>
+                          </div>
+                          <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
+                            style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                            <option value="">Sapma Nedeni (opsiyonel)</option>
+                            <option value="personnel">Personel</option>
+                            <option value="material">Malzeme</option>
+                            <option value="machine">Makine</option>
+                            <option value="holiday">Tatil</option>
+                            <option value="demand">Talep</option>
+                            <option value="other">Diger</option>
+                          </select>
+                          {deviationReasons[p.id] && (
+                            <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
+                              placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
                           )}
                         </div>
-                      ) : (
-                        <div style={{ textAlign: "center", padding: 16, color: C.dim, fontSize: 10 }}>Henuz veri yok</div>
-                      )}
+                      ))}
                     </PanelSection>
                   )}
                 </>
