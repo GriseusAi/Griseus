@@ -768,6 +768,7 @@ export default function OntologyMap() {
                       const r = await fetch("/api/v1/plans/create", {
                         method: "POST",
                         headers: { "Content-Type": "application/json" },
+                        credentials: "include",
                         body: JSON.stringify({
                           line_id: forecastLineId,
                           week_label: weekLabel,
@@ -775,8 +776,17 @@ export default function OntologyMap() {
                           predicted_qty: forecastResult.predicted_output,
                         }),
                       });
-                      if (r.ok) setPlanSaved(true);
-                    } catch { /* ignore */ }
+                      if (r.ok) {
+                        setPlanSaved(true);
+                      } else {
+                        const errText = await r.text();
+                        console.error("Plan kaydetme hatası:", r.status, errText);
+                        alert("Plan kaydedilemedi: " + (errText || r.statusText));
+                      }
+                    } catch (err) {
+                      console.error("Plan kaydetme hatası:", err);
+                      alert("Plan kaydedilemedi: ağ hatası");
+                    }
                   }}
                   style={{
                     padding: "12px 24px",
