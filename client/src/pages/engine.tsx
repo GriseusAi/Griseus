@@ -97,11 +97,11 @@ function PanelSection({ title, color, children }: { title: string; color: string
   );
 }
 
-function MetricCard({ value, label, color }: { value: string; label: string; color: string }) {
+function MetricCard({ value, label, color, large }: { value: string; label: string; color: string; large?: boolean }) {
   return (
-    <div style={{ padding: "12px 14px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
-      <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 10, color: C.mid, marginTop: 2 }}>{label}</div>
+    <div style={{ padding: "14px 16px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
+      <div style={{ fontFamily: mono, fontSize: large ? 36 : 24, fontWeight: 700, color }}>{value}</div>
+      <div style={{ fontSize: 12, color: C.mid, marginTop: 3 }}>{label}</div>
     </div>
   );
 }
@@ -1245,19 +1245,19 @@ export default function EnginePage() {
                   {/* Motor accuracy badge — always visible top-right */}
                   {motorAccuracy && motorAccuracy.completed_plans > 0 && (
                     <div style={{ position: "absolute", top: 8, right: 8, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}>
-                      <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={28} stroke={3} />
+                      <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={32} stroke={3} />
                       <div>
-                        <div style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
-                        <div style={{ fontSize: 7, color: C.dim }}>Motor Dogrulugu</div>
+                        <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
+                        <div style={{ fontSize: 9, color: C.dim }}>Motor Dogrulugu</div>
                       </div>
                     </div>
                   )}
 
                   {/* 1. Hat secici — big toggle */}
-                  <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
+                  <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); fetchCurrentWeekPlan(line.id); }} style={{
-                        flex: 1, padding: "12px 0", fontSize: 13, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
+                        flex: 1, padding: "14px 0", fontSize: 15, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
                         background: forecastLineId === line.id ? "rgba(251,146,60,0.15)" : "transparent",
                         border: `2px solid ${forecastLineId === line.id ? "#fb923c" : C.cardBorder}`,
                         color: forecastLineId === line.id ? "#fb923c" : C.dim, textAlign: "center", transition: "all 0.2s",
@@ -1266,20 +1266,20 @@ export default function EnginePage() {
                   </div>
 
                   {/* Week status label */}
-                  <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 8, textAlign: "center" }}>
+                  <div style={{ fontSize: 12, fontFamily: mono, color: C.dim, marginBottom: 10, textAlign: "center" }}>
                     {currentWeekLabel}
                   </div>
 
                   {/* STATE A: Loading */}
                   {currentWeekPlan === undefined && (
-                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 10 }}>Kontrol ediliyor...</div>
+                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 13 }}>Kontrol ediliyor...</div>
                   )}
 
                   {/* STATE B: Plan exists + completed → done message */}
                   {currentWeekPlan && currentWeekPlan.status === "completed" && (
                     <div style={{ padding: "16px", borderRadius: 12, background: "rgba(52,211,153,0.06)", border: `1px solid ${C.green}30`, textAlign: "center", marginBottom: 12 }}>
                       <div style={{ fontSize: 20, marginBottom: 6 }}>✓</div>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>Bu hafta tamamlandi</div>
+                      <div style={{ fontSize: 16, fontWeight: 700, color: C.green, marginBottom: 6 }}>Bu hafta tamamlandi</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                         <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color={C.mid} />
                         <MetricCard value={fmt(currentWeekPlan.actual_qty || 0)} label="Gercek" color={C.green} />
@@ -1299,11 +1299,11 @@ export default function EnginePage() {
                       <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
                         <input type="number" value={completeInputs[currentWeekPlan.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
                           placeholder="Gerceklesen miktar" autoFocus
-                          style={{ flex: 1, padding: "12px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                            color: C.white, fontSize: 18, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                          style={{ flex: 1, padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
+                            color: C.white, fontSize: 24, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
                       </div>
                       <select value={deviationReasons[currentWeekPlan.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
-                        style={{ width: "100%", padding: "6px 8px", marginBottom: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, fontSize: 9, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                        style={{ width: "100%", padding: "8px 10px", marginBottom: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, fontSize: 12, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
                         <option value="">Sapma Nedeni (opsiyonel)</option>
                         <option value="personnel">Personel</option>
                         <option value="material">Hammadde</option>
@@ -1313,10 +1313,10 @@ export default function EnginePage() {
                       </select>
                       {deviationReasons[currentWeekPlan.id] && (
                         <input value={deviationNotes[currentWeekPlan.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
-                          placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginBottom: 6, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 9, fontFamily: mono, outline: "none" }} />
+                          placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginBottom: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 12, fontFamily: mono, outline: "none" }} />
                       )}
                       <button onClick={() => { completePlan(currentWeekPlan.id); }} disabled={completeLoading === currentWeekPlan.id || !completeInputs[currentWeekPlan.id]}
-                        style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                        style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 17, fontWeight: 700, cursor: "pointer",
                           background: justCompleted[currentWeekPlan.id] ? "rgba(52,211,153,0.12)" : C.green, color: justCompleted[currentWeekPlan.id] ? C.green : "#000", border: justCompleted[currentWeekPlan.id] ? `1px solid ${C.green}30` : "none",
                           opacity: !completeInputs[currentWeekPlan.id] && !justCompleted[currentWeekPlan.id] ? 0.4 : 1, transition: "all 0.2s",
                         }}>{completeLoading === currentWeekPlan.id ? "..." : justCompleted[currentWeekPlan.id] ? `Tamamlandi — %${justCompleted[currentWeekPlan.id].rate}` : "Tamamla"}</button>
@@ -1327,14 +1327,14 @@ export default function EnginePage() {
                   {currentWeekPlan === null && (
                     <>
                       <PanelSection title="Bu hafta ne planliyorsunuz?" color="#fb923c">
-                        <div style={{ textAlign: "center", marginBottom: 8 }}>
+                        <div style={{ textAlign: "center", marginBottom: 10 }}>
                           <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
-                            style={{ width: "100%", padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                              color: C.white, fontSize: 22, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                          <div style={{ fontSize: 9, color: C.dim, marginTop: 4 }}>Haftalik uretim hedefi (adet)</div>
+                            style={{ width: "100%", padding: "16px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
+                              color: C.white, fontSize: 28, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                          <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>Haftalik uretim hedefi (adet)</div>
                         </div>
                         <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
-                          style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                          style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 17, fontWeight: 700, cursor: "pointer",
                             background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
                             opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
                           }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
@@ -1343,38 +1343,38 @@ export default function EnginePage() {
                       {/* Motor tahmini — inline result */}
                       {forecastResult && (
                         <PanelSection title="Motor Tahmini" color="#fb923c">
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                            <span style={{ fontSize: 8, fontFamily: mono, padding: "2px 6px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                            <span style={{ fontSize: 11, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
                               Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
                             </span>
                             {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
-                              <span style={{ fontSize: 8, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
+                              <span style={{ fontSize: 11, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
                                 {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
                               </span>
                             )}
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
-                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
-                            <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
-                            <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} />
+                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" large />
+                            <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} large />
+                            <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} large />
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                             <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
-                            <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
+                            <div style={{ flex: 1, fontSize: 13, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
                           </div>
                           {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
                             <div style={{ marginBottom: 8 }}>
                               {forecastResult.risk_flags.map((flag, i) => (
-                                <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                                <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 11, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
                                   {flag}
                                 </div>
                               ))}
                             </div>
                           )}
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
+                            <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 6 }}>SENARYOLAR</div>
                             {forecastResult.scenarios.map((s, i) => (
-                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 9, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 2 }}>
+                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 12, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
                                 <span style={{ color: C.mid }}>{s.name}</span>
                                 <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
                               </div>
@@ -1395,7 +1395,7 @@ export default function EnginePage() {
                             else { const t = await r.text(); alert("Hata: " + (t || r.statusText)); }
                           } catch { alert("Ag hatasi"); }
                         }} style={{
-                          width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
+                          width: "100%", padding: "14px", borderRadius: 10, fontSize: 17, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
                           background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000",
                           border: planSaved ? `1px solid ${C.green}30` : "none", marginBottom: 12, transition: "all 0.2s",
                         }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
@@ -1404,36 +1404,36 @@ export default function EnginePage() {
                   )}
 
                   {/* 5. Son Planlar — unified table with inline complete */}
-                  {motorAccuracy && (motorAccuracy.active_list.length > 0 || motorAccuracy.history.length > 0) && (
+                  {motorAccuracy && (motorAccuracy.active_list.some(p => p.line_id === forecastLineId) || motorAccuracy.history.some(h => h.line_id === forecastLineId)) && (
                     <PanelSection title="Son Planlar" color="#fb923c">
-                      <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, marginBottom: 6 }}>
+                      <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, marginBottom: 8 }}>
                         {forecastLineId === 1 ? "Elektrikli" : "Gazli"} hatti
                       </div>
                       {/* Header */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", marginBottom: 4, borderBottom: `1px solid ${C.cardBorder}` }}>
-                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
-                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
-                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
-                        <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "6px 8px", marginBottom: 6, borderBottom: `1px solid ${C.cardBorder}` }}>
+                        <span style={{ fontSize: 13, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
+                        <span style={{ fontSize: 13, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
+                        <span style={{ fontSize: 13, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
+                        <span style={{ fontSize: 13, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
                       </div>
                       {/* Active plans — inline complete */}
-                      {motorAccuracy.active_list.map(p => {
+                      {motorAccuracy.active_list.filter(p => p.line_id === forecastLineId).map(p => {
                         const done = justCompleted[p.id];
                         return (
                         <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${done ? `${C.green}30` : C.cardBorder}`,
                           background: done ? "rgba(52,211,153,0.06)" : "transparent", transition: "background 0.4s ease" }}>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", alignItems: "center" }}>
-                            <span style={{ fontSize: 9, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
-                            <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
-                            <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px", alignItems: "center" }}>
+                            <span style={{ fontSize: 13, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
+                            <span style={{ fontSize: 13, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
+                            <span style={{ fontSize: 13, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
                               {done ? done.actual : "-"}
                             </span>
-                            <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right" }}>
+                            <span style={{ fontSize: 13, fontFamily: mono, textAlign: "right" }}>
                               {done ? (
                                 <span style={{ fontWeight: 700, color: done.rate >= 90 ? C.green : done.rate >= 70 ? "#fb923c" : C.err }}>%{done.rate}</span>
                               ) : (
                                 <button onClick={() => setCompleteInputs(prev => ({ ...prev, [p.id]: "" }))}
-                                  style={{ padding: "2px 8px", borderRadius: 4, fontSize: 8, fontWeight: 700, cursor: "pointer",
+                                  style={{ padding: "3px 10px", borderRadius: 4, fontSize: 11, fontWeight: 700, cursor: "pointer",
                                     background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c" }}>
                                   Tamamla
                                 </button>
@@ -1442,21 +1442,21 @@ export default function EnginePage() {
                           </div>
                           {/* Expanded inline input */}
                           {!done && completeInputs[p.id] !== undefined && (
-                            <div style={{ padding: "8px", background: "rgba(251,146,60,0.04)", borderRadius: 8, margin: "2px 6px 6px" }}>
-                              <div style={{ fontSize: 9, color: C.mid, marginBottom: 6 }}>Gerceklesen miktari girin:</div>
-                              <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                            <div style={{ padding: "10px", background: "rgba(251,146,60,0.04)", borderRadius: 8, margin: "4px 8px 8px" }}>
+                              <div style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>Gerceklesen miktari girin:</div>
+                              <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                                 <input type="number" value={completeInputs[p.id]} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
                                   placeholder="ornegin: 420" autoFocus
-                                  style={{ flex: 1, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 13, fontFamily: mono, fontWeight: 700, outline: "none" }} />
+                                  style={{ flex: 1, padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 17, fontFamily: mono, fontWeight: 700, outline: "none" }} />
                                 <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
-                                  style={{ padding: "8px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
+                                  style={{ padding: "10px 16px", borderRadius: 6, fontSize: 13, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
                                   {completeLoading === p.id ? "..." : "Kaydet"}
                                 </button>
                                 <button onClick={() => setCompleteInputs(prev => { const n = { ...prev }; delete n[p.id]; return n; })}
-                                  style={{ padding: "8px", borderRadius: 6, fontSize: 10, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
+                                  style={{ padding: "10px", borderRadius: 6, fontSize: 13, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
                               </div>
                               <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                style={{ width: "100%", padding: "5px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 9, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                                style={{ width: "100%", padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 12, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
                                 <option value="">Sapma Nedeni (opsiyonel)</option>
                                 <option value="personnel">Personel</option>
                                 <option value="material">Hammadde</option>
@@ -1466,7 +1466,7 @@ export default function EnginePage() {
                               </select>
                               {deviationReasons[p.id] && (
                                 <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "5px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 9, fontFamily: mono, outline: "none" }} />
+                                  placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginTop: 6, padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 12, fontFamily: mono, outline: "none" }} />
                               )}
                             </div>
                           )}
@@ -1474,16 +1474,16 @@ export default function EnginePage() {
                         );
                       })}
                       {/* Completed plans — green tinted */}
-                      {motorAccuracy.history.slice(0, 3).map((h, i) => {
+                      {motorAccuracy.history.filter(h => h.line_id === forecastLineId).slice(0, 3).map((h, i) => {
                         const rate = h.realization_rate != null ? Math.round(h.realization_rate * 100) : null;
                         const rowColor = rate != null && rate >= 90 ? C.green : rate != null && rate >= 70 ? "#fb923c" : C.err;
                         return (
-                        <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px",
+                        <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px",
                           borderBottom: `1px solid ${C.cardBorder}`, background: "rgba(52,211,153,0.03)", borderLeft: `2px solid ${rowColor}` }}>
-                          <span style={{ fontSize: 9, fontFamily: mono, color: C.green }}>{h.week}</span>
-                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
-                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right", fontWeight: 600 }}>{h.actual ?? "-"}</span>
-                          <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", fontWeight: 700, color: rowColor }}>
+                          <span style={{ fontSize: 13, fontFamily: mono, color: C.green }}>{h.week}</span>
+                          <span style={{ fontSize: 13, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
+                          <span style={{ fontSize: 13, fontFamily: mono, color: C.white, textAlign: "right", fontWeight: 600 }}>{h.actual ?? "-"}</span>
+                          <span style={{ fontSize: 13, fontFamily: mono, textAlign: "right", fontWeight: 700, color: rowColor }}>
                             {rate != null ? `%${rate}` : "-"}
                           </span>
                         </div>

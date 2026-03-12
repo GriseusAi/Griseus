@@ -3174,6 +3174,7 @@ export async function registerRoutes(
       // History for chart (most recent 10, chronological order)
       const history = completed.slice(0, 10).reverse().map(p => ({
         week: p.weekLabel,
+        line_id: p.lineId,
         planned: p.plannedQty,
         predicted: p.predictedQty,
         actual: p.actualQty,
