@@ -466,8 +466,6 @@ export default function CukurovaOverview() {
                 Canlı Pilot
               </span>
               {[
-                { label: "Ontology Haritası", path: "/ontology", color: "#34d399" },
-                { label: "Simülasyon", path: "/cukurova-sim", color: C.elektrik },
                 { label: "Engine", path: "/engine", color: "#fbbf24" },
               ].map((nav) => (
                 <button key={nav.path} onClick={() => navigate(nav.path)} style={{

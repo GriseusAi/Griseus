@@ -23,7 +23,7 @@ export default function LoginPage() {
       const res = await apiRequest("POST", "/api/login", { email, password });
       const user = await res.json();
       await queryClient.invalidateQueries({ queryKey: ["/api/user"] });
-      setLocation("/cukurova");
+      setLocation("/engine");
     } catch (err: any) {
       setError(err.message || "Something went wrong");
     }
