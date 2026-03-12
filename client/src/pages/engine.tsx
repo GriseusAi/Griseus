@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback, useRef } from "react";
-import { BarChart, Bar, XAxis, YAxis, Tooltip, ResponsiveContainer } from "recharts";
+import { BarChart, Bar, AreaChart, Area, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid, Legend } from "recharts";
 
 /* ── Fonts ── */
 const FONT_LINK = "https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap";
@@ -16,8 +16,9 @@ const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 /* ── Types ── */
 type LayerKey = "applications" | "intelligence" | "ontology" | "ingestion";
-type OntoPill = "workers" | "schedules" | null;
+type OntoNode = "facility" | "elektrikli" | "gazli" | "workers" | "operations" | "products" | "schedules" | "capacity" | "kpi" | null;
 type IntelTab = "simulation" | "bottleneck";
+type AppChartTab = "monthly" | "weekly";
 
 interface SimResult {
   baseline: { yearly_capacity: number; daily_capacity: number; utilization_pct: number };
@@ -161,6 +162,8 @@ export default function EnginePage() {
 
   /* ── Applications layer data ── */
   const [summary, setSummary] = useState<any>(null);
+  const [appChartTab, setAppChartTab] = useState<AppChartTab>("monthly");
+  const [weeklyLineType, setWeeklyLineType] = useState<"elektrikli" | "gazli">("elektrikli");
 
   /* ── Intelligence layer state ── */
   const [intelTab, setIntelTab] = useState<IntelTab>("simulation");
@@ -173,11 +176,14 @@ export default function EnginePage() {
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
   /* ── Ontology layer state ── */
-  const [ontoPill, setOntoPill] = useState<OntoPill>(null);
+  const [ontoNode, setOntoNode] = useState<OntoNode>(null);
+  const [ontoHover, setOntoHover] = useState<OntoNode>(null);
   const [workersData, setWorkersData] = useState<any[]>([]);
   const [wfRisk, setWfRisk] = useState<WorkforceRisk | null>(null);
   const [trustScores, setTrustScores] = useState<Record<number, any>>({});
   const [schedsData, setSchedsData] = useState<any[]>([]);
+  const [opsData, setOpsData] = useState<any[]>([]);
+  const [capsData, setCapsData] = useState<any[]>([]);
   const [forecastLineId, setForecastLineId] = useState(1);
   const [forecastPlanQty, setForecastPlanQty] = useState("");
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
@@ -257,6 +263,18 @@ export default function EnginePage() {
       .then(([a, b]) => setSchedsData([...a, ...b])).catch(() => {});
   }, [schedsData.length]);
 
+  const fetchOps = useCallback(() => {
+    if (opsData.length > 0) return;
+    Promise.all([fetch("/api/v1/lines/1/operations").then(r => r.json()), fetch("/api/v1/lines/2/operations").then(r => r.json())])
+      .then(([a, b]) => setOpsData([...a, ...b])).catch(() => {});
+  }, [opsData.length]);
+
+  const fetchCaps = useCallback(() => {
+    if (capsData.length > 0) return;
+    Promise.all([fetch("/api/v1/lines/1/capacity").then(r => r.json()), fetch("/api/v1/lines/2/capacity").then(r => r.json())])
+      .then(([a, b]) => setCapsData([...a, ...b])).catch(() => {});
+  }, [capsData.length]);
+
   const fetchTrustScore = useCallback((wId: number) => {
     if (trustScores[wId]) return;
     fetch(`/api/v1/score/trust/${wId}`).then(r => r.json()).then(d => setTrustScores(prev => ({ ...prev, [wId]: d }))).catch(() => {});
@@ -302,7 +320,10 @@ export default function EnginePage() {
       const fd = new FormData(); fd.append("file", uploadFile);
       const r = await fetch("/api/v1/ingest/upload", { method: "POST", body: fd });
       const d = await r.json();
-      if (d.success) { setUploadResult(d); } else { setUploadError(d.error || "Hata"); }
+      if (d.success) {
+        setUploadResult(d);
+        localStorage.setItem("griseus_last_upload", JSON.stringify({ name: uploadFile.name, date: new Date().toLocaleString("tr-TR") }));
+      } else { setUploadError(d.error || "Hata"); }
     } catch { setUploadError("Yukleme hatasi"); }
     setUploadLoading(false);
   }, [uploadFile]);
@@ -311,8 +332,14 @@ export default function EnginePage() {
   const handleLayerClick = (id: LayerKey) => {
     if (activeLayer === id) { setActiveLayer(null); return; }
     setActiveLayer(id);
-    setOntoPill(null);
-    if (id === "ontology") { fetchWorkers(); fetchSchedules(); }
+    setOntoNode(null);
+    if (id === "ontology") { fetchWorkers(); fetchSchedules(); fetchOps(); fetchCaps(); }
+  };
+
+  /* ── Ontology node click ── */
+  const handleOntoNodeClick = (key: OntoNode) => {
+    setOntoNode(prev => prev === key ? null : key);
+    if (key === "workers") workersData.slice(0, 5).forEach((w: any) => fetchTrustScore(w.id));
   };
 
   /* ── Sim line change ── */
@@ -539,30 +566,70 @@ export default function EnginePage() {
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 16 }}>✕</button>
               </div>
 
-              {summary ? (
-                <>
-                  <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-                    <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.green} />
-                    <MetricCard value={fmt(summary.lines?.[0]?.totalOutput || 0)} label="Elektrikli" color={C.indigo} />
-                    <MetricCard value={fmt(summary.lines?.[1]?.totalOutput || 0)} label="Gazli" color={C.pink} />
-                    <MetricCard value={fmt(summary.peakMonth?.total || 0)} label={`Pik Ay (${summary.peakMonth?.ay || ""})`} color={C.amber} />
-                  </div>
+              {summary ? (() => {
+                const eL = summary.lines?.find((l: any) => l.type === "elektrikli");
+                const gL = summary.lines?.find((l: any) => l.type === "gazli");
+                const weeklyE = summary.weeklySchedules?.elektrikli || [];
+                const weeklyG = summary.weeklySchedules?.gazli || [];
+                const eDelivered = weeklyE.reduce((s: number, w: any) => s + (w.gercek || 0), 0);
+                const ePlanned = weeklyE.reduce((s: number, w: any) => s + (w.plan || 0), 0);
+                const gDelivered = weeklyG.reduce((s: number, w: any) => s + (w.gercek || 0), 0);
+                const gPlanned = weeklyG.reduce((s: number, w: any) => s + (w.plan || 0), 0);
+                const ePct = ePlanned ? Math.round(eDelivered / ePlanned * 100) : 0;
+                const gPct = gPlanned ? Math.round(gDelivered / gPlanned * 100) : 0;
+                const weeklyData = weeklyLineType === "elektrikli" ? weeklyE : weeklyG;
+                const lineColor = weeklyLineType === "elektrikli" ? C.indigo : C.pink;
+                return (
+                  <>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
+                      <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.green} />
+                      <MetricCard value={fmt(eL?.totalOutput || 0)} label="Elektrikli Hat" color={C.indigo} />
+                      <MetricCard value={fmt(gL?.totalOutput || 0)} label="Gazli Hat" color={C.pink} />
+                      <MetricCard value={fmt(summary.peakMonth?.total || 0)} label={`Pik Ay (${summary.peakMonth?.ay || ""})`} color={C.amber} />
+                    </div>
 
-                  <PanelSection title="Kapasite" color={C.green}>
-                    <div style={{ display: "flex", gap: 16, justifyContent: "center", marginBottom: 12 }}>
-                      {(summary.lines || []).map((line: any) => (
-                        <div key={line.id} style={{ textAlign: "center" }}>
-                          <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} />
-                          <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>%{Math.round(line.utilizationPct || 0)}</div>
-                          <div style={{ fontSize: 9, color: C.mid }}>{line.name}</div>
+                    <PanelSection title="Kapasite Kullanimi" color={C.green}>
+                      <div style={{ display: "flex", gap: 16, justifyContent: "center", marginBottom: 8 }}>
+                        {(summary.lines || []).map((line: any) => (
+                          <div key={line.id} style={{ textAlign: "center" }}>
+                            <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} />
+                            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>%{Math.round(line.utilizationPct || 0)}</div>
+                            <div style={{ fontSize: 9, color: C.mid }}>{line.name}</div>
+                            <div style={{ fontSize: 8, color: C.dim, marginTop: 2 }}>{line.workerCount} kisi · {line.currentUnitTimeMin}dk</div>
+                          </div>
+                        ))}
+                      </div>
+                    </PanelSection>
+
+                    <PanelSection title="Teslimat Orani" color={C.green}>
+                      {[{ label: "Elektrikli", pct: ePct, delivered: eDelivered, planned: ePlanned, color: C.indigo },
+                        { label: "Gazli", pct: gPct, delivered: gDelivered, planned: gPlanned, color: C.pink }].map(d => (
+                        <div key={d.label} style={{ marginBottom: 8 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginBottom: 3 }}>
+                            <span style={{ color: C.mid }}>{d.label}</span>
+                            <span style={{ fontFamily: mono, color: d.color }}>%{d.pct} ({fmt(d.delivered)}/{fmt(d.planned)})</span>
+                          </div>
+                          <div style={{ height: 6, borderRadius: 3, background: "rgba(255,255,255,0.04)", overflow: "hidden" }}>
+                            <div style={{ height: "100%", width: `${Math.min(d.pct, 100)}%`, background: d.color, borderRadius: 3, transition: "width 0.6s ease" }} />
+                          </div>
                         </div>
                       ))}
-                    </div>
-                  </PanelSection>
+                    </PanelSection>
 
-                  {summary.monthlyData && summary.monthlyData.length > 0 && (
-                    <PanelSection title="Aylik Uretim" color={C.green}>
-                      <ResponsiveContainer width="100%" height={140}>
+                    {/* Chart tabs */}
+                    <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
+                      {([["monthly", "Aylik Uretim"], ["weekly", "Haftalik Plan vs Gercek"]] as [AppChartTab, string][]).map(([k, lbl]) => (
+                        <button key={k} onClick={() => setAppChartTab(k)} style={{
+                          padding: "5px 10px", fontSize: 10, fontWeight: 600, fontFamily: sans, cursor: "pointer",
+                          background: appChartTab === k ? `${C.green}12` : "transparent",
+                          border: `1px solid ${appChartTab === k ? C.green + "30" : C.cardBorder}`,
+                          borderRadius: 6, color: appChartTab === k ? C.green : C.mid,
+                        }}>{lbl}</button>
+                      ))}
+                    </div>
+
+                    {appChartTab === "monthly" && summary.monthlyData?.length > 0 && (
+                      <ResponsiveContainer width="100%" height={150}>
                         <BarChart data={summary.monthlyData} barGap={1}>
                           <XAxis dataKey="ay" tick={{ fontSize: 9, fill: C.dim }} axisLine={false} tickLine={false} />
                           <YAxis hide />
@@ -571,10 +638,48 @@ export default function EnginePage() {
                           <Bar dataKey="g" fill={C.pink} radius={[3, 3, 0, 0]} name="Gazli" />
                         </BarChart>
                       </ResponsiveContainer>
-                    </PanelSection>
-                  )}
-                </>
-              ) : (
+                    )}
+
+                    {appChartTab === "weekly" && (
+                      <>
+                        <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                          {(["elektrikli", "gazli"] as const).map(t => (
+                            <button key={t} onClick={() => setWeeklyLineType(t)} style={{
+                              padding: "4px 10px", fontSize: 9, fontFamily: mono, fontWeight: 600, borderRadius: 5, cursor: "pointer",
+                              background: weeklyLineType === t ? `${t === "elektrikli" ? C.indigo : C.pink}15` : "transparent",
+                              border: `1px solid ${weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) + "40" : C.cardBorder}`,
+                              color: weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) : C.dim,
+                            }}>{t === "elektrikli" ? "Elektrikli" : "Gazli"}</button>
+                          ))}
+                        </div>
+                        {weeklyData.length > 0 && (
+                          <ResponsiveContainer width="100%" height={160}>
+                            <AreaChart data={weeklyData}>
+                              <defs>
+                                <linearGradient id="gPlan" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor={lineColor} stopOpacity={0.15} />
+                                  <stop offset="100%" stopColor={lineColor} stopOpacity={0} />
+                                </linearGradient>
+                                <linearGradient id="gReal" x1="0" y1="0" x2="0" y2="1">
+                                  <stop offset="0%" stopColor={C.green} stopOpacity={0.15} />
+                                  <stop offset="100%" stopColor={C.green} stopOpacity={0} />
+                                </linearGradient>
+                              </defs>
+                              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+                              <XAxis dataKey="h" tick={{ fill: C.dim, fontSize: 9 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: C.dim, fontSize: 9, fontFamily: mono }} axisLine={false} tickLine={false} width={40} />
+                              <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 10, fontFamily: mono }} />
+                              <Area type="monotone" dataKey="plan" name="Plan" stroke={lineColor} fill="url(#gPlan)" strokeWidth={2} dot={false} />
+                              <Area type="monotone" dataKey="gercek" name="Gercek" stroke={C.green} fill="url(#gReal)" strokeWidth={2} dot={false} />
+                              <Legend verticalAlign="top" align="right" height={28} formatter={(v: string) => <span style={{ color: C.mid, fontSize: 10 }}>{v}</span>} />
+                            </AreaChart>
+                          </ResponsiveContainer>
+                        )}
+                      </>
+                    )}
+                  </>
+                );
+              })() : (
                 <div style={{ textAlign: "center", padding: 40, color: C.dim }}>Yukleniyor...</div>
               )}
             </div>
@@ -624,12 +729,49 @@ export default function EnginePage() {
 
                   {simResult && (
                     <div style={{ marginTop: 12 }}>
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
-                        <MetricCard value={fmt(simResult.simulated.yearly_capacity)} label="Yillik Kapasite" color={C.indigo} />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
+                        <MetricCard value={fmt(simResult.simulated.yearly_capacity)} label="Yillik" color={C.indigo} />
+                        <MetricCard value={fmt(simResult.simulated.daily_capacity)} label="Gunluk" color={C.indigo} />
                         <MetricCard value={`${simResult.delta.percent >= 0 ? "+" : ""}${simResult.delta.percent.toFixed(1)}%`}
-                          label={`${simResult.delta.units >= 0 ? "+" : ""}${fmt(simResult.delta.units)} adet`}
+                          label={`${simResult.delta.units >= 0 ? "+" : ""}${fmt(simResult.delta.units)}`}
                           color={simResult.delta.percent >= 0 ? C.green : C.err} />
                       </div>
+
+                      {/* Capacity utilization rings: baseline vs simulated */}
+                      <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 12, padding: "8px 0" }}>
+                        <div style={{ textAlign: "center" }}>
+                          <Ring pct={simResult.baseline.utilization_pct} color={C.dim} size={52} stroke={4} />
+                          <div style={{ fontSize: 10, fontWeight: 600, color: C.dim, marginTop: 2 }}>%{Math.round(simResult.baseline.utilization_pct)}</div>
+                          <div style={{ fontSize: 8, color: C.dim }}>Mevcut</div>
+                        </div>
+                        <div style={{ display: "flex", alignItems: "center", color: C.dim, fontSize: 16 }}>→</div>
+                        <div style={{ textAlign: "center" }}>
+                          <Ring pct={simResult.simulated.utilization_pct} color={simResult.delta.percent >= 0 ? C.green : C.err} size={52} stroke={4} />
+                          <div style={{ fontSize: 10, fontWeight: 600, color: simResult.delta.percent >= 0 ? C.green : C.err, marginTop: 2 }}>%{Math.round(simResult.simulated.utilization_pct)}</div>
+                          <div style={{ fontSize: 8, color: C.dim }}>Simulasyon</div>
+                        </div>
+                      </div>
+
+                      {/* Bottleneck warning */}
+                      {(() => {
+                        const line = linesData.find((l: any) => l.id === simLineId);
+                        if (!line) return null;
+                        const cap = line.capacityUnitTimeMin || 0;
+                        const cur = simParams.unit_time_min || 0;
+                        if (cur <= cap || cap === 0) return null;
+                        const pct = ((cur - cap) / cap * 100).toFixed(0);
+                        return (
+                          <div style={{ padding: 10, background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 10, marginBottom: 10 }}>
+                            <div style={{ fontSize: 10, fontWeight: 700, color: C.amber, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                              ⚠ Darbogaz Uyarisi
+                            </div>
+                            <div style={{ fontSize: 10, color: C.mid, lineHeight: 1.5 }}>
+                              Birim sure ({cur}dk) teorik kapasiteden ({cap}dk) <strong style={{ color: C.amber }}>%{pct}</strong> daha yavas. Bu hat darbogaz olusturuyor.
+                            </div>
+                          </div>
+                        );
+                      })()}
+
                       {simResult.insights.map((ins, i) => (
                         <div key={i} style={{ fontSize: 11, color: C.mid, padding: "4px 0", lineHeight: 1.5 }}>• {ins}</div>
                       ))}
@@ -707,104 +849,237 @@ export default function EnginePage() {
           /* ── LAYER 02: Ontology ── */
           ) : activeLayer === "ontology" ? (
             <div key="ontology" style={{ animation: "engSlideIn 0.3s ease" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                   <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600, background: `${C.amber}15`, color: C.amber, border: `1px solid ${C.amber}30` }}>02</span>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>Veri</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Ontology</span>
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 16 }}>✕</button>
               </div>
 
-              {/* Entity pills */}
-              {entityCounts && !ontoPill && (
-                <>
-                  <div style={{ display: "flex", flexWrap: "wrap", gap: 6, marginBottom: 16 }}>
-                    {[
-                      { key: null, label: `${entityCounts.facilities} Tesis`, color: C.green },
-                      { key: null, label: `${entityCounts.lines} Hat`, color: C.indigo },
-                      { key: null, label: `${entityCounts.products} Urun`, color: C.pink },
-                      { key: "workers" as OntoPill, label: `${entityCounts.workers} Calisan`, color: C.amber },
-                      { key: null, label: `${entityCounts.operations} Operasyon`, color: C.pink },
-                      { key: "schedules" as OntoPill, label: `${entityCounts.schedules} Cizelge`, color: "#fb923c" },
-                    ].map((e, i) => (
-                      <button key={i} onClick={() => { if (e.key) setOntoPill(e.key); }} style={{
-                        padding: "6px 12px", borderRadius: 20, fontSize: 11, fontWeight: 600, fontFamily: sans,
-                        background: `${e.color}10`, border: `1px solid ${e.color}30`, color: e.color,
-                        cursor: e.key ? "pointer" : "default", transition: "all 0.2s",
-                        opacity: e.key ? 1 : 0.7,
-                      }}>{e.label}</button>
-                    ))}
-                  </div>
+              {/* ── Mini Ontology Node-Link Map ── */}
+              {(() => {
+                const eOut = summary?.lines?.[0]?.totalOutput || 0;
+                const gOut = summary?.lines?.[1]?.totalOutput || 0;
+                const nds: { key: OntoNode; label: string; sub: string; color: string; x: number; y: number }[] = [
+                  { key: "facility", label: "Cukurova Isi", sub: "Gebze · Aktif", color: C.green, x: 0, y: 0 },
+                  { key: "elektrikli", label: "Elektrikli Hat", sub: `${fmt(eOut)} uretim`, color: C.indigo, x: -140, y: 80 },
+                  { key: "gazli", label: "Gazli Hat", sub: `${fmt(gOut)} uretim`, color: C.pink, x: 140, y: 80 },
+                  { key: "workers", label: `${workersData.length || 16} Calisan`, sub: "6 dept", color: C.amber, x: 0, y: -90 },
+                  { key: "operations", label: "24 Operasyon", sub: `${fmt(summary?.totalProduction || 0)} toplam`, color: C.pink, x: -170, y: 170 },
+                  { key: "products", label: "21 Urun", sub: "E + G", color: "#a78bfa", x: 0, y: 180 },
+                  { key: "schedules", label: `${schedsData.length || 23} Cizelge`, sub: "Haftalik", color: "#fb923c", x: 170, y: 170 },
+                  { key: "capacity", label: "Kapasite", sub: "%64 / %87", color: "#38bdf8", x: 195, y: -30 },
+                  { key: "kpi", label: "KPI", sub: "Tanimlanmadi", color: "#f87171", x: -195, y: -40 },
+                ];
+                const eds = [
+                  { from: "facility", to: "elektrikli", label: "has_line" },
+                  { from: "facility", to: "gazli", label: "has_line" },
+                  { from: "facility", to: "workers", label: "employs" },
+                  { from: "facility", to: "capacity", label: "monitors" },
+                  { from: "facility", to: "kpi", label: "tracks" },
+                  { from: "elektrikli", to: "operations", label: "produces" },
+                  { from: "gazli", to: "schedules", label: "scheduled" },
+                  { from: "elektrikli", to: "products", label: "makes" },
+                  { from: "gazli", to: "products", label: "makes" },
+                ];
+                const getPos = (k: string) => nds.find(n => n.key === k) || { x: 0, y: 0 };
+                const isConn = (k: string) => !ontoNode || k === ontoNode || eds.some(e => (e.from === ontoNode && e.to === k) || (e.to === ontoNode && e.from === k));
+                const NW = 90, NH = 36;
+                return (
+                  <svg viewBox="-230 -120 460 320" style={{ width: "100%", marginBottom: 8 }}>
+                    {/* Dot grid */}
+                    {Array.from({ length: 12 }).map((_, i) => Array.from({ length: 8 }).map((_, j) => (
+                      <circle key={`${i}-${j}`} cx={-230 + i * 42} cy={-120 + j * 42} r={0.3} fill="rgba(255,255,255,0.03)" />
+                    )))}
+                    {/* Edges */}
+                    {eds.map((e, i) => {
+                      const f = getPos(e.from), t = getPos(e.to);
+                      const mx = (f.x + t.x) / 2, my = (f.y + t.y) / 2;
+                      const cx = mx + (t.y - f.y) * 0.12, cy2 = my - (t.x - f.x) * 0.12;
+                      const dim = ontoNode !== null && !isConn(e.from) && !isConn(e.to);
+                      const ec = nds.find(n => n.key === e.to)?.color || C.dim;
+                      return (
+                        <g key={i} style={{ transition: "opacity 0.3s" }}>
+                          <path d={`M${f.x},${f.y} Q${cx},${cy2} ${t.x},${t.y}`} fill="none" stroke={ec} strokeWidth={1} opacity={dim ? 0.06 : 0.18} />
+                          <text x={mx + (t.y - f.y) * 0.04} y={my - (t.x - f.x) * 0.04 - 4} textAnchor="middle" fill={ec} opacity={dim ? 0.08 : 0.25} fontSize={6} fontFamily={mono}>{e.label}</text>
+                        </g>
+                      );
+                    })}
+                    {/* Nodes */}
+                    {nds.map(n => {
+                      const isAct = ontoNode === n.key;
+                      const isHov = ontoHover === n.key;
+                      const dim = ontoNode !== null && !isConn(n.key);
+                      return (
+                        <g key={n.key} transform={`translate(${n.x},${n.y})`} style={{ cursor: "pointer", opacity: dim ? 0.35 : 1, transition: "opacity 0.3s" }}
+                          onMouseEnter={() => setOntoHover(n.key)} onMouseLeave={() => setOntoHover(null)}
+                          onClick={() => handleOntoNodeClick(n.key)}>
+                          {(isAct || isHov) && <rect x={-NW / 2 - 4} y={-NH / 2 - 4} width={NW + 8} height={NH + 8} rx={10} fill={n.color} opacity={0.06} style={{ filter: "blur(8px)" }} />}
+                          <rect x={-NW / 2} y={-NH / 2} width={NW} height={NH} rx={8}
+                            fill={`${n.color}08`} stroke={isAct ? n.color : isHov ? `${n.color}88` : `${n.color}30`}
+                            strokeWidth={isAct ? 1.5 : 0.8} style={{ transition: "all 0.2s", transform: isHov ? "scale(1.04)" : "scale(1)", transformOrigin: "center" }} />
+                          {isAct && <rect x={-NW / 2} y={-NH / 2} width={NW} height={NH} rx={8} fill="none" stroke={n.color} strokeWidth={0.8}>
+                            <animate attributeName="opacity" values="0.5;0.1;0.5" dur="2s" repeatCount="indefinite" /></rect>}
+                          <text x={0} y={-2} textAnchor="middle" fill={C.white} fontSize={8.5} fontWeight={600} fontFamily={sans}>{n.label}</text>
+                          <text x={0} y={10} textAnchor="middle" fill={C.mid} fontSize={6.5} fontFamily={mono}>{n.sub}</text>
+                        </g>
+                      );
+                    })}
+                  </svg>
+                );
+              })()}
 
-                  <div style={{ fontSize: 11, color: C.dim, textAlign: "center", padding: "20px 0" }}>
-                    "Calisan" veya "Cizelge" pill'ine tiklayarak detay gorun
-                  </div>
-                </>
+              {/* ── Node Detail Panel ── */}
+              {ontoNode === null && (
+                <div style={{ fontSize: 10, color: C.dim, textAlign: "center", padding: "8px 0", lineHeight: 1.7 }}>
+                  1 Tesis · 2 Hat · {workersData.length || 16} Calisan · 21 Urun · 24 Operasyon · {schedsData.length || 23} Cizelge
+                  <br />Node'a tiklayarak detay gorun
+                </div>
               )}
 
-              {/* Workers detail */}
-              {ontoPill === "workers" && (
-                <>
-                  <button onClick={() => setOntoPill(null)} style={{ background: "none", border: "none", color: C.amber, cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 12, padding: 0 }}>← Geri</button>
+              {/* Facility */}
+              {ontoNode === "facility" && (
+                <PanelSection title="Tesis" color={C.green}>
+                  <div style={{ padding: 10, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10 }}>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Cukurova Isi Sistemleri</div>
+                    <div style={{ fontSize: 10, color: C.mid, lineHeight: 1.6 }}>Gebze, Kocaeli · Aktif</div>
+                    <div style={{ fontSize: 10, color: C.mid }}>2 Uretim Hatti · {workersData.length || 16} Calisan</div>
+                    {summary && (
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
+                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.green} />
+                        <MetricCard value={summary.peakMonth?.ay || "-"} label={`Pik: ${fmt(summary.peakMonth?.total || 0)}`} color={C.amber} />
+                      </div>
+                    )}
+                  </div>
+                </PanelSection>
+              )}
 
+              {/* Elektrikli / Gazli */}
+              {(ontoNode === "elektrikli" || ontoNode === "gazli") && (() => {
+                const idx = ontoNode === "elektrikli" ? 0 : 1;
+                const line = summary?.lines?.[idx];
+                if (!line) return null;
+                return (
+                  <PanelSection title={line.name || ontoNode} color={ontoNode === "elektrikli" ? C.indigo : C.pink}>
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                      <MetricCard value={fmt(line.totalOutput || 0)} label="Toplam Uretim" color={ontoNode === "elektrikli" ? C.indigo : C.pink} />
+                      <MetricCard value={`%${Math.round(line.utilizationPct || 0)}`} label="Kapasite" color={line.utilizationPct > 80 ? C.green : C.amber} />
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mid, lineHeight: 1.7 }}>
+                      {line.workerCount} calisan · Teorik: {line.capacityUnitTimeMin}dk · Gercek: {line.currentUnitTimeMin}dk
+                    </div>
+                  </PanelSection>
+                );
+              })()}
+
+              {/* Workers */}
+              {ontoNode === "workers" && (
+                <>
                   {wfRisk && (
                     <PanelSection title="Risk Analizi" color={C.amber}>
-                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 10 }}>
+                      <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                         <SeverityBadge level={wfRisk.risk_level} />
-                        <span style={{ fontSize: 11, color: C.mid }}>Risk Skoru: <strong style={{ color: C.white }}>{wfRisk.risk_score}/100</strong></span>
+                        <span style={{ fontSize: 11, color: C.mid }}>Skor: <strong style={{ color: C.white }}>{wfRisk.risk_score}/100</strong></span>
                       </div>
                       {wfRisk.single_point_failures.length > 0 && (
-                        <div style={{ marginBottom: 10 }}>
-                          <div style={{ fontSize: 10, fontWeight: 700, color: C.err, marginBottom: 4 }}>TEK KISIYE BAGLI</div>
+                        <div style={{ marginBottom: 8 }}>
+                          <div style={{ fontSize: 9, fontWeight: 700, color: C.err, marginBottom: 3 }}>TEK KISIYE BAGLI</div>
                           {wfRisk.single_point_failures.map((f, i) => (
-                            <div key={i} style={{ fontSize: 11, color: C.mid, padding: "2px 0" }}>{f.capability_name} → <span style={{ color: C.amber }}>{f.sole_worker_name}</span></div>
+                            <div key={i} style={{ fontSize: 10, color: C.mid, padding: "1px 0" }}>{f.capability_name} → <span style={{ color: C.amber }}>{f.sole_worker_name}</span></div>
                           ))}
                         </div>
                       )}
                       {wfRisk.critical_workers.slice(0, 3).map((w, i) => (
-                        <div key={i} style={{ padding: "6px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 4 }}>
-                          <div style={{ fontSize: 11, fontWeight: 600, color: C.white }}>{w.name} <span style={{ color: C.dim, fontWeight: 400 }}>({w.department})</span></div>
-                          <div style={{ fontSize: 9, color: C.amber }}>{w.capability_count} yetkinlik, {w.unique_capabilities.length} benzersiz</div>
+                        <div key={i} style={{ padding: "5px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 3 }}>
+                          <div style={{ fontSize: 10, fontWeight: 600 }}>{w.name} <span style={{ color: C.dim, fontWeight: 400 }}>({w.department})</span></div>
+                          <div style={{ fontSize: 8, color: C.amber }}>{w.capability_count} yetkinlik, {w.unique_capabilities.length} benzersiz</div>
                         </div>
                       ))}
                     </PanelSection>
                   )}
-
                   <PanelSection title="Calisanlar" color={C.amber}>
-                    {workersData.slice(0, 12).map((w: any) => (
-                      <div key={w.id} onClick={() => fetchTrustScore(w.id)}
-                        style={{ padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 4, cursor: "pointer" }}>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                          <div>
-                            <div style={{ fontSize: 11, fontWeight: 600, color: C.white }}>{w.name}</div>
-                            <div style={{ fontSize: 9, color: C.dim }}>{w.department}</div>
-                          </div>
-                          {trustScores[w.id] && (
-                            <div style={{ textAlign: "right" }}>
-                              <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.amber : C.err }}>
-                                {trustScores[w.id].trust_score}
-                              </div>
-                              <div style={{ fontSize: 8, color: C.dim }}>trust</div>
+                    <div style={{ maxHeight: 180, overflowY: "auto" }}>
+                      {workersData.slice(0, 12).map((w: any) => (
+                        <div key={w.id} onClick={() => fetchTrustScore(w.id)}
+                          style={{ padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 3, cursor: "pointer" }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                            <div>
+                              <div style={{ fontSize: 10, fontWeight: 600 }}>{w.name}</div>
+                              <div style={{ fontSize: 8, color: C.dim }}>{w.department}</div>
                             </div>
-                          )}
+                            {trustScores[w.id] && (
+                              <div style={{ textAlign: "right" }}>
+                                <div style={{ fontSize: 13, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.amber : C.err }}>
+                                  {trustScores[w.id].trust_score}
+                                </div>
+                                <div style={{ fontSize: 7, color: C.dim }}>trust</div>
+                              </div>
+                            )}
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      ))}
+                    </div>
                   </PanelSection>
                 </>
               )}
 
-              {/* Schedules detail */}
-              {ontoPill === "schedules" && (
-                <>
-                  <button onClick={() => setOntoPill(null)} style={{ background: "none", border: "none", color: C.amber, cursor: "pointer", fontSize: 11, fontWeight: 600, marginBottom: 12, padding: 0 }}>← Geri</button>
+              {/* Operations */}
+              {ontoNode === "operations" && (
+                <PanelSection title="Operasyonlar" color={C.pink}>
+                  {summary ? (
+                    <>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
+                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.green} />
+                        <MetricCard value={fmt(summary.lines?.[0]?.totalOutput || 0)} label="Elektrikli" color={C.indigo} />
+                      </div>
+                      {summary.monthlyData?.length > 0 && (
+                        <ResponsiveContainer width="100%" height={120}>
+                          <BarChart data={summary.monthlyData} barGap={1}>
+                            <XAxis dataKey="ay" tick={{ fontSize: 8, fill: C.dim }} axisLine={false} tickLine={false} />
+                            <YAxis hide />
+                            <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 10, fontFamily: mono }} />
+                            <Bar dataKey="e" fill={C.indigo} radius={[2, 2, 0, 0]} name="E" />
+                            <Bar dataKey="g" fill={C.pink} radius={[2, 2, 0, 0]} name="G" />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      )}
+                    </>
+                  ) : <div style={{ color: C.dim, fontSize: 10 }}>Yukleniyor...</div>}
+                </PanelSection>
+              )}
 
+              {/* Products */}
+              {ontoNode === "products" && (
+                <PanelSection title="Urunler" color="#a78bfa">
+                  <div style={{ marginBottom: 8 }}>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.indigo, marginBottom: 4 }}>ELEKTRIKLI</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {["GSS20P", "GSS40P", "GSN20", "GSN40", "GSA", "GSU15", "GSU20", "MGS", "GSSP", "GSSK", "GST"].map(p => (
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 9, fontFamily: mono, background: `${C.indigo}10`, border: `1px solid ${C.indigo}20`, color: C.indigo }}>{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div>
+                    <div style={{ fontSize: 9, fontWeight: 700, color: C.pink, marginBottom: 4 }}>GAZLI</div>
+                    <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+                      {["ELT.7-11", "CC.7-11", "CPH.33", "BH 55", "SSP 40", "SSP 60", "DHP 33", "DHP 50", "WHP 20", "WHP 33"].map(p => (
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 9, fontFamily: mono, background: `${C.pink}10`, border: `1px solid ${C.pink}20`, color: C.pink }}>{p}</span>
+                      ))}
+                    </div>
+                  </div>
+                </PanelSection>
+              )}
+
+              {/* Schedules */}
+              {ontoNode === "schedules" && (
+                <>
                   <PanelSection title="Plan vs Gercek" color="#fb923c">
-                    <div style={{ maxHeight: 200, overflowY: "auto" }}>
+                    <div style={{ maxHeight: 150, overflowY: "auto" }}>
                       {schedsData.slice(0, 15).map((s: any, i: number) => {
                         const dev = s.plannedQty ? ((s.actualQty - s.plannedQty) / s.plannedQty * 100) : 0;
                         return (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 0", fontSize: 10, borderBottom: `1px solid ${C.cardBorder}` }}>
+                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "3px 0", fontSize: 9, borderBottom: `1px solid ${C.cardBorder}` }}>
                             <span style={{ color: C.mid, fontFamily: mono }}>{s.periodValue}</span>
                             <span style={{ color: C.dim }}>P:{s.plannedQty} G:{s.actualQty}</span>
                             <span style={{ fontFamily: mono, fontWeight: 600, color: dev >= 0 ? C.green : C.err }}>{dev >= 0 ? "+" : ""}{dev.toFixed(0)}%</span>
@@ -813,35 +1088,32 @@ export default function EnginePage() {
                       })}
                     </div>
                   </PanelSection>
-
                   <PanelSection title="Tahmin" color="#fb923c">
-                    <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
                       {linesData.map((line: any) => (
                         <button key={line.id} onClick={() => setForecastLineId(line.id)} style={{
-                          padding: "4px 10px", fontSize: 10, fontFamily: mono, borderRadius: 6, cursor: "pointer",
+                          padding: "3px 8px", fontSize: 9, fontFamily: mono, borderRadius: 5, cursor: "pointer",
                           background: forecastLineId === line.id ? "rgba(251,146,60,0.12)" : "transparent",
                           border: `1px solid ${forecastLineId === line.id ? "#fb923c40" : C.cardBorder}`,
                           color: forecastLineId === line.id ? "#fb923c" : C.dim,
                         }}>{line.name || `Hat ${line.id}`}</button>
                       ))}
                     </div>
-                    <div style={{ display: "flex", gap: 6, marginBottom: 8 }}>
-                      <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Plan miktari"
-                        style={{ flex: 1, padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 11, fontFamily: mono, outline: "none" }} />
+                    <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                      <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Miktar"
+                        style={{ flex: 1, padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 10, fontFamily: mono, outline: "none" }} />
                       <button onClick={runForecast} disabled={forecastLoading}
-                        style={{ padding: "8px 14px", background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 6, color: "#fb923c", fontSize: 11, fontWeight: 600, cursor: "pointer" }}>
+                        style={{ padding: "6px 12px", background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", borderRadius: 6, color: "#fb923c", fontSize: 10, fontWeight: 600, cursor: "pointer" }}>
                         {forecastLoading ? "..." : "Tahmin Et"}
                       </button>
                     </div>
-
                     {forecastResult && (
                       <div>
-                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                          <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 4, marginBottom: 6 }}>
+                          <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini" color="#fb923c" />
                           <MetricCard value={`%${(forecastResult.confidence * 100).toFixed(0)}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
                         </div>
-                        <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.6, marginBottom: 8 }}>{forecastResult.recommendation}</div>
-
+                        <div style={{ fontSize: 10, color: C.mid, lineHeight: 1.5, marginBottom: 6 }}>{forecastResult.recommendation}</div>
                         <button disabled={planSaved} onClick={async () => {
                           const now = new Date();
                           const start = new Date(now.getFullYear(), 0, 1);
@@ -853,13 +1125,45 @@ export default function EnginePage() {
                             if (r.ok) setPlanSaved(true);
                           } catch { /* */ }
                         }} style={{
-                          width: "100%", padding: "10px", borderRadius: 8, fontSize: 12, fontWeight: 600, fontFamily: sans, cursor: planSaved ? "default" : "pointer",
+                          width: "100%", padding: "8px", borderRadius: 8, fontSize: 11, fontWeight: 600, cursor: planSaved ? "default" : "pointer",
                           background: planSaved ? "rgba(52,211,153,0.12)" : C.green, color: planSaved ? C.green : "#000", border: planSaved ? `1px solid ${C.green}30` : "none",
                         }}>{planSaved ? "Kaydedildi ✓" : "Bu Plani Kaydet"}</button>
                       </div>
                     )}
                   </PanelSection>
                 </>
+              )}
+
+              {/* Capacity */}
+              {ontoNode === "capacity" && (
+                <PanelSection title="Kapasite Metrikleri" color="#38bdf8">
+                  <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 10 }}>
+                    {(summary?.lines || []).map((line: any) => (
+                      <div key={line.id} style={{ textAlign: "center" }}>
+                        <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} size={56} stroke={4} />
+                        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 3 }}>%{Math.round(line.utilizationPct || 0)}</div>
+                        <div style={{ fontSize: 8, color: C.mid }}>{line.name}</div>
+                      </div>
+                    ))}
+                  </div>
+                  {(summary?.lines || []).map((line: any) => (
+                    <div key={line.id} style={{ padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 4, fontSize: 10 }}>
+                      <div style={{ fontWeight: 600, marginBottom: 2 }}>{line.name}</div>
+                      <div style={{ color: C.mid }}>Teorik Max: {fmt(line.theoreticalMax || 0)} · Gercek: {fmt(line.totalOutput || 0)}</div>
+                    </div>
+                  ))}
+                </PanelSection>
+              )}
+
+              {/* KPI */}
+              {ontoNode === "kpi" && (
+                <PanelSection title="KPI" color="#f87171">
+                  <div style={{ textAlign: "center", padding: "20px 0", color: C.dim }}>
+                    <div style={{ fontSize: 20, marginBottom: 8 }}>📊</div>
+                    <div style={{ fontSize: 11 }}>Henuz KPI tanimlanmadi</div>
+                    <div style={{ fontSize: 9, marginTop: 4 }}>Katman 05'te aktif olacak</div>
+                  </div>
+                </PanelSection>
               )}
             </div>
 
@@ -932,17 +1236,37 @@ export default function EnginePage() {
                 </div>
               )}
 
+              {/* Last upload info */}
+              {(() => {
+                const last = localStorage.getItem("griseus_last_upload");
+                if (!last) return null;
+                try {
+                  const info = JSON.parse(last);
+                  return (
+                    <div style={{ padding: 10, background: "rgba(52,211,153,0.04)", border: `1px solid rgba(52,211,153,0.15)`, borderRadius: 10, marginBottom: 12 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, color: C.green, marginBottom: 3 }}>SON YUKLEME</div>
+                      <div style={{ fontSize: 10, color: C.mid }}>{info.name} — {info.date}</div>
+                    </div>
+                  );
+                } catch { return null; }
+              })()}
+
               {/* Parser list */}
               <PanelSection title="Parser'lar" color={C.pink}>
                 {[
-                  { name: "ElektrikliParser", target: "operations (elektrikli)" },
-                  { name: "GazliParser", target: "operations (gazli)" },
-                  { name: "KapasiteParser", target: "production_lines" },
-                  { name: "PersonelParser", target: "workers, capabilities" },
+                  { name: "ElektrikliParser", target: "operations (elektrikli)", hint: "Elektrikli Imalat Raporu" },
+                  { name: "GazliParser", target: "operations (gazli)", hint: "Gazli Imalat Raporu" },
+                  { name: "KapasiteParser", target: "production_lines", hint: "Kapasite Analizi" },
+                  { name: "PersonelParser", target: "workers, capabilities", hint: "Personel Listesi" },
+                  { name: "KPIParser", target: "kpi_definitions", hint: "KPI Dosyasi" },
+                  { name: "IsAkisParser", target: "operations (akis)", hint: "Is Akis Plani" },
                 ].map(p => (
-                  <div key={p.name} style={{ display: "flex", justifyContent: "space-between", padding: "6px 0", fontSize: 10, borderBottom: `1px solid ${C.cardBorder}` }}>
-                    <span style={{ fontFamily: mono, color: C.pink }}>{p.name}</span>
-                    <span style={{ color: C.dim }}>→ {p.target}</span>
+                  <div key={p.name} style={{ padding: "6px 0", fontSize: 10, borderBottom: `1px solid ${C.cardBorder}` }}>
+                    <div style={{ display: "flex", justifyContent: "space-between" }}>
+                      <span style={{ fontFamily: mono, color: C.pink }}>{p.name}</span>
+                      <span style={{ color: C.dim }}>→ {p.target}</span>
+                    </div>
+                    <div style={{ fontSize: 8, color: C.dim, marginTop: 1 }}>Tetikleyici: "{p.hint}"</div>
                   </div>
                 ))}
               </PanelSection>
