@@ -2436,7 +2436,7 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/v1/forecast/weekly — Haftalık üretim tahmini
+  // POST /api/v1/forecast/weekly — Haftalık üretim tahmini (öğrenen motor)
   app.post("/api/v1/forecast/weekly", async (req, res) => {
     try {
       const { line_id, planned_qty } = req.body;
@@ -2448,16 +2448,66 @@ export async function registerRoutes(
       const [line] = await db.select().from(productionLines).where(eq(productionLines.id, lineId));
       if (!line) return res.status(404).json({ message: "Line not found" });
 
-      const scheds = await db.select().from(schedules).where(eq(schedules.lineId, lineId));
-      if (scheds.length === 0) return res.json({ line_id: lineId, line_name: line.name, message: "No schedule data" });
+      // --- Öğrenen Motor: önce weekly_plans tablosundan öğren ---
+      const completedPlans = await db.select().from(weeklyPlans)
+        .where(and(eq(weeklyPlans.lineId, lineId), eq(weeklyPlans.status, "completed")))
+        .orderBy(desc(weeklyPlans.completedAt));
 
-      // Gerçekleşme oranları
-      const realizationRates = scheds
-        .filter((s) => (s.plannedQty || 0) > 0)
-        .map((s) => (s.actualQty || 0) / (s.plannedQty || 1));
-      const avgRealizationRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
-      const minRate = Math.min(...realizationRates);
-      const maxRate = Math.max(...realizationRates);
+      const scheds = await db.select().from(schedules).where(eq(schedules.lineId, lineId));
+
+      let avgRealizationRate: number;
+      let dataSource: string;
+      let motorGeneration: number;
+      let dataPoints: number;
+
+      if (completedPlans.length >= 3) {
+        // Ağırlıklı ortalama: son planlar daha ağır basar
+        // Weights: most recent = N, next = N-1, ... oldest = 1
+        const n = completedPlans.length;
+        let weightedSum = 0;
+        let totalWeight = 0;
+        completedPlans.forEach((p, i) => {
+          const weight = n - i; // most recent gets highest weight
+          const rate = parseFloat(p.realizationRate || "0");
+          weightedSum += rate * weight;
+          totalWeight += weight;
+        });
+        avgRealizationRate = weightedSum / totalWeight;
+        dataSource = "weekly_plans_weighted";
+        motorGeneration = completedPlans.length;
+        dataPoints = completedPlans.length;
+      } else if (completedPlans.length > 0) {
+        // Az veri — basit ortalama (plans + schedules karışımı)
+        const planRates = completedPlans.map(p => parseFloat(p.realizationRate || "0"));
+        const schedRates = scheds
+          .filter(s => (s.plannedQty || 0) > 0)
+          .map(s => (s.actualQty || 0) / (s.plannedQty || 1));
+        const allRates = [...planRates, ...schedRates];
+        avgRealizationRate = allRates.reduce((a, b) => a + b, 0) / allRates.length;
+        dataSource = "mixed_plans_schedules";
+        motorGeneration = completedPlans.length;
+        dataPoints = allRates.length;
+      } else {
+        // Fallback: sadece schedule verisi
+        const realizationRates = scheds
+          .filter(s => (s.plannedQty || 0) > 0)
+          .map(s => (s.actualQty || 0) / (s.plannedQty || 1));
+        if (realizationRates.length === 0) {
+          return res.json({ line_id: lineId, line_name: line.name, message: "No schedule data", motor_generation: 0, data_points: 0 });
+        }
+        avgRealizationRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
+        dataSource = "schedules_only";
+        motorGeneration = 0;
+        dataPoints = realizationRates.length;
+      }
+
+      // Min/max from all available data
+      const allRatesForStats = [
+        ...completedPlans.map(p => parseFloat(p.realizationRate || "0")),
+        ...scheds.filter(s => (s.plannedQty || 0) > 0).map(s => (s.actualQty || 0) / (s.plannedQty || 1)),
+      ].filter(r => r > 0);
+      const minRate = allRatesForStats.length > 0 ? Math.min(...allRatesForStats) : 0;
+      const maxRate = allRatesForStats.length > 0 ? Math.max(...allRatesForStats) : 0;
 
       // Tahmin
       const predictedOutput = Math.round(planQty * avgRealizationRate);
@@ -2472,24 +2522,9 @@ export async function registerRoutes(
       const crewBoostRate = Math.min(avgRealizationRate * 1.15, 1.0);
 
       const scenarios = [
-        {
-          name: "Mevcut Durum",
-          description: "Mevcut performans ile devam",
-          predicted_output: predictedOutput,
-          realization_rate: Math.round(avgRealizationRate * 100),
-        },
-        {
-          name: "Birim Süre İyileştirme",
-          description: `Birim süre ${baseUnitTime}dk → ${theoreticalUnitTime}dk`,
-          predicted_output: Math.round(planQty * Math.min(unitTimeImprovedRate, 1.0)),
-          realization_rate: Math.round(Math.min(unitTimeImprovedRate, 1.0) * 100),
-        },
-        {
-          name: "+2 Kadro",
-          description: "Ek 2 personel ile verimlilik artışı",
-          predicted_output: Math.round(planQty * crewBoostRate),
-          realization_rate: Math.round(crewBoostRate * 100),
-        },
+        { name: "Mevcut Durum", description: "Mevcut performans ile devam", predicted_output: predictedOutput, realization_rate: Math.round(avgRealizationRate * 100) },
+        { name: "Birim Süre İyileştirme", description: `Birim süre ${baseUnitTime}dk → ${theoreticalUnitTime}dk`, predicted_output: Math.round(planQty * Math.min(unitTimeImprovedRate, 1.0)), realization_rate: Math.round(Math.min(unitTimeImprovedRate, 1.0) * 100) },
+        { name: "+2 Kadro", description: "Ek 2 personel ile verimlilik artışı", predicted_output: Math.round(planQty * crewBoostRate), realization_rate: Math.round(crewBoostRate * 100) },
       ];
 
       // Öneri
@@ -2502,8 +2537,20 @@ export async function registerRoutes(
         recommendation = `Gerçekleşme oranı düşük (%${confidence}). Birim süre iyileştirmesi veya kadro takviyesi önerilir.`;
       }
 
+      // Accuracy trend from completed plans
+      let accuracyTrend = "neutral";
+      const plansWithAccuracy = completedPlans.filter(p => p.predictionAccuracy != null);
+      if (plansWithAccuracy.length >= 4) {
+        const half = Math.floor(plansWithAccuracy.length / 2);
+        const recentHalf = plansWithAccuracy.slice(0, half);
+        const olderHalf = plansWithAccuracy.slice(half, half * 2);
+        const recentAvg = recentHalf.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / recentHalf.length;
+        const olderAvg = olderHalf.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / olderHalf.length;
+        accuracyTrend = recentAvg > olderAvg + 0.02 ? "improving" : recentAvg < olderAvg - 0.02 ? "declining" : "stable";
+      }
+
       // Haftalık tarihçe (son 8 hafta)
-      const weeklyHistory = scheds.slice(-8).map((s) => ({
+      const weeklyHistory = scheds.slice(-8).map(s => ({
         period: s.periodValue,
         planned: s.plannedQty || 0,
         actual: s.actualQty || 0,
@@ -2523,6 +2570,10 @@ export async function registerRoutes(
         recommendation,
         weekly_history: weeklyHistory,
         stats: { min_rate: Math.round(minRate * 100), max_rate: Math.round(maxRate * 100), total_weeks: scheds.length },
+        motor_generation: motorGeneration,
+        data_source: dataSource,
+        data_points: dataPoints,
+        accuracy_trend: accuracyTrend,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -2633,7 +2684,7 @@ export async function registerRoutes(
   // ── POST /api/v1/plans/create ───────────────────────────────────────
   app.post("/api/v1/plans/create", async (req, res) => {
     try {
-      const { line_id, week_label, planned_qty, predicted_qty } = req.body;
+      const { line_id, week_label, planned_qty, predicted_qty, motor_generation, predicted_rate } = req.body;
       if (!week_label || !planned_qty) {
         return res.status(400).json({ message: "week_label and planned_qty are required" });
       }
@@ -2643,8 +2694,9 @@ export async function registerRoutes(
         plannedQty: planned_qty,
         predictedQty: predicted_qty ?? null,
         status: "planned",
+        notes: motor_generation != null ? `motor_gen:${motor_generation},predicted_rate:${predicted_rate || 0}` : null,
       }).returning();
-      res.status(201).json({ success: true, plan_id: plan.id, message: "Plan kaydedildi" });
+      res.status(201).json({ success: true, plan_id: plan.id, week_label, planned_qty, predicted_qty, message: "Plan kaydedildi" });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
@@ -2668,9 +2720,29 @@ export async function registerRoutes(
       const realizationRate = plan.plannedQty > 0
         ? (actual_qty / plan.plannedQty).toFixed(4)
         : "0";
-      const predictionAccuracy = plan.predictedQty && plan.predictedQty > 0
-        ? (1 - Math.abs(actual_qty - plan.predictedQty) / plan.predictedQty).toFixed(4)
+      const predictionError = plan.predictedQty && plan.predictedQty > 0
+        ? Math.abs(actual_qty - plan.predictedQty)
         : null;
+      const predictionAccuracy = plan.predictedQty && plan.predictedQty > 0
+        ? Math.max(0, 1 - Math.abs(actual_qty - plan.predictedQty) / plan.predictedQty).toFixed(4)
+        : null;
+
+      // Calculate improvement vs previous completed plan on same line
+      let improvementVsPrevious: number | null = null;
+      if (plan.lineId) {
+        const prevPlans = await db.select().from(weeklyPlans)
+          .where(and(
+            eq(weeklyPlans.lineId, plan.lineId),
+            eq(weeklyPlans.status, "completed"),
+          ))
+          .orderBy(desc(weeklyPlans.completedAt))
+          .limit(1);
+        if (prevPlans.length > 0 && prevPlans[0].predictionAccuracy) {
+          const prevAcc = parseFloat(prevPlans[0].predictionAccuracy);
+          const currAcc = predictionAccuracy ? parseFloat(predictionAccuracy) : 0;
+          improvementVsPrevious = parseFloat((currAcc - prevAcc).toFixed(4));
+        }
+      }
 
       await db.update(weeklyPlans)
         .set({
@@ -2685,7 +2757,9 @@ export async function registerRoutes(
       res.json({
         success: true,
         realization_rate: parseFloat(realizationRate),
+        prediction_error: predictionError,
         prediction_accuracy: predictionAccuracy ? parseFloat(predictionAccuracy) : null,
+        improvement_vs_previous: improvementVsPrevious,
         message: "Plan tamamlandı",
       });
     } catch (error: any) {
@@ -2715,8 +2789,9 @@ export async function registerRoutes(
   // ── GET /api/v1/plans/accuracy ────────────────────────────────────────
   app.get("/api/v1/plans/accuracy", async (req, res) => {
     try {
-      const allPlans = await db.select().from(weeklyPlans);
+      const allPlans = await db.select().from(weeklyPlans).orderBy(desc(weeklyPlans.createdAt));
       const completed = allPlans.filter(p => p.status === "completed");
+      const active = allPlans.filter(p => p.status === "planned");
 
       const avgRealizationRate = completed.length > 0
         ? completed.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / completed.length
@@ -2726,22 +2801,50 @@ export async function registerRoutes(
         ? completedWithAccuracy.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / completedWithAccuracy.length
         : 0;
 
-      // Trend: compare last 3 vs previous 3
+      // Best prediction accuracy ever
+      const bestAccuracy = completedWithAccuracy.length > 0
+        ? Math.max(...completedWithAccuracy.map(p => parseFloat(p.predictionAccuracy || "0")))
+        : 0;
+
+      // Trend: compare recent half vs older half
       let trend = "neutral";
-      if (completedWithAccuracy.length >= 6) {
-        const recent3 = completedWithAccuracy.slice(0, 3);
-        const prev3 = completedWithAccuracy.slice(3, 6);
-        const recentAvg = recent3.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / 3;
-        const prevAvg = prev3.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / 3;
-        trend = recentAvg > prevAvg ? "improving" : recentAvg < prevAvg ? "declining" : "stable";
+      if (completedWithAccuracy.length >= 4) {
+        const half = Math.floor(completedWithAccuracy.length / 2);
+        const recentHalf = completedWithAccuracy.slice(0, half);
+        const olderHalf = completedWithAccuracy.slice(half, half * 2);
+        const recentAvg = recentHalf.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / recentHalf.length;
+        const olderAvg = olderHalf.reduce((s, p) => s + parseFloat(p.predictionAccuracy || "0"), 0) / olderHalf.length;
+        trend = recentAvg > olderAvg + 0.02 ? "improving" : recentAvg < olderAvg - 0.02 ? "declining" : "stable";
       }
+
+      // History for chart (most recent 10, chronological order)
+      const history = completed.slice(0, 10).reverse().map(p => ({
+        week: p.weekLabel,
+        planned: p.plannedQty,
+        predicted: p.predictedQty,
+        actual: p.actualQty,
+        realization_rate: parseFloat(parseFloat(p.realizationRate || "0").toFixed(2)),
+        prediction_accuracy: p.predictionAccuracy ? parseFloat(parseFloat(p.predictionAccuracy).toFixed(2)) : null,
+      }));
 
       res.json({
         total_plans: allPlans.length,
         completed_plans: completed.length,
+        active_plans: active.length,
         avg_realization_rate: parseFloat(avgRealizationRate.toFixed(4)),
         avg_prediction_accuracy: parseFloat(avgPredictionAccuracy.toFixed(4)),
+        best_accuracy: parseFloat(bestAccuracy.toFixed(4)),
+        motor_generation: completed.length,
         trend,
+        history,
+        active_list: active.map(p => ({
+          id: p.id,
+          week_label: p.weekLabel,
+          line_id: p.lineId,
+          planned_qty: p.plannedQty,
+          predicted_qty: p.predictedQty,
+          created_at: p.createdAt,
+        })),
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
