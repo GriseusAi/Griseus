@@ -411,16 +411,11 @@ export default function EnginePage() {
     }).catch(() => {}).finally(() => setMotorRecsLoading(false));
   }, []);
 
-  const dismissAlert = useCallback(async (alertId: string) => {
+  const dismissAlert = useCallback((alertId: string) => {
     if (!confirm("Bu uyariyi kapat?")) return;
     setDismissingAlert(alertId);
-    try {
-      const r = await fetch("/api/v1/alerts/dismiss", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ alert_id: alertId }) });
-      if (r.ok) {
-        setMotorRecs(prev => prev ? { ...prev, recommendations: prev.recommendations.filter((rec: any) => rec.alert_id !== alertId) } : prev);
-      }
-    } catch { /* */ }
-    setDismissingAlert(null);
+    setMotorRecs(prev => prev ? { ...prev, recommendations: prev.recommendations.filter((rec: any) => rec.alert_id !== alertId) } : prev);
+    setTimeout(() => setDismissingAlert(null), 100);
   }, []);
 
   const handleLayerClick = (id: LayerKey) => {

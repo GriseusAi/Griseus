@@ -8,7 +8,7 @@ import {
   insertProjectPhaseTradeSchema, insertWorkerSkillSchema, insertWorkerCertificationSchema,
   insertProjectScheduleSchema, insertProjectAssignmentSchema, insertServiceAppointmentSchema,
   insertOntologyObjectSchema, insertOntologyLinkSchema, insertOntologyActionSchema,
-  ontologyObjects, ontologyLinks, weeklyPlans, dismissedAlerts,
+  ontologyObjects, ontologyLinks, weeklyPlans,
   facilities, productionLines, products, operations, schedules, capacityMetrics, geWorkers, workerCapabilities,
 } from "@shared/schema";
 import { z } from "zod";
@@ -2319,42 +2319,17 @@ export async function registerRoutes(
       const priorityOrder = { red: 0, yellow: 1, green: 2 };
       recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
 
-      // Add stable IDs and filter dismissed
+      // Add stable IDs
       const withIds = recommendations.map(r => ({
         ...r,
         alert_id: `${r.priority}_${r.line_id || 0}_${r.title.replace(/\s+/g, "_").substring(0, 40)}`,
       }));
-      const dismissedRows = await db.select().from(dismissedAlerts);
-      const dismissedSet = new Set(dismissedRows.map(d => d.alertId));
-      const filtered = withIds.filter(r => !dismissedSet.has(r.alert_id));
 
       res.json({
-        recommendations: filtered.slice(0, 3),
+        recommendations: withIds.slice(0, 3),
         generated_at: new Date().toISOString(),
         data_points: { plans: completed.length, schedules: scheds.length, operations: ops.length },
       });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // ── GET /api/v1/alerts/dismissed — kapatılmış uyarı ID'leri ─────────
-  app.get("/api/v1/alerts/dismissed", async (_req, res) => {
-    try {
-      const rows = await db.select().from(dismissedAlerts);
-      res.json({ dismissed: rows.map(r => r.alertId) });
-    } catch (error: any) {
-      res.status(500).json({ message: error.message });
-    }
-  });
-
-  // ── POST /api/v1/alerts/dismiss — uyarı kapat ─────────────────────
-  app.post("/api/v1/alerts/dismiss", async (req, res) => {
-    try {
-      const { alert_id } = req.body;
-      if (!alert_id) return res.status(400).json({ message: "alert_id is required" });
-      await db.insert(dismissedAlerts).values({ alertId: alert_id }).onConflictDoNothing();
-      res.json({ success: true, alert_id });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
