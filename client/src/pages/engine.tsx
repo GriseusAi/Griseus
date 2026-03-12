@@ -213,6 +213,7 @@ export default function EnginePage() {
   const [riskPlans, setRiskPlans] = useState<any[]>([]);
   const [motorRecs, setMotorRecs] = useState<{ recommendations: any[]; generated_at: string; data_points: any } | null>(null);
   const [motorRecsLoading, setMotorRecsLoading] = useState(false);
+  const [dismissingAlert, setDismissingAlert] = useState<string | null>(null);
 
   /* ── Upload state ── */
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -408,6 +409,18 @@ export default function EnginePage() {
     fetch("/api/v1/motor/recommendations", { credentials: "include" }).then(r => r.json()).then(data => {
       setMotorRecs(data);
     }).catch(() => {}).finally(() => setMotorRecsLoading(false));
+  }, []);
+
+  const dismissAlert = useCallback(async (alertId: string) => {
+    if (!confirm("Bu uyariyi kapat?")) return;
+    setDismissingAlert(alertId);
+    try {
+      const r = await fetch("/api/v1/alerts/dismiss", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify({ alert_id: alertId }) });
+      if (r.ok) {
+        setMotorRecs(prev => prev ? { ...prev, recommendations: prev.recommendations.filter((rec: any) => rec.alert_id !== alertId) } : prev);
+      }
+    } catch { /* */ }
+    setDismissingAlert(null);
   }, []);
 
   const handleLayerClick = (id: LayerKey) => {
@@ -829,8 +842,15 @@ export default function EnginePage() {
                       };
                       const p = priorityMap[rec.priority as keyof typeof priorityMap] || priorityMap.yellow;
                       return (
-                        <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: p.bg, border: `1px solid ${p.border}` }}>
-                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                        <div key={rec.alert_id || i} style={{ padding: "10px 12px", borderRadius: 8, background: p.bg, border: `1px solid ${p.border}`, position: "relative" }}>
+                          <button onClick={() => dismissAlert(rec.alert_id)} disabled={dismissingAlert === rec.alert_id}
+                            style={{ position: "absolute", top: 6, right: 6, width: 20, height: 20, borderRadius: 4, border: `1px solid ${p.border}`,
+                              background: "rgba(0,0,0,0.3)", color: C.dim, fontSize: 11, cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: 0,
+                              opacity: dismissingAlert === rec.alert_id ? 0.4 : 0.7, transition: "opacity 0.2s" }}
+                            onMouseEnter={e => (e.currentTarget.style.opacity = "1")} onMouseLeave={e => (e.currentTarget.style.opacity = "0.7")}>
+                            ✕
+                          </button>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6, paddingRight: 20 }}>
                             <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: mono,
                               background: p.color, color: "#000", letterSpacing: 0.5 }}>{p.label}</span>
                             <span style={{ fontSize: 12, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{rec.title}</span>
