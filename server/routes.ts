@@ -21,6 +21,7 @@ import { eq, and, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
 import { detectParser, getIngestError, resetToSeed } from "./routes/ingest";
+import agentRouter from "./routes/agent";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -334,6 +335,9 @@ export async function registerRoutes(
   httpServer: Server,
   app: Express
 ): Promise<Server> {
+  // AI Agent router
+  app.use("/api/v1", agentRouter);
+
   // Auth routes
   app.post("/api/register", async (req, res, next) => {
     try {

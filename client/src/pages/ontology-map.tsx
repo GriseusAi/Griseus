@@ -235,6 +235,46 @@ export default function OntologyMap() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // ── AI Chat state ──
+  const [aiOpen, setAiOpen] = useState(false);
+  const [aiMessages, setAiMessages] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
+  const [aiInput, setAiInput] = useState("");
+  const [aiLoading, setAiLoading] = useState(false);
+  const [aiError, setAiError] = useState("");
+  const aiScrollRef = useRef<HTMLDivElement>(null);
+
+  const sendAiMessage = useCallback(async () => {
+    const msg = aiInput.trim();
+    if (!msg || aiLoading) return;
+    setAiInput("");
+    setAiError("");
+    const newMessages = [...aiMessages, { role: "user" as const, content: msg }];
+    setAiMessages(newMessages);
+    setAiLoading(true);
+    try {
+      const history = aiMessages.map(m => ({ role: m.role, content: m.content }));
+      const resp = await fetch("/api/v1/agent/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ message: msg, history }),
+      });
+      const data = await resp.json();
+      if (!resp.ok) {
+        setAiError(data.error || "Bağlantı hatası");
+        setAiLoading(false);
+        return;
+      }
+      setAiMessages([...newMessages, { role: "assistant", content: data.response, tools: data.tools_used }]);
+    } catch {
+      setAiError("AI Assistant'a bağlanılamadı.");
+    }
+    setAiLoading(false);
+  }, [aiInput, aiLoading, aiMessages]);
+
+  useEffect(() => {
+    if (aiScrollRef.current) aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight;
+  }, [aiMessages, aiLoading]);
+
   // ── Load fonts ──
   useEffect(() => {
     if (!document.querySelector('link[href*="Outfit"]')) {
@@ -849,6 +889,14 @@ export default function OntologyMap() {
           ))}
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          <button onClick={() => setAiOpen(true)}
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(52,211,153,0.1)",
+              border: "1px solid rgba(52,211,153,0.25)", borderRadius: 8, color: C.facility, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.2)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; }}>
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M12 2a4 4 0 014 4v1a4 4 0 01-8 0V6a4 4 0 014-4z"/><path d="M8 14s-4 2-4 6h16c0-4-4-6-4-6"/><circle cx="12" cy="6" r="1" fill="currentColor"/></svg>
+            AI Assistant
+          </button>
           <button onClick={() => { setUploadOpen(true); setUploadFile(null); setUploadResult(null); setUploadError(""); }}
             style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(129,140,248,0.1)",
               border: "1px solid rgba(129,140,248,0.25)", borderRadius: 8, color: "#818cf8", cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
@@ -1101,9 +1149,107 @@ export default function OntologyMap() {
         </div>
       )}
 
+      {/* ══════ AI CHAT PANEL ══════ */}
+      {aiOpen && (
+        <div style={{ position: "fixed", top: 0, right: 0, bottom: 0, width: 400, background: C.surface, borderLeft: `1px solid ${C.cardBorder}`,
+          display: "flex", flexDirection: "column", zIndex: 9999, boxShadow: "-4px 0 24px rgba(0,0,0,0.5)", animation: "aiSlideIn 0.25s ease" }}>
+          {/* Header */}
+          <div style={{ padding: "14px 20px", borderBottom: `1px solid ${C.cardBorder}`, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <span style={{ fontSize: 15, fontWeight: 700, fontFamily: sans }}>Griseus AI</span>
+              <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 10, fontWeight: 600, color: C.ok }}>
+                <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.ok, boxShadow: `0 0 6px ${C.ok}`, animation: "ontoPulse 2s ease-in-out infinite" }} />
+                Live
+              </span>
+            </div>
+            <button onClick={() => setAiOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18, padding: "4px 8px", lineHeight: 1 }}>✕</button>
+          </div>
+
+          {/* Messages */}
+          <div ref={aiScrollRef} style={{ flex: 1, overflowY: "auto", padding: 16, display: "flex", flexDirection: "column", gap: 12 }}>
+            {aiMessages.length === 0 && !aiError && (
+              <div style={{ textAlign: "center", marginTop: 40 }}>
+                <div style={{ fontSize: 28, marginBottom: 12 }}>🤖</div>
+                <div style={{ fontSize: 13, fontWeight: 600, color: C.mid, marginBottom: 16 }}>Griseus AI Assistant</div>
+                <div style={{ fontSize: 11, color: C.dim, lineHeight: 1.7 }}>
+                  Üretim verilerinize dayalı sorular sorun.<br />Gerçek zamanlı analiz ve öneriler alın.
+                </div>
+                <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 8 }}>
+                  {["Bu hafta ne planlamalıyım?", "Darboğaz nerede?", "En kritik çalışanım kim?", "Kapasiteyi artırmak için ne yapmalıyım?"].map(q => (
+                    <button key={q} onClick={() => { setAiInput(q); }} style={{
+                      background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 8,
+                      padding: "8px 12px", fontSize: 11, color: C.mid, cursor: "pointer", fontFamily: sans, textAlign: "left", transition: "all 0.2s",
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; e.currentTarget.style.color = C.white; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.03)"; e.currentTarget.style.color = C.mid; }}>
+                      {q}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {aiMessages.map((m, i) => (
+              <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
+                <div style={{
+                  maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans, whiteSpace: "pre-wrap",
+                  background: m.role === "user" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
+                  border: m.role === "user" ? "1px solid rgba(99,102,241,0.3)" : `1px solid ${C.cardBorder}`,
+                  color: m.role === "user" ? "#c7d2fe" : C.white,
+                }}>
+                  {m.content}
+                </div>
+                {m.tools && m.tools.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                    {m.tools.map((t, j) => (
+                      <span key={j} style={{ fontSize: 9, fontFamily: mono, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
+                        borderRadius: 4, padding: "2px 6px", color: C.facility }}>
+                        📊 {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {aiLoading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${C.cardBorder}`, borderRadius: 12, alignSelf: "flex-start", maxWidth: "85%" }}>
+                <span style={{ animation: "ontoPulse 1.5s ease-in-out infinite", fontSize: 12 }}>●</span>
+                <span style={{ fontSize: 11, color: C.mid, fontFamily: sans }}>Düşünüyor...</span>
+              </div>
+            )}
+
+            {aiError && (
+              <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)",
+                borderRadius: 12, fontSize: 11, color: C.err, alignSelf: "flex-start" }}>
+                {aiError}
+              </div>
+            )}
+          </div>
+
+          {/* Input */}
+          <div style={{ padding: "12px 16px", borderTop: `1px solid ${C.cardBorder}`, display: "flex", gap: 8, flexShrink: 0 }}>
+            <input value={aiInput} onChange={e => setAiInput(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
+              placeholder="Bir soru sorun..."
+              style={{ flex: 1, background: "rgba(255,255,255,0.04)", border: `1px solid ${C.cardBorder}`, borderRadius: 8,
+                padding: "10px 14px", fontSize: 12, color: C.white, fontFamily: sans, outline: "none" }} />
+            <button onClick={sendAiMessage} disabled={aiLoading || !aiInput.trim()}
+              style={{ padding: "10px 16px", background: aiInput.trim() ? "rgba(52,211,153,0.15)" : "rgba(255,255,255,0.03)",
+                border: `1px solid ${aiInput.trim() ? "rgba(52,211,153,0.3)" : C.cardBorder}`, borderRadius: 8,
+                color: aiInput.trim() ? C.facility : C.dim, cursor: aiInput.trim() ? "pointer" : "default",
+                fontSize: 12, fontWeight: 600, fontFamily: sans, transition: "all 0.2s" }}>
+              Gönder
+            </button>
+          </div>
+        </div>
+      )}
+
       {/* ── Keyframes ── */}
       <style>{`
         @keyframes ontoPulse { 0%,100% { opacity:1; transform:scale(1); } 50% { opacity:0.5; transform:scale(1.5); } }
+        @keyframes aiSlideIn { from { transform:translateX(100%); } to { transform:translateX(0); } }
         @keyframes skPulse { 0%,100% { opacity:0.3; } 50% { opacity:0.08; } }
         input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:14px; height:14px; border-radius:50%; background:${C.line}; cursor:pointer; box-shadow:0 0 6px ${C.line}55; }
         input[type=range]::-webkit-slider-thumb:hover { box-shadow:0 0 12px ${C.line}88; }
