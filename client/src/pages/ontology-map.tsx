@@ -224,6 +224,7 @@ export default function OntologyMap() {
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
+  const [planConflict, setPlanConflict] = useState(false);
 
   // ── Upload state ──
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -635,6 +636,7 @@ export default function OntologyMap() {
           if (!qty || qty <= 0) return;
           setForecastLoading(true);
           setPlanSaved(false);
+          setPlanConflict(false);
           try {
             const r = await fetch("/api/v1/forecast/weekly", {
               method: "POST", headers: { "Content-Type": "application/json" },
@@ -758,7 +760,7 @@ export default function OntologyMap() {
 
                 {/* Bu Planı Kaydet */}
                 <button
-                  disabled={planSaved}
+                  disabled={planSaved || planConflict}
                   onClick={async () => {
                     const now = new Date();
                     const start = new Date(now.getFullYear(), 0, 1);
@@ -778,6 +780,8 @@ export default function OntologyMap() {
                       });
                       if (r.ok) {
                         setPlanSaved(true);
+                      } else if (r.status === 409) {
+                        setPlanConflict(true);
                       } else {
                         const errText = await r.text();
                         console.error("Plan kaydetme hatası:", r.status, errText);
@@ -791,20 +795,44 @@ export default function OntologyMap() {
                   style={{
                     padding: "12px 24px",
                     borderRadius: 10,
-                    background: planSaved ? "rgba(52,211,153,0.15)" : "#34d399",
-                    color: planSaved ? "#34d399" : "#000",
+                    background: planSaved ? "rgba(52,211,153,0.15)" : planConflict ? "rgba(251,191,36,0.15)" : "#34d399",
+                    color: planSaved ? "#34d399" : planConflict ? C.warn : "#000",
                     fontWeight: 600,
                     fontSize: 14,
                     width: "100%",
                     marginTop: 16,
-                    border: planSaved ? "1px solid rgba(52,211,153,0.3)" : "none",
-                    cursor: planSaved ? "default" : "pointer",
+                    border: planSaved ? "1px solid rgba(52,211,153,0.3)" : planConflict ? "1px solid rgba(251,191,36,0.3)" : "none",
+                    cursor: planSaved || planConflict ? "default" : "pointer",
                     fontFamily: sans,
                     transition: "all 0.2s",
                   }}
                 >
-                  {planSaved ? "Kaydedildi ✓" : "Bu Planı Kaydet"}
+                  {planSaved ? "Kaydedildi ✓" : planConflict ? "Zaten mevcut" : "Bu Planı Kaydet"}
                 </button>
+
+                {/* 409 Conflict mesajı */}
+                {planConflict && (
+                  <div style={{
+                    marginTop: 10, padding: "12px 14px", borderRadius: 10,
+                    background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)",
+                    display: "flex", flexDirection: "column", gap: 10,
+                  }}>
+                    <div style={{ fontSize: 12, color: C.warn, lineHeight: 1.6 }}>
+                      Bu hat için bu hafta zaten bir plan mevcut. Aktif Planlar'dan güncelleyebilirsiniz.
+                    </div>
+                    <button
+                      onClick={() => handleAppTab("scheduling")}
+                      style={{
+                        padding: "8px 16px", borderRadius: 8,
+                        background: `${C.schedule}15`, border: `1px solid ${C.schedule}35`,
+                        color: C.schedule, fontSize: 12, fontWeight: 600,
+                        fontFamily: sans, cursor: "pointer", transition: "all 0.2s",
+                      }}
+                    >
+                      Aktif Planlar'a Git →
+                    </button>
+                  </div>
+                )}
               </>
             )}
 
