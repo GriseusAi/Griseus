@@ -1269,20 +1269,73 @@ export default function EnginePage() {
                     }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
                   )}
 
-                  {/* 5. Son 3 plan — ozet tablo */}
-                  {motorAccuracy && motorAccuracy.history.length > 0 && (
+                  {/* 5. Son Planlar — unified table with inline complete */}
+                  {motorAccuracy && (motorAccuracy.active_list.length > 0 || motorAccuracy.history.length > 0) && (
                     <PanelSection title="Son Planlar" color="#fb923c">
                       <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, marginBottom: 6 }}>
                         {forecastLineId === 1 ? "Elektrikli" : "Gazli"} hatti
                       </div>
+                      {/* Header */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", marginBottom: 4, borderBottom: `1px solid ${C.cardBorder}` }}>
                         <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
                         <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
                         <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
                         <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
                       </div>
+                      {/* Active plans — inline complete */}
+                      {motorAccuracy.active_list.map(p => (
+                        <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${C.cardBorder}` }}>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", alignItems: "center" }}>
+                            <span style={{ fontSize: 9, fontFamily: mono, color: "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
+                            <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
+                            <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right" }}>
+                              {completeInputs[p.id] !== undefined && completeInputs[p.id] !== "" ? (
+                                <span style={{ color: C.white }}>{completeInputs[p.id]}</span>
+                              ) : (
+                                <button onClick={() => setCompleteInputs(prev => ({ ...prev, [p.id]: "" }))}
+                                  style={{ padding: "2px 6px", borderRadius: 4, fontSize: 8, fontWeight: 600, cursor: "pointer",
+                                    background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.25)", color: "#fb923c" }}>
+                                  Gir
+                                </button>
+                              )}
+                            </span>
+                            <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, textAlign: "right" }}>bekliyor</span>
+                          </div>
+                          {/* Expanded inline input */}
+                          {completeInputs[p.id] !== undefined && (
+                            <div style={{ padding: "6px", background: "rgba(251,146,60,0.04)", borderRadius: 6, margin: "2px 6px 6px" }}>
+                              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                                <input type="number" value={completeInputs[p.id]} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder="Gerceklesen miktar" autoFocus
+                                  style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 11, fontFamily: mono, outline: "none" }} />
+                                <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
+                                  style={{ padding: "6px 10px", borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
+                                  {completeLoading === p.id ? "..." : "Tamamla"}
+                                </button>
+                                <button onClick={() => setCompleteInputs(prev => { const n = { ...prev }; delete n[p.id]; return n; })}
+                                  style={{ padding: "6px 8px", borderRadius: 6, fontSize: 9, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
+                              </div>
+                              <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                                <option value="">Sapma Nedeni (opsiyonel)</option>
+                                <option value="personnel">Personel</option>
+                                <option value="material">Malzeme</option>
+                                <option value="machine">Makine</option>
+                                <option value="holiday">Tatil</option>
+                                <option value="demand">Talep</option>
+                                <option value="other">Diger</option>
+                              </select>
+                              {deviationReasons[p.id] && (
+                                <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      ))}
+                      {/* Completed plans — read only */}
                       {motorAccuracy.history.slice(0, 3).map((h, i) => (
-                        <div key={i} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
+                        <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
                           <span style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>{h.week}</span>
                           <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
                           <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.actual ?? "-"}</span>
@@ -1290,46 +1343,6 @@ export default function EnginePage() {
                             color: h.prediction_accuracy != null && h.prediction_accuracy >= 0.9 ? C.green : h.prediction_accuracy != null && h.prediction_accuracy >= 0.7 ? "#fb923c" : C.err }}>
                             {h.prediction_accuracy != null ? `%${Math.round(h.prediction_accuracy * 100)}` : "-"}
                           </span>
-                        </div>
-                      ))}
-                    </PanelSection>
-                  )}
-
-                  {/* Active plans — complete flow inline */}
-                  {motorAccuracy && motorAccuracy.active_list.length > 0 && (
-                    <PanelSection title="Aktif Planlar" color={C.amber}>
-                      {motorAccuracy.active_list.map(p => (
-                        <div key={p.id} style={{ padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 6 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-                            <span style={{ fontSize: 10, fontWeight: 600, color: "#fb923c", fontFamily: mono }}>{p.week_label}</span>
-                            <span style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>Hat {p.line_id}</span>
-                          </div>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9, color: C.mid, marginBottom: 6 }}>
-                            <span>Plan: {fmt(p.planned_qty)}</span>
-                            {p.predicted_qty && <span>Tahmin: {fmt(p.predicted_qty)}</span>}
-                          </div>
-                          <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
-                            <input type="number" value={completeInputs[p.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                              placeholder="Gerceklesen" style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 10, fontFamily: mono, outline: "none" }} />
-                            <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
-                              style={{ padding: "6px 10px", borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
-                              {completeLoading === p.id ? "..." : "Tamamla"}
-                            </button>
-                          </div>
-                          <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
-                            style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
-                            <option value="">Sapma Nedeni (opsiyonel)</option>
-                            <option value="personnel">Personel</option>
-                            <option value="material">Malzeme</option>
-                            <option value="machine">Makine</option>
-                            <option value="holiday">Tatil</option>
-                            <option value="demand">Talep</option>
-                            <option value="other">Diger</option>
-                          </select>
-                          {deviationReasons[p.id] && (
-                            <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                              placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
-                          )}
                         </div>
                       ))}
                     </PanelSection>
