@@ -83,7 +83,7 @@ function SeverityBadge({ level }: { level: string }) {
   };
   const s = map[level] || map.medium;
   return (
-    <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 13, fontWeight: 700, fontFamily: mono,
+    <span style={{ padding: "2px 8px", borderRadius: 4, fontSize: 11, fontWeight: 700, fontFamily: mono,
       background: s.bg, color: s.color, textTransform: "uppercase" }}>{level}</span>
   );
 }
@@ -91,7 +91,7 @@ function SeverityBadge({ level }: { level: string }) {
 function PanelSection({ title, color, children }: { title: string; color: string; children: React.ReactNode }) {
   return (
     <div style={{ marginBottom: 16 }}>
-      <div style={{ fontSize: 15, fontWeight: 700, color, fontFamily: mono, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{title}</div>
+      <div style={{ fontSize: 11, fontWeight: 700, color, fontFamily: mono, marginBottom: 8, textTransform: "uppercase", letterSpacing: 1 }}>{title}</div>
       {children}
     </div>
   );
@@ -100,8 +100,8 @@ function PanelSection({ title, color, children }: { title: string; color: string
 function MetricCard({ value, label, color, large }: { value: string; label: string; color: string; large?: boolean }) {
   return (
     <div style={{ padding: "14px 16px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
-      <div style={{ fontFamily: mono, fontSize: large ? 50 : 34, fontWeight: 700, color }}>{value}</div>
-      <div style={{ fontSize: 17, color: C.mid, marginTop: 3 }}>{label}</div>
+      <div style={{ fontFamily: mono, fontSize: large ? 28 : 24, fontWeight: 700, color }}>{value}</div>
+      <div style={{ fontSize: 10, color: C.mid, marginTop: 3 }}>{label}</div>
     </div>
   );
 }
@@ -112,8 +112,8 @@ function Slider({ label, value, min, max, step, onChange, unit }: {
   return (
     <div style={{ marginBottom: 10 }}>
       <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-        <span style={{ fontSize: 14, color: C.mid }}>{label}</span>
-        <span style={{ fontSize: 14, fontFamily: mono, color: C.white }}>{value} {unit}</span>
+        <span style={{ fontSize: 12, color: C.mid }}>{label}</span>
+        <span style={{ fontSize: 12, fontFamily: mono, color: C.white }}>{value} {unit}</span>
       </div>
       <input type="range" min={min} max={max} step={step} value={value} onChange={e => onChange(Number(e.target.value))}
         style={{ width: "100%", height: 3, appearance: "none", background: "rgba(255,255,255,0.08)", borderRadius: 2, outline: "none", cursor: "pointer" }} />
@@ -150,7 +150,7 @@ function IsoCube({ cx, cy, size, color, label, delay, active }: {
       <polygon points={left} fill={color} opacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
       <polygon points={top} fill={color} opacity={0.4} stroke={color} strokeWidth={0.5} strokeOpacity={0.5} />
       {active && (
-        <text x={cx} y={cy - dy - dy - 8} textAnchor="middle" fill={color} fontSize={7} fontFamily={mono} fontWeight={500}
+        <text x={cx} y={cy - dy - dy - 12} textAnchor="middle" fill={color} fontSize={10} fontFamily={mono} fontWeight={500}
           style={{ opacity: 0, animation: "engFadeIn 0.3s ease 0.1s forwards" }}>{label}</text>
       )}
     </g>
@@ -441,7 +441,7 @@ export default function EnginePage() {
   };
 
   /* ── Iso diagram constants ── */
-  const CX = 260, BASE_Y = 380, GAP = 100, PW = 180, PD = 70;
+  const CX = 380, BASE_Y = 560, GAP = 150, PW = 270, PD = 105;
 
   /* ── Derived data ── */
   const entityCounts = summary ? {
@@ -458,15 +458,15 @@ export default function EnginePage() {
       {/* ════ HEADER ════ */}
       <div style={{ background: C.surface, borderBottom: `1px solid ${C.cardBorder}`, padding: "0 24px", display: "flex", alignItems: "center", justifyContent: "space-between", height: 48, flexShrink: 0 }}>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <span style={{ fontSize: 21, fontWeight: 700 }}>Griseus Engine</span>
-          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 600, color: C.green }}>
+          <span style={{ fontSize: 14, fontWeight: 700 }}>Griseus Engine</span>
+          <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: C.green }}>
             <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}`, animation: "engPulse 2s ease-in-out infinite" }} />
             Live
           </span>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={() => { setAiOpen(true); setActiveLayer(null); }}
-            style={{ padding: "6px 14px", fontSize: 17, fontWeight: 600, fontFamily: mono, background: "rgba(52,211,153,0.1)",
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(52,211,153,0.1)",
               border: "1px solid rgba(52,211,153,0.25)", borderRadius: 8, color: C.green, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.2)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; }}>
@@ -474,7 +474,7 @@ export default function EnginePage() {
             AI Assistant
           </button>
           <button onClick={() => { setUploadOpen(true); setUploadFile(null); setUploadResult(null); setUploadError(""); }}
-            style={{ padding: "6px 14px", fontSize: 17, fontWeight: 600, fontFamily: mono, background: "rgba(129,140,248,0.1)",
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(129,140,248,0.1)",
               border: "1px solid rgba(129,140,248,0.25)", borderRadius: 8, color: C.indigo, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(129,140,248,0.2)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(129,140,248,0.1)"; }}>
@@ -490,20 +490,20 @@ export default function EnginePage() {
               else alert("Hata: " + j.error);
             } catch (e: any) { alert("Hata: " + e.message); }
           }}
-            style={{ padding: "6px 14px", fontSize: 17, fontWeight: 600, fontFamily: mono, background: "rgba(239,68,68,0.1)",
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(239,68,68,0.1)",
               border: "1px solid rgba(239,68,68,0.25)", borderRadius: 8, color: "#ef4444", cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
             onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.2)"; }}
             onMouseLeave={e => { e.currentTarget.style.background = "rgba(239,68,68,0.1)"; }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M3 12a9 9 0 119 9"/><path d="M3 3v9h9"/></svg>
             Sifirla
           </button>
-          <span style={{ fontSize: 17, color: C.mid, fontWeight: 500 }}>Cukurova Isi</span>
+          <span style={{ fontSize: 12, color: C.mid, fontWeight: 500 }}>Cukurova Isi</span>
           <span style={{ width: 7, height: 7, borderRadius: "50%", background: C.green, display: "inline-block", boxShadow: `0 0 6px ${C.green}`, animation: "engPulse 2s ease-in-out infinite" }} />
         </div>
       </div>
 
       {/* ════ MAIN: DIAGRAM + PANEL ════ */}
-      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 380px", overflow: "hidden" }}>
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 520px", overflow: "hidden" }}>
 
         {/* ── LEFT: Isometric Diagram ── */}
         <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", minHeight: 520 }}
@@ -513,7 +513,7 @@ export default function EnginePage() {
             background: `linear-gradient(90deg, transparent, ${C.indigo}40, transparent)`,
             animation: "engScan 7s linear infinite", pointerEvents: "none", zIndex: 2 }} />
 
-          <svg viewBox="0 0 560 460" style={{ width: "100%", maxWidth: 580, display: "block" }}>
+          <svg viewBox="0 0 780 680" style={{ width: "100%", maxWidth: "100%", display: "block" }}>
             {/* Connection lines between layers */}
             {[0, 1, 2].map(i => {
               const y1 = BASE_Y - i * GAP, y2 = BASE_Y - (i + 1) * GAP;
@@ -536,7 +536,7 @@ export default function EnginePage() {
               const anyActive = activeLayer !== null;
               const platOpacity = isActive ? 0.22 : isHovered ? 0.13 : anyActive ? 0.03 : 0.06;
               const groupOpacity = anyActive && !isActive ? 0.4 : 1;
-              const cubeSpacing = 50;
+              const cubeSpacing = 75;
               const cubeStartX = CX - ((layer.cubes.length - 1) * cubeSpacing) / 2;
 
               return (
@@ -551,22 +551,22 @@ export default function EnginePage() {
                   )}
                   {layer.cubes.map((cube, ci) => (
                     <IsoCube key={cube} cx={cubeStartX + ci * cubeSpacing} cy={cy - 8}
-                      size={20} color={layer.color} label={cube}
+                      size={30} color={layer.color} label={cube}
                       delay={0.3 + i * 0.15 + ci * 0.08} active={isActive || isHovered} />
                   ))}
                   <text x={CX - PW * 0.55} y={cy + 5} textAnchor="end"
-                    fill={isActive ? layer.color : C.dim} fontSize={20} fontFamily={mono} fontWeight={700}
+                    fill={isActive ? layer.color : C.dim} fontSize={24} fontFamily={mono} fontWeight={700}
                     opacity={isActive ? 1 : 0.35} style={{ transition: "all 0.3s" }}>{layer.num}</text>
                   <g>
                     {isActive && (
                       <line x1={CX + PW * 0.55 + 8} y1={cy - 12} x2={CX + PW * 0.55 + 8} y2={cy + 12}
                         stroke={layer.color} strokeWidth={2} strokeLinecap="round" opacity={0.8} />
                     )}
-                    <text x={CX + PW * 0.55 + (isActive ? 18 : 14)} y={cy - 3}
-                      fill={isActive ? C.white : C.mid} fontSize={11} fontFamily={sans} fontWeight={600}
+                    <text x={CX + PW * 0.55 + (isActive ? 22 : 16)} y={cy - 4}
+                      fill={isActive ? C.white : C.mid} fontSize={15} fontFamily={sans} fontWeight={600}
                       style={{ transition: "fill 0.3s" }}>{layer.title}</text>
-                    <text x={CX + PW * 0.55 + (isActive ? 18 : 14)} y={cy + 11}
-                      fill={C.dim} fontSize={9} fontFamily={sans}>{layer.subtitle}</text>
+                    <text x={CX + PW * 0.55 + (isActive ? 22 : 16)} y={cy + 14}
+                      fill={C.dim} fontSize={11} fontFamily={sans}>{layer.subtitle}</text>
                   </g>
                 </g>
               );
@@ -588,24 +588,24 @@ export default function EnginePage() {
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 21, fontWeight: 700 }}>Griseus AI</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 14, fontWeight: 600, color: C.green }}>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Griseus AI</span>
+                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: C.green }}>
                     <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />Live
                   </span>
                 </div>
-                <button onClick={() => setAiOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+                <button onClick={() => setAiOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
 
               <div ref={aiScrollRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
                 {aiMessages.length === 0 && !aiError && (
                   <div style={{ textAlign: "center", marginTop: 32 }}>
-                    <div style={{ fontSize: 34, marginBottom: 10 }}>🤖</div>
-                    <div style={{ fontSize: 17, color: C.mid, marginBottom: 16 }}>Uretim verilerine dayali sorular sorun</div>
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>🤖</div>
+                    <div style={{ fontSize: 12, color: C.mid, marginBottom: 16 }}>Uretim verilerine dayali sorular sorun</div>
                     {["Bu hafta ne planlamaliyim?", "Darbogaz nerede?", "En kritik calisanim kim?", "Kapasiteyi artirmak icin ne yapmaliyim?"].map(q => (
                       <button key={q} onClick={() => setAiInput(q)} style={{
                         display: "block", width: "100%", textAlign: "left", marginBottom: 6,
                         background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8,
-                        padding: "8px 12px", fontSize: 15, color: C.mid, cursor: "pointer", fontFamily: sans,
+                        padding: "8px 12px", fontSize: 12, color: C.mid, cursor: "pointer", fontFamily: sans,
                       }}>{q}</button>
                     ))}
                   </div>
@@ -613,7 +613,7 @@ export default function EnginePage() {
                 {aiMessages.map((m, i) => (
                   <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
                     <div style={{
-                      maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 17, lineHeight: 1.7, fontFamily: sans,
+                      maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans,
                       whiteSpace: m.role === "user" ? "pre-wrap" : undefined,
                       background: m.role === "user" ? "rgba(99,102,241,0.2)" : C.card,
                       border: m.role === "user" ? "1px solid rgba(99,102,241,0.3)" : `1px solid ${C.cardBorder}`,
@@ -624,7 +624,7 @@ export default function EnginePage() {
                     {m.tools && m.tools.length > 0 && (
                       <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
                         {m.tools.map((t, j) => (
-                          <span key={j} style={{ fontSize: 13, fontFamily: mono, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
+                          <span key={j} style={{ fontSize: 11, fontFamily: mono, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
                             borderRadius: 4, padding: "2px 6px", color: C.green }}>📊 {t}</span>
                         ))}
                       </div>
@@ -633,22 +633,22 @@ export default function EnginePage() {
                 ))}
                 {aiLoading && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, alignSelf: "flex-start" }}>
-                    <span style={{ animation: "engPulse 1.5s ease-in-out infinite", fontSize: 17 }}>●</span>
-                    <span style={{ fontSize: 15, color: C.mid }}>Dusunuyor...</span>
+                    <span style={{ animation: "engPulse 1.5s ease-in-out infinite", fontSize: 12 }}>●</span>
+                    <span style={{ fontSize: 12, color: C.mid }}>Dusunuyor...</span>
                   </div>
                 )}
-                {aiError && <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, fontSize: 15, color: C.err }}>{aiError}</div>}
+                {aiError && <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, fontSize: 12, color: C.err }}>{aiError}</div>}
               </div>
 
               <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                 <input value={aiInput} onChange={e => setAiInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
                   placeholder="Bir soru sorun..."
-                  style={{ flex: 1, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 17, color: C.white, fontFamily: sans, outline: "none" }} />
+                  style={{ flex: 1, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.white, fontFamily: sans, outline: "none" }} />
                 <button onClick={sendAiMessage} disabled={aiLoading || !aiInput.trim()}
                   style={{ padding: "10px 16px", background: aiInput.trim() ? "rgba(52,211,153,0.15)" : C.card,
                     border: `1px solid ${aiInput.trim() ? "rgba(52,211,153,0.3)" : C.cardBorder}`, borderRadius: 8,
-                    color: aiInput.trim() ? C.green : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 17, fontWeight: 600 }}>
+                    color: aiInput.trim() ? C.green : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
                   Gonder
                 </button>
               </div>
@@ -659,10 +659,10 @@ export default function EnginePage() {
             <div key="applications" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, background: `${C.green}15`, color: C.green, border: `1px solid ${C.green}30` }}>04</span>
-                  <span style={{ fontSize: 20, fontWeight: 700 }}>Sonuclar</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.green}15`, color: C.green, border: `1px solid ${C.green}30` }}>04</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Sonuclar</span>
                 </div>
-                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
 
               {/* Risk warning card */}
@@ -672,13 +672,13 @@ export default function EnginePage() {
                   background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
                 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
-                    <span style={{ fontSize: 22 }}>⚠</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: C.err }}>
+                    <span style={{ fontSize: 18 }}>⚠</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.err }}>
                       {riskPlans.length} plan %70 alti gerceklesme
                     </span>
                   </div>
                   {riskPlans.slice(0, 3).map((p: any) => (
-                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 14, fontFamily: mono, borderBottom: `1px solid rgba(239,68,68,0.1)` }}>
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 12, fontFamily: mono, borderBottom: `1px solid rgba(239,68,68,0.1)` }}>
                       <span style={{ color: C.mid }}>{p.weekLabel} · Hat {p.lineId}</span>
                       <span style={{ color: C.err, fontWeight: 700 }}>%{Math.round(parseFloat(p.realizationRate || "0") * 100)} gerceklesme</span>
                     </div>
@@ -713,8 +713,8 @@ export default function EnginePage() {
                         {(summary.lines || []).map((line: any) => (
                           <div key={line.id} style={{ textAlign: "center" }}>
                             <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} />
-                            <div style={{ fontSize: 20, fontWeight: 700, marginTop: 4 }}>%{Math.round(line.utilizationPct || 0)}</div>
-                            <div style={{ fontSize: 13, color: C.mid }}>{line.name}</div>
+                            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>%{Math.round(line.utilizationPct || 0)}</div>
+                            <div style={{ fontSize: 11, color: C.mid }}>{line.name}</div>
                             <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{line.workerCount} kisi · {line.currentUnitTimeMin}dk</div>
                           </div>
                         ))}
@@ -725,7 +725,7 @@ export default function EnginePage() {
                       {[{ label: "Elektrikli", pct: ePct, delivered: eDelivered, planned: ePlanned, color: C.indigo },
                         { label: "Gazli", pct: gPct, delivered: gDelivered, planned: gPlanned, color: C.pink }].map(d => (
                         <div key={d.label} style={{ marginBottom: 8 }}>
-                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 14, marginBottom: 3 }}>
+                          <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
                             <span style={{ color: C.mid }}>{d.label}</span>
                             <span style={{ fontFamily: mono, color: d.color }}>%{d.pct} ({fmt(d.delivered)}/{fmt(d.planned)})</span>
                           </div>
@@ -740,7 +740,7 @@ export default function EnginePage() {
                     <div style={{ display: "flex", gap: 4, marginBottom: 10 }}>
                       {([["monthly", "Aylik Uretim"], ["weekly", "Haftalik Plan vs Gercek"]] as [AppChartTab, string][]).map(([k, lbl]) => (
                         <button key={k} onClick={() => setAppChartTab(k)} style={{
-                          padding: "5px 10px", fontSize: 14, fontWeight: 600, fontFamily: sans, cursor: "pointer",
+                          padding: "5px 10px", fontSize: 12, fontWeight: 600, fontFamily: sans, cursor: "pointer",
                           background: appChartTab === k ? `${C.green}12` : "transparent",
                           border: `1px solid ${appChartTab === k ? C.green + "30" : C.cardBorder}`,
                           borderRadius: 6, color: appChartTab === k ? C.green : C.mid,
@@ -751,9 +751,9 @@ export default function EnginePage() {
                     {appChartTab === "monthly" && summary.monthlyData?.length > 0 && (
                       <ResponsiveContainer width="100%" height={150}>
                         <BarChart data={summary.monthlyData} barGap={1}>
-                          <XAxis dataKey="ay" tick={{ fontSize: 13, fill: C.dim }} axisLine={false} tickLine={false} />
+                          <XAxis dataKey="ay" tick={{ fontSize: 11, fill: C.dim }} axisLine={false} tickLine={false} />
                           <YAxis hide />
-                          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 15, fontFamily: mono }} />
+                          <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontFamily: mono }} />
                           <Bar dataKey="e" fill={C.indigo} radius={[3, 3, 0, 0]} name="Elektrikli" />
                           <Bar dataKey="g" fill={C.pink} radius={[3, 3, 0, 0]} name="Gazli" />
                         </BarChart>
@@ -765,7 +765,7 @@ export default function EnginePage() {
                         <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                           {(["elektrikli", "gazli"] as const).map(t => (
                             <button key={t} onClick={() => setWeeklyLineType(t)} style={{
-                              padding: "4px 10px", fontSize: 13, fontFamily: mono, fontWeight: 600, borderRadius: 5, cursor: "pointer",
+                              padding: "4px 10px", fontSize: 11, fontFamily: mono, fontWeight: 600, borderRadius: 5, cursor: "pointer",
                               background: weeklyLineType === t ? `${t === "elektrikli" ? C.indigo : C.pink}15` : "transparent",
                               border: `1px solid ${weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) + "40" : C.cardBorder}`,
                               color: weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) : C.dim,
@@ -786,12 +786,12 @@ export default function EnginePage() {
                                 </linearGradient>
                               </defs>
                               <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
-                              <XAxis dataKey="h" tick={{ fill: C.dim, fontSize: 13 }} axisLine={false} tickLine={false} />
-                              <YAxis tick={{ fill: C.dim, fontSize: 13, fontFamily: mono }} axisLine={false} tickLine={false} width={40} />
-                              <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 14, fontFamily: mono }} />
+                              <XAxis dataKey="h" tick={{ fill: C.dim, fontSize: 11 }} axisLine={false} tickLine={false} />
+                              <YAxis tick={{ fill: C.dim, fontSize: 11, fontFamily: mono }} axisLine={false} tickLine={false} width={40} />
+                              <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontFamily: mono }} />
                               <Area type="monotone" dataKey="plan" name="Plan" stroke={lineColor} fill="url(#gPlan)" strokeWidth={2} dot={false} />
                               <Area type="monotone" dataKey="gercek" name="Gercek" stroke={C.green} fill="url(#gReal)" strokeWidth={2} dot={false} />
-                              <Legend verticalAlign="top" align="right" height={28} formatter={(v: string) => <span style={{ color: C.mid, fontSize: 14 }}>{v}</span>} />
+                              <Legend verticalAlign="top" align="right" height={28} formatter={(v: string) => <span style={{ color: C.mid, fontSize: 12 }}>{v}</span>} />
                             </AreaChart>
                           </ResponsiveContainer>
                         )}
@@ -807,8 +807,8 @@ export default function EnginePage() {
               <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 12, background: "rgba(129,140,248,0.04)", border: `1px solid rgba(129,140,248,0.15)` }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                    <span style={{ fontSize: 20 }}>⚡</span>
-                    <span style={{ fontSize: 17, fontWeight: 700, color: C.indigo }}>Motor Onerileri</span>
+                    <span style={{ fontSize: 14 }}>⚡</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.indigo }}>Motor Onerileri</span>
                   </div>
                   <button onClick={fetchMotorRecs} disabled={motorRecsLoading}
                     style={{ padding: "3px 8px", borderRadius: 4, fontSize: 11, fontFamily: mono, cursor: "pointer",
@@ -818,7 +818,7 @@ export default function EnginePage() {
                 </div>
 
                 {motorRecsLoading ? (
-                  <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 14 }}>Analiz ediliyor...</div>
+                  <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 12 }}>Analiz ediliyor...</div>
                 ) : motorRecs && motorRecs.recommendations.length > 0 ? (
                   <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
                     {motorRecs.recommendations.map((rec: any, i: number) => {
@@ -831,21 +831,21 @@ export default function EnginePage() {
                       return (
                         <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: p.bg, border: `1px solid ${p.border}` }}>
                           <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
-                            <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 10, fontWeight: 700, fontFamily: mono,
+                            <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 9, fontWeight: 700, fontFamily: mono,
                               background: p.color, color: "#000", letterSpacing: 0.5 }}>{p.label}</span>
-                            <span style={{ fontSize: 15, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{rec.title}</span>
+                            <span style={{ fontSize: 12, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{rec.title}</span>
                           </div>
-                          <div style={{ fontSize: 14, color: C.mid, lineHeight: 1.5, marginBottom: 4 }}>{rec.reason}</div>
-                          <div style={{ fontSize: 13, color: p.color, fontFamily: mono, fontWeight: 600 }}>↳ {rec.impact}</div>
+                          <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.5, marginBottom: 4 }}>{rec.reason}</div>
+                          <div style={{ fontSize: 11, color: p.color, fontFamily: mono, fontWeight: 600 }}>↳ {rec.impact}</div>
                         </div>
                       );
                     })}
-                    <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, textAlign: "right" }}>
+                    <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, textAlign: "right" }}>
                       {motorRecs.data_points.plans} plan · {motorRecs.data_points.schedules} schedule · {new Date(motorRecs.generated_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
                     </div>
                   </div>
                 ) : (
-                  <div style={{ textAlign: "center", padding: 16, color: C.dim, fontSize: 14 }}>
+                  <div style={{ textAlign: "center", padding: 16, color: C.dim, fontSize: 12 }}>
                     Henuz yeterli veri yok. Plan ekleyip tamamladikca oneriler olusacak.
                   </div>
                 )}
@@ -857,17 +857,17 @@ export default function EnginePage() {
             <div key="intelligence" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, background: `${C.indigo}15`, color: C.indigo, border: `1px solid ${C.indigo}30` }}>03</span>
-                  <span style={{ fontSize: 20, fontWeight: 700 }}>Analiz</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.indigo}15`, color: C.indigo, border: `1px solid ${C.indigo}30` }}>03</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Analiz</span>
                 </div>
-                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
 
               {/* Tabs */}
               <div style={{ display: "flex", gap: 4, marginBottom: 16 }}>
                 {(["simulation", "bottleneck"] as IntelTab[]).map(tab => (
                   <button key={tab} onClick={() => setIntelTab(tab)} style={{
-                    padding: "6px 14px", fontSize: 15, fontWeight: 600, fontFamily: sans, cursor: "pointer",
+                    padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: sans, cursor: "pointer",
                     background: intelTab === tab ? "rgba(129,140,248,0.12)" : "transparent",
                     border: intelTab === tab ? `1px solid rgba(129,140,248,0.3)` : `1px solid ${C.cardBorder}`,
                     borderRadius: 6, color: intelTab === tab ? C.indigo : C.mid, transition: "all 0.2s",
@@ -881,7 +881,7 @@ export default function EnginePage() {
                   <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => handleSimLineChange(line.id)} style={{
-                        padding: "5px 12px", fontSize: 14, fontWeight: 600, fontFamily: mono, cursor: "pointer",
+                        padding: "5px 12px", fontSize: 12, fontWeight: 600, fontFamily: mono, cursor: "pointer",
                         background: simLineId === line.id ? `${C.indigo}15` : "transparent",
                         border: `1px solid ${simLineId === line.id ? C.indigo + "40" : C.cardBorder}`,
                         borderRadius: 6, color: simLineId === line.id ? C.indigo : C.dim,
@@ -909,13 +909,13 @@ export default function EnginePage() {
                       <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 12, padding: "8px 0" }}>
                         <div style={{ textAlign: "center" }}>
                           <Ring pct={simResult.baseline.utilization_pct} color={C.dim} size={52} stroke={4} />
-                          <div style={{ fontSize: 14, fontWeight: 600, color: C.dim, marginTop: 2 }}>%{Math.round(simResult.baseline.utilization_pct)}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: C.dim, marginTop: 2 }}>%{Math.round(simResult.baseline.utilization_pct)}</div>
                           <div style={{ fontSize: 11, color: C.dim }}>Mevcut</div>
                         </div>
-                        <div style={{ display: "flex", alignItems: "center", color: C.dim, fontSize: 22 }}>→</div>
+                        <div style={{ display: "flex", alignItems: "center", color: C.dim, fontSize: 18 }}>→</div>
                         <div style={{ textAlign: "center" }}>
                           <Ring pct={simResult.simulated.utilization_pct} color={simResult.delta.percent >= 0 ? C.green : C.err} size={52} stroke={4} />
-                          <div style={{ fontSize: 14, fontWeight: 600, color: simResult.delta.percent >= 0 ? C.green : C.err, marginTop: 2 }}>%{Math.round(simResult.simulated.utilization_pct)}</div>
+                          <div style={{ fontSize: 12, fontWeight: 600, color: simResult.delta.percent >= 0 ? C.green : C.err, marginTop: 2 }}>%{Math.round(simResult.simulated.utilization_pct)}</div>
                           <div style={{ fontSize: 11, color: C.dim }}>Simulasyon</div>
                         </div>
                       </div>
@@ -930,10 +930,10 @@ export default function EnginePage() {
                         const pct = ((cur - cap) / cap * 100).toFixed(0);
                         return (
                           <div style={{ padding: 10, background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 10, marginBottom: 10 }}>
-                            <div style={{ fontSize: 14, fontWeight: 700, color: C.amber, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: C.amber, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
                               ⚠ Darbogaz Uyarisi
                             </div>
-                            <div style={{ fontSize: 14, color: C.mid, lineHeight: 1.5 }}>
+                            <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.5 }}>
                               Birim sure ({cur}dk) teorik kapasiteden ({cap}dk) <strong style={{ color: C.amber }}>%{pct}</strong> daha yavas. Bu hat darbogaz olusturuyor.
                             </div>
                           </div>
@@ -941,7 +941,7 @@ export default function EnginePage() {
                       })()}
 
                       {simResult.insights.map((ins, i) => (
-                        <div key={i} style={{ fontSize: 15, color: C.mid, padding: "4px 0", lineHeight: 1.5 }}>• {ins}</div>
+                        <div key={i} style={{ fontSize: 12, color: C.mid, padding: "4px 0", lineHeight: 1.5 }}>• {ins}</div>
                       ))}
                     </div>
                   )}
@@ -957,9 +957,9 @@ export default function EnginePage() {
                         <button key={s.label} onClick={() => { setSimParams(p => ({ ...p, ...s.params })); runSimulation(); }}
                           style={{ display: "flex", justifyContent: "space-between", alignItems: "center",
                             padding: "8px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8,
-                            color: C.white, cursor: "pointer", fontFamily: sans, fontSize: 15, textAlign: "left" }}>
+                            color: C.white, cursor: "pointer", fontFamily: sans, fontSize: 12, textAlign: "left" }}>
                           <span style={{ fontWeight: 600 }}>{s.label}</span>
-                          <span style={{ fontSize: 14, color: C.dim }}>{s.desc}</span>
+                          <span style={{ fontSize: 12, color: C.dim }}>{s.desc}</span>
                         </button>
                       ))}
                     </div>
@@ -971,7 +971,7 @@ export default function EnginePage() {
                   <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => { setBottleneckLineId(line.id); fetchBottleneck(line.id); }} style={{
-                        padding: "5px 12px", fontSize: 14, fontWeight: 600, fontFamily: mono, cursor: "pointer",
+                        padding: "5px 12px", fontSize: 12, fontWeight: 600, fontFamily: mono, cursor: "pointer",
                         background: bottleneckLineId === line.id ? `${C.amber}15` : "transparent",
                         border: `1px solid ${bottleneckLineId === line.id ? C.amber + "40" : C.cardBorder}`,
                         borderRadius: 6, color: bottleneckLineId === line.id ? C.amber : C.dim,
@@ -983,8 +983,8 @@ export default function EnginePage() {
                     <>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
                         <SeverityBadge level={bottleneck.bottleneck_severity} />
-                        <span style={{ fontSize: 15, color: C.mid }}>{bottleneck.line_name}</span>
-                        <span style={{ fontSize: 14, fontFamily: mono, color: bottleneck.trend === "improving" ? C.green : bottleneck.trend === "declining" ? C.err : C.amber, marginLeft: "auto" }}>
+                        <span style={{ fontSize: 12, color: C.mid }}>{bottleneck.line_name}</span>
+                        <span style={{ fontSize: 12, fontFamily: mono, color: bottleneck.trend === "improving" ? C.green : bottleneck.trend === "declining" ? C.err : C.amber, marginLeft: "auto" }}>
                           {bottleneck.trend === "improving" ? "↑ Iyilesiyor" : bottleneck.trend === "declining" ? "↓ Kotuye" : "→ Stabil"}
                         </span>
                       </div>
@@ -996,15 +996,15 @@ export default function EnginePage() {
                       </div>
 
                       <div style={{ padding: 12, background: "rgba(239,68,68,0.05)", border: "1px solid rgba(239,68,68,0.15)", borderRadius: 10, marginBottom: 12 }}>
-                        <div style={{ fontSize: 14, fontWeight: 700, color: C.err, marginBottom: 6, fontFamily: mono }}>EN KOTU HAFTA</div>
-                        <div style={{ fontSize: 15, color: C.mid }}>
+                        <div style={{ fontSize: 12, fontWeight: 700, color: C.err, marginBottom: 6, fontFamily: mono }}>EN KOTU HAFTA</div>
+                        <div style={{ fontSize: 12, color: C.mid }}>
                           {bottleneck.worst_week.period_value}: Plan {bottleneck.worst_week.planned} → Gercek {bottleneck.worst_week.actual}
                           <span style={{ color: C.err, fontWeight: 600 }}> ({bottleneck.worst_week.deviation_pct.toFixed(1)}%)</span>
                         </div>
                       </div>
 
                       {bottleneck.insights.map((ins, i) => (
-                        <div key={i} style={{ fontSize: 15, color: C.mid, padding: "4px 0", lineHeight: 1.5 }}>• {ins}</div>
+                        <div key={i} style={{ fontSize: 12, color: C.mid, padding: "4px 0", lineHeight: 1.5 }}>• {ins}</div>
                       ))}
                     </>
                   ) : (
@@ -1019,10 +1019,10 @@ export default function EnginePage() {
             <div key="ontology" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, background: `${C.amber}15`, color: C.amber, border: `1px solid ${C.amber}30` }}>02</span>
-                  <span style={{ fontSize: 20, fontWeight: 700 }}>Ontology</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.amber}15`, color: C.amber, border: `1px solid ${C.amber}30` }}>02</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Ontology</span>
                 </div>
-                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
 
               {/* ── Mini Ontology Node-Link Map ── */}
@@ -1100,7 +1100,7 @@ export default function EnginePage() {
 
               {/* ── Node Detail Panel ── */}
               {ontoNode === null && (
-                <div style={{ fontSize: 14, color: C.dim, textAlign: "center", padding: "8px 0", lineHeight: 1.7 }}>
+                <div style={{ fontSize: 12, color: C.dim, textAlign: "center", padding: "8px 0", lineHeight: 1.7 }}>
                   1 Tesis · 2 Hat · {workersData.length || 16} Calisan · 21 Urun · 24 Operasyon · {schedsData.length || 23} Cizelge
                   <br />Node'a tiklayarak detay gorun
                 </div>
@@ -1110,9 +1110,9 @@ export default function EnginePage() {
               {ontoNode === "facility" && (
                 <PanelSection title="Tesis" color={C.green}>
                   <div style={{ padding: 10, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10 }}>
-                    <div style={{ fontSize: 17, fontWeight: 700, marginBottom: 4 }}>Cukurova Isi Sistemleri</div>
-                    <div style={{ fontSize: 14, color: C.mid, lineHeight: 1.6 }}>Gebze, Kocaeli · Aktif</div>
-                    <div style={{ fontSize: 14, color: C.mid }}>2 Uretim Hatti · {workersData.length || 16} Calisan</div>
+                    <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Cukurova Isi Sistemleri</div>
+                    <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.6 }}>Gebze, Kocaeli · Aktif</div>
+                    <div style={{ fontSize: 12, color: C.mid }}>2 Uretim Hatti · {workersData.length || 16} Calisan</div>
                     {summary && (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
                         <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.green} />
@@ -1134,7 +1134,7 @@ export default function EnginePage() {
                       <MetricCard value={fmt(line.totalOutput || 0)} label="Toplam Uretim" color={ontoNode === "elektrikli" ? C.indigo : C.pink} />
                       <MetricCard value={`%${Math.round(line.utilizationPct || 0)}`} label="Kapasite" color={line.utilizationPct > 80 ? C.green : C.amber} />
                     </div>
-                    <div style={{ fontSize: 14, color: C.mid, lineHeight: 1.7 }}>
+                    <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.7 }}>
                       {line.workerCount} calisan · Teorik: {line.capacityUnitTimeMin}dk · Gercek: {line.currentUnitTimeMin}dk
                     </div>
                   </PanelSection>
@@ -1148,19 +1148,19 @@ export default function EnginePage() {
                     <PanelSection title="Risk Analizi" color={C.amber}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                         <SeverityBadge level={wfRisk.risk_level} />
-                        <span style={{ fontSize: 15, color: C.mid }}>Skor: <strong style={{ color: C.white }}>{wfRisk.risk_score}/100</strong></span>
+                        <span style={{ fontSize: 12, color: C.mid }}>Skor: <strong style={{ color: C.white }}>{wfRisk.risk_score}/100</strong></span>
                       </div>
                       {wfRisk.single_point_failures.length > 0 && (
                         <div style={{ marginBottom: 8 }}>
-                          <div style={{ fontSize: 13, fontWeight: 700, color: C.err, marginBottom: 3 }}>TEK KISIYE BAGLI</div>
+                          <div style={{ fontSize: 11, fontWeight: 700, color: C.err, marginBottom: 3 }}>TEK KISIYE BAGLI</div>
                           {wfRisk.single_point_failures.map((f, i) => (
-                            <div key={i} style={{ fontSize: 14, color: C.mid, padding: "1px 0" }}>{f.capability_name} → <span style={{ color: C.amber }}>{f.sole_worker_name}</span></div>
+                            <div key={i} style={{ fontSize: 12, color: C.mid, padding: "1px 0" }}>{f.capability_name} → <span style={{ color: C.amber }}>{f.sole_worker_name}</span></div>
                           ))}
                         </div>
                       )}
                       {wfRisk.critical_workers.slice(0, 3).map((w, i) => (
                         <div key={i} style={{ padding: "5px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 3 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600 }}>{w.name} <span style={{ color: C.dim, fontWeight: 400 }}>({w.department})</span></div>
+                          <div style={{ fontSize: 12, fontWeight: 600 }}>{w.name} <span style={{ color: C.dim, fontWeight: 400 }}>({w.department})</span></div>
                           <div style={{ fontSize: 11, color: C.amber }}>{w.capability_count} yetkinlik, {w.unique_capabilities.length} benzersiz</div>
                         </div>
                       ))}
@@ -1173,15 +1173,15 @@ export default function EnginePage() {
                           style={{ padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 3, cursor: "pointer" }}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                             <div>
-                              <div style={{ fontSize: 14, fontWeight: 600 }}>{w.name}</div>
+                              <div style={{ fontSize: 12, fontWeight: 600 }}>{w.name}</div>
                               <div style={{ fontSize: 11, color: C.dim }}>{w.department}</div>
                             </div>
                             {trustScores[w.id] && (
                               <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.amber : C.err }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.amber : C.err }}>
                                   {trustScores[w.id].trust_score}
                                 </div>
-                                <div style={{ fontSize: 10, color: C.dim }}>trust</div>
+                                <div style={{ fontSize: 9, color: C.dim }}>trust</div>
                               </div>
                             )}
                           </div>
@@ -1206,14 +1206,14 @@ export default function EnginePage() {
                           <BarChart data={summary.monthlyData} barGap={1}>
                             <XAxis dataKey="ay" tick={{ fontSize: 11, fill: C.dim }} axisLine={false} tickLine={false} />
                             <YAxis hide />
-                            <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 14, fontFamily: mono }} />
+                            <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontFamily: mono }} />
                             <Bar dataKey="e" fill={C.indigo} radius={[2, 2, 0, 0]} name="E" />
                             <Bar dataKey="g" fill={C.pink} radius={[2, 2, 0, 0]} name="G" />
                           </BarChart>
                         </ResponsiveContainer>
                       )}
                     </>
-                  ) : <div style={{ color: C.dim, fontSize: 14 }}>Yukleniyor...</div>}
+                  ) : <div style={{ color: C.dim, fontSize: 12 }}>Yukleniyor...</div>}
                 </PanelSection>
               )}
 
@@ -1221,18 +1221,18 @@ export default function EnginePage() {
               {ontoNode === "products" && (
                 <PanelSection title="Urunler" color="#a78bfa">
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.indigo, marginBottom: 4 }}>ELEKTRIKLI</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.indigo, marginBottom: 4 }}>ELEKTRIKLI</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {["GSS20P", "GSS40P", "GSN20", "GSN40", "GSA", "GSU15", "GSU20", "MGS", "GSSP", "GSSK", "GST"].map(p => (
-                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 13, fontFamily: mono, background: `${C.indigo}10`, border: `1px solid ${C.indigo}20`, color: C.indigo }}>{p}</span>
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: `${C.indigo}10`, border: `1px solid ${C.indigo}20`, color: C.indigo }}>{p}</span>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 13, fontWeight: 700, color: C.pink, marginBottom: 4 }}>GAZLI</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.pink, marginBottom: 4 }}>GAZLI</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {["ELT.7-11", "CC.7-11", "CPH.33", "BH 55", "SSP 40", "SSP 60", "DHP 33", "DHP 50", "WHP 20", "WHP 33"].map(p => (
-                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 13, fontFamily: mono, background: `${C.pink}10`, border: `1px solid ${C.pink}20`, color: C.pink }}>{p}</span>
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: `${C.pink}10`, border: `1px solid ${C.pink}20`, color: C.pink }}>{p}</span>
                       ))}
                     </div>
                   </div>
@@ -1247,8 +1247,8 @@ export default function EnginePage() {
                     <div style={{ position: "absolute", top: 8, right: 8, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}>
                       <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={32} stroke={3} />
                       <div>
-                        <div style={{ fontFamily: mono, fontSize: 20, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
-                        <div style={{ fontSize: 13, color: C.dim }}>Motor Dogrulugu</div>
+                        <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
+                        <div style={{ fontSize: 11, color: C.dim }}>Motor Dogrulugu</div>
                       </div>
                     </div>
                   )}
@@ -1257,7 +1257,7 @@ export default function EnginePage() {
                   <div style={{ display: "flex", gap: 4, marginBottom: 14 }}>
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); fetchCurrentWeekPlan(line.id); }} style={{
-                        flex: 1, padding: "14px 0", fontSize: 21, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
+                        flex: 1, padding: "14px 0", fontSize: 14, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
                         background: forecastLineId === line.id ? "rgba(251,146,60,0.15)" : "transparent",
                         border: `2px solid ${forecastLineId === line.id ? "#fb923c" : C.cardBorder}`,
                         color: forecastLineId === line.id ? "#fb923c" : C.dim, textAlign: "center", transition: "all 0.2s",
@@ -1266,20 +1266,20 @@ export default function EnginePage() {
                   </div>
 
                   {/* Week status label */}
-                  <div style={{ fontSize: 17, fontFamily: mono, color: C.dim, marginBottom: 10, textAlign: "center" }}>
+                  <div style={{ fontSize: 12, fontFamily: mono, color: C.dim, marginBottom: 10, textAlign: "center" }}>
                     {currentWeekLabel}
                   </div>
 
                   {/* STATE A: Loading */}
                   {currentWeekPlan === undefined && (
-                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 18 }}>Kontrol ediliyor...</div>
+                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 14 }}>Kontrol ediliyor...</div>
                   )}
 
                   {/* STATE B: Plan exists + completed → done message */}
                   {currentWeekPlan && currentWeekPlan.status === "completed" && (
                     <div style={{ padding: "16px", borderRadius: 12, background: "rgba(52,211,153,0.06)", border: `1px solid ${C.green}30`, textAlign: "center", marginBottom: 12 }}>
-                      <div style={{ fontSize: 28, marginBottom: 6 }}>✓</div>
-                      <div style={{ fontSize: 22, fontWeight: 700, color: C.green, marginBottom: 6 }}>Bu hafta tamamlandi</div>
+                      <div style={{ fontSize: 22, marginBottom: 6 }}>✓</div>
+                      <div style={{ fontSize: 18, fontWeight: 700, color: C.green, marginBottom: 6 }}>Bu hafta tamamlandi</div>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
                         <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color={C.mid} />
                         <MetricCard value={fmt(currentWeekPlan.actual_qty || 0)} label="Gercek" color={C.green} />
@@ -1300,10 +1300,10 @@ export default function EnginePage() {
                         <input type="number" value={completeInputs[currentWeekPlan.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
                           placeholder="Gerceklesen miktar" autoFocus
                           style={{ flex: 1, padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                            color: C.white, fontSize: 34, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                            color: C.white, fontSize: 28, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
                       </div>
                       <select value={deviationReasons[currentWeekPlan.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
-                        style={{ width: "100%", padding: "8px 10px", marginBottom: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, fontSize: 17, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                        style={{ width: "100%", padding: "8px 10px", marginBottom: 8, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, fontSize: 12, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
                         <option value="">Sapma Nedeni (opsiyonel)</option>
                         <option value="personnel">Personel</option>
                         <option value="material">Hammadde</option>
@@ -1313,10 +1313,10 @@ export default function EnginePage() {
                       </select>
                       {deviationReasons[currentWeekPlan.id] && (
                         <input value={deviationNotes[currentWeekPlan.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
-                          placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginBottom: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 17, fontFamily: mono, outline: "none" }} />
+                          placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginBottom: 8, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 12, fontFamily: mono, outline: "none" }} />
                       )}
                       <button onClick={() => { completePlan(currentWeekPlan.id); }} disabled={completeLoading === currentWeekPlan.id || !completeInputs[currentWeekPlan.id]}
-                        style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 24, fontWeight: 700, cursor: "pointer",
+                        style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
                           background: justCompleted[currentWeekPlan.id] ? "rgba(52,211,153,0.12)" : C.green, color: justCompleted[currentWeekPlan.id] ? C.green : "#000", border: justCompleted[currentWeekPlan.id] ? `1px solid ${C.green}30` : "none",
                           opacity: !completeInputs[currentWeekPlan.id] && !justCompleted[currentWeekPlan.id] ? 0.4 : 1, transition: "all 0.2s",
                         }}>{completeLoading === currentWeekPlan.id ? "..." : justCompleted[currentWeekPlan.id] ? `Tamamlandi — %${justCompleted[currentWeekPlan.id].rate}` : "Tamamla"}</button>
@@ -1330,11 +1330,11 @@ export default function EnginePage() {
                         <div style={{ textAlign: "center", marginBottom: 10 }}>
                           <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
                             style={{ width: "100%", padding: "16px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                              color: C.white, fontSize: 39, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                          <div style={{ fontSize: 17, color: C.dim, marginTop: 6 }}>Haftalik uretim hedefi (adet)</div>
+                              color: C.white, fontSize: 28, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                          <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>Haftalik uretim hedefi (adet)</div>
                         </div>
                         <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
-                          style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 24, fontWeight: 700, cursor: "pointer",
+                          style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
                             background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
                             opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
                           }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
@@ -1344,11 +1344,11 @@ export default function EnginePage() {
                       {forecastResult && (
                         <PanelSection title="Motor Tahmini" color="#fb923c">
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                            <span style={{ fontSize: 15, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
+                            <span style={{ fontSize: 12, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
                               Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
                             </span>
                             {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
-                              <span style={{ fontSize: 15, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
+                              <span style={{ fontSize: 12, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
                                 {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
                               </span>
                             )}
@@ -1360,21 +1360,21 @@ export default function EnginePage() {
                           </div>
                           <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
                             <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
-                            <div style={{ flex: 1, fontSize: 18, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
+                            <div style={{ flex: 1, fontSize: 14, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
                           </div>
                           {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
                             <div style={{ marginBottom: 8 }}>
                               {forecastResult.risk_flags.map((flag, i) => (
-                                <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 15, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                                <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 12, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
                                   {flag}
                                 </div>
                               ))}
                             </div>
                           )}
                           <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 17, color: C.dim, fontFamily: mono, marginBottom: 6 }}>SENARYOLAR</div>
+                            <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 6 }}>SENARYOLAR</div>
                             {forecastResult.scenarios.map((s, i) => (
-                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 17, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
+                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 12, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
                                 <span style={{ color: C.mid }}>{s.name}</span>
                                 <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
                               </div>
@@ -1395,7 +1395,7 @@ export default function EnginePage() {
                             else { const t = await r.text(); alert("Hata: " + (t || r.statusText)); }
                           } catch { alert("Ag hatasi"); }
                         }} style={{
-                          width: "100%", padding: "14px", borderRadius: 10, fontSize: 24, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
+                          width: "100%", padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
                           background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000",
                           border: planSaved ? `1px solid ${C.green}30` : "none", marginBottom: 12, transition: "all 0.2s",
                         }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
@@ -1406,15 +1406,15 @@ export default function EnginePage() {
                   {/* 5. Son Planlar — unified table with inline complete */}
                   {motorAccuracy && (motorAccuracy.active_list.some(p => p.line_id === forecastLineId) || motorAccuracy.history.some(h => h.line_id === forecastLineId)) && (
                     <PanelSection title="Son Planlar" color="#fb923c">
-                      <div style={{ fontSize: 15, fontFamily: mono, color: C.dim, marginBottom: 8 }}>
+                      <div style={{ fontSize: 12, fontFamily: mono, color: C.dim, marginBottom: 8 }}>
                         {forecastLineId === 1 ? "Elektrikli" : "Gazli"} hatti
                       </div>
                       {/* Header */}
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "6px 8px", marginBottom: 6, borderBottom: `1px solid ${C.cardBorder}` }}>
-                        <span style={{ fontSize: 18, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
-                        <span style={{ fontSize: 18, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
-                        <span style={{ fontSize: 18, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
-                        <span style={{ fontSize: 18, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
+                        <span style={{ fontSize: 14, fontFamily: mono, color: C.dim, fontWeight: 600 }}>Hafta</span>
+                        <span style={{ fontSize: 14, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Plan</span>
+                        <span style={{ fontSize: 14, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Gercek</span>
+                        <span style={{ fontSize: 14, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
                       </div>
                       {/* Active plans — inline complete */}
                       {motorAccuracy.active_list.filter(p => p.line_id === forecastLineId).map(p => {
@@ -1423,17 +1423,17 @@ export default function EnginePage() {
                         <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${done ? `${C.green}30` : C.cardBorder}`,
                           background: done ? "rgba(52,211,153,0.06)" : "transparent", transition: "background 0.4s ease" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px", alignItems: "center" }}>
-                            <span style={{ fontSize: 18, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
-                            <span style={{ fontSize: 18, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
-                            <span style={{ fontSize: 18, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
+                            <span style={{ fontSize: 14, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
+                            <span style={{ fontSize: 14, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
+                            <span style={{ fontSize: 14, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
                               {done ? done.actual : "-"}
                             </span>
-                            <span style={{ fontSize: 18, fontFamily: mono, textAlign: "right" }}>
+                            <span style={{ fontSize: 14, fontFamily: mono, textAlign: "right" }}>
                               {done ? (
                                 <span style={{ fontWeight: 700, color: done.rate >= 90 ? C.green : done.rate >= 70 ? "#fb923c" : C.err }}>%{done.rate}</span>
                               ) : (
                                 <button onClick={() => setCompleteInputs(prev => ({ ...prev, [p.id]: "" }))}
-                                  style={{ padding: "3px 10px", borderRadius: 4, fontSize: 15, fontWeight: 700, cursor: "pointer",
+                                  style={{ padding: "3px 10px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
                                     background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c" }}>
                                   Tamamla
                                 </button>
@@ -1443,20 +1443,20 @@ export default function EnginePage() {
                           {/* Expanded inline input */}
                           {!done && completeInputs[p.id] !== undefined && (
                             <div style={{ padding: "10px", background: "rgba(251,146,60,0.04)", borderRadius: 8, margin: "4px 8px 8px" }}>
-                              <div style={{ fontSize: 17, color: C.mid, marginBottom: 8 }}>Gerceklesen miktari girin:</div>
+                              <div style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>Gerceklesen miktari girin:</div>
                               <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                                 <input type="number" value={completeInputs[p.id]} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
                                   placeholder="ornegin: 420" autoFocus
-                                  style={{ flex: 1, padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 24, fontFamily: mono, fontWeight: 700, outline: "none" }} />
+                                  style={{ flex: 1, padding: "10px 12px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 18, fontFamily: mono, fontWeight: 700, outline: "none" }} />
                                 <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
-                                  style={{ padding: "10px 16px", borderRadius: 6, fontSize: 18, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
+                                  style={{ padding: "10px 16px", borderRadius: 6, fontSize: 14, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
                                   {completeLoading === p.id ? "..." : "Kaydet"}
                                 </button>
                                 <button onClick={() => setCompleteInputs(prev => { const n = { ...prev }; delete n[p.id]; return n; })}
-                                  style={{ padding: "10px", borderRadius: 6, fontSize: 18, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
+                                  style={{ padding: "10px", borderRadius: 6, fontSize: 14, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
                               </div>
                               <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                style={{ width: "100%", padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 17, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                                style={{ width: "100%", padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 12, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
                                 <option value="">Sapma Nedeni (opsiyonel)</option>
                                 <option value="personnel">Personel</option>
                                 <option value="material">Hammadde</option>
@@ -1466,7 +1466,7 @@ export default function EnginePage() {
                               </select>
                               {deviationReasons[p.id] && (
                                 <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginTop: 6, padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 17, fontFamily: mono, outline: "none" }} />
+                                  placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginTop: 6, padding: "7px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 12, fontFamily: mono, outline: "none" }} />
                               )}
                             </div>
                           )}
@@ -1480,10 +1480,10 @@ export default function EnginePage() {
                         return (
                         <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px",
                           borderBottom: `1px solid ${C.cardBorder}`, background: "rgba(52,211,153,0.03)", borderLeft: `2px solid ${rowColor}` }}>
-                          <span style={{ fontSize: 18, fontFamily: mono, color: C.green }}>{h.week}</span>
-                          <span style={{ fontSize: 18, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
-                          <span style={{ fontSize: 18, fontFamily: mono, color: C.white, textAlign: "right", fontWeight: 600 }}>{h.actual ?? "-"}</span>
-                          <span style={{ fontSize: 18, fontFamily: mono, textAlign: "right", fontWeight: 700, color: rowColor }}>
+                          <span style={{ fontSize: 14, fontFamily: mono, color: C.green }}>{h.week}</span>
+                          <span style={{ fontSize: 14, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
+                          <span style={{ fontSize: 14, fontFamily: mono, color: C.white, textAlign: "right", fontWeight: 600 }}>{h.actual ?? "-"}</span>
+                          <span style={{ fontSize: 14, fontFamily: mono, textAlign: "right", fontWeight: 700, color: rowColor }}>
                             {rate != null ? `%${rate}` : "-"}
                           </span>
                         </div>
@@ -1501,13 +1501,13 @@ export default function EnginePage() {
                     {(summary?.lines || []).map((line: any) => (
                       <div key={line.id} style={{ textAlign: "center" }}>
                         <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} size={56} stroke={4} />
-                        <div style={{ fontSize: 17, fontWeight: 700, marginTop: 3 }}>%{Math.round(line.utilizationPct || 0)}</div>
+                        <div style={{ fontSize: 12, fontWeight: 700, marginTop: 3 }}>%{Math.round(line.utilizationPct || 0)}</div>
                         <div style={{ fontSize: 11, color: C.mid }}>{line.name}</div>
                       </div>
                     ))}
                   </div>
                   {(summary?.lines || []).map((line: any) => (
-                    <div key={line.id} style={{ padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 4, fontSize: 14 }}>
+                    <div key={line.id} style={{ padding: "6px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 4, fontSize: 12 }}>
                       <div style={{ fontWeight: 600, marginBottom: 2 }}>{line.name}</div>
                       <div style={{ color: C.mid }}>Teorik Max: {fmt(line.theoreticalMax || 0)} · Gercek: {fmt(line.totalOutput || 0)}</div>
                     </div>
@@ -1519,9 +1519,9 @@ export default function EnginePage() {
               {ontoNode === "kpi" && (
                 <PanelSection title="KPI" color="#f87171">
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.dim }}>
-                    <div style={{ fontSize: 28, marginBottom: 8 }}>📊</div>
-                    <div style={{ fontSize: 15 }}>Henuz KPI tanimlanmadi</div>
-                    <div style={{ fontSize: 13, marginTop: 4 }}>Katman 05'te aktif olacak</div>
+                    <div style={{ fontSize: 22, marginBottom: 8 }}>📊</div>
+                    <div style={{ fontSize: 12 }}>Henuz KPI tanimlanmadi</div>
+                    <div style={{ fontSize: 11, marginTop: 4 }}>Katman 05'te aktif olacak</div>
                   </div>
                 </PanelSection>
               )}
@@ -1532,10 +1532,10 @@ export default function EnginePage() {
             <div key="ingestion" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 14, fontWeight: 600, background: `${C.pink}15`, color: C.pink, border: `1px solid ${C.pink}30` }}>01</span>
-                  <span style={{ fontSize: 20, fontWeight: 700 }}>Veri Kaynaklari</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.pink}15`, color: C.pink, border: `1px solid ${C.pink}30` }}>01</span>
+                  <span style={{ fontSize: 14, fontWeight: 700 }}>Veri Kaynaklari</span>
                 </div>
-                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+                <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
               </div>
 
               {/* Source format cards */}
@@ -1547,9 +1547,9 @@ export default function EnginePage() {
                   { label: "API", icon: "🔗", desc: "REST/JSON", active: false },
                 ].map(s => (
                   <div key={s.label} style={{ padding: "12px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center", opacity: s.active ? 1 : 0.4 }}>
-                    <div style={{ fontSize: 28 }}>{s.icon}</div>
-                    <div style={{ fontSize: 17, fontWeight: 600, marginTop: 4 }}>{s.label}</div>
-                    <div style={{ fontSize: 13, color: C.dim }}>{s.desc}</div>
+                    <div style={{ fontSize: 22 }}>{s.icon}</div>
+                    <div style={{ fontSize: 12, fontWeight: 600, marginTop: 4 }}>{s.label}</div>
+                    <div style={{ fontSize: 11, color: C.dim }}>{s.desc}</div>
                     {s.active && <div style={{ fontSize: 11, color: C.green, marginTop: 4, fontWeight: 600 }}>AKTIF</div>}
                   </div>
                 ))}
@@ -1568,31 +1568,31 @@ export default function EnginePage() {
                 }}>
                 <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                   onChange={e => { if (e.target.files?.[0]) { setUploadFile(e.target.files[0]); } }} />
-                <div style={{ fontSize: 34, marginBottom: 8 }}>📂</div>
+                <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
                 {uploadFile ? (
-                  <div style={{ fontSize: 17, color: C.pink, fontWeight: 600 }}>{uploadFile.name}</div>
+                  <div style={{ fontSize: 12, color: C.pink, fontWeight: 600 }}>{uploadFile.name}</div>
                 ) : (
-                  <div style={{ fontSize: 15, color: C.dim }}>Dosya surukle veya tikla</div>
+                  <div style={{ fontSize: 12, color: C.dim }}>Dosya surukle veya tikla</div>
                 )}
               </div>
 
               {uploadFile && !uploadLoading && !uploadResult && (
                 <button onClick={handleUpload} style={{
-                  width: "100%", padding: "10px", borderRadius: 8, background: C.pink, color: "#000", fontSize: 17, fontWeight: 600,
+                  width: "100%", padding: "10px", borderRadius: 8, background: C.pink, color: "#000", fontSize: 12, fontWeight: 600,
                   border: "none", cursor: "pointer", marginBottom: 12,
                 }}>Yukle ve Islem Yap</button>
               )}
-              {uploadLoading && <div style={{ textAlign: "center", fontSize: 15, color: C.mid, padding: 16 }}>Isleniyor...</div>}
+              {uploadLoading && <div style={{ textAlign: "center", fontSize: 12, color: C.mid, padding: 16 }}>Isleniyor...</div>}
               {uploadResult && (
                 <div style={{ padding: 12, background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10, marginBottom: 12 }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: C.green, marginBottom: 4 }}>Basarili</div>
-                  <div style={{ fontSize: 14, color: C.mid }}>{uploadResult.message || "Veri islendi"}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 4 }}>Basarili</div>
+                  <div style={{ fontSize: 12, color: C.mid }}>{uploadResult.message || "Veri islendi"}</div>
                 </div>
               )}
               {uploadError && (
                 <div style={{ padding: 12, background: "rgba(239,68,68,0.06)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 10, marginBottom: 12 }}>
-                  <div style={{ fontSize: 17, fontWeight: 700, color: C.err }}>Hata</div>
-                  <div style={{ fontSize: 14, color: C.mid }}>{uploadError}</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.err }}>Hata</div>
+                  <div style={{ fontSize: 12, color: C.mid }}>{uploadError}</div>
                 </div>
               )}
 
@@ -1604,8 +1604,8 @@ export default function EnginePage() {
                   const info = JSON.parse(last);
                   return (
                     <div style={{ padding: 10, background: "rgba(52,211,153,0.04)", border: `1px solid rgba(52,211,153,0.15)`, borderRadius: 10, marginBottom: 12 }}>
-                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 3 }}>SON YUKLEME</div>
-                      <div style={{ fontSize: 14, color: C.mid }}>{info.name} — {info.date}</div>
+                      <div style={{ fontSize: 11, fontWeight: 700, color: C.green, marginBottom: 3 }}>SON YUKLEME</div>
+                      <div style={{ fontSize: 12, color: C.mid }}>{info.name} — {info.date}</div>
                     </div>
                   );
                 } catch { return null; }
@@ -1621,7 +1621,7 @@ export default function EnginePage() {
                   { name: "KPIParser", target: "kpi_definitions", hint: "KPI Dosyasi" },
                   { name: "IsAkisParser", target: "operations (akis)", hint: "Is Akis Plani" },
                 ].map(p => (
-                  <div key={p.name} style={{ padding: "6px 0", fontSize: 14, borderBottom: `1px solid ${C.cardBorder}` }}>
+                  <div key={p.name} style={{ padding: "6px 0", fontSize: 12, borderBottom: `1px solid ${C.cardBorder}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
                       <span style={{ fontFamily: mono, color: C.pink }}>{p.name}</span>
                       <span style={{ color: C.dim }}>→ {p.target}</span>
@@ -1635,7 +1635,7 @@ export default function EnginePage() {
           /* ── DEFAULT: Overview ── */
           ) : (
             <div style={{ animation: "engSlideIn 0.3s ease" }}>
-              <div style={{ fontSize: 20, fontWeight: 700, marginBottom: 16 }}>Genel Bakis</div>
+              <div style={{ fontSize: 14, fontWeight: 700, marginBottom: 16 }}>Genel Bakis</div>
 
               {summary ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
@@ -1645,10 +1645,10 @@ export default function EnginePage() {
                   <MetricCard value="24" label="Operasyon" color={C.pink} />
                 </div>
               ) : (
-                <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 15 }}>Yukleniyor...</div>
+                <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 12 }}>Yukleniyor...</div>
               )}
 
-              <div style={{ fontSize: 15, color: C.dim, textAlign: "center", padding: "16px 0", lineHeight: 1.7 }}>
+              <div style={{ fontSize: 12, color: C.dim, textAlign: "center", padding: "16px 0", lineHeight: 1.7 }}>
                 Katmana tiklayarak detay gorun
               </div>
 
@@ -1660,8 +1660,8 @@ export default function EnginePage() {
                   { n: "5", label: "Uygulama", color: C.green },
                 ].map(s => (
                   <div key={s.label} style={{ padding: "12px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
-                    <div style={{ fontFamily: mono, fontSize: 31, fontWeight: 700, color: s.color }}>{s.n}</div>
-                    <div style={{ fontSize: 14, color: C.dim, marginTop: 2 }}>{s.label}</div>
+                    <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: s.color }}>{s.n}</div>
+                    <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{s.label}</div>
                   </div>
                 ))}
               </div>
@@ -1676,9 +1676,9 @@ export default function EnginePage() {
                 ].map((step, i) => (
                   <div key={step.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ width: 20, height: 20, borderRadius: 6, background: `${step.color}15`, border: `1px solid ${step.color}30`,
-                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 14, fontWeight: 700, color: step.color, fontFamily: mono, flexShrink: 0 }}>{i + 1}</span>
-                    <span style={{ fontSize: 17, color: C.mid, fontWeight: 500 }}>{step.label}</span>
-                    {i < 3 && <span style={{ fontSize: 14, color: C.dim, marginLeft: "auto" }}>→</span>}
+                      display: "flex", alignItems: "center", justifyContent: "center", fontSize: 12, fontWeight: 700, color: step.color, fontFamily: mono, flexShrink: 0 }}>{i + 1}</span>
+                    <span style={{ fontSize: 12, color: C.mid, fontWeight: 500 }}>{step.label}</span>
+                    {i < 3 && <span style={{ fontSize: 12, color: C.dim, marginLeft: "auto" }}>→</span>}
                   </div>
                 ))}
               </div>
@@ -1689,7 +1689,7 @@ export default function EnginePage() {
 
       {/* ════ STATUS BAR ════ */}
       <div style={{ background: C.surface, borderTop: `1px solid ${C.cardBorder}`, padding: "0 24px", height: 32, display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-        <span style={{ fontSize: 14, color: C.dim, fontFamily: mono }}>9 Entity · 89 Kayit · 5 Fonksiyon</span>
+        <span style={{ fontSize: 12, color: C.dim, fontFamily: mono }}>9 Entity · 89 Kayit · 5 Fonksiyon</span>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {["Excel", "ERP", "CSV", "API"].map(s => (
             <span key={s} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: `${C.pink}10`, color: C.pink, border: `1px solid ${C.pink}20` }}>{s}</span>
@@ -1699,7 +1699,7 @@ export default function EnginePage() {
             <span key={f} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: `${C.indigo}10`, color: C.indigo, border: `1px solid ${C.indigo}20` }}>{f}</span>
           ))}
         </div>
-        <span style={{ fontSize: 13, color: C.dim, fontFamily: mono }}>Powered by Griseus Engine v1</span>
+        <span style={{ fontSize: 11, color: C.dim, fontFamily: mono }}>Powered by Griseus Engine v1</span>
       </div>
 
       {/* ════ UPLOAD MODAL ════ */}
@@ -1708,8 +1708,8 @@ export default function EnginePage() {
           onClick={() => setUploadOpen(false)}>
           <div onClick={e => e.stopPropagation()} style={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 16, padding: 24, width: 420, maxWidth: "90vw" }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 16 }}>
-              <span style={{ fontSize: 21, fontWeight: 700 }}>Dosya Yukle</span>
-              <button onClick={() => setUploadOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 22 }}>✕</button>
+              <span style={{ fontSize: 14, fontWeight: 700 }}>Dosya Yukle</span>
+              <button onClick={() => setUploadOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
             </div>
             <div
               onDragOver={e => { e.preventDefault(); setUploadDragging(true); }}
@@ -1718,25 +1718,25 @@ export default function EnginePage() {
               onClick={() => fileInputRef.current?.click()}
               style={{ padding: "40px 20px", borderRadius: 12, textAlign: "center", cursor: "pointer",
                 border: `2px dashed ${uploadDragging ? C.indigo : C.cardBorder}`, transition: "all 0.2s", marginBottom: 16 }}>
-              <div style={{ fontSize: 39, marginBottom: 8 }}>📂</div>
+              <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
               {uploadFile ? (
-                <div style={{ fontSize: 17, color: C.indigo, fontWeight: 600 }}>{uploadFile.name}</div>
+                <div style={{ fontSize: 12, color: C.indigo, fontWeight: 600 }}>{uploadFile.name}</div>
               ) : (
-                <div style={{ fontSize: 17, color: C.dim }}>Dosya surukle veya tikla</div>
+                <div style={{ fontSize: 12, color: C.dim }}>Dosya surukle veya tikla</div>
               )}
             </div>
             {uploadFile && !uploadLoading && !uploadResult && (
               <button onClick={async () => { setUploadOpen(false); handleUpload(); }}
-                style={{ width: "100%", padding: "12px", borderRadius: 8, background: C.indigo, color: "#000", fontSize: 18, fontWeight: 600, border: "none", cursor: "pointer" }}>
+                style={{ width: "100%", padding: "12px", borderRadius: 8, background: C.indigo, color: "#000", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>
                 Yukle
               </button>
             )}
             {uploadResult && (
               <div style={{ padding: 12, background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10 }}>
-                <div style={{ fontSize: 17, fontWeight: 700, color: C.green }}>Basarili</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.green }}>Basarili</div>
               </div>
             )}
-            <div style={{ fontSize: 13, color: C.dim, marginTop: 12, textAlign: "center" }}>
+            <div style={{ fontSize: 11, color: C.dim, marginTop: 12, textAlign: "center" }}>
               Desteklenen: Elektrikli/Gazli Imalat, Kapasite, Personel, KPI, Is Akis
             </div>
           </div>
@@ -1754,7 +1754,7 @@ export default function EnginePage() {
         input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:${C.indigo}; cursor:pointer; box-shadow:0 0 6px ${C.indigo}55; }
         input[type=range]::-webkit-slider-thumb:hover { box-shadow:0 0 12px ${C.indigo}88; }
         @media (max-width: 900px) {
-          div[style*="gridTemplateColumns: 1fr 380px"] { grid-template-columns: 1fr !important; }
+          div[style*="gridTemplateColumns: 1fr 520px"] { grid-template-columns: 1fr !important; }
         }
       `}</style>
     </div>
