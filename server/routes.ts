@@ -2790,6 +2790,9 @@ export async function registerRoutes(
       }).returning();
       res.status(201).json({ success: true, plan_id: plan.id, week_label, planned_qty, predicted_qty, message: "Plan kaydedildi" });
     } catch (error: any) {
+      if (error.code === "23505" || error.message?.includes("uq_weekly_plans_line_week")) {
+        return res.status(409).json({ message: `Bu hat ve hafta için zaten bir plan var (${req.body.week_label}). Önce mevcut planı tamamlayın.` });
+      }
       res.status(500).json({ message: error.message });
     }
   });
