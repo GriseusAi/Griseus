@@ -208,6 +208,7 @@ export default function EnginePage() {
   const [completeInputs, setCompleteInputs] = useState<Record<number, string>>({});
   const [deviationReasons, setDeviationReasons] = useState<Record<number, string>>({});
   const [deviationNotes, setDeviationNotes] = useState<Record<number, string>>({});
+  const [riskPlans, setRiskPlans] = useState<any[]>([]);
 
   /* ── Upload state ── */
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -372,11 +373,18 @@ export default function EnginePage() {
   }, [uploadFile]);
 
   /* ── Layer click handler ── */
+  const fetchRiskPlans = useCallback(() => {
+    fetch("/api/v1/plans/risk", { credentials: "include" }).then(r => r.json()).then(data => {
+      if (Array.isArray(data)) setRiskPlans(data);
+    }).catch(() => {});
+  }, []);
+
   const handleLayerClick = (id: LayerKey) => {
     if (activeLayer === id) { setActiveLayer(null); return; }
     setActiveLayer(id);
     setOntoNode(null);
     if (id === "ontology") { fetchWorkers(); fetchSchedules(); fetchOps(); fetchCaps(); fetchMotorAccuracy(); }
+    if (id === "applications") { fetchRiskPlans(); }
   };
 
   /* ── Ontology node click ── */
@@ -624,6 +632,27 @@ export default function EnginePage() {
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 16 }}>✕</button>
               </div>
+
+              {/* Risk warning card */}
+              {riskPlans.length > 0 && (
+                <div style={{
+                  padding: "12px 14px", borderRadius: 10, marginBottom: 14,
+                  background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.25)",
+                }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 8 }}>
+                    <span style={{ fontSize: 16 }}>⚠</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.err }}>
+                      {riskPlans.length} plan %70 alti gerceklesme
+                    </span>
+                  </div>
+                  {riskPlans.slice(0, 3).map((p: any) => (
+                    <div key={p.id} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 10, fontFamily: mono, borderBottom: `1px solid rgba(239,68,68,0.1)` }}>
+                      <span style={{ color: C.mid }}>{p.weekLabel} · Hat {p.lineId}</span>
+                      <span style={{ color: C.err, fontWeight: 700 }}>%{Math.round(parseFloat(p.realizationRate || "0") * 100)} gerceklesme</span>
+                    </div>
+                  ))}
+                </div>
+              )}
 
               {summary ? (() => {
                 const eL = summary.lines?.find((l: any) => l.type === "elektrikli");

@@ -568,6 +568,7 @@ export const weeklyPlans = pgTable("weekly_plans", {
   deviationNotes: text("deviation_notes"),
   weekNumber: integer("week_number"), // 1-52
   monthNumber: integer("month_number"), // 1-12
+  riskFlag: boolean("risk_flag").default(false),
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });

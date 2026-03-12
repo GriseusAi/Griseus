@@ -2662,6 +2662,39 @@ export async function registerRoutes(
       const wb = XLSX.read(buffer, { type: "buffer" });
       const result = await parser.fn(wb, fileName);
 
+      // ── Signal chain: recalculate all capacity_metrics after upload ──
+      try {
+        const allLines = await db.select().from(productionLines);
+        for (const line of allLines) {
+          const unitTime = Number(line.currentUnitTimeMin) || Number(line.capacityUnitTimeMin) || 1;
+          const dailyHours = Number(line.dailyHours) || 9;
+          const monthlyDays = line.monthlyDays || 22;
+          const productionMonths = line.productionMonths || 10;
+          const theoreticalMax = Math.round((dailyHours * 60 / unitTime) * monthlyDays * productionMonths);
+
+          const lineOps = await db.select({ total: sum(operations.actualQty) }).from(operations).where(eq(operations.lineId, line.id));
+          const actualOutput = Number(lineOps[0]?.total) || 0;
+          const utilizationPct = theoreticalMax > 0 ? Math.round((actualOutput / theoreticalMax) * 100) : 0;
+
+          // Upsert yearly capacity metric
+          const existing = await db.select().from(capacityMetrics)
+            .where(and(eq(capacityMetrics.lineId, line.id), eq(capacityMetrics.period, "yearly")))
+            .limit(1);
+
+          if (existing.length > 0) {
+            await db.update(capacityMetrics)
+              .set({ theoreticalMax, actualOutput, utilizationPct: String(utilizationPct), calculatedAt: new Date() })
+              .where(eq(capacityMetrics.id, existing[0].id));
+          } else {
+            await db.insert(capacityMetrics).values({
+              lineId: line.id, period: "yearly", periodValue: new Date().getFullYear().toString(),
+              theoreticalMax, actualOutput, utilizationPct: String(utilizationPct),
+            });
+          }
+        }
+        console.log(`[Signal] ingest/upload → capacity_metrics recalculated for ${allLines.length} lines`);
+      } catch (e: any) { console.error("[Signal] capacity recalc error:", e.message); }
+
       res.json(result);
     } catch (error: any) {
       console.error("[Ingest] Parse error:", error);
@@ -2788,6 +2821,35 @@ export async function registerRoutes(
         monthNumber,
         notes: motor_generation != null ? `motor_gen:${motor_generation},predicted_rate:${predicted_rate || 0}` : null,
       }).returning();
+
+      // ── Signal chain: forecast → capacity_metrics ──
+      if (line_id) {
+        try {
+          const [line] = await db.select().from(productionLines).where(eq(productionLines.id, line_id));
+          if (line) {
+            const scheds = await db.select().from(schedules).where(eq(schedules.lineId, line_id));
+            const realizationRates = scheds.filter(s => (s.plannedQty || 0) > 0).map(s => (s.actualQty || 0) / (s.plannedQty || 1));
+            const avgRate = realizationRates.length > 0 ? realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length : 0.85;
+            const predictedOutput = Math.round(planned_qty * avgRate);
+
+            const unitTime = Number(line.currentUnitTimeMin) || Number(line.capacityUnitTimeMin) || 1;
+            const dailyHours = Number(line.dailyHours) || 9;
+            const monthlyDays = line.monthlyDays || 22;
+            const theoreticalWeekly = Math.round((dailyHours * 60 / unitTime) * (monthlyDays / 4));
+
+            await db.insert(capacityMetrics).values({
+              lineId: line_id,
+              period: "weekly",
+              periodValue: week_label,
+              theoreticalMax: theoreticalWeekly,
+              actualOutput: predictedOutput,
+              utilizationPct: String(theoreticalWeekly > 0 ? Math.round((predictedOutput / theoreticalWeekly) * 100) : 0),
+            });
+            console.log(`[Signal] plans/create → capacity_metrics updated for line ${line_id}, week ${week_label}`);
+          }
+        } catch (e: any) { console.error("[Signal] forecast→capacity error:", e.message); }
+      }
+
       res.status(201).json({ success: true, plan_id: plan.id, week_label, planned_qty, predicted_qty, message: "Plan kaydedildi" });
     } catch (error: any) {
       if (error.code === "23505" || error.message?.includes("uq_weekly_plans_line_week")) {
@@ -2844,6 +2906,9 @@ export async function registerRoutes(
         }
       }
 
+      // Set risk_flag if realization rate < 70%
+      const isRisky = parseFloat(realizationRate) < 0.70;
+
       await db.update(weeklyPlans)
         .set({
           actualQty: actual_qty,
@@ -2853,8 +2918,29 @@ export async function registerRoutes(
           deviationNotes: deviation_notes || null,
           status: "completed",
           completedAt: new Date(),
+          riskFlag: isRisky,
         })
         .where(eq(weeklyPlans.id, planId));
+
+      // ── Signal chain: detectBottleneck on complete ──
+      if (plan.lineId) {
+        try {
+          const scheds = await db.select().from(schedules).where(eq(schedules.lineId, plan.lineId));
+          const weeks = scheds.map(s => {
+            const planned = s.plannedQty || 0;
+            const actual = s.actualQty || 0;
+            const deviation_pct = planned > 0 ? Math.round(((actual - planned) / planned) * 100) : 0;
+            return { period_value: s.periodValue, planned, actual, deviation_pct };
+          });
+          const criticalWeeks = weeks.filter(w => w.deviation_pct < -30).length;
+          const avgDeviation = weeks.length > 0 ? Math.round(weeks.reduce((s, w) => s + w.deviation_pct, 0) / weeks.length) : 0;
+          let severity = "low";
+          if (avgDeviation < -30) severity = "critical";
+          else if (avgDeviation < -20) severity = "high";
+          else if (avgDeviation < -10) severity = "medium";
+          console.log(`[Signal] plans/complete → bottleneck detected: line ${plan.lineId}, severity=${severity}, critical_weeks=${criticalWeeks}`);
+        } catch (e: any) { console.error("[Signal] bottleneck detection error:", e.message); }
+      }
 
       res.json({
         success: true,
@@ -2863,6 +2949,7 @@ export async function registerRoutes(
         prediction_accuracy: predictionAccuracy ? parseFloat(predictionAccuracy) : null,
         improvement_vs_previous: improvementVsPrevious,
         deviation_reason: deviation_reason || null,
+        risk_flag: isRisky,
         message: "Plan tamamlandı",
       });
     } catch (error: any) {
@@ -2884,6 +2971,18 @@ export async function registerRoutes(
           .orderBy(desc(weeklyPlans.createdAt));
       }
       res.json(plans);
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
+  // ── GET /api/v1/plans/risk — risk_flag: true olan planları getir ──────
+  app.get("/api/v1/plans/risk", async (req, res) => {
+    try {
+      const riskyPlans = await db.select().from(weeklyPlans)
+        .where(eq(weeklyPlans.riskFlag, true))
+        .orderBy(desc(weeklyPlans.completedAt));
+      res.json(riskyPlans);
     } catch (error: any) {
       res.status(500).json({ message: error.message });
     }
