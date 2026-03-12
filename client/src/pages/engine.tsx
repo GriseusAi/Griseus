@@ -210,6 +210,8 @@ export default function EnginePage() {
   const [deviationNotes, setDeviationNotes] = useState<Record<number, string>>({});
   const [justCompleted, setJustCompleted] = useState<Record<number, { actual: number; rate: number }>>({});
   const [riskPlans, setRiskPlans] = useState<any[]>([]);
+  const [motorRecs, setMotorRecs] = useState<{ recommendations: any[]; generated_at: string; data_points: any } | null>(null);
+  const [motorRecsLoading, setMotorRecsLoading] = useState(false);
 
   /* ── Upload state ── */
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -382,12 +384,19 @@ export default function EnginePage() {
     }).catch(() => {});
   }, []);
 
+  const fetchMotorRecs = useCallback(() => {
+    setMotorRecsLoading(true);
+    fetch("/api/v1/motor/recommendations", { credentials: "include" }).then(r => r.json()).then(data => {
+      setMotorRecs(data);
+    }).catch(() => {}).finally(() => setMotorRecsLoading(false));
+  }, []);
+
   const handleLayerClick = (id: LayerKey) => {
     if (activeLayer === id) { setActiveLayer(null); return; }
     setActiveLayer(id);
     setOntoNode(null);
     if (id === "ontology") { fetchWorkers(); fetchSchedules(); fetchOps(); fetchCaps(); fetchMotorAccuracy(); }
-    if (id === "applications") { fetchRiskPlans(); }
+    if (id === "applications") { fetchRiskPlans(); fetchMotorRecs(); }
   };
 
   /* ── Ontology node click ── */
@@ -773,6 +782,54 @@ export default function EnginePage() {
               })() : (
                 <div style={{ textAlign: "center", padding: 40, color: C.dim }}>Yukleniyor...</div>
               )}
+
+              {/* Motor Önerileri */}
+              <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 12, background: "rgba(129,140,248,0.04)", border: `1px solid rgba(129,140,248,0.15)` }}>
+                <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14 }}>⚡</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.indigo }}>Motor Onerileri</span>
+                  </div>
+                  <button onClick={fetchMotorRecs} disabled={motorRecsLoading}
+                    style={{ padding: "3px 8px", borderRadius: 4, fontSize: 8, fontFamily: mono, cursor: "pointer",
+                      background: "rgba(129,140,248,0.1)", border: "1px solid rgba(129,140,248,0.2)", color: C.indigo }}>
+                    {motorRecsLoading ? "..." : "Yenile"}
+                  </button>
+                </div>
+
+                {motorRecsLoading ? (
+                  <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 10 }}>Analiz ediliyor...</div>
+                ) : motorRecs && motorRecs.recommendations.length > 0 ? (
+                  <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                    {motorRecs.recommendations.map((rec: any, i: number) => {
+                      const priorityMap = {
+                        red: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)", color: C.err, label: "Kritik" },
+                        yellow: { bg: "rgba(251,191,36,0.08)", border: "rgba(251,191,36,0.2)", color: C.amber, label: "Uyari" },
+                        green: { bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.2)", color: C.green, label: "Firsat" },
+                      };
+                      const p = priorityMap[rec.priority as keyof typeof priorityMap] || priorityMap.yellow;
+                      return (
+                        <div key={i} style={{ padding: "10px 12px", borderRadius: 8, background: p.bg, border: `1px solid ${p.border}` }}>
+                          <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 6 }}>
+                            <span style={{ padding: "1px 6px", borderRadius: 3, fontSize: 7, fontWeight: 700, fontFamily: mono,
+                              background: p.color, color: "#000", letterSpacing: 0.5 }}>{p.label}</span>
+                            <span style={{ fontSize: 11, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{rec.title}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: C.mid, lineHeight: 1.5, marginBottom: 4 }}>{rec.reason}</div>
+                          <div style={{ fontSize: 9, color: p.color, fontFamily: mono, fontWeight: 600 }}>↳ {rec.impact}</div>
+                        </div>
+                      );
+                    })}
+                    <div style={{ fontSize: 7, color: C.dim, fontFamily: mono, textAlign: "right" }}>
+                      {motorRecs.data_points.plans} plan · {motorRecs.data_points.schedules} schedule · {new Date(motorRecs.generated_at).toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" })}
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ textAlign: "center", padding: 16, color: C.dim, fontSize: 10 }}>
+                    Henuz yeterli veri yok. Plan ekleyip tamamladikca oneriler olusacak.
+                  </div>
+                )}
+              </div>
             </div>
 
           /* ── LAYER 03: Intelligence ── */

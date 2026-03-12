@@ -2177,6 +2177,158 @@ export async function registerRoutes(
     }
   });
 
+  // ── GET /api/v1/motor/recommendations — AI motor önerileri ──────────
+  app.get("/api/v1/motor/recommendations", async (_req, res) => {
+    try {
+      const lines = await db.select().from(productionLines);
+      const allPlans = await db.select().from(weeklyPlans).orderBy(desc(weeklyPlans.createdAt));
+      const completed = allPlans.filter(p => p.status === "completed");
+      const caps = await db.select().from(capacityMetrics);
+      const ops = await db.select().from(operations);
+      const scheds = await db.select().from(schedules);
+
+      const now = new Date();
+      const currentMonth = now.getMonth() + 1;
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const currentWeek = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+
+      const recommendations: { title: string; reason: string; impact: string; priority: "red" | "yellow" | "green"; line_id?: number | null }[] = [];
+
+      for (const line of lines) {
+        const linePlans = completed.filter(p => p.lineId === line.id);
+        const lineScheds = scheds.filter(s => s.lineId === line.id);
+        const lineOps = ops.filter((o: any) => o.lineId === line.id);
+        const lineCaps = caps.filter(c => c.lineId === line.id);
+        const lineName = line.name || `Hat ${line.id}`;
+
+        // 1. Sapma pattern analizi — son 3 hafta
+        const recent3 = linePlans.slice(0, 3);
+        if (recent3.length >= 2) {
+          const avgRate = recent3.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / recent3.length;
+          const avgRatePct = Math.round(avgRate * 100);
+
+          if (avgRate < 0.75) {
+            const gap = 100 - avgRatePct;
+            recommendations.push({
+              title: `${lineName} icin bu hafta %${gap} dusuk plan yap`,
+              reason: `Son ${recent3.length} haftada ortalama gerceklesme %${avgRatePct}. Surekli hedef kacirilmasi motivasyonu dusuruyor.`,
+              impact: `Gercekci plan ile sapma %${gap} → %5-10 arasina iner, raporlama guvenilirligi artar`,
+              priority: avgRate < 0.60 ? "red" : "yellow",
+              line_id: line.id,
+            });
+          }
+        }
+
+        // 2. Kapasite riski — utilization check
+        if (lineCaps.length > 0) {
+          const yearlyCapEntry = lineCaps.find(c => c.period === "yearly");
+          if (yearlyCapEntry) {
+            const util = parseFloat(yearlyCapEntry.utilizationPct || "0");
+            if (util > 90) {
+              recommendations.push({
+                title: `${lineName} kapasite sinirinda — %${Math.round(util)}`,
+                reason: `Yillik kapasite kullanimi %${Math.round(util)} seviyesinde. Beklenmedik talep artisi karsilanamaz.`,
+                impact: `Ek vardiya veya birim sure iyilestirmesi ile %15-20 kapasite tampon olusturulabilir`,
+                priority: "red",
+                line_id: line.id,
+              });
+            } else if (util < 50 && (yearlyCapEntry.actualOutput || 0) > 0) {
+              recommendations.push({
+                title: `${lineName} dusuk verimlilik — %${Math.round(util)} kapasite kullanimi`,
+                reason: `Kapasite kullaniminin %50 altinda olmasi kaynak israfina isaret ediyor.`,
+                impact: `Uygun kapasite planlamasi ile uretim maliyeti %10-15 azaltilabilir`,
+                priority: "yellow",
+                line_id: line.id,
+              });
+            }
+          }
+        }
+
+        // 3. Sezonalite — bu ay icin gecmis performans
+        const sameMonthPlans = linePlans.filter(p => p.monthNumber === currentMonth);
+        if (sameMonthPlans.length >= 2) {
+          const monthAvgRate = sameMonthPlans.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / sameMonthPlans.length;
+          const overallAvgRate = linePlans.length > 0 ? linePlans.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / linePlans.length : monthAvgRate;
+          const diff = Math.round((monthAvgRate - overallAvgRate) * 100);
+
+          if (Math.abs(diff) >= 8) {
+            const monthNames = ["Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
+            const monthLabel = monthNames[currentMonth - 1] || `Ay ${currentMonth}`;
+            if (diff < 0) {
+              recommendations.push({
+                title: `${monthLabel} ayi ${lineName} icin zayif donem`,
+                reason: `Bu ayda ortalama gerceklesme %${Math.round(monthAvgRate * 100)}, genel ortalama %${Math.round(overallAvgRate * 100)}. Fark: ${diff} puan.`,
+                impact: `Hedefinizi %${Math.abs(diff)} asagi cekerek daha gercekci planlama yapabilirsiniz`,
+                priority: "yellow",
+                line_id: line.id,
+              });
+            } else {
+              recommendations.push({
+                title: `${monthLabel} ayi ${lineName} icin guclu donem`,
+                reason: `Bu ayda ortalama gerceklesme %${Math.round(monthAvgRate * 100)}, genel ortalamadan +${diff} puan yukaridayken hedefi artirma firsati var.`,
+                impact: `Hedefinizi %${diff} yukari cekerek uretim potansiyelini daha iyi degerlendirin`,
+                priority: "green",
+                line_id: line.id,
+              });
+            }
+          }
+        }
+
+        // 4. Sapma nedeni pattern'i
+        const deviationCounts: Record<string, number> = {};
+        const deviationLabels: Record<string, string> = { personnel: "Personel", material: "Hammadde", machine: "Makine", holiday: "Tatil", demand: "Talep", other: "Diger" };
+        linePlans.forEach(p => { if (p.deviationReason) deviationCounts[p.deviationReason] = (deviationCounts[p.deviationReason] || 0) + 1; });
+        let topReason: string | null = null;
+        let topCount = 0;
+        for (const [reason, count] of Object.entries(deviationCounts)) {
+          if (count > topCount && count >= 2) { topCount = count; topReason = reason; }
+        }
+        if (topReason) {
+          recommendations.push({
+            title: `${lineName}: tekrarlayan sapma — ${deviationLabels[topReason] || topReason}`,
+            reason: `Son planlarda "${deviationLabels[topReason] || topReason}" nedeniyle ${topCount} kez sapma yasandi. Bu sistematik bir sorun.`,
+            impact: `Kok neden analizi ile bu kaynagin cikarilmasi sapmayi %${Math.min(topCount * 8, 30)} azaltabilir`,
+            priority: topCount >= 3 ? "red" : "yellow",
+            line_id: line.id,
+          });
+        }
+
+        // 5. Plan vs Gercek schedule trend
+        if (lineScheds.length >= 4) {
+          const lastScheds = lineScheds.slice(-4);
+          const schedDeviations = lastScheds.map(s => {
+            const planned = s.plannedQty || 0;
+            const actual = s.actualQty || 0;
+            return planned > 0 ? ((actual - planned) / planned) * 100 : 0;
+          });
+          const isWorsening = schedDeviations.length >= 4 &&
+            schedDeviations[2] < schedDeviations[0] && schedDeviations[3] < schedDeviations[1];
+          if (isWorsening && schedDeviations[3] < -15) {
+            recommendations.push({
+              title: `${lineName} performansi dususe gecti`,
+              reason: `Son 4 haftada plan-gercek farki giderek buyuyor. Son hafta sapma: %${Math.round(schedDeviations[3])}.`,
+              impact: `Erken mudahale ile kaybi durdurma firsati — aksi halde trend devam edecek`,
+              priority: "red",
+              line_id: line.id,
+            });
+          }
+        }
+      }
+
+      // Prioritize: red first, then yellow, then green — max 3
+      const priorityOrder = { red: 0, yellow: 1, green: 2 };
+      recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
+
+      res.json({
+        recommendations: recommendations.slice(0, 3),
+        generated_at: new Date().toISOString(),
+        data_points: { plans: completed.length, schedules: scheds.length, operations: ops.length },
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ══════════════════════════════════════════════════════════════════════
   // Griseus Intelligence Engine
   // ══════════════════════════════════════════════════════════════════════
