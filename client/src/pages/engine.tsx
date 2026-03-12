@@ -203,6 +203,7 @@ export default function EnginePage() {
   const [forecastResult, setForecastResult] = useState<ForecastResult | null>(null);
   const [forecastLoading, setForecastLoading] = useState(false);
   const [planSaved, setPlanSaved] = useState(false);
+  const [currentWeekPlan, setCurrentWeekPlan] = useState<{ id: number; status: string; planned_qty: number; predicted_qty: number | null; actual_qty: number | null; realization_rate: string | null; week_label: string } | null | undefined>(undefined); // undefined=loading, null=no plan
   const [motorAccuracy, setMotorAccuracy] = useState<MotorAccuracy | null>(null);
   const [completeLoading, setCompleteLoading] = useState<number | null>(null);
   const [completeInputs, setCompleteInputs] = useState<Record<number, string>>({});
@@ -320,6 +321,24 @@ export default function EnginePage() {
     fetch("/api/v1/plans/accuracy").then(r => r.json()).then(setMotorAccuracy).catch(() => {});
   }, []);
 
+  const currentWeekLabel = (() => {
+    const now = new Date();
+    const start = new Date(now.getFullYear(), 0, 1);
+    const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+    return `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
+  })();
+
+  const fetchCurrentWeekPlan = useCallback((lineId: number) => {
+    setCurrentWeekPlan(undefined);
+    fetch(`/api/v1/plans?line_id=${lineId}`, { credentials: "include" })
+      .then(r => r.json())
+      .then((plans: any[]) => {
+        const match = plans.find((p: any) => p.weekLabel === currentWeekLabel);
+        setCurrentWeekPlan(match ? { id: match.id, status: match.status, planned_qty: match.plannedQty, predicted_qty: match.predictedQty, actual_qty: match.actualQty, realization_rate: match.realizationRate, week_label: match.weekLabel } : null);
+      })
+      .catch(() => setCurrentWeekPlan(null));
+  }, [currentWeekLabel]);
+
   const completePlan = useCallback(async (planId: number) => {
     const val = completeInputs[planId];
     if (!val || Number(val) <= 0) return;
@@ -403,6 +422,7 @@ export default function EnginePage() {
   const handleOntoNodeClick = (key: OntoNode) => {
     setOntoNode(prev => prev === key ? null : key);
     if (key === "workers") workersData.slice(0, 5).forEach((w: any) => fetchTrustScore(w.id));
+    if (key === "schedules") fetchCurrentWeekPlan(forecastLineId);
   };
 
   /* ── Sim line change ── */
@@ -1236,7 +1256,7 @@ export default function EnginePage() {
                   {/* 1. Hat secici — big toggle */}
                   <div style={{ display: "flex", gap: 4, marginBottom: 12 }}>
                     {linesData.map((line: any) => (
-                      <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); }} style={{
+                      <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); fetchCurrentWeekPlan(line.id); }} style={{
                         flex: 1, padding: "12px 0", fontSize: 13, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
                         background: forecastLineId === line.id ? "rgba(251,146,60,0.15)" : "transparent",
                         border: `2px solid ${forecastLineId === line.id ? "#fb923c" : C.cardBorder}`,
@@ -1245,88 +1265,142 @@ export default function EnginePage() {
                     ))}
                   </div>
 
-                  {/* 2. Plan input */}
-                  <PanelSection title="Bu hafta ne planliyorsunuz?" color="#fb923c">
-                    <div style={{ textAlign: "center", marginBottom: 8 }}>
-                      <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
-                        style={{ width: "100%", padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
-                          color: C.white, fontSize: 22, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
-                      <div style={{ fontSize: 9, color: C.dim, marginTop: 4 }}>Haftalik uretim hedefi (adet)</div>
-                    </div>
-                    <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
-                      style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
-                        background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
-                        opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
-                      }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
-                  </PanelSection>
+                  {/* Week status label */}
+                  <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 8, textAlign: "center" }}>
+                    {currentWeekLabel}
+                  </div>
 
-                  {/* 3. Motor tahmini — inline result */}
-                  {forecastResult && (
-                    <PanelSection title="Motor Tahmini" color="#fb923c">
-                      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-                        <span style={{ fontSize: 8, fontFamily: mono, padding: "2px 6px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
-                          Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
-                        </span>
-                        {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
-                          <span style={{ fontSize: 8, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
-                            {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
-                          </span>
-                        )}
+                  {/* STATE A: Loading */}
+                  {currentWeekPlan === undefined && (
+                    <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 10 }}>Kontrol ediliyor...</div>
+                  )}
+
+                  {/* STATE B: Plan exists + completed → done message */}
+                  {currentWeekPlan && currentWeekPlan.status === "completed" && (
+                    <div style={{ padding: "16px", borderRadius: 12, background: "rgba(52,211,153,0.06)", border: `1px solid ${C.green}30`, textAlign: "center", marginBottom: 12 }}>
+                      <div style={{ fontSize: 20, marginBottom: 6 }}>✓</div>
+                      <div style={{ fontSize: 13, fontWeight: 700, color: C.green, marginBottom: 6 }}>Bu hafta tamamlandi</div>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+                        <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color={C.mid} />
+                        <MetricCard value={fmt(currentWeekPlan.actual_qty || 0)} label="Gercek" color={C.green} />
+                        <MetricCard value={`%${Math.round(parseFloat(currentWeekPlan.realization_rate || "0") * 100)}`} label="Oran"
+                          color={parseFloat(currentWeekPlan.realization_rate || "0") >= 0.9 ? C.green : parseFloat(currentWeekPlan.realization_rate || "0") >= 0.7 ? "#fb923c" : C.err} />
                       </div>
-                      {/* Big metrics */}
-                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
-                        <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
-                        <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
-                        <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} />
+                    </div>
+                  )}
+
+                  {/* STATE C: Plan exists + not completed → show complete input */}
+                  {currentWeekPlan && currentWeekPlan.status === "planned" && (
+                    <PanelSection title="Gercekleseni Gir" color={C.green}>
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
+                        <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color="#fb923c" />
+                        {currentWeekPlan.predicted_qty && <MetricCard value={fmt(currentWeekPlan.predicted_qty)} label="Motor Tahmini" color={C.indigo} />}
                       </div>
-                      {/* Recommendation */}
-                      <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                        <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
-                        <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
+                      <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                        <input type="number" value={completeInputs[currentWeekPlan.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
+                          placeholder="Gerceklesen miktar" autoFocus
+                          style={{ flex: 1, padding: "12px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
+                            color: C.white, fontSize: 18, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
                       </div>
-                      {/* Risk flags */}
-                      {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
-                        <div style={{ marginBottom: 8 }}>
-                          {forecastResult.risk_flags.map((flag, i) => (
-                            <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
-                              {flag}
-                            </div>
-                          ))}
-                        </div>
+                      <select value={deviationReasons[currentWeekPlan.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
+                        style={{ width: "100%", padding: "6px 8px", marginBottom: 6, background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.mid, fontSize: 9, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                        <option value="">Sapma Nedeni (opsiyonel)</option>
+                        <option value="personnel">Personel</option>
+                        <option value="material">Hammadde</option>
+                        <option value="machine">Makine</option>
+                        <option value="holiday">Tatil</option>
+                        <option value="other">Diger</option>
+                      </select>
+                      {deviationReasons[currentWeekPlan.id] && (
+                        <input value={deviationNotes[currentWeekPlan.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
+                          placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginBottom: 6, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 9, fontFamily: mono, outline: "none" }} />
                       )}
-                      {/* Scenarios */}
-                      <div style={{ marginBottom: 8 }}>
-                        <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
-                        {forecastResult.scenarios.map((s, i) => (
-                          <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 9, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 2 }}>
-                            <span style={{ color: C.mid }}>{s.name}</span>
-                            <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
-                          </div>
-                        ))}
-                      </div>
+                      <button onClick={() => { completePlan(currentWeekPlan.id); }} disabled={completeLoading === currentWeekPlan.id || !completeInputs[currentWeekPlan.id]}
+                        style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                          background: justCompleted[currentWeekPlan.id] ? "rgba(52,211,153,0.12)" : C.green, color: justCompleted[currentWeekPlan.id] ? C.green : "#000", border: justCompleted[currentWeekPlan.id] ? `1px solid ${C.green}30` : "none",
+                          opacity: !completeInputs[currentWeekPlan.id] && !justCompleted[currentWeekPlan.id] ? 0.4 : 1, transition: "all 0.2s",
+                        }}>{completeLoading === currentWeekPlan.id ? "..." : justCompleted[currentWeekPlan.id] ? `Tamamlandi — %${justCompleted[currentWeekPlan.id].rate}` : "Tamamla"}</button>
                     </PanelSection>
                   )}
 
-                  {/* 4. Save plan */}
-                  {forecastResult && (
-                    <button disabled={planSaved} onClick={async () => {
-                      const now = new Date();
-                      const start = new Date(now.getFullYear(), 0, 1);
-                      const weekNum = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
-                      const weekLabel = `${now.getFullYear()}-H${String(weekNum).padStart(2, "0")}`;
-                      try {
-                        const r = await fetch("/api/v1/plans/create", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
-                          body: JSON.stringify({ line_id: forecastLineId, week_label: weekLabel, planned_qty: Number(forecastPlanQty), predicted_qty: forecastResult.predicted_output,
-                            motor_generation: forecastResult.motor_generation || 0, predicted_rate: forecastResult.avg_realization_rate }) });
-                        if (r.ok) { setPlanSaved(true); fetchMotorAccuracy(); }
-                        else if (r.status === 409) { alert("Bu hat icin bu hafta zaten bir plan mevcut."); }
-                        else { const t = await r.text(); alert("Hata: " + (t || r.statusText)); }
-                      } catch { alert("Ag hatasi"); }
-                    }} style={{
-                      width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
-                      background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000",
-                      border: planSaved ? `1px solid ${C.green}30` : "none", marginBottom: 12, transition: "all 0.2s",
-                    }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
+                  {/* STATE D: No plan → normal new plan form */}
+                  {currentWeekPlan === null && (
+                    <>
+                      <PanelSection title="Bu hafta ne planliyorsunuz?" color="#fb923c">
+                        <div style={{ textAlign: "center", marginBottom: 8 }}>
+                          <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
+                            style={{ width: "100%", padding: "14px 12px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
+                              color: C.white, fontSize: 22, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
+                          <div style={{ fontSize: 9, color: C.dim, marginTop: 4 }}>Haftalik uretim hedefi (adet)</div>
+                        </div>
+                        <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
+                          style={{ width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: "pointer",
+                            background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
+                            opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
+                          }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
+                      </PanelSection>
+
+                      {/* Motor tahmini — inline result */}
+                      {forecastResult && (
+                        <PanelSection title="Motor Tahmini" color="#fb923c">
+                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+                            <span style={{ fontSize: 8, fontFamily: mono, padding: "2px 6px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
+                              Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
+                            </span>
+                            {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
+                              <span style={{ fontSize: 8, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
+                                {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
+                              </span>
+                            )}
+                          </div>
+                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
+                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" />
+                            <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} />
+                            <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} />
+                          </div>
+                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                            <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
+                            <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
+                          </div>
+                          {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              {forecastResult.risk_flags.map((flag, i) => (
+                                <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                                  {flag}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          <div style={{ marginBottom: 8 }}>
+                            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
+                            {forecastResult.scenarios.map((s, i) => (
+                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "4px 8px", fontSize: 9, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 2 }}>
+                                <span style={{ color: C.mid }}>{s.name}</span>
+                                <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
+                              </div>
+                            ))}
+                          </div>
+                        </PanelSection>
+                      )}
+
+                      {/* Save plan */}
+                      {forecastResult && (
+                        <button disabled={planSaved} onClick={async () => {
+                          try {
+                            const r = await fetch("/api/v1/plans/create", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",
+                              body: JSON.stringify({ line_id: forecastLineId, week_label: currentWeekLabel, planned_qty: Number(forecastPlanQty), predicted_qty: forecastResult.predicted_output,
+                                motor_generation: forecastResult.motor_generation || 0, predicted_rate: forecastResult.avg_realization_rate }) });
+                            if (r.ok) { setPlanSaved(true); fetchMotorAccuracy(); fetchCurrentWeekPlan(forecastLineId); }
+                            else if (r.status === 409) { alert("Bu hat icin bu hafta zaten bir plan mevcut."); fetchCurrentWeekPlan(forecastLineId); }
+                            else { const t = await r.text(); alert("Hata: " + (t || r.statusText)); }
+                          } catch { alert("Ag hatasi"); }
+                        }} style={{
+                          width: "100%", padding: "12px", borderRadius: 10, fontSize: 13, fontWeight: 700, cursor: planSaved ? "default" : "pointer",
+                          background: planSaved ? "rgba(52,211,153,0.12)" : "linear-gradient(135deg, #34d399, #10b981)", color: planSaved ? C.green : "#000",
+                          border: planSaved ? `1px solid ${C.green}30` : "none", marginBottom: 12, transition: "all 0.2s",
+                        }}>{planSaved ? "Kaydedildi" : "Plani Kaydet"}</button>
+                      )}
+                    </>
                   )}
 
                   {/* 5. Son Planlar — unified table with inline complete */}
