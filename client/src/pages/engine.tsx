@@ -208,6 +208,7 @@ export default function EnginePage() {
   const [completeInputs, setCompleteInputs] = useState<Record<number, string>>({});
   const [deviationReasons, setDeviationReasons] = useState<Record<number, string>>({});
   const [deviationNotes, setDeviationNotes] = useState<Record<number, string>>({});
+  const [justCompleted, setJustCompleted] = useState<Record<number, { actual: number; rate: number }>>({});
   const [riskPlans, setRiskPlans] = useState<any[]>([]);
 
   /* ── Upload state ── */
@@ -325,12 +326,14 @@ export default function EnginePage() {
       const body: any = { actual_qty: Number(val) };
       if (deviationReasons[planId]) body.deviation_reason = deviationReasons[planId];
       if (deviationNotes[planId]) body.deviation_notes = deviationNotes[planId];
-      const r = await fetch(`/api/v1/plans/${planId}/complete`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      const r = await fetch(`/api/v1/plans/${planId}/complete`, { method: "PUT", headers: { "Content-Type": "application/json" }, credentials: "include", body: JSON.stringify(body) });
       if (r.ok) {
-        fetchMotorAccuracy();
+        const data = await r.json();
+        setJustCompleted(prev => ({ ...prev, [planId]: { actual: Number(val), rate: Math.round((data.realization_rate || 0) * 100) } }));
         setCompleteInputs(prev => { const n = { ...prev }; delete n[planId]; return n; });
         setDeviationReasons(prev => { const n = { ...prev }; delete n[planId]; return n; });
         setDeviationNotes(prev => { const n = { ...prev }; delete n[planId]; return n; });
+        fetchMotorAccuracy();
       }
     } catch { /* */ }
     setCompleteLoading(null);
@@ -1283,68 +1286,78 @@ export default function EnginePage() {
                         <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600, textAlign: "right" }}>Dogruluk</span>
                       </div>
                       {/* Active plans — inline complete */}
-                      {motorAccuracy.active_list.map(p => (
-                        <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${C.cardBorder}` }}>
+                      {motorAccuracy.active_list.map(p => {
+                        const done = justCompleted[p.id];
+                        return (
+                        <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${done ? `${C.green}30` : C.cardBorder}`,
+                          background: done ? "rgba(52,211,153,0.06)" : "transparent", transition: "background 0.4s ease" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", alignItems: "center" }}>
-                            <span style={{ fontSize: 9, fontFamily: mono, color: "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
+                            <span style={{ fontSize: 9, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
                             <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
+                            <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
+                              {done ? done.actual : "-"}
+                            </span>
                             <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right" }}>
-                              {completeInputs[p.id] !== undefined && completeInputs[p.id] !== "" ? (
-                                <span style={{ color: C.white }}>{completeInputs[p.id]}</span>
+                              {done ? (
+                                <span style={{ fontWeight: 700, color: done.rate >= 90 ? C.green : done.rate >= 70 ? "#fb923c" : C.err }}>%{done.rate}</span>
                               ) : (
                                 <button onClick={() => setCompleteInputs(prev => ({ ...prev, [p.id]: "" }))}
-                                  style={{ padding: "2px 6px", borderRadius: 4, fontSize: 8, fontWeight: 600, cursor: "pointer",
-                                    background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.25)", color: "#fb923c" }}>
-                                  Gir
+                                  style={{ padding: "2px 8px", borderRadius: 4, fontSize: 8, fontWeight: 700, cursor: "pointer",
+                                    background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c" }}>
+                                  Tamamla
                                 </button>
                               )}
                             </span>
-                            <span style={{ fontSize: 8, fontFamily: mono, color: C.dim, textAlign: "right" }}>bekliyor</span>
                           </div>
                           {/* Expanded inline input */}
-                          {completeInputs[p.id] !== undefined && (
-                            <div style={{ padding: "6px", background: "rgba(251,146,60,0.04)", borderRadius: 6, margin: "2px 6px 6px" }}>
-                              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
+                          {!done && completeInputs[p.id] !== undefined && (
+                            <div style={{ padding: "8px", background: "rgba(251,146,60,0.04)", borderRadius: 8, margin: "2px 6px 6px" }}>
+                              <div style={{ fontSize: 9, color: C.mid, marginBottom: 6 }}>Gerceklesen miktari girin:</div>
+                              <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
                                 <input type="number" value={completeInputs[p.id]} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Gerceklesen miktar" autoFocus
-                                  style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 11, fontFamily: mono, outline: "none" }} />
+                                  placeholder="ornegin: 420" autoFocus
+                                  style={{ flex: 1, padding: "8px 10px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 13, fontFamily: mono, fontWeight: 700, outline: "none" }} />
                                 <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
-                                  style={{ padding: "6px 10px", borderRadius: 6, fontSize: 9, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
-                                  {completeLoading === p.id ? "..." : "Tamamla"}
+                                  style={{ padding: "8px 14px", borderRadius: 6, fontSize: 10, fontWeight: 700, cursor: "pointer", background: C.green, color: "#000", border: "none", opacity: !completeInputs[p.id] ? 0.4 : 1 }}>
+                                  {completeLoading === p.id ? "..." : "Kaydet"}
                                 </button>
                                 <button onClick={() => setCompleteInputs(prev => { const n = { ...prev }; delete n[p.id]; return n; })}
-                                  style={{ padding: "6px 8px", borderRadius: 6, fontSize: 9, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
+                                  style={{ padding: "8px", borderRadius: 6, fontSize: 10, cursor: "pointer", background: "transparent", border: `1px solid ${C.cardBorder}`, color: C.dim }}>✕</button>
                               </div>
                               <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                                style={{ width: "100%", padding: "5px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 9, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
                                 <option value="">Sapma Nedeni (opsiyonel)</option>
                                 <option value="personnel">Personel</option>
-                                <option value="material">Malzeme</option>
+                                <option value="material">Hammadde</option>
                                 <option value="machine">Makine</option>
                                 <option value="holiday">Tatil</option>
-                                <option value="demand">Talep</option>
                                 <option value="other">Diger</option>
                               </select>
                               {deviationReasons[p.id] && (
                                 <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
-                                  placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
+                                  placeholder="Detay notu (opsiyonel)" style={{ width: "100%", marginTop: 4, padding: "5px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 9, fontFamily: mono, outline: "none" }} />
                               )}
                             </div>
                           )}
                         </div>
-                      ))}
-                      {/* Completed plans — read only */}
-                      {motorAccuracy.history.slice(0, 3).map((h, i) => (
-                        <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px", borderBottom: `1px solid ${C.cardBorder}` }}>
-                          <span style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>{h.week}</span>
+                        );
+                      })}
+                      {/* Completed plans — green tinted */}
+                      {motorAccuracy.history.slice(0, 3).map((h, i) => {
+                        const rate = h.realization_rate != null ? Math.round(h.realization_rate * 100) : null;
+                        const rowColor = rate != null && rate >= 90 ? C.green : rate != null && rate >= 70 ? "#fb923c" : C.err;
+                        return (
+                        <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "4px 6px",
+                          borderBottom: `1px solid ${C.cardBorder}`, background: "rgba(52,211,153,0.03)", borderLeft: `2px solid ${rowColor}` }}>
+                          <span style={{ fontSize: 9, fontFamily: mono, color: C.green }}>{h.week}</span>
                           <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.planned}</span>
-                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right" }}>{h.actual ?? "-"}</span>
-                          <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", fontWeight: 600,
-                            color: h.prediction_accuracy != null && h.prediction_accuracy >= 0.9 ? C.green : h.prediction_accuracy != null && h.prediction_accuracy >= 0.7 ? "#fb923c" : C.err }}>
-                            {h.prediction_accuracy != null ? `%${Math.round(h.prediction_accuracy * 100)}` : "-"}
+                          <span style={{ fontSize: 9, fontFamily: mono, color: C.white, textAlign: "right", fontWeight: 600 }}>{h.actual ?? "-"}</span>
+                          <span style={{ fontSize: 9, fontFamily: mono, textAlign: "right", fontWeight: 700, color: rowColor }}>
+                            {rate != null ? `%${rate}` : "-"}
                           </span>
                         </div>
-                      ))}
+                        );
+                      })}
                     </PanelSection>
                   )}
                 </>
