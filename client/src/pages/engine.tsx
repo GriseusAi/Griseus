@@ -150,7 +150,7 @@ function IsoCube({ cx, cy, size, color, label, delay, active }: {
       <polygon points={left} fill={color} opacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
       <polygon points={top} fill={color} opacity={0.4} stroke={color} strokeWidth={0.5} strokeOpacity={0.5} />
       {active && (
-        <text x={cx} y={cy - dy - dy - 12} textAnchor="middle" fill={color} fontSize={10} fontFamily={mono} fontWeight={500}
+        <text x={cx} y={cy - dy - dy - 8} textAnchor="middle" fill={color} fontSize={8} fontFamily={mono} fontWeight={500}
           style={{ opacity: 0, animation: "engFadeIn 0.3s ease 0.1s forwards" }}>{label}</text>
       )}
     </g>
@@ -441,7 +441,7 @@ export default function EnginePage() {
   };
 
   /* ── Iso diagram constants ── */
-  const CX = 380, BASE_Y = 560, GAP = 150, PW = 270, PD = 105;
+  const CX = 285, BASE_Y = 420, GAP = 112, PW = 202, PD = 79;
 
   /* ── Derived data ── */
   const entityCounts = summary ? {
@@ -506,14 +506,14 @@ export default function EnginePage() {
       <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 520px", overflow: "hidden" }}>
 
         {/* ── LEFT: Isometric Diagram ── */}
-        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", minHeight: 520 }}
+        <div style={{ position: "relative", display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden" }}
           onClick={(e) => { if ((e.target as Element).tagName === "DIV") { setActiveLayer(null); setAiOpen(false); } }}>
           {/* Scan line */}
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1,
             background: `linear-gradient(90deg, transparent, ${C.indigo}40, transparent)`,
             animation: "engScan 7s linear infinite", pointerEvents: "none", zIndex: 2 }} />
 
-          <svg viewBox="0 0 780 680" style={{ width: "100%", maxWidth: "100%", display: "block" }}>
+          <svg viewBox="0 0 585 510" style={{ width: "100%", maxHeight: "calc(100vh - 80px)", display: "block" }}>
             {/* Connection lines between layers */}
             {[0, 1, 2].map(i => {
               const y1 = BASE_Y - i * GAP, y2 = BASE_Y - (i + 1) * GAP;
@@ -536,7 +536,7 @@ export default function EnginePage() {
               const anyActive = activeLayer !== null;
               const platOpacity = isActive ? 0.22 : isHovered ? 0.13 : anyActive ? 0.03 : 0.06;
               const groupOpacity = anyActive && !isActive ? 0.4 : 1;
-              const cubeSpacing = 75;
+              const cubeSpacing = 56;
               const cubeStartX = CX - ((layer.cubes.length - 1) * cubeSpacing) / 2;
 
               return (
@@ -551,22 +551,22 @@ export default function EnginePage() {
                   )}
                   {layer.cubes.map((cube, ci) => (
                     <IsoCube key={cube} cx={cubeStartX + ci * cubeSpacing} cy={cy - 8}
-                      size={30} color={layer.color} label={cube}
+                      size={22} color={layer.color} label={cube}
                       delay={0.3 + i * 0.15 + ci * 0.08} active={isActive || isHovered} />
                   ))}
                   <text x={CX - PW * 0.55} y={cy + 5} textAnchor="end"
-                    fill={isActive ? layer.color : C.dim} fontSize={24} fontFamily={mono} fontWeight={700}
+                    fill={isActive ? layer.color : C.dim} fontSize={18} fontFamily={mono} fontWeight={700}
                     opacity={isActive ? 1 : 0.35} style={{ transition: "all 0.3s" }}>{layer.num}</text>
                   <g>
                     {isActive && (
                       <line x1={CX + PW * 0.55 + 8} y1={cy - 12} x2={CX + PW * 0.55 + 8} y2={cy + 12}
                         stroke={layer.color} strokeWidth={2} strokeLinecap="round" opacity={0.8} />
                     )}
-                    <text x={CX + PW * 0.55 + (isActive ? 22 : 16)} y={cy - 4}
-                      fill={isActive ? C.white : C.mid} fontSize={15} fontFamily={sans} fontWeight={600}
+                    <text x={CX + PW * 0.55 + (isActive ? 18 : 12)} y={cy - 3}
+                      fill={isActive ? C.white : C.mid} fontSize={12} fontFamily={sans} fontWeight={600}
                       style={{ transition: "fill 0.3s" }}>{layer.title}</text>
-                    <text x={CX + PW * 0.55 + (isActive ? 22 : 16)} y={cy + 14}
-                      fill={C.dim} fontSize={11} fontFamily={sans}>{layer.subtitle}</text>
+                    <text x={CX + PW * 0.55 + (isActive ? 18 : 12)} y={cy + 10}
+                      fill={C.dim} fontSize={9} fontFamily={sans}>{layer.subtitle}</text>
                   </g>
                 </g>
               );
