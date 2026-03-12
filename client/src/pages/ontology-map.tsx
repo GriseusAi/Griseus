@@ -235,6 +235,15 @@ export default function OntologyMap() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout>>();
 
+  // ── Markdown renderer ──
+  const renderMarkdown = (text: string) =>
+    text
+      .replace(/### (.*?)(\n|$)/g, '<div style="font-size:14px;font-weight:700;color:#fff;margin:12px 0 6px">$1</div>')
+      .replace(/## (.*?)(\n|$)/g, '<div style="font-size:15px;font-weight:700;color:#fff;margin:14px 0 8px">$1</div>')
+      .replace(/\*\*(.*?)\*\*/g, '<span style="font-weight:600;color:#e2e8f0">$1</span>')
+      .replace(/- (.*?)(\n|$)/g, '<div style="padding-left:12px;margin:2px 0">• $1</div>')
+      .replace(/\n/g, '<br/>');
+
   // ── AI Chat state ──
   const [aiOpen, setAiOpen] = useState(false);
   const [aiMessages, setAiMessages] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
@@ -1192,12 +1201,13 @@ export default function OntologyMap() {
             {aiMessages.map((m, i) => (
               <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
                 <div style={{
-                  maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans, whiteSpace: "pre-wrap",
+                  maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans,
+                  whiteSpace: m.role === "user" ? "pre-wrap" : undefined,
                   background: m.role === "user" ? "rgba(99,102,241,0.2)" : "rgba(255,255,255,0.04)",
                   border: m.role === "user" ? "1px solid rgba(99,102,241,0.3)" : `1px solid ${C.cardBorder}`,
                   color: m.role === "user" ? "#c7d2fe" : C.white,
                 }}>
-                  {m.content}
+                  {m.role === "user" ? m.content : <div dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />}
                 </div>
                 {m.tools && m.tools.length > 0 && (
                   <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
