@@ -564,6 +564,10 @@ export const weeklyPlans = pgTable("weekly_plans", {
   predictionAccuracy: numeric("prediction_accuracy"),
   status: text("status").notNull().default("planned"),
   notes: text("notes"),
+  deviationReason: text("deviation_reason"), // 'personnel' | 'material' | 'machine' | 'holiday' | 'demand' | 'other'
+  deviationNotes: text("deviation_notes"),
+  weekNumber: integer("week_number"), // 1-52
+  monthNumber: integer("month_number"), // 1-12
   createdAt: timestamp("created_at").defaultNow(),
   completedAt: timestamp("completed_at"),
 });

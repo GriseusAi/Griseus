@@ -40,6 +40,8 @@ interface ForecastResult {
   weekly_history: { period: string; planned: number; actual: number; realization_pct: number }[];
   stats: { min_rate: number; max_rate: number; total_weeks: number };
   motor_generation?: number; data_source?: string; data_points?: number; accuracy_trend?: string;
+  seasonal_factor?: number | null; historical_same_week?: number | null;
+  risk_flags?: string[]; current_week?: number; current_month?: number;
 }
 interface MotorAccuracy {
   total_plans: number; completed_plans: number; active_plans: number;
@@ -47,6 +49,10 @@ interface MotorAccuracy {
   motor_generation: number; trend: string;
   history: { week: string; planned: number; predicted: number | null; actual: number | null; realization_rate: number; prediction_accuracy: number | null }[];
   active_list: { id: number; week_label: string; line_id: number | null; planned_qty: number; predicted_qty: number | null; created_at: string }[];
+  top_deviation?: { reason: string; label: string; count: number } | null;
+  deviation_counts?: Record<string, number>;
+  monthly_avg?: { month: number; label: string; avg_rate: number; count: number }[];
+  risk_flags?: string[];
 }
 interface WorkforceRisk {
   total_workers: number; unique_capabilities: number; risk_score: number; risk_level: string;
@@ -201,6 +207,8 @@ export default function EnginePage() {
   const [motorAccuracy, setMotorAccuracy] = useState<MotorAccuracy | null>(null);
   const [completeLoading, setCompleteLoading] = useState<number | null>(null);
   const [completeInputs, setCompleteInputs] = useState<Record<number, string>>({});
+  const [deviationReasons, setDeviationReasons] = useState<Record<number, string>>({});
+  const [deviationNotes, setDeviationNotes] = useState<Record<number, string>>({});
 
   /* ── Upload state ── */
   const [uploadOpen, setUploadOpen] = useState(false);
@@ -314,11 +322,19 @@ export default function EnginePage() {
     if (!val || Number(val) <= 0) return;
     setCompleteLoading(planId);
     try {
-      const r = await fetch(`/api/v1/plans/${planId}/complete`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ actual_qty: Number(val) }) });
-      if (r.ok) { fetchMotorAccuracy(); setCompleteInputs(prev => { const n = { ...prev }; delete n[planId]; return n; }); }
+      const body: any = { actual_qty: Number(val) };
+      if (deviationReasons[planId]) body.deviation_reason = deviationReasons[planId];
+      if (deviationNotes[planId]) body.deviation_notes = deviationNotes[planId];
+      const r = await fetch(`/api/v1/plans/${planId}/complete`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+      if (r.ok) {
+        fetchMotorAccuracy();
+        setCompleteInputs(prev => { const n = { ...prev }; delete n[planId]; return n; });
+        setDeviationReasons(prev => { const n = { ...prev }; delete n[planId]; return n; });
+        setDeviationNotes(prev => { const n = { ...prev }; delete n[planId]; return n; });
+      }
     } catch { /* */ }
     setCompleteLoading(null);
-  }, [completeInputs, fetchMotorAccuracy]);
+  }, [completeInputs, deviationReasons, deviationNotes, fetchMotorAccuracy]);
 
   /* ── AI Chat ── */
   const sendAiMessage = useCallback(async () => {
@@ -1187,6 +1203,33 @@ export default function EnginePage() {
                             <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
                             <div style={{ flex: 1, fontSize: 10, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
                           </div>
+                          {/* Seasonal info */}
+                          {(forecastResult.seasonal_factor != null || forecastResult.historical_same_week != null) && (
+                            <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
+                              {forecastResult.seasonal_factor != null && (
+                                <div style={{ flex: 1, padding: "4px 6px", borderRadius: 5, background: "rgba(129,140,248,0.08)", border: `1px solid rgba(129,140,248,0.15)`, fontSize: 8, fontFamily: mono, textAlign: "center" }}>
+                                  <div style={{ color: C.indigo, fontWeight: 700 }}>%{forecastResult.seasonal_factor}</div>
+                                  <div style={{ color: C.dim }}>Ay Ort.</div>
+                                </div>
+                              )}
+                              {forecastResult.historical_same_week != null && (
+                                <div style={{ flex: 1, padding: "4px 6px", borderRadius: 5, background: "rgba(251,191,36,0.08)", border: `1px solid rgba(251,191,36,0.15)`, fontSize: 8, fontFamily: mono, textAlign: "center" }}>
+                                  <div style={{ color: C.amber, fontWeight: 700 }}>%{forecastResult.historical_same_week}</div>
+                                  <div style={{ color: C.dim }}>Hafta Ort.</div>
+                                </div>
+                              )}
+                            </div>
+                          )}
+                          {/* Risk flags */}
+                          {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              {forecastResult.risk_flags.map((flag, i) => (
+                                <div key={i} style={{ padding: "4px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                                  {flag}
+                                </div>
+                              ))}
+                            </div>
+                          )}
                           {/* Scenarios */}
                           <div style={{ marginBottom: 8 }}>
                             <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>SENARYOLAR</div>
@@ -1234,7 +1277,7 @@ export default function EnginePage() {
                   {schedStep === 3 && (
                     <PanelSection title="Aktif Planlar" color="#fb923c">
                       {motorAccuracy && motorAccuracy.active_list.length > 0 ? (
-                        <div style={{ maxHeight: 280, overflowY: "auto" }}>
+                        <div style={{ maxHeight: 350, overflowY: "auto" }}>
                           {motorAccuracy.active_list.map(p => (
                             <div key={p.id} style={{ padding: "8px 10px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 6 }}>
                               <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
@@ -1245,7 +1288,7 @@ export default function EnginePage() {
                                 <span>Plan: {fmt(p.planned_qty)}</span>
                                 {p.predicted_qty && <span>Tahmin: {fmt(p.predicted_qty)}</span>}
                               </div>
-                              <div style={{ display: "flex", gap: 4 }}>
+                              <div style={{ display: "flex", gap: 4, marginBottom: 4 }}>
                                 <input type="number" value={completeInputs[p.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
                                   placeholder="Gerceklesen" style={{ flex: 1, padding: "6px 8px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 6, color: C.white, fontSize: 10, fontFamily: mono, outline: "none" }} />
                                 <button onClick={() => completePlan(p.id)} disabled={completeLoading === p.id || !completeInputs[p.id]}
@@ -1253,6 +1296,23 @@ export default function EnginePage() {
                                   {completeLoading === p.id ? "..." : "Tamamla"}
                                 </button>
                               </div>
+                              {/* Deviation reason & notes */}
+                              <div style={{ display: "flex", gap: 4, marginBottom: 2 }}>
+                                <select value={deviationReasons[p.id] || ""} onChange={e => setDeviationReasons(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  style={{ flex: 1, padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.mid, fontSize: 8, fontFamily: mono, outline: "none", appearance: "auto" as any }}>
+                                  <option value="">Sapma Nedeni (opsiyonel)</option>
+                                  <option value="personnel">Personel</option>
+                                  <option value="material">Malzeme</option>
+                                  <option value="machine">Makine</option>
+                                  <option value="holiday">Tatil</option>
+                                  <option value="demand">Talep</option>
+                                  <option value="other">Diger</option>
+                                </select>
+                              </div>
+                              {deviationReasons[p.id] && (
+                                <input value={deviationNotes[p.id] || ""} onChange={e => setDeviationNotes(prev => ({ ...prev, [p.id]: e.target.value }))}
+                                  placeholder="Sapma notu (opsiyonel)" style={{ width: "100%", padding: "4px 6px", background: "rgba(255,255,255,0.03)", border: `1px solid ${C.cardBorder}`, borderRadius: 5, color: C.white, fontSize: 8, fontFamily: mono, outline: "none" }} />
+                              )}
                             </div>
                           ))}
                         </div>
@@ -1289,11 +1349,44 @@ export default function EnginePage() {
                             <MetricCard value={`%${Math.round(motorAccuracy.avg_realization_rate * 100)}`} label="Gerceklesme" color={C.indigo} />
                             <MetricCard value={`%${Math.round(motorAccuracy.best_accuracy * 100)}`} label="En Iyi" color="#fb923c" />
                           </div>
+                          {/* Top deviation reason */}
+                          {motorAccuracy.top_deviation && (
+                            <div style={{ padding: "6px 8px", marginBottom: 8, borderRadius: 6, background: "rgba(251,191,36,0.08)", border: "1px solid rgba(251,191,36,0.15)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                              <span style={{ fontSize: 9, color: C.amber }}>En sik sapma nedeni</span>
+                              <span style={{ fontSize: 10, fontWeight: 700, fontFamily: mono, color: C.amber }}>{motorAccuracy.top_deviation.count} kez: {motorAccuracy.top_deviation.label}</span>
+                            </div>
+                          )}
+                          {/* Risk flags */}
+                          {motorAccuracy.risk_flags && motorAccuracy.risk_flags.length > 0 && (
+                            <div style={{ marginBottom: 8 }}>
+                              {motorAccuracy.risk_flags.map((flag, i) => (
+                                <div key={i} style={{ padding: "3px 8px", marginBottom: 2, borderRadius: 4, fontSize: 8, fontFamily: mono, background: "rgba(239,68,68,0.1)", border: "1px solid rgba(239,68,68,0.2)", color: C.err }}>
+                                  {flag}
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                          {/* Monthly realization bar chart */}
+                          {motorAccuracy.monthly_avg && motorAccuracy.monthly_avg.some(m => m.count > 0) && (
+                            <div style={{ marginBottom: 10 }}>
+                              <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 6 }}>AYLIK GERCEKLESME</div>
+                              <ResponsiveContainer width="100%" height={100}>
+                                <BarChart data={motorAccuracy.monthly_avg} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                                  <XAxis dataKey="label" tick={{ fontSize: 7, fill: C.dim }} axisLine={false} tickLine={false} />
+                                  <YAxis hide domain={[0, 1.2]} />
+                                  <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 6, fontSize: 9, color: C.white }}
+                                    formatter={(v: number) => [`%${Math.round(v * 100)}`, "Ort. Gerceklesme"]} />
+                                  <Bar dataKey="avg_rate" radius={[3, 3, 0, 0]}
+                                    fill="#fb923c" fillOpacity={0.7} />
+                                </BarChart>
+                              </ResponsiveContainer>
+                            </div>
+                          )}
                           {/* History table */}
                           {motorAccuracy.history.length > 0 && (
                             <div>
                               <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginBottom: 4 }}>GECMIS</div>
-                              <div style={{ maxHeight: 120, overflowY: "auto" }}>
+                              <div style={{ maxHeight: 100, overflowY: "auto" }}>
                                 {motorAccuracy.history.map((h, i) => (
                                   <div key={i} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr 50px", gap: 4, padding: "3px 0", fontSize: 8, fontFamily: mono, borderBottom: `1px solid ${C.cardBorder}` }}>
                                     <span style={{ color: C.mid }}>{h.week}</span>

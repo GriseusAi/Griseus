@@ -2436,7 +2436,7 @@ export async function registerRoutes(
     }
   });
 
-  // POST /api/v1/forecast/weekly — Haftalık üretim tahmini (öğrenen motor)
+  // POST /api/v1/forecast/weekly — Haftalık üretim tahmini (öğrenen motor + sezonalite)
   app.post("/api/v1/forecast/weekly", async (req, res) => {
     try {
       const { line_id, planned_qty } = req.body;
@@ -2448,58 +2448,101 @@ export async function registerRoutes(
       const [line] = await db.select().from(productionLines).where(eq(productionLines.id, lineId));
       if (!line) return res.status(404).json({ message: "Line not found" });
 
+      // Current week/month for seasonality
+      const now = new Date();
+      const startOfYear = new Date(now.getFullYear(), 0, 1);
+      const currentWeekNum = Math.ceil(((now.getTime() - startOfYear.getTime()) / 86400000 + startOfYear.getDay() + 1) / 7);
+      const currentMonth = now.getMonth() + 1;
+
       // --- Öğrenen Motor: önce weekly_plans tablosundan öğren ---
-      const completedPlans = await db.select().from(weeklyPlans)
-        .where(and(eq(weeklyPlans.lineId, lineId), eq(weeklyPlans.status, "completed")))
+      const allCompletedPlans = await db.select().from(weeklyPlans)
+        .where(eq(weeklyPlans.status, "completed"))
         .orderBy(desc(weeklyPlans.completedAt));
+      const completedPlans = allCompletedPlans.filter(p => p.lineId === lineId);
 
       const scheds = await db.select().from(schedules).where(eq(schedules.lineId, lineId));
 
-      let avgRealizationRate: number;
+      let baseRate: number;
       let dataSource: string;
       let motorGeneration: number;
       let dataPoints: number;
 
       if (completedPlans.length >= 3) {
-        // Ağırlıklı ortalama: son planlar daha ağır basar
-        // Weights: most recent = N, next = N-1, ... oldest = 1
         const n = completedPlans.length;
         let weightedSum = 0;
         let totalWeight = 0;
         completedPlans.forEach((p, i) => {
-          const weight = n - i; // most recent gets highest weight
+          const weight = n - i;
           const rate = parseFloat(p.realizationRate || "0");
           weightedSum += rate * weight;
           totalWeight += weight;
         });
-        avgRealizationRate = weightedSum / totalWeight;
+        baseRate = weightedSum / totalWeight;
         dataSource = "weekly_plans_weighted";
         motorGeneration = completedPlans.length;
         dataPoints = completedPlans.length;
       } else if (completedPlans.length > 0) {
-        // Az veri — basit ortalama (plans + schedules karışımı)
         const planRates = completedPlans.map(p => parseFloat(p.realizationRate || "0"));
         const schedRates = scheds
           .filter(s => (s.plannedQty || 0) > 0)
           .map(s => (s.actualQty || 0) / (s.plannedQty || 1));
         const allRates = [...planRates, ...schedRates];
-        avgRealizationRate = allRates.reduce((a, b) => a + b, 0) / allRates.length;
+        baseRate = allRates.reduce((a, b) => a + b, 0) / allRates.length;
         dataSource = "mixed_plans_schedules";
         motorGeneration = completedPlans.length;
         dataPoints = allRates.length;
       } else {
-        // Fallback: sadece schedule verisi
         const realizationRates = scheds
           .filter(s => (s.plannedQty || 0) > 0)
           .map(s => (s.actualQty || 0) / (s.plannedQty || 1));
         if (realizationRates.length === 0) {
           return res.json({ line_id: lineId, line_name: line.name, message: "No schedule data", motor_generation: 0, data_points: 0 });
         }
-        avgRealizationRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
+        baseRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
         dataSource = "schedules_only";
         motorGeneration = 0;
         dataPoints = realizationRates.length;
       }
+
+      // --- Sezonalite Katmanı ---
+      // Aynı ay'daki tüm completed planların ortalama realization_rate'i
+      const sameMonthPlans = allCompletedPlans.filter(p => p.monthNumber === currentMonth);
+      const seasonalFactor = sameMonthPlans.length > 0
+        ? sameMonthPlans.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / sameMonthPlans.length
+        : null;
+
+      // Aynı hafta numarasındaki geçmiş planların realization_rate'i
+      const sameWeekPlans = allCompletedPlans.filter(p => p.weekNumber === currentWeekNum);
+      const historicalSameWeek = sameWeekPlans.length > 0
+        ? sameWeekPlans.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / sameWeekPlans.length
+        : null;
+
+      // Sezonalite ağırlığı ile final rate hesapla
+      // Base rate: 0.7, seasonal factor: 0.3
+      let avgRealizationRate = baseRate;
+      if (seasonalFactor !== null && sameMonthPlans.length >= 2) {
+        avgRealizationRate = baseRate * 0.7 + seasonalFactor * 0.3;
+      }
+
+      // --- Risk Flags ---
+      const riskFlags: string[] = [];
+      if (currentMonth === 11 || currentMonth === 12) riskFlags.push("Yıl sonu riski: Kasım/Aralık döneminde üretim kapasitesi düşebilir");
+      if (currentMonth === 7 || currentMonth === 8) riskFlags.push("Yaz sezonu: İzin döneminde personel eksikliği riski");
+      if (currentMonth === 1) riskFlags.push("Yılbaşı geçişi: Yeni yıl başlangıcında adaptasyon süreci");
+      if (currentMonth === 6) riskFlags.push("Yarıyıl kapanışı: Hedef baskısı artabilir");
+
+      // Sapma nedenlerinden risk flags
+      const recentDeviations = allCompletedPlans.filter(p => p.deviationReason).slice(0, 10);
+      const deviationCounts: Record<string, number> = {};
+      recentDeviations.forEach(p => {
+        if (p.deviationReason) deviationCounts[p.deviationReason] = (deviationCounts[p.deviationReason] || 0) + 1;
+      });
+      const deviationLabels: Record<string, string> = { personnel: "Personel", material: "Malzeme", machine: "Makine", holiday: "Tatil", demand: "Talep", other: "Diğer" };
+      for (const [reason, count] of Object.entries(deviationCounts)) {
+        if (count >= 2) riskFlags.push(`Tekrarlayan sapma: ${deviationLabels[reason] || reason} (${count} kez)`);
+      }
+
+      if (avgRealizationRate < 0.75) riskFlags.push("Düşük gerçekleşme oranı: Motor tahmini %75 altında");
 
       // Min/max from all available data
       const allRatesForStats = [
@@ -2574,6 +2617,11 @@ export async function registerRoutes(
         data_source: dataSource,
         data_points: dataPoints,
         accuracy_trend: accuracyTrend,
+        seasonal_factor: seasonalFactor !== null ? Math.round(seasonalFactor * 100) : null,
+        historical_same_week: historicalSameWeek !== null ? Math.round(historicalSameWeek * 100) : null,
+        risk_flags: riskFlags,
+        current_week: currentWeekNum,
+        current_month: currentMonth,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
@@ -2681,6 +2729,31 @@ export async function registerRoutes(
     }
   });
 
+  // ── POST /api/v1/plans/backfill — backfill week_number/month_number for existing plans ──
+  app.post("/api/v1/plans/backfill", async (_req, res) => {
+    try {
+      const allPlans = await db.select().from(weeklyPlans);
+      let updated = 0;
+      for (const plan of allPlans) {
+        if (plan.weekNumber && plan.monthNumber) continue; // already set
+        let weekNumber: number | null = null;
+        let monthNumber: number | null = null;
+        const wMatch = plan.weekLabel.match(/(\d{4})-H(\d{1,2})/);
+        if (wMatch) {
+          weekNumber = parseInt(wMatch[2]);
+          monthNumber = Math.min(12, Math.ceil(weekNumber / 4.33));
+        }
+        if (weekNumber && monthNumber) {
+          await db.update(weeklyPlans).set({ weekNumber, monthNumber }).where(eq(weeklyPlans.id, plan.id));
+          updated++;
+        }
+      }
+      res.json({ success: true, updated, total: allPlans.length });
+    } catch (error: any) {
+      res.status(500).json({ message: error.message });
+    }
+  });
+
   // ── POST /api/v1/plans/create ───────────────────────────────────────
   app.post("/api/v1/plans/create", async (req, res) => {
     try {
@@ -2688,12 +2761,31 @@ export async function registerRoutes(
       if (!week_label || !planned_qty) {
         return res.status(400).json({ message: "week_label and planned_qty are required" });
       }
+
+      // Auto-calculate week_number and month_number from week_label (e.g. "2026-H11")
+      let weekNumber: number | null = null;
+      let monthNumber: number | null = null;
+      const wMatch = week_label.match(/(\d{4})-H(\d{1,2})/);
+      if (wMatch) {
+        weekNumber = parseInt(wMatch[2]);
+        // Approximate month from week number: week 1-4 = Jan, 5-8 = Feb, etc.
+        monthNumber = Math.min(12, Math.ceil(weekNumber / 4.33));
+      } else {
+        // Fallback: use current date
+        const now = new Date();
+        const start = new Date(now.getFullYear(), 0, 1);
+        weekNumber = Math.ceil(((now.getTime() - start.getTime()) / 86400000 + start.getDay() + 1) / 7);
+        monthNumber = now.getMonth() + 1;
+      }
+
       const [plan] = await db.insert(weeklyPlans).values({
         lineId: line_id ?? null,
         weekLabel: week_label,
         plannedQty: planned_qty,
         predictedQty: predicted_qty ?? null,
         status: "planned",
+        weekNumber,
+        monthNumber,
         notes: motor_generation != null ? `motor_gen:${motor_generation},predicted_rate:${predicted_rate || 0}` : null,
       }).returning();
       res.status(201).json({ success: true, plan_id: plan.id, week_label, planned_qty, predicted_qty, message: "Plan kaydedildi" });
@@ -2706,9 +2798,14 @@ export async function registerRoutes(
   app.put("/api/v1/plans/:id/complete", async (req, res) => {
     try {
       const planId = parseInt(req.params.id);
-      const { actual_qty } = req.body;
+      const { actual_qty, deviation_reason, deviation_notes } = req.body;
       if (actual_qty == null) {
         return res.status(400).json({ message: "actual_qty is required" });
+      }
+
+      const validReasons = ["personnel", "material", "machine", "holiday", "demand", "other"];
+      if (deviation_reason && !validReasons.includes(deviation_reason)) {
+        return res.status(400).json({ message: `deviation_reason must be one of: ${validReasons.join(", ")}` });
       }
 
       const existing = await db.select().from(weeklyPlans).where(eq(weeklyPlans.id, planId)).limit(1);
@@ -2749,6 +2846,8 @@ export async function registerRoutes(
           actualQty: actual_qty,
           realizationRate: realizationRate,
           predictionAccuracy: predictionAccuracy,
+          deviationReason: deviation_reason || null,
+          deviationNotes: deviation_notes || null,
           status: "completed",
           completedAt: new Date(),
         })
@@ -2760,6 +2859,7 @@ export async function registerRoutes(
         prediction_error: predictionError,
         prediction_accuracy: predictionAccuracy ? parseFloat(predictionAccuracy) : null,
         improvement_vs_previous: improvementVsPrevious,
+        deviation_reason: deviation_reason || null,
         message: "Plan tamamlandı",
       });
     } catch (error: any) {
@@ -2827,6 +2927,36 @@ export async function registerRoutes(
         prediction_accuracy: p.predictionAccuracy ? parseFloat(parseFloat(p.predictionAccuracy).toFixed(2)) : null,
       }));
 
+      // --- Deviation stats ---
+      const deviationCounts: Record<string, number> = {};
+      const deviationLabels: Record<string, string> = { personnel: "Personel", material: "Malzeme", machine: "Makine", holiday: "Tatil", demand: "Talep", other: "Diğer" };
+      completed.forEach(p => {
+        if (p.deviationReason) deviationCounts[p.deviationReason] = (deviationCounts[p.deviationReason] || 0) + 1;
+      });
+      // Most frequent deviation reason
+      let topDeviation: { reason: string; label: string; count: number } | null = null;
+      let maxDevCount = 0;
+      for (const [reason, count] of Object.entries(deviationCounts)) {
+        if (count > maxDevCount) { maxDevCount = count; topDeviation = { reason, label: deviationLabels[reason] || reason, count }; }
+      }
+
+      // --- Monthly realization averages (1-12) ---
+      const monthlyAvg: { month: number; label: string; avg_rate: number; count: number }[] = [];
+      const monthLabels = ["Oca", "Şub", "Mar", "Nis", "May", "Haz", "Tem", "Ağu", "Eyl", "Eki", "Kas", "Ara"];
+      for (let m = 1; m <= 12; m++) {
+        const monthPlans = completed.filter(p => p.monthNumber === m);
+        const avgRate = monthPlans.length > 0
+          ? monthPlans.reduce((s, p) => s + parseFloat(p.realizationRate || "0"), 0) / monthPlans.length
+          : 0;
+        monthlyAvg.push({ month: m, label: monthLabels[m - 1], avg_rate: parseFloat(avgRate.toFixed(4)), count: monthPlans.length });
+      }
+
+      // --- Risk flags from accuracy data ---
+      const riskFlags: string[] = [];
+      if (topDeviation && topDeviation.count >= 3) riskFlags.push(`Sık sapma: ${topDeviation.label} (${topDeviation.count} kez)`);
+      if (avgRealizationRate < 0.8 && completed.length >= 3) riskFlags.push("Düşük gerçekleşme ortalaması: <%80");
+      if (trend === "declining") riskFlags.push("Tahmin isabeti düşüyor");
+
       res.json({
         total_plans: allPlans.length,
         completed_plans: completed.length,
@@ -2845,6 +2975,10 @@ export async function registerRoutes(
           predicted_qty: p.predictedQty,
           created_at: p.createdAt,
         })),
+        top_deviation: topDeviation,
+        deviation_counts: deviationCounts,
+        monthly_avg: monthlyAvg,
+        risk_flags: riskFlags,
       });
     } catch (error: any) {
       res.status(500).json({ message: error.message });
