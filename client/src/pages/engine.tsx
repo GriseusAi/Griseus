@@ -1568,11 +1568,30 @@ export default function EnginePage() {
                               color: C.white, fontSize: 28, fontFamily: mono, fontWeight: 700, textAlign: "center", outline: "none" }} />
                           <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>Haftalik uretim hedefi (adet)</div>
                         </div>
-                        <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
-                          style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
-                            background: forecastLoading ? C.dim : C.white, color: "#000", border: "none",
-                            opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
-                          }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
+                        <div style={{ display: "flex", gap: 8 }}>
+                          <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
+                            style={{ flex: 1, padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
+                              background: forecastLoading ? C.dim : C.white, color: "#000", border: "none",
+                              opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
+                            }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
+                          {forecastResult && (
+                            <button onClick={() => {
+                              const txt = [
+                                `Motor Tahmini — ${forecastResult.line_name}`,
+                                `Planlanan: ${forecastResult.planned_qty} | Tahmini: ${forecastResult.predicted_output} | Fark: ${forecastResult.gap >= 0 ? "+" : ""}${forecastResult.gap}`,
+                                `Guven: %${forecastResult.confidence} | Gerceklesme: %${forecastResult.avg_realization_rate}`,
+                                forecastResult.recommendation,
+                                forecastResult.scenarios.map(s => `  ${s.name}: ${s.predicted_output} (%${s.realization_rate})`).join("\n"),
+                                ...(forecastResult.risk_flags?.length ? ["Risk: " + forecastResult.risk_flags.join(", ")] : []),
+                              ].join("\n");
+                              navigator.clipboard.writeText(txt);
+                            }}
+                              style={{ padding: "14px 18px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
+                                background: "rgba(255,255,255,0.08)", color: C.white, border: `1px solid ${C.cardBorder}`,
+                                transition: "all 0.2s", whiteSpace: "nowrap",
+                              }}>Kopyala</button>
+                          )}
+                        </div>
                       </PanelSection>
 
                       {/* Motor tahmini — inline result */}
