@@ -1,13 +1,110 @@
 import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
+import { db } from "../db";
+import { weeklyPlans, capacityMetrics, productionLines } from "@shared/schema";
+import { eq, desc, sql } from "drizzle-orm";
 
 const router = Router();
 
-const SYSTEM_PROMPT = `Sen Griseus AI Assistant'sın. Çukurova Isı Sistemleri'nin operasyonel verilerine erişimin var.
+const BASE_SYSTEM_PROMPT = `Sen Griseus AI Assistant'sın. Çukurova Isı Sistemleri'nin operasyonel verilerine erişimin var.
 Gerçek veritabanı verisiyle cevap ver, tahmin yapma. Türkçe cevap ver.
 Kullanıcı sana üretim, kapasite, personel, darboğaz, planlama hakkında sorular soracak.
 Her cevabında veriyi kaynak göster.
 Markdown formatı kullanma. Düz Türkçe yaz, kısa ve net cevap ver. Başlık yerine doğal dil kullan.`;
+
+async function buildContextualSystemPrompt(): Promise<string> {
+  const sections: string[] = [BASE_SYSTEM_PROMPT];
+
+  // 1. Son 10 haftalık plan
+  const recentPlans = await db.select().from(weeklyPlans)
+    .orderBy(desc(weeklyPlans.createdAt))
+    .limit(10);
+
+  if (recentPlans.length > 0) {
+    const planLines = recentPlans.map(p => {
+      const actual = p.actualQty != null ? `gercek: ${p.actualQty}` : "gercek: -";
+      const rate = p.realizationRate ? `gerceklesme: %${Math.round(parseFloat(p.realizationRate) * 100)}` : "";
+      const risk = p.riskFlag ? " [RISK]" : "";
+      const reason = p.deviationReason ? ` sapma: ${p.deviationReason}` : "";
+      return `  - ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} | ${actual} | ${rate}${reason}${risk} | durum: ${p.status}`;
+    });
+    sections.push(`\n--- SON 10 HAFTALIK PLAN ---\n${planLines.join("\n")}`);
+  }
+
+  // 2. Kapasite metrikleri (hat bazlı en güncel)
+  const lines = await db.select().from(productionLines);
+  const latestCapacity = await db.select().from(capacityMetrics)
+    .orderBy(desc(capacityMetrics.calculatedAt));
+
+  if (latestCapacity.length > 0) {
+    const lineMap = new Map(lines.map(l => [l.id, l.name]));
+    // Her hat için en güncel kapasite
+    const seen = new Set<number>();
+    const capLines: string[] = [];
+    for (const c of latestCapacity) {
+      if (c.lineId && !seen.has(c.lineId)) {
+        seen.add(c.lineId);
+        const lineName = lineMap.get(c.lineId) || `Hat ${c.lineId}`;
+        capLines.push(`  - ${lineName}: kapasite %${c.utilizationPct || 0} | teorik maks: ${c.theoreticalMax} | gercek: ${c.actualOutput} | donem: ${c.periodValue}`);
+      }
+    }
+    if (capLines.length > 0) {
+      sections.push(`\n--- KAPASITE METRIKLERI ---\n${capLines.join("\n")}`);
+    }
+  }
+
+  // 3. Risk flag'li planlar
+  const riskyPlans = await db.select().from(weeklyPlans)
+    .where(eq(weeklyPlans.riskFlag, true))
+    .orderBy(desc(weeklyPlans.completedAt));
+
+  if (riskyPlans.length > 0) {
+    const riskLines = riskyPlans.map(p => {
+      const rate = p.realizationRate ? `gerceklesme: %${Math.round(parseFloat(p.realizationRate) * 100)}` : "";
+      const reason = p.deviationReason || "belirtilmemis";
+      return `  - ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} gercek: ${p.actualQty || "-"} | ${rate} | sapma: ${reason}`;
+    });
+    sections.push(`\n--- RISKLI PLANLAR (risk_flag=true) ---\n${riskLines.join("\n")}`);
+  }
+
+  // 4. Seasonal factor ve realization rate ortalamaları
+  const completedPlans = await db.select().from(weeklyPlans)
+    .where(eq(weeklyPlans.status, "completed"));
+
+  if (completedPlans.length > 0) {
+    const rates = completedPlans
+      .filter(p => p.realizationRate)
+      .map(p => parseFloat(p.realizationRate!));
+    const avgRate = rates.length > 0
+      ? (rates.reduce((a, b) => a + b, 0) / rates.length)
+      : 0;
+
+    // Ay bazlı seasonal factor
+    const byMonth = new Map<number, number[]>();
+    for (const p of completedPlans) {
+      if (p.monthNumber && p.realizationRate) {
+        if (!byMonth.has(p.monthNumber)) byMonth.set(p.monthNumber, []);
+        byMonth.get(p.monthNumber)!.push(parseFloat(p.realizationRate));
+      }
+    }
+    const seasonalLines: string[] = [];
+    const monthNames = ["", "Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
+    for (const [month, mRates] of Array.from(byMonth.entries()).sort((a, b) => a[0] - b[0])) {
+      const avg = mRates.reduce((a, b) => a + b, 0) / mRates.length;
+      seasonalLines.push(`  - ${monthNames[month]}: ortalama gerceklesme %${Math.round(avg * 100)} (${mRates.length} plan)`);
+    }
+
+    sections.push(`\n--- ORTALAMALAR ---
+  Genel gerceklesme orani ortalamasi: %${Math.round(avgRate * 100)} (${rates.length} tamamlanmis plan)
+  Tamamlanan plan sayisi: ${completedPlans.length}`);
+
+    if (seasonalLines.length > 0) {
+      sections.push(`\n--- SEZONALITE (ay bazli gerceklesme ortalamasi) ---\n${seasonalLines.join("\n")}`);
+    }
+  }
+
+  return sections.join("\n");
+}
 
 const TOOLS: Anthropic.Tool[] = [
   {
@@ -164,6 +261,9 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const client = new Anthropic({ apiKey });
     const baseUrl = getBaseUrl(req);
 
+    // Build contextual system prompt with real data
+    const systemPrompt = await buildContextualSystemPrompt();
+
     // Build messages from history + new message
     const messages: Anthropic.MessageParam[] = [
       ...(history || []).map((h) => ({
@@ -179,7 +279,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     let response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
       max_tokens: 1024,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: TOOLS,
       messages,
     });
@@ -219,7 +319,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       response = await client.messages.create({
         model: "claude-sonnet-4-20250514",
         max_tokens: 1024,
-        system: SYSTEM_PROMPT,
+        system: systemPrompt,
         tools: TOOLS,
         messages,
       });
