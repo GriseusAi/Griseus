@@ -77,7 +77,7 @@ function Ring({ pct, color, size = 64, stroke = 5 }: { pct: number; color: strin
 function SeverityBadge({ level }: { level: string }) {
   const map: Record<string, { bg: string; color: string }> = {
     low: { bg: "rgba(52,211,153,0.12)", color: C.green },
-    medium: { bg: "rgba(251,191,36,0.12)", color: C.amber },
+    medium: { bg: "rgba(255,255,255,0.08)", color: C.white },
     high: { bg: "rgba(239,68,68,0.12)", color: C.err },
     critical: { bg: "rgba(239,68,68,0.2)", color: "#ff6b6b" },
   };
@@ -585,18 +585,18 @@ export default function EnginePage() {
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <button onClick={() => { setAiOpen(true); setActiveLayer(null); }}
-            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(52,211,153,0.1)",
-              border: "1px solid rgba(52,211,153,0.25)", borderRadius: 8, color: C.green, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.2)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(52,211,153,0.1)"; }}>
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: C.white, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15a2 2 0 01-2 2H7l-4 4V5a2 2 0 012-2h14a2 2 0 012 2z"/></svg>
             AI Assistant
           </button>
           <button onClick={() => { setUploadOpen(true); setUploadFile(null); setUploadResult(null); setUploadError(""); }}
-            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(129,140,248,0.1)",
-              border: "1px solid rgba(129,140,248,0.25)", borderRadius: 8, color: C.indigo, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
-            onMouseEnter={e => { e.currentTarget.style.background = "rgba(129,140,248,0.2)"; }}
-            onMouseLeave={e => { e.currentTarget.style.background = "rgba(129,140,248,0.1)"; }}>
+            style={{ padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: mono, background: "rgba(255,255,255,0.06)",
+              border: "1px solid rgba(255,255,255,0.15)", borderRadius: 8, color: C.white, cursor: "pointer", transition: "all 0.2s", display: "flex", alignItems: "center", gap: 6 }}
+            onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4M17 8l-5-5-5 5M12 3v12"/></svg>
             Dosya Yukle
           </button>
@@ -772,9 +772,9 @@ export default function EnginePage() {
                     <div style={{
                       maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans,
                       whiteSpace: m.role === "user" ? "pre-wrap" : undefined,
-                      background: m.role === "user" ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.2)") : C.card,
-                      border: m.role === "user" ? `1px solid ${isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(99,102,241,0.3)"}` : `1px solid ${C.cardBorder}`,
-                      color: m.role === "user" ? (isCeoMode ? "#fde68a" : "#c7d2fe") : C.white,
+                      background: m.role === "user" ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.08)") : C.card,
+                      border: m.role === "user" ? `1px solid ${isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.15)"}` : `1px solid ${C.cardBorder}`,
+                      color: m.role === "user" ? (isCeoMode ? "#fde68a" : C.white) : C.white,
                     }}>
                       {m.role === "user" ? m.content : <div dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />}
                     </div>
@@ -790,12 +790,12 @@ export default function EnginePage() {
                       <button onClick={() => applyAiSuggestion(suggestion.qty, suggestion.lineId)}
                         style={{
                           marginTop: 6, padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: sans,
-                          background: "linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.08))",
-                          border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c", cursor: "pointer",
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.15)", color: C.white, cursor: "pointer",
                           display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s",
                         }}
-                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(251,146,60,0.25)"; }}
-                        onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.08))"; }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(255,255,255,0.12)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
                       >
                         <span style={{ fontSize: 14 }}>📋</span>
                         Bu Plani Olustur — {suggestion.qty} birim / {suggestion.lineId === 1 ? "Elektrikli" : "Gazli"} Hat
@@ -864,9 +864,9 @@ export default function EnginePage() {
                   style={{ flex: 1, background: C.card, border: `1px solid ${isCeoMode ? "rgba(245,158,11,0.2)" : C.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.white, fontFamily: sans, outline: "none" }} />
                 <button onClick={sendAiMessage} disabled={aiLoading || !aiInput.trim()}
                   style={{ padding: "10px 16px",
-                    background: aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(52,211,153,0.15)") : C.card,
-                    border: `1px solid ${aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(52,211,153,0.3)") : C.cardBorder}`, borderRadius: 8,
-                    color: aiInput.trim() ? (isCeoMode ? "#fbbf24" : C.green) : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
+                    background: aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(255,255,255,0.08)") : C.card,
+                    border: `1px solid ${aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(255,255,255,0.2)") : C.cardBorder}`, borderRadius: 8,
+                    color: aiInput.trim() ? (isCeoMode ? "#fbbf24" : C.white) : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
                   Gonder
                 </button>
               </div>
@@ -877,7 +877,7 @@ export default function EnginePage() {
             <div key="applications" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.green}15`, color: C.green, border: `1px solid ${C.green}30` }}>04</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: C.white, border: "1px solid rgba(255,255,255,0.15)" }}>04</span>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Sonuclar</span>
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
@@ -916,21 +916,21 @@ export default function EnginePage() {
                 const ePct = ePlanned ? Math.round(eDelivered / ePlanned * 100) : 0;
                 const gPct = gPlanned ? Math.round(gDelivered / gPlanned * 100) : 0;
                 const weeklyData = weeklyLineType === "elektrikli" ? weeklyE : weeklyG;
-                const lineColor = weeklyLineType === "elektrikli" ? C.indigo : C.pink;
+                const lineColor = C.white;
                 return (
                   <>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
-                      <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.green} />
-                      <MetricCard value={fmt(eL?.totalOutput || 0)} label="Elektrikli Hat" color={C.indigo} />
-                      <MetricCard value={fmt(gL?.totalOutput || 0)} label="Gazli Hat" color={C.pink} />
-                      <MetricCard value={fmt(summary.peakMonth?.total || 0)} label={`Pik Ay (${summary.peakMonth?.ay || ""})`} color={C.amber} />
+                      <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.white} />
+                      <MetricCard value={fmt(eL?.totalOutput || 0)} label="Elektrikli Hat" color={C.white} />
+                      <MetricCard value={fmt(gL?.totalOutput || 0)} label="Gazli Hat" color={C.white} />
+                      <MetricCard value={fmt(summary.peakMonth?.total || 0)} label={`Pik Ay (${summary.peakMonth?.ay || ""})`} color={C.white} />
                     </div>
 
-                    <PanelSection title="Kapasite Kullanimi" color={C.green}>
+                    <PanelSection title="Kapasite Kullanimi" color={C.white}>
                       <div style={{ display: "flex", gap: 16, justifyContent: "center", marginBottom: 8 }}>
                         {(summary.lines || []).map((line: any) => (
                           <div key={line.id} style={{ textAlign: "center" }}>
-                            <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} />
+                            <Ring pct={line.utilizationPct || 0} color={C.white} />
                             <div style={{ fontSize: 14, fontWeight: 700, marginTop: 4 }}>%{Math.round(line.utilizationPct || 0)}</div>
                             <div style={{ fontSize: 11, color: C.mid }}>{line.name}</div>
                             <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>{line.workerCount} kisi · {line.currentUnitTimeMin}dk</div>
@@ -939,9 +939,9 @@ export default function EnginePage() {
                       </div>
                     </PanelSection>
 
-                    <PanelSection title="Teslimat Orani" color={C.green}>
-                      {[{ label: "Elektrikli", pct: ePct, delivered: eDelivered, planned: ePlanned, color: C.indigo },
-                        { label: "Gazli", pct: gPct, delivered: gDelivered, planned: gPlanned, color: C.pink }].map(d => (
+                    <PanelSection title="Teslimat Orani" color={C.white}>
+                      {[{ label: "Elektrikli", pct: ePct, delivered: eDelivered, planned: ePlanned, color: C.white },
+                        { label: "Gazli", pct: gPct, delivered: gDelivered, planned: gPlanned, color: C.white }].map(d => (
                         <div key={d.label} style={{ marginBottom: 8 }}>
                           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, marginBottom: 3 }}>
                             <span style={{ color: C.mid }}>{d.label}</span>
@@ -959,9 +959,9 @@ export default function EnginePage() {
                       {([["monthly", "Aylik Uretim"], ["weekly", "Haftalik Plan vs Gercek"]] as [AppChartTab, string][]).map(([k, lbl]) => (
                         <button key={k} onClick={() => setAppChartTab(k)} style={{
                           padding: "5px 10px", fontSize: 12, fontWeight: 600, fontFamily: sans, cursor: "pointer",
-                          background: appChartTab === k ? `${C.green}12` : "transparent",
-                          border: `1px solid ${appChartTab === k ? C.green + "30" : C.cardBorder}`,
-                          borderRadius: 6, color: appChartTab === k ? C.green : C.mid,
+                          background: appChartTab === k ? "rgba(255,255,255,0.06)" : "transparent",
+                          border: `1px solid ${appChartTab === k ? "rgba(255,255,255,0.15)" : C.cardBorder}`,
+                          borderRadius: 6, color: appChartTab === k ? C.white : C.mid,
                         }}>{lbl}</button>
                       ))}
                     </div>
@@ -972,8 +972,8 @@ export default function EnginePage() {
                           <XAxis dataKey="ay" tick={{ fontSize: 11, fill: C.dim }} axisLine={false} tickLine={false} />
                           <YAxis hide />
                           <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontFamily: mono }} />
-                          <Bar dataKey="e" fill={C.indigo} radius={[3, 3, 0, 0]} name="Elektrikli" />
-                          <Bar dataKey="g" fill={C.pink} radius={[3, 3, 0, 0]} name="Gazli" />
+                          <Bar dataKey="e" fill="rgba(255,255,255,0.6)" radius={[3, 3, 0, 0]} name="Elektrikli" />
+                          <Bar dataKey="g" fill="rgba(255,255,255,0.25)" radius={[3, 3, 0, 0]} name="Gazli" />
                         </BarChart>
                       </ResponsiveContainer>
                     )}
@@ -984,9 +984,9 @@ export default function EnginePage() {
                           {(["elektrikli", "gazli"] as const).map(t => (
                             <button key={t} onClick={() => setWeeklyLineType(t)} style={{
                               padding: "4px 10px", fontSize: 11, fontFamily: mono, fontWeight: 600, borderRadius: 5, cursor: "pointer",
-                              background: weeklyLineType === t ? `${t === "elektrikli" ? C.indigo : C.pink}15` : "transparent",
-                              border: `1px solid ${weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) + "40" : C.cardBorder}`,
-                              color: weeklyLineType === t ? (t === "elektrikli" ? C.indigo : C.pink) : C.dim,
+                              background: weeklyLineType === t ? "rgba(255,255,255,0.06)" : "transparent",
+                              border: `1px solid ${weeklyLineType === t ? "rgba(255,255,255,0.2)" : C.cardBorder}`,
+                              color: weeklyLineType === t ? C.white : C.dim,
                             }}>{t === "elektrikli" ? "Elektrikli" : "Gazli"}</button>
                           ))}
                         </div>
@@ -1022,15 +1022,15 @@ export default function EnginePage() {
               )}
 
               {/* Motor Önerileri */}
-              <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 12, background: "rgba(129,140,248,0.04)", border: `1px solid rgba(129,140,248,0.15)` }}>
+              <div style={{ marginTop: 16, padding: "14px 16px", borderRadius: 12, background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.08)" }}>
                 <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
                     <span style={{ fontSize: 14 }}>⚡</span>
-                    <span style={{ fontSize: 12, fontWeight: 700, color: C.indigo }}>Motor Onerileri</span>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.white }}>Motor Onerileri</span>
                   </div>
                   <button onClick={fetchMotorRecs} disabled={motorRecsLoading}
                     style={{ padding: "3px 8px", borderRadius: 4, fontSize: 11, fontFamily: mono, cursor: "pointer",
-                      background: "rgba(129,140,248,0.1)", border: "1px solid rgba(129,140,248,0.2)", color: C.indigo }}>
+                      background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", color: C.white }}>
                     {motorRecsLoading ? "..." : "Yenile"}
                   </button>
                 </div>
@@ -1042,7 +1042,7 @@ export default function EnginePage() {
                     {motorRecs.recommendations.map((rec: any, i: number) => {
                       const priorityMap = {
                         red: { bg: "rgba(239,68,68,0.08)", border: "rgba(239,68,68,0.2)", color: C.err, label: "Kritik" },
-                        yellow: { bg: "rgba(251,191,36,0.08)", border: "rgba(251,191,36,0.2)", color: C.amber, label: "Uyari" },
+                        yellow: { bg: "rgba(255,255,255,0.04)", border: "rgba(255,255,255,0.15)", color: C.white, label: "Uyari" },
                         green: { bg: "rgba(52,211,153,0.08)", border: "rgba(52,211,153,0.2)", color: C.green, label: "Firsat" },
                       };
                       const p = priorityMap[rec.priority as keyof typeof priorityMap] || priorityMap.yellow;
@@ -1090,7 +1090,7 @@ export default function EnginePage() {
             <div key="intelligence" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.indigo}15`, color: C.indigo, border: `1px solid ${C.indigo}30` }}>03</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: C.white, border: "1px solid rgba(255,255,255,0.15)" }}>03</span>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Analiz</span>
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
@@ -1101,9 +1101,9 @@ export default function EnginePage() {
                 {(["simulation", "bottleneck"] as IntelTab[]).map(tab => (
                   <button key={tab} onClick={() => setIntelTab(tab)} style={{
                     padding: "6px 14px", fontSize: 12, fontWeight: 600, fontFamily: sans, cursor: "pointer",
-                    background: intelTab === tab ? "rgba(129,140,248,0.12)" : "transparent",
-                    border: intelTab === tab ? `1px solid rgba(129,140,248,0.3)` : `1px solid ${C.cardBorder}`,
-                    borderRadius: 6, color: intelTab === tab ? C.indigo : C.mid, transition: "all 0.2s",
+                    background: intelTab === tab ? "rgba(255,255,255,0.06)" : "transparent",
+                    border: intelTab === tab ? "1px solid rgba(255,255,255,0.2)" : `1px solid ${C.cardBorder}`,
+                    borderRadius: 6, color: intelTab === tab ? C.white : C.mid, transition: "all 0.2s",
                   }}>{tab === "simulation" ? "Simulasyon" : "Darbogaz"}</button>
                 ))}
               </div>
@@ -1115,9 +1115,9 @@ export default function EnginePage() {
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => handleSimLineChange(line.id)} style={{
                         padding: "5px 12px", fontSize: 12, fontWeight: 600, fontFamily: mono, cursor: "pointer",
-                        background: simLineId === line.id ? `${C.indigo}15` : "transparent",
-                        border: `1px solid ${simLineId === line.id ? C.indigo + "40" : C.cardBorder}`,
-                        borderRadius: 6, color: simLineId === line.id ? C.indigo : C.dim,
+                        background: simLineId === line.id ? "rgba(255,255,255,0.06)" : "transparent",
+                        border: `1px solid ${simLineId === line.id ? "rgba(255,255,255,0.2)" : C.cardBorder}`,
+                        borderRadius: 6, color: simLineId === line.id ? C.white : C.dim,
                       }}>{line.name || `Hat ${line.id}`}</button>
                     ))}
                   </div>
@@ -1131,8 +1131,8 @@ export default function EnginePage() {
                   {simResult && (
                     <div style={{ marginTop: 12 }}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 8, marginBottom: 10 }}>
-                        <MetricCard value={fmt(simResult.simulated.yearly_capacity)} label="Yillik" color={C.indigo} />
-                        <MetricCard value={fmt(simResult.simulated.daily_capacity)} label="Gunluk" color={C.indigo} />
+                        <MetricCard value={fmt(simResult.simulated.yearly_capacity)} label="Yillik" color={C.white} />
+                        <MetricCard value={fmt(simResult.simulated.daily_capacity)} label="Gunluk" color={C.white} />
                         <MetricCard value={`${simResult.delta.percent >= 0 ? "+" : ""}${simResult.delta.percent.toFixed(1)}%`}
                           label={`${simResult.delta.units >= 0 ? "+" : ""}${fmt(simResult.delta.units)}`}
                           color={simResult.delta.percent >= 0 ? C.green : C.err} />
@@ -1162,12 +1162,12 @@ export default function EnginePage() {
                         if (cur <= cap || cap === 0) return null;
                         const pct = ((cur - cap) / cap * 100).toFixed(0);
                         return (
-                          <div style={{ padding: 10, background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)", borderRadius: 10, marginBottom: 10 }}>
-                            <div style={{ fontSize: 12, fontWeight: 700, color: C.amber, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
+                          <div style={{ padding: 10, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, marginBottom: 10 }}>
+                            <div style={{ fontSize: 12, fontWeight: 700, color: C.white, marginBottom: 4, display: "flex", alignItems: "center", gap: 4 }}>
                               ⚠ Darbogaz Uyarisi
                             </div>
                             <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.5 }}>
-                              Birim sure ({cur}dk) teorik kapasiteden ({cap}dk) <strong style={{ color: C.amber }}>%{pct}</strong> daha yavas. Bu hat darbogaz olusturuyor.
+                              Birim sure ({cur}dk) teorik kapasiteden ({cap}dk) <strong style={{ color: C.white }}>%{pct}</strong> daha yavas. Bu hat darbogaz olusturuyor.
                             </div>
                           </div>
                         );
@@ -1180,7 +1180,7 @@ export default function EnginePage() {
                   )}
 
                   {/* Preset scenarios */}
-                  <PanelSection title="Hizli Senaryolar" color={C.indigo}>
+                  <PanelSection title="Hizli Senaryolar" color={C.white}>
                     <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
                       {[
                         { label: "Fazla Mesai", desc: "+2 saat/gun", params: { daily_hours: (simParams.daily_hours || 9) + 2 } },
@@ -1205,9 +1205,9 @@ export default function EnginePage() {
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => { setBottleneckLineId(line.id); fetchBottleneck(line.id); }} style={{
                         padding: "5px 12px", fontSize: 12, fontWeight: 600, fontFamily: mono, cursor: "pointer",
-                        background: bottleneckLineId === line.id ? `${C.amber}15` : "transparent",
-                        border: `1px solid ${bottleneckLineId === line.id ? C.amber + "40" : C.cardBorder}`,
-                        borderRadius: 6, color: bottleneckLineId === line.id ? C.amber : C.dim,
+                        background: bottleneckLineId === line.id ? "rgba(255,255,255,0.06)" : "transparent",
+                        border: `1px solid ${bottleneckLineId === line.id ? "rgba(255,255,255,0.2)" : C.cardBorder}`,
+                        borderRadius: 6, color: bottleneckLineId === line.id ? C.white : C.dim,
                       }}>{line.name || `Hat ${line.id}`}</button>
                     ))}
                   </div>
@@ -1217,7 +1217,7 @@ export default function EnginePage() {
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 12 }}>
                         <SeverityBadge level={bottleneck.bottleneck_severity} />
                         <span style={{ fontSize: 12, color: C.mid }}>{bottleneck.line_name}</span>
-                        <span style={{ fontSize: 12, fontFamily: mono, color: bottleneck.trend === "improving" ? C.green : bottleneck.trend === "declining" ? C.err : C.amber, marginLeft: "auto" }}>
+                        <span style={{ fontSize: 12, fontFamily: mono, color: bottleneck.trend === "improving" ? C.green : bottleneck.trend === "declining" ? C.err : C.white, marginLeft: "auto" }}>
                           {bottleneck.trend === "improving" ? "↑ Iyilesiyor" : bottleneck.trend === "declining" ? "↓ Kotuye" : "→ Stabil"}
                         </span>
                       </div>
@@ -1252,7 +1252,7 @@ export default function EnginePage() {
             <div key="ontology" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.amber}15`, color: C.amber, border: `1px solid ${C.amber}30` }}>02</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: C.white, border: "1px solid rgba(255,255,255,0.15)" }}>02</span>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Ontology</span>
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
@@ -1263,15 +1263,15 @@ export default function EnginePage() {
                 const eOut = summary?.lines?.[0]?.totalOutput || 0;
                 const gOut = summary?.lines?.[1]?.totalOutput || 0;
                 const nds: { key: OntoNode; label: string; sub: string; color: string; x: number; y: number }[] = [
-                  { key: "facility", label: "Cukurova Isi", sub: "Gebze · Aktif", color: C.green, x: 0, y: 0 },
-                  { key: "elektrikli", label: "Elektrikli Hat", sub: `${fmt(eOut)} uretim`, color: C.indigo, x: -140, y: 80 },
-                  { key: "gazli", label: "Gazli Hat", sub: `${fmt(gOut)} uretim`, color: C.pink, x: 140, y: 80 },
-                  { key: "workers", label: `${workersData.length || 16} Calisan`, sub: "6 dept", color: C.amber, x: 0, y: -90 },
-                  { key: "operations", label: "24 Operasyon", sub: `${fmt(summary?.totalProduction || 0)} toplam`, color: C.pink, x: -170, y: 170 },
-                  { key: "products", label: "21 Urun", sub: "E + G", color: "#a78bfa", x: 0, y: 180 },
-                  { key: "schedules", label: `${schedsData.length || 23} Cizelge`, sub: "Haftalik", color: "#fb923c", x: 170, y: 170 },
-                  { key: "capacity", label: "Kapasite", sub: "%64 / %87", color: "#38bdf8", x: 195, y: -30 },
-                  { key: "kpi", label: "KPI", sub: "Tanimlanmadi", color: "#f87171", x: -195, y: -40 },
+                  { key: "facility", label: "Cukurova Isi", sub: "Gebze · Aktif", color: C.white, x: 0, y: 0 },
+                  { key: "elektrikli", label: "Elektrikli Hat", sub: `${fmt(eOut)} uretim`, color: C.white, x: -140, y: 80 },
+                  { key: "gazli", label: "Gazli Hat", sub: `${fmt(gOut)} uretim`, color: C.white, x: 140, y: 80 },
+                  { key: "workers", label: `${workersData.length || 16} Calisan`, sub: "6 dept", color: C.white, x: 0, y: -90 },
+                  { key: "operations", label: "24 Operasyon", sub: `${fmt(summary?.totalProduction || 0)} toplam`, color: C.white, x: -170, y: 170 },
+                  { key: "products", label: "21 Urun", sub: "E + G", color: C.white, x: 0, y: 180 },
+                  { key: "schedules", label: `${schedsData.length || 23} Cizelge`, sub: "Haftalik", color: C.white, x: 170, y: 170 },
+                  { key: "capacity", label: "Kapasite", sub: "%64 / %87", color: C.white, x: 195, y: -30 },
+                  { key: "kpi", label: "KPI", sub: "Tanimlanmadi", color: C.white, x: -195, y: -40 },
                 ];
                 const eds = [
                   { from: "facility", to: "elektrikli", label: "has_line" },
@@ -1341,15 +1341,15 @@ export default function EnginePage() {
 
               {/* Facility */}
               {ontoNode === "facility" && (
-                <PanelSection title="Tesis" color={C.green}>
+                <PanelSection title="Tesis" color={C.white}>
                   <div style={{ padding: 10, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10 }}>
                     <div style={{ fontSize: 12, fontWeight: 700, marginBottom: 4 }}>Cukurova Isi Sistemleri</div>
                     <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.6 }}>Gebze, Kocaeli · Aktif</div>
                     <div style={{ fontSize: 12, color: C.mid }}>2 Uretim Hatti · {workersData.length || 16} Calisan</div>
                     {summary && (
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 8 }}>
-                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.green} />
-                        <MetricCard value={summary.peakMonth?.ay || "-"} label={`Pik: ${fmt(summary.peakMonth?.total || 0)}`} color={C.amber} />
+                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.white} />
+                        <MetricCard value={summary.peakMonth?.ay || "-"} label={`Pik: ${fmt(summary.peakMonth?.total || 0)}`} color={C.white} />
                       </div>
                     )}
                   </div>
@@ -1362,10 +1362,10 @@ export default function EnginePage() {
                 const line = summary?.lines?.[idx];
                 if (!line) return null;
                 return (
-                  <PanelSection title={line.name || ontoNode} color={ontoNode === "elektrikli" ? C.indigo : C.pink}>
+                  <PanelSection title={line.name || ontoNode} color={C.white}>
                     <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                      <MetricCard value={fmt(line.totalOutput || 0)} label="Toplam Uretim" color={ontoNode === "elektrikli" ? C.indigo : C.pink} />
-                      <MetricCard value={`%${Math.round(line.utilizationPct || 0)}`} label="Kapasite" color={line.utilizationPct > 80 ? C.green : C.amber} />
+                      <MetricCard value={fmt(line.totalOutput || 0)} label="Toplam Uretim" color={C.white} />
+                      <MetricCard value={`%${Math.round(line.utilizationPct || 0)}`} label="Kapasite" color={C.white} />
                     </div>
                     <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.7 }}>
                       {line.workerCount} calisan · Teorik: {line.capacityUnitTimeMin}dk · Gercek: {line.currentUnitTimeMin}dk
@@ -1378,7 +1378,7 @@ export default function EnginePage() {
               {ontoNode === "workers" && (
                 <>
                   {wfRisk && (
-                    <PanelSection title="Risk Analizi" color={C.amber}>
+                    <PanelSection title="Risk Analizi" color={C.white}>
                       <div style={{ display: "flex", gap: 8, alignItems: "center", marginBottom: 8 }}>
                         <SeverityBadge level={wfRisk.risk_level} />
                         <span style={{ fontSize: 12, color: C.mid }}>Skor: <strong style={{ color: C.white }}>{wfRisk.risk_score}/100</strong></span>
@@ -1387,19 +1387,19 @@ export default function EnginePage() {
                         <div style={{ marginBottom: 8 }}>
                           <div style={{ fontSize: 11, fontWeight: 700, color: C.err, marginBottom: 3 }}>TEK KISIYE BAGLI</div>
                           {wfRisk.single_point_failures.map((f, i) => (
-                            <div key={i} style={{ fontSize: 12, color: C.mid, padding: "1px 0" }}>{f.capability_name} → <span style={{ color: C.amber }}>{f.sole_worker_name}</span></div>
+                            <div key={i} style={{ fontSize: 12, color: C.mid, padding: "1px 0" }}>{f.capability_name} → <span style={{ color: C.white }}>{f.sole_worker_name}</span></div>
                           ))}
                         </div>
                       )}
                       {wfRisk.critical_workers.slice(0, 3).map((w, i) => (
                         <div key={i} style={{ padding: "5px 8px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, marginBottom: 3 }}>
                           <div style={{ fontSize: 12, fontWeight: 600 }}>{w.name} <span style={{ color: C.dim, fontWeight: 400 }}>({w.department})</span></div>
-                          <div style={{ fontSize: 11, color: C.amber }}>{w.capability_count} yetkinlik, {w.unique_capabilities.length} benzersiz</div>
+                          <div style={{ fontSize: 11, color: C.white }}>{w.capability_count} yetkinlik, {w.unique_capabilities.length} benzersiz</div>
                         </div>
                       ))}
                     </PanelSection>
                   )}
-                  <PanelSection title="Calisanlar" color={C.amber}>
+                  <PanelSection title="Calisanlar" color={C.white}>
                     <div style={{ maxHeight: 180, overflowY: "auto" }}>
                       {workersData.slice(0, 12).map((w: any) => (
                         <div key={w.id} onClick={() => fetchTrustScore(w.id)}
@@ -1411,7 +1411,7 @@ export default function EnginePage() {
                             </div>
                             {trustScores[w.id] && (
                               <div style={{ textAlign: "right" }}>
-                                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.amber : C.err }}>
+                                <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: trustScores[w.id].trust_score >= 70 ? C.green : trustScores[w.id].trust_score >= 40 ? C.white : C.err }}>
                                   {trustScores[w.id].trust_score}
                                 </div>
                                 <div style={{ fontSize: 9, color: C.dim }}>trust</div>
@@ -1427,12 +1427,12 @@ export default function EnginePage() {
 
               {/* Operations */}
               {ontoNode === "operations" && (
-                <PanelSection title="Operasyonlar" color={C.pink}>
+                <PanelSection title="Operasyonlar" color={C.white}>
                   {summary ? (
                     <>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 8 }}>
-                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.green} />
-                        <MetricCard value={fmt(summary.lines?.[0]?.totalOutput || 0)} label="Elektrikli" color={C.indigo} />
+                        <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam" color={C.white} />
+                        <MetricCard value={fmt(summary.lines?.[0]?.totalOutput || 0)} label="Elektrikli" color={C.white} />
                       </div>
                       {summary.monthlyData?.length > 0 && (
                         <ResponsiveContainer width="100%" height={120}>
@@ -1440,8 +1440,8 @@ export default function EnginePage() {
                             <XAxis dataKey="ay" tick={{ fontSize: 11, fill: C.dim }} axisLine={false} tickLine={false} />
                             <YAxis hide />
                             <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 8, fontSize: 12, fontFamily: mono }} />
-                            <Bar dataKey="e" fill={C.indigo} radius={[2, 2, 0, 0]} name="E" />
-                            <Bar dataKey="g" fill={C.pink} radius={[2, 2, 0, 0]} name="G" />
+                            <Bar dataKey="e" fill="rgba(255,255,255,0.6)" radius={[2, 2, 0, 0]} name="E" />
+                            <Bar dataKey="g" fill="rgba(255,255,255,0.25)" radius={[2, 2, 0, 0]} name="G" />
                           </BarChart>
                         </ResponsiveContainer>
                       )}
@@ -1452,20 +1452,20 @@ export default function EnginePage() {
 
               {/* Products */}
               {ontoNode === "products" && (
-                <PanelSection title="Urunler" color="#a78bfa">
+                <PanelSection title="Urunler" color={C.white}>
                   <div style={{ marginBottom: 8 }}>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.indigo, marginBottom: 4 }}>ELEKTRIKLI</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.white, marginBottom: 4 }}>ELEKTRIKLI</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {["GSS20P", "GSS40P", "GSN20", "GSN40", "GSA", "GSU15", "GSU20", "MGS", "GSSP", "GSSK", "GST"].map(p => (
-                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: `${C.indigo}10`, border: `1px solid ${C.indigo}20`, color: C.indigo }}>{p}</span>
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: C.white }}>{p}</span>
                       ))}
                     </div>
                   </div>
                   <div>
-                    <div style={{ fontSize: 11, fontWeight: 700, color: C.pink, marginBottom: 4 }}>GAZLI</div>
+                    <div style={{ fontSize: 11, fontWeight: 700, color: C.white, marginBottom: 4 }}>GAZLI</div>
                     <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
                       {["ELT.7-11", "CC.7-11", "CPH.33", "BH 55", "SSP 40", "SSP 60", "DHP 33", "DHP 50", "WHP 20", "WHP 33"].map(p => (
-                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: `${C.pink}10`, border: `1px solid ${C.pink}20`, color: C.pink }}>{p}</span>
+                        <span key={p} style={{ padding: "3px 8px", borderRadius: 12, fontSize: 11, fontFamily: mono, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", color: C.white }}>{p}</span>
                       ))}
                     </div>
                   </div>
@@ -1477,10 +1477,10 @@ export default function EnginePage() {
                 <>
                   {/* Motor accuracy badge — always visible top-right */}
                   {motorAccuracy && motorAccuracy.completed_plans > 0 && (
-                    <div style={{ position: "absolute", top: 8, right: 8, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(251,146,60,0.08)", border: "1px solid rgba(251,146,60,0.2)" }}>
-                      <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color="#fb923c" size={32} stroke={3} />
+                    <div style={{ position: "absolute", top: 8, right: 8, display: "flex", alignItems: "center", gap: 6, padding: "4px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)" }}>
+                      <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color={C.white} size={32} stroke={3} />
                       <div>
-                        <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: "#fb923c" }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
+                        <div style={{ fontFamily: mono, fontSize: 14, fontWeight: 700, color: C.white }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
                         <div style={{ fontSize: 11, color: C.dim }}>Motor Dogrulugu</div>
                       </div>
                     </div>
@@ -1491,9 +1491,9 @@ export default function EnginePage() {
                     {linesData.map((line: any) => (
                       <button key={line.id} onClick={() => { setForecastLineId(line.id); setForecastResult(null); setPlanSaved(false); fetchCurrentWeekPlan(line.id); }} style={{
                         flex: 1, padding: "14px 0", fontSize: 14, fontFamily: sans, fontWeight: 700, borderRadius: 10, cursor: "pointer",
-                        background: forecastLineId === line.id ? "rgba(251,146,60,0.15)" : "transparent",
-                        border: `2px solid ${forecastLineId === line.id ? "#fb923c" : C.cardBorder}`,
-                        color: forecastLineId === line.id ? "#fb923c" : C.dim, textAlign: "center", transition: "all 0.2s",
+                        background: forecastLineId === line.id ? "rgba(255,255,255,0.06)" : "transparent",
+                        border: `2px solid ${forecastLineId === line.id ? C.white : C.cardBorder}`,
+                        color: forecastLineId === line.id ? C.white : C.dim, textAlign: "center", transition: "all 0.2s",
                       }}>{line.name || `Hat ${line.id}`}</button>
                     ))}
                   </div>
@@ -1517,17 +1517,17 @@ export default function EnginePage() {
                         <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color={C.mid} />
                         <MetricCard value={fmt(currentWeekPlan.actual_qty || 0)} label="Gercek" color={C.green} />
                         <MetricCard value={`%${Math.round(parseFloat(currentWeekPlan.realization_rate || "0") * 100)}`} label="Oran"
-                          color={parseFloat(currentWeekPlan.realization_rate || "0") >= 0.9 ? C.green : parseFloat(currentWeekPlan.realization_rate || "0") >= 0.7 ? "#fb923c" : C.err} />
+                          color={parseFloat(currentWeekPlan.realization_rate || "0") >= 0.9 ? C.green : parseFloat(currentWeekPlan.realization_rate || "0") >= 0.7 ? C.white : C.err} />
                       </div>
                     </div>
                   )}
 
                   {/* STATE C: Plan exists + not completed → show complete input */}
                   {currentWeekPlan && currentWeekPlan.status === "planned" && (
-                    <PanelSection title="Gercekleseni Gir" color={C.green}>
+                    <PanelSection title="Gercekleseni Gir" color={C.white}>
                       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginBottom: 10 }}>
-                        <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color="#fb923c" />
-                        {currentWeekPlan.predicted_qty && <MetricCard value={fmt(currentWeekPlan.predicted_qty)} label="Motor Tahmini" color={C.indigo} />}
+                        <MetricCard value={fmt(currentWeekPlan.planned_qty)} label="Plan" color={C.white} />
+                        {currentWeekPlan.predicted_qty && <MetricCard value={fmt(currentWeekPlan.predicted_qty)} label="Motor Tahmini" color={C.white} />}
                       </div>
                       <div style={{ display: "flex", gap: 4, marginBottom: 6 }}>
                         <input type="number" value={completeInputs[currentWeekPlan.id] || ""} onChange={e => setCompleteInputs(prev => ({ ...prev, [currentWeekPlan.id]: e.target.value }))}
@@ -1559,7 +1559,7 @@ export default function EnginePage() {
                   {/* STATE D: No plan → normal new plan form */}
                   {currentWeekPlan === null && (
                     <>
-                      <PanelSection title="Bu hafta ne planliyorsunuz?" color="#fb923c">
+                      <PanelSection title="Bu hafta ne planliyorsunuz?" color={C.white}>
                         <div style={{ textAlign: "center", marginBottom: 10 }}>
                           <input type="number" value={forecastPlanQty} onChange={e => setForecastPlanQty(e.target.value)} placeholder="Hedef miktar"
                             style={{ width: "100%", padding: "16px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 10,
@@ -1568,16 +1568,16 @@ export default function EnginePage() {
                         </div>
                         <button onClick={runForecast} disabled={forecastLoading || !forecastPlanQty}
                           style={{ width: "100%", padding: "14px", borderRadius: 10, fontSize: 18, fontWeight: 700, cursor: "pointer",
-                            background: forecastLoading ? C.dim : "linear-gradient(135deg, #fb923c, #f97316)", color: "#000", border: "none",
+                            background: forecastLoading ? C.dim : C.white, color: "#000", border: "none",
                             opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
                           }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
                       </PanelSection>
 
                       {/* Motor tahmini — inline result */}
                       {forecastResult && (
-                        <PanelSection title="Motor Tahmini" color="#fb923c">
+                        <PanelSection title="Motor Tahmini" color={C.white}>
                           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                            <span style={{ fontSize: 12, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(251,146,60,0.1)", color: "#fb923c" }}>
+                            <span style={{ fontSize: 12, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: C.white }}>
                               Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
                             </span>
                             {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
@@ -1587,7 +1587,7 @@ export default function EnginePage() {
                             )}
                           </div>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
-                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color="#fb923c" large />
+                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color={C.white} large />
                             <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} large />
                             <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} large />
                           </div>
@@ -1609,7 +1609,7 @@ export default function EnginePage() {
                             {forecastResult.scenarios.map((s, i) => (
                               <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 12, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
                                 <span style={{ color: C.mid }}>{s.name}</span>
-                                <span style={{ fontFamily: mono, fontWeight: 600, color: "#fb923c" }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
+                                <span style={{ fontFamily: mono, fontWeight: 600, color: C.white }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
                               </div>
                             ))}
                           </div>
@@ -1638,7 +1638,7 @@ export default function EnginePage() {
 
                   {/* 5. Son Planlar — unified table with inline complete */}
                   {motorAccuracy && (motorAccuracy.active_list.some(p => p.line_id === forecastLineId) || motorAccuracy.history.some(h => h.line_id === forecastLineId)) && (
-                    <PanelSection title="Son Planlar" color="#fb923c">
+                    <PanelSection title="Son Planlar" color={C.white}>
                       <div style={{ fontSize: 12, fontFamily: mono, color: C.dim, marginBottom: 8 }}>
                         {forecastLineId === 1 ? "Elektrikli" : "Gazli"} hatti
                       </div>
@@ -1656,18 +1656,18 @@ export default function EnginePage() {
                         <div key={`active-${p.id}`} style={{ borderBottom: `1px solid ${done ? `${C.green}30` : C.cardBorder}`,
                           background: done ? "rgba(52,211,153,0.06)" : "transparent", transition: "background 0.4s ease" }}>
                           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px", alignItems: "center" }}>
-                            <span style={{ fontSize: 14, fontFamily: mono, color: done ? C.green : "#fb923c", fontWeight: 600 }}>{p.week_label}</span>
+                            <span style={{ fontSize: 14, fontFamily: mono, color: done ? C.green : C.white, fontWeight: 600 }}>{p.week_label}</span>
                             <span style={{ fontSize: 14, fontFamily: mono, color: C.white, textAlign: "right" }}>{p.planned_qty}</span>
                             <span style={{ fontSize: 14, fontFamily: mono, textAlign: "right", color: done ? C.green : C.white, fontWeight: done ? 700 : 400 }}>
                               {done ? done.actual : "-"}
                             </span>
                             <span style={{ fontSize: 14, fontFamily: mono, textAlign: "right" }}>
                               {done ? (
-                                <span style={{ fontWeight: 700, color: done.rate >= 90 ? C.green : done.rate >= 70 ? "#fb923c" : C.err }}>%{done.rate}</span>
+                                <span style={{ fontWeight: 700, color: done.rate >= 90 ? C.green : done.rate >= 70 ? C.white : C.err }}>%{done.rate}</span>
                               ) : (
                                 <button onClick={() => setCompleteInputs(prev => ({ ...prev, [p.id]: "" }))}
                                   style={{ padding: "3px 10px", borderRadius: 4, fontSize: 12, fontWeight: 700, cursor: "pointer",
-                                    background: "rgba(251,146,60,0.12)", border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c" }}>
+                                    background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.15)", color: C.white }}>
                                   Tamamla
                                 </button>
                               )}
@@ -1675,7 +1675,7 @@ export default function EnginePage() {
                           </div>
                           {/* Expanded inline input */}
                           {!done && completeInputs[p.id] !== undefined && (
-                            <div style={{ padding: "10px", background: "rgba(251,146,60,0.04)", borderRadius: 8, margin: "4px 8px 8px" }}>
+                            <div style={{ padding: "10px", background: "rgba(255,255,255,0.02)", borderRadius: 8, margin: "4px 8px 8px" }}>
                               <div style={{ fontSize: 12, color: C.mid, marginBottom: 8 }}>Gerceklesen miktari girin:</div>
                               <div style={{ display: "flex", gap: 4, marginBottom: 8 }}>
                                 <input type="number" value={completeInputs[p.id]} onChange={e => setCompleteInputs(prev => ({ ...prev, [p.id]: e.target.value }))}
@@ -1709,7 +1709,7 @@ export default function EnginePage() {
                       {/* Completed plans — green tinted */}
                       {motorAccuracy.history.filter(h => h.line_id === forecastLineId).slice(0, 3).map((h, i) => {
                         const rate = h.realization_rate != null ? Math.round(h.realization_rate * 100) : null;
-                        const rowColor = rate != null && rate >= 90 ? C.green : rate != null && rate >= 70 ? "#fb923c" : C.err;
+                        const rowColor = rate != null && rate >= 90 ? C.green : rate != null && rate >= 70 ? C.white : C.err;
                         return (
                         <div key={`hist-${i}`} style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 2, padding: "8px 8px",
                           borderBottom: `1px solid ${C.cardBorder}`, background: "rgba(52,211,153,0.03)", borderLeft: `2px solid ${rowColor}` }}>
@@ -1729,11 +1729,11 @@ export default function EnginePage() {
 
               {/* Capacity */}
               {ontoNode === "capacity" && (
-                <PanelSection title="Kapasite Metrikleri" color="#38bdf8">
+                <PanelSection title="Kapasite Metrikleri" color={C.white}>
                   <div style={{ display: "flex", gap: 20, justifyContent: "center", marginBottom: 10 }}>
                     {(summary?.lines || []).map((line: any) => (
                       <div key={line.id} style={{ textAlign: "center" }}>
-                        <Ring pct={line.utilizationPct || 0} color={line.type === "elektrikli" ? C.indigo : C.pink} size={56} stroke={4} />
+                        <Ring pct={line.utilizationPct || 0} color={C.white} size={56} stroke={4} />
                         <div style={{ fontSize: 12, fontWeight: 700, marginTop: 3 }}>%{Math.round(line.utilizationPct || 0)}</div>
                         <div style={{ fontSize: 11, color: C.mid }}>{line.name}</div>
                       </div>
@@ -1750,7 +1750,7 @@ export default function EnginePage() {
 
               {/* KPI */}
               {ontoNode === "kpi" && (
-                <PanelSection title="KPI" color="#f87171">
+                <PanelSection title="KPI" color={C.white}>
                   <div style={{ textAlign: "center", padding: "20px 0", color: C.dim }}>
                     <div style={{ fontSize: 22, marginBottom: 8 }}>📊</div>
                     <div style={{ fontSize: 12 }}>Henuz KPI tanimlanmadi</div>
@@ -1765,7 +1765,7 @@ export default function EnginePage() {
             <div key="ingestion" style={{ animation: "engSlideIn 0.3s ease" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: `${C.pink}15`, color: C.pink, border: `1px solid ${C.pink}30` }}>01</span>
+                  <span style={{ padding: "3px 10px", borderRadius: 6, fontSize: 12, fontWeight: 600, background: "rgba(255,255,255,0.06)", color: C.white, border: "1px solid rgba(255,255,255,0.15)" }}>01</span>
                   <span style={{ fontSize: 14, fontWeight: 700 }}>Veri Kaynaklari</span>
                 </div>
                 <button onClick={() => setActiveLayer(null)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
@@ -1796,14 +1796,14 @@ export default function EnginePage() {
                 onClick={() => fileInputRef.current?.click()}
                 style={{
                   padding: "32px 20px", borderRadius: 12, textAlign: "center", cursor: "pointer",
-                  border: `2px dashed ${uploadDragging ? C.pink : C.cardBorder}`, background: uploadDragging ? "rgba(244,114,182,0.04)" : "transparent",
+                  border: `2px dashed ${uploadDragging ? C.white : C.cardBorder}`, background: uploadDragging ? "rgba(255,255,255,0.04)" : "transparent",
                   transition: "all 0.2s", marginBottom: 16,
                 }}>
                 <input ref={fileInputRef} type="file" accept=".xlsx,.xls,.csv" style={{ display: "none" }}
                   onChange={e => { if (e.target.files?.[0]) { setUploadFile(e.target.files[0]); } }} />
                 <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
                 {uploadFile ? (
-                  <div style={{ fontSize: 12, color: C.pink, fontWeight: 600 }}>{uploadFile.name}</div>
+                  <div style={{ fontSize: 12, color: C.white, fontWeight: 600 }}>{uploadFile.name}</div>
                 ) : (
                   <div style={{ fontSize: 12, color: C.dim }}>Dosya surukle veya tikla</div>
                 )}
@@ -1811,14 +1811,14 @@ export default function EnginePage() {
 
               {uploadFile && !uploadLoading && !uploadResult && !uploadNeedsType && (
                 <button onClick={() => handleUpload()} style={{
-                  width: "100%", padding: "10px", borderRadius: 8, background: C.pink, color: "#000", fontSize: 12, fontWeight: 600,
+                  width: "100%", padding: "10px", borderRadius: 8, background: C.white, color: "#000", fontSize: 12, fontWeight: 600,
                   border: "none", cursor: "pointer", marginBottom: 12,
                 }}>Yukle ve Islem Yap</button>
               )}
               {uploadLoading && <div style={{ textAlign: "center", fontSize: 12, color: C.mid, padding: 16 }}>Isleniyor...</div>}
               {uploadNeedsType && (
                 <div style={{ padding: 12, background: "rgba(251,146,60,0.06)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 10, marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: "#fb923c", marginBottom: 8 }}>Dosya turu otomatik belirlenemedi</div>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: C.white, marginBottom: 8 }}>Dosya turu otomatik belirlenemedi</div>
                   <div style={{ fontSize: 11, color: C.mid, marginBottom: 8 }}>Lutfen dosya turunu secin:</div>
                   <select value={uploadSelectedType} onChange={e => setUploadSelectedType(e.target.value)}
                     style={{
@@ -1830,7 +1830,7 @@ export default function EnginePage() {
                     ))}
                   </select>
                   <button onClick={() => { setUploadNeedsType(null); handleUpload(uploadSelectedType); }} style={{
-                    width: "100%", padding: "10px", borderRadius: 8, background: "#fb923c", color: "#000", fontSize: 12, fontWeight: 600,
+                    width: "100%", padding: "10px", borderRadius: 8, background: C.white, color: "#000", fontSize: 12, fontWeight: 600,
                     border: "none", cursor: "pointer",
                   }}>Bu Turle Yukle</button>
                 </div>
@@ -1841,9 +1841,9 @@ export default function EnginePage() {
                     <span style={{ fontSize: 12, fontWeight: 700, color: C.green }}>Basarili</span>
                     {uploadResult.detection_method && (
                       <span style={{ fontSize: 10, fontFamily: mono, padding: "1px 6px", borderRadius: 3,
-                        background: uploadResult.detection_method === "ai" ? "rgba(99,102,241,0.15)" : "rgba(52,211,153,0.1)",
-                        color: uploadResult.detection_method === "ai" ? C.indigo : C.green,
-                        border: `1px solid ${uploadResult.detection_method === "ai" ? "rgba(99,102,241,0.3)" : "rgba(52,211,153,0.2)"}`,
+                        background: "rgba(255,255,255,0.06)",
+                        color: C.white,
+                        border: "1px solid rgba(255,255,255,0.12)",
                       }}>
                         {uploadResult.detection_method === "ai" ? "AI algilama" : uploadResult.detection_method === "manual" ? "Manuel secim" : "Icerik algilama"}
                       </span>
@@ -1875,7 +1875,7 @@ export default function EnginePage() {
               })()}
 
               {/* Parser list */}
-              <PanelSection title="Parser'lar" color={C.pink}>
+              <PanelSection title="Parser'lar" color={C.white}>
                 {[
                   { name: "ElektrikliParser", target: "operations (elektrikli)", hint: "Elektrikli Imalat Raporu" },
                   { name: "GazliParser", target: "operations (gazli)", hint: "Gazli Imalat Raporu" },
@@ -1886,7 +1886,7 @@ export default function EnginePage() {
                 ].map(p => (
                   <div key={p.name} style={{ padding: "6px 0", fontSize: 12, borderBottom: `1px solid ${C.cardBorder}` }}>
                     <div style={{ display: "flex", justifyContent: "space-between" }}>
-                      <span style={{ fontFamily: mono, color: C.pink }}>{p.name}</span>
+                      <span style={{ fontFamily: mono, color: C.white }}>{p.name}</span>
                       <span style={{ color: C.dim }}>→ {p.target}</span>
                     </div>
                     <div style={{ fontSize: 11, color: C.dim, marginTop: 1 }}>Tetikleyici: "{p.hint}"</div>
@@ -1902,10 +1902,10 @@ export default function EnginePage() {
 
               {summary ? (
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 20 }}>
-                  <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.green} />
-                  <MetricCard value={String(summary.lines?.length || 2)} label="Uretim Hatti" color={C.indigo} />
-                  <MetricCard value="16" label="Calisan" color={C.amber} />
-                  <MetricCard value="24" label="Operasyon" color={C.pink} />
+                  <MetricCard value={fmt(summary.totalProduction || 0)} label="Toplam Uretim" color={C.white} />
+                  <MetricCard value={String(summary.lines?.length || 2)} label="Uretim Hatti" color={C.white} />
+                  <MetricCard value="16" label="Calisan" color={C.white} />
+                  <MetricCard value="24" label="Operasyon" color={C.white} />
                 </div>
               ) : (
                 <div style={{ textAlign: "center", padding: 20, color: C.dim, fontSize: 12 }}>Yukleniyor...</div>
@@ -1917,10 +1917,10 @@ export default function EnginePage() {
 
               <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 12 }}>
                 {[
-                  { n: "10", label: "Tablo", color: C.pink },
-                  { n: "8", label: "Entity", color: C.amber },
-                  { n: "5", label: "Fonksiyon", color: C.indigo },
-                  { n: "5", label: "Uygulama", color: C.green },
+                  { n: "10", label: "Tablo", color: C.white },
+                  { n: "8", label: "Entity", color: C.white },
+                  { n: "5", label: "Fonksiyon", color: C.white },
+                  { n: "5", label: "Uygulama", color: C.white },
                 ].map(s => (
                   <div key={s.label} style={{ padding: "12px", borderRadius: 10, background: C.card, border: `1px solid ${C.cardBorder}`, textAlign: "center" }}>
                     <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: s.color }}>{s.n}</div>
@@ -1932,10 +1932,10 @@ export default function EnginePage() {
               {/* Flow summary */}
               <div style={{ marginTop: 20, display: "flex", flexDirection: "column", gap: 8 }}>
                 {[
-                  { label: "Ham Veri", color: C.pink },
-                  { label: "Ontology", color: C.amber },
-                  { label: "Intelligence", color: C.indigo },
-                  { label: "Aksiyon", color: C.green },
+                  { label: "Ham Veri", color: C.white },
+                  { label: "Ontology", color: C.white },
+                  { label: "Intelligence", color: C.white },
+                  { label: "Aksiyon", color: C.white },
                 ].map((step, i) => (
                   <div key={step.label} style={{ display: "flex", alignItems: "center", gap: 10 }}>
                     <span style={{ width: 20, height: 20, borderRadius: 6, background: `${step.color}15`, border: `1px solid ${step.color}30`,
@@ -1955,11 +1955,11 @@ export default function EnginePage() {
         <span style={{ fontSize: 12, color: C.dim, fontFamily: mono }}>9 Entity · 89 Kayit · 5 Fonksiyon</span>
         <div style={{ display: "flex", gap: 4, alignItems: "center" }}>
           {["Excel", "ERP", "CSV", "API"].map(s => (
-            <span key={s} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: `${C.pink}10`, color: C.pink, border: `1px solid ${C.pink}20` }}>{s}</span>
+            <span key={s} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: "rgba(255,255,255,0.04)", color: C.white, border: "1px solid rgba(255,255,255,0.1)" }}>{s}</span>
           ))}
           <span style={{ width: 1, height: 12, background: C.cardBorder, margin: "0 4px" }} />
           {["simulateCapacity", "detectBottleneck", "scoreWorkerRisk", "forecastOutput"].map(f => (
-            <span key={f} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: `${C.indigo}10`, color: C.indigo, border: `1px solid ${C.indigo}20` }}>{f}</span>
+            <span key={f} style={{ padding: "2px 6px", borderRadius: 3, fontSize: 11, fontFamily: mono, background: "rgba(255,255,255,0.04)", color: C.white, border: "1px solid rgba(255,255,255,0.1)" }}>{f}</span>
           ))}
         </div>
         <span style={{ fontSize: 11, color: C.dim, fontFamily: mono }}>Powered by Griseus Engine v1</span>
@@ -1980,23 +1980,23 @@ export default function EnginePage() {
               onDrop={e => { e.preventDefault(); setUploadDragging(false); if (e.dataTransfer.files[0]) setUploadFile(e.dataTransfer.files[0]); }}
               onClick={() => fileInputRef.current?.click()}
               style={{ padding: "40px 20px", borderRadius: 12, textAlign: "center", cursor: "pointer",
-                border: `2px dashed ${uploadDragging ? C.indigo : C.cardBorder}`, transition: "all 0.2s", marginBottom: 16 }}>
+                border: `2px dashed ${uploadDragging ? C.white : C.cardBorder}`, transition: "all 0.2s", marginBottom: 16 }}>
               <div style={{ fontSize: 28, marginBottom: 8 }}>📂</div>
               {uploadFile ? (
-                <div style={{ fontSize: 12, color: C.indigo, fontWeight: 600 }}>{uploadFile.name}</div>
+                <div style={{ fontSize: 12, color: C.white, fontWeight: 600 }}>{uploadFile.name}</div>
               ) : (
                 <div style={{ fontSize: 12, color: C.dim }}>Dosya surukle veya tikla</div>
               )}
             </div>
             {uploadFile && !uploadLoading && !uploadResult && !uploadNeedsType && (
               <button onClick={async () => { handleUpload(); }}
-                style={{ width: "100%", padding: "12px", borderRadius: 8, background: C.indigo, color: "#000", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>
+                style={{ width: "100%", padding: "12px", borderRadius: 8, background: C.white, color: "#000", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>
                 Yukle
               </button>
             )}
             {uploadNeedsType && (
               <div style={{ padding: 12, background: "rgba(251,146,60,0.06)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 10, marginBottom: 12 }}>
-                <div style={{ fontSize: 12, fontWeight: 700, color: "#fb923c", marginBottom: 8 }}>Dosya turu belirlenemedi</div>
+                <div style={{ fontSize: 12, fontWeight: 700, color: C.white, marginBottom: 8 }}>Dosya turu belirlenemedi</div>
                 <select value={uploadSelectedType} onChange={e => setUploadSelectedType(e.target.value)}
                   style={{ width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12, fontFamily: sans,
                     background: C.card, border: `1px solid ${C.cardBorder}`, color: C.white, marginBottom: 8, outline: "none" }}>
@@ -2005,7 +2005,7 @@ export default function EnginePage() {
                   ))}
                 </select>
                 <button onClick={() => { setUploadNeedsType(null); handleUpload(uploadSelectedType); }} style={{
-                  width: "100%", padding: "10px", borderRadius: 8, background: "#fb923c", color: "#000", fontSize: 12, fontWeight: 600,
+                  width: "100%", padding: "10px", borderRadius: 8, background: C.white, color: "#000", fontSize: 12, fontWeight: 600,
                   border: "none", cursor: "pointer",
                 }}>Bu Turle Yukle</button>
               </div>
@@ -2030,8 +2030,8 @@ export default function EnginePage() {
         @keyframes engFloat { 0%,100% { transform:translateY(0); } 50% { transform:translateY(-3px); } }
         @keyframes engFadeIn { from { opacity:0; transform:translateY(8px); } to { opacity:1; transform:translateY(0); } }
         @keyframes engSlideIn { from { opacity:0; transform:translateX(12px); } to { opacity:1; transform:translateX(0); } }
-        input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:${C.indigo}; cursor:pointer; box-shadow:0 0 6px ${C.indigo}55; }
-        input[type=range]::-webkit-slider-thumb:hover { box-shadow:0 0 12px ${C.indigo}88; }
+        input[type=range]::-webkit-slider-thumb { -webkit-appearance:none; width:12px; height:12px; border-radius:50%; background:${C.white}; cursor:pointer; box-shadow:0 0 6px rgba(255,255,255,0.3); }
+        input[type=range]::-webkit-slider-thumb:hover { box-shadow:0 0 12px rgba(255,255,255,0.5); }
         @media (max-width: 900px) {
           div[style*="gridTemplateColumns: 1fr 520px"] { grid-template-columns: 1fr !important; }
         }
