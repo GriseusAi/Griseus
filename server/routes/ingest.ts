@@ -231,7 +231,29 @@ function findSheetByPattern(wb: XLSX.WorkBook, pattern: RegExp): string | null {
 }
 
 function findWeeklySheets(wb: XLSX.WorkBook): string[] {
-  return wb.SheetNames.filter(n => /\d+\.?\s*HAFTA/i.test(n));
+  return wb.SheetNames.filter(n => {
+    const norm = normalizeTR(n);
+    // "44.HAFTA", "44 HAFTA", "44. HAFTA"
+    if (/\d+\.?\s*HAFTA/i.test(norm)) return true;
+    // "2026-W11", "W11", "W-11"
+    if (/W-?\d+/i.test(n)) return true;
+    // "Week 11", "Week11"
+    if (/WEEK\s*\d+/i.test(n)) return true;
+    return false;
+  });
+}
+
+/** Extract week number from sheet name */
+function extractWeekNum(sheetName: string): string {
+  // "2026-W11" → "11", "W-11" → "11", "W11" → "11"
+  let m = sheetName.match(/W-?(\d+)/i);
+  if (m) return m[1];
+  // "Week 11" → "11"
+  m = sheetName.match(/WEEK\s*(\d+)/i);
+  if (m) return m[1];
+  // "44.HAFTA" → "44"
+  m = sheetName.match(/(\d+)/);
+  return m ? m[1] : sheetName;
 }
 
 async function getLineId(type: "elektrikli" | "gazli"): Promise<number | null> {
@@ -318,8 +340,7 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
   const weeklySheets = findWeeklySheets(wb);
   for (const wsName of weeklySheets) {
     const wRows = sheetToRows(wb, wsName);
-    const weekMatch = wsName.match(/(\d+)/);
-    const weekNum = weekMatch ? weekMatch[1] : wsName;
+    const weekNum = extractWeekNum(wsName);
     const periodValue = `H${weekNum}`;
 
     let plannedQty = 0, actualQty = 0;
@@ -361,6 +382,47 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
       await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue, plannedQty, actualQty, deviationPct });
       inserted++;
       tables.add("schedules");
+    }
+  }
+
+  // ── GENEL/DETAYLI sheet: rows containing "ELEKTRIKLI" or "ELT." with production data
+  for (let i = 0; i < rows.length; i++) {
+    const rowStr = rowToNorm(rows[i]);
+    // Match rows that reference this line type
+    if (!(rowStr.includes("ELEKTRIKLI") || rowStr.includes("ELT."))) continue;
+    // Skip if already captured via TOPLAM logic
+    if (rowStr.includes("TOPLAM")) continue;
+
+    // Try to extract plan and actual quantities from the row
+    const nums: number[] = [];
+    for (const cell of rows[i]) {
+      const v = Number(cell);
+      if (v > 0 && v < 100000) nums.push(v);
+    }
+    if (nums.length === 0) continue;
+
+    // If row has a week/period reference, treat as schedule data
+    const weekRef = rowStr.match(/H(\d+)|W-?(\d+)|HAFTA\s*(\d+)/);
+    if (weekRef && nums.length >= 1) {
+      const wn = weekRef[1] || weekRef[2] || weekRef[3];
+      const pv = `H${wn}`;
+      const pQty = nums[0];
+      const aQty = nums.length >= 2 ? nums[1] : 0;
+      const devPct = pQty > 0 ? String(Math.round(((aQty - pQty) / pQty) * 100)) : "0";
+
+      await db.insert(schedules).values({ lineId, periodType: "weekly", periodValue: pv, plannedQty: pQty, actualQty: aQty, deviationPct: devPct });
+      inserted++;
+      processed++;
+      tables.add("schedules");
+    } else if (nums.length >= 1) {
+      // No week ref — treat as a production operation row
+      await db.insert(operations).values({
+        lineId, actualQty: nums[0], status: "completed",
+        notes: `Excel import: GENEL sheet satır ${i + 1}`,
+      });
+      inserted++;
+      processed++;
+      tables.add("operations");
     }
   }
 
