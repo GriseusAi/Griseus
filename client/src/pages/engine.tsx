@@ -43,6 +43,7 @@ interface ForecastResult {
   motor_generation?: number; data_source?: string; data_points?: number; accuracy_trend?: string;
   seasonal_factor?: number | null; historical_same_week?: number | null;
   risk_flags?: string[]; current_week?: number; current_month?: number;
+  message?: string;
 }
 interface MotorAccuracy {
   total_plans: number; completed_plans: number; active_plans: number;
@@ -1577,14 +1578,14 @@ export default function EnginePage() {
                               background: forecastLoading ? C.dim : C.white, color: "#000", border: "none",
                               opacity: !forecastPlanQty ? 0.4 : 1, transition: "all 0.2s",
                             }}>{forecastLoading ? "Hesaplaniyor..." : "Motoru Sor"}</button>
-                          {forecastResult && (
+                          {forecastResult && forecastResult.predicted_output != null && (
                             <button onClick={() => {
                               const txt = [
-                                `Motor Tahmini — ${forecastResult.line_name}`,
-                                `Planlanan: ${forecastResult.planned_qty} | Tahmini: ${forecastResult.predicted_output} | Fark: ${forecastResult.gap >= 0 ? "+" : ""}${forecastResult.gap}`,
-                                `Guven: %${forecastResult.confidence} | Gerceklesme: %${forecastResult.avg_realization_rate}`,
-                                forecastResult.recommendation,
-                                forecastResult.scenarios.map(s => `  ${s.name}: ${s.predicted_output} (%${s.realization_rate})`).join("\n"),
+                                `Motor Tahmini — ${forecastResult.line_name || ""}`,
+                                `Planlanan: ${forecastResult.planned_qty ?? 0} | Tahmini: ${forecastResult.predicted_output} | Fark: ${(forecastResult.gap ?? 0) >= 0 ? "+" : ""}${forecastResult.gap ?? 0}`,
+                                `Guven: %${forecastResult.confidence ?? 0} | Gerceklesme: %${forecastResult.avg_realization_rate ?? 0}`,
+                                forecastResult.recommendation || "",
+                                ...(forecastResult.scenarios?.map(s => `  ${s.name}: ${s.predicted_output} (%${s.realization_rate})`) || []),
                                 ...(forecastResult.risk_flags?.length ? ["Risk: " + forecastResult.risk_flags.join(", ")] : []),
                               ].join("\n");
                               navigator.clipboard.writeText(txt);
@@ -1600,48 +1601,59 @@ export default function EnginePage() {
                       {/* Motor tahmini — inline result */}
                       {forecastResult && (
                         <PanelSection title="Motor Tahmini" color={C.white}>
-                          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
-                            <span style={{ fontSize: 12, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: C.white }}>
-                              Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
-                            </span>
-                            {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
-                              <span style={{ fontSize: 12, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
-                                {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
-                              </span>
-                            )}
-                          </div>
-                          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
-                            <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color={C.white} large />
-                            <MetricCard value={`%${forecastResult.confidence}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} large />
-                            <MetricCard value={`${forecastResult.gap >= 0 ? "+" : ""}${fmt(forecastResult.gap)}`} label="Fark" color={forecastResult.gap >= 0 ? C.green : C.err} large />
-                          </div>
-                          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
-                            <Ring pct={forecastResult.confidence} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
-                            <div style={{ flex: 1, fontSize: 14, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation}</div>
-                          </div>
-                          {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
-                            <div style={{ marginBottom: 8 }}>
-                              {forecastResult.risk_flags.map((flag, i) => (
-                                <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 12, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
-                                  {flag}
+                          {forecastResult.predicted_output != null ? (
+                            <>
+                              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+                                <span style={{ fontSize: 12, fontFamily: mono, padding: "3px 8px", borderRadius: 4, background: "rgba(255,255,255,0.06)", color: C.white }}>
+                                  Gen {forecastResult.motor_generation || 0} · {forecastResult.data_points || 0} veri
+                                </span>
+                                {forecastResult.accuracy_trend && forecastResult.accuracy_trend !== "neutral" && (
+                                  <span style={{ fontSize: 12, fontFamily: mono, color: forecastResult.accuracy_trend === "improving" ? C.green : C.err }}>
+                                    {forecastResult.accuracy_trend === "improving" ? "Gelisiyor" : "Dusuk"}
+                                  </span>
+                                )}
+                              </div>
+                              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 8 }}>
+                                <MetricCard value={fmt(forecastResult.predicted_output)} label="Tahmini Uretim" color={C.white} large />
+                                <MetricCard value={`%${forecastResult.confidence ?? 0}`} label="Guven" color={forecastResult.is_realistic ? C.green : C.err} large />
+                                <MetricCard value={`${(forecastResult.gap ?? 0) >= 0 ? "+" : ""}${fmt(forecastResult.gap ?? 0)}`} label="Fark" color={(forecastResult.gap ?? 0) >= 0 ? C.green : C.err} large />
+                              </div>
+                              <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 8 }}>
+                                <Ring pct={forecastResult.confidence ?? 0} color={forecastResult.is_realistic ? C.green : C.err} size={48} stroke={4} />
+                                <div style={{ flex: 1, fontSize: 14, color: C.mid, lineHeight: 1.5 }}>{forecastResult.recommendation || ""}</div>
+                              </div>
+                              {forecastResult.risk_flags && forecastResult.risk_flags.length > 0 && (
+                                <div style={{ marginBottom: 8 }}>
+                                  {forecastResult.risk_flags.map((flag, i) => (
+                                    <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 12, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                                      {flag}
+                                    </div>
+                                  ))}
                                 </div>
-                              ))}
+                              )}
+                              {forecastResult.scenarios && forecastResult.scenarios.length > 0 && (
+                                <div style={{ marginBottom: 8 }}>
+                                  <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 6 }}>SENARYOLAR</div>
+                                  {forecastResult.scenarios.map((s, i) => (
+                                    <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 12, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
+                                      <span style={{ color: C.mid }}>{s.name}</span>
+                                      <span style={{ fontFamily: mono, fontWeight: 600, color: C.white }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+                            </>
+                          ) : (
+                            <div style={{ textAlign: "center", padding: 16, color: C.mid, fontSize: 14, lineHeight: 1.6 }}>
+                              Motor henuz bu hat icin yeterli veriye sahip degil.
+                              {forecastResult.message && <div style={{ fontSize: 12, color: C.dim, marginTop: 6 }}>{forecastResult.message}</div>}
                             </div>
                           )}
-                          <div style={{ marginBottom: 8 }}>
-                            <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 6 }}>SENARYOLAR</div>
-                            {forecastResult.scenarios.map((s, i) => (
-                              <div key={i} style={{ display: "flex", justifyContent: "space-between", padding: "6px 10px", fontSize: 12, background: i === 0 ? "rgba(251,146,60,0.06)" : "transparent", borderRadius: 4, marginBottom: 3 }}>
-                                <span style={{ color: C.mid }}>{s.name}</span>
-                                <span style={{ fontFamily: mono, fontWeight: 600, color: C.white }}>{fmt(s.predicted_output)} (%{s.realization_rate})</span>
-                              </div>
-                            ))}
-                          </div>
                         </PanelSection>
                       )}
 
                       {/* Save plan */}
-                      {forecastResult && (
+                      {forecastResult && forecastResult.predicted_output != null && (
                         <button disabled={planSaved} onClick={async () => {
                           try {
                             const r = await fetch("/api/v1/plans/create", { method: "POST", headers: { "Content-Type": "application/json" }, credentials: "include",

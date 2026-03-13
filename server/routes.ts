@@ -2763,9 +2763,13 @@ export async function registerRoutes(
           .filter(s => (s.plannedQty || 0) > 0)
           .map(s => (s.actualQty || 0) / (s.plannedQty || 1));
         if (realizationRates.length === 0) {
-          return res.json({ line_id: lineId, line_name: line.name, message: "No schedule data", motor_generation: 0, data_points: 0 });
-        }
+          baseRate = 0.85;
+          dataSource = "default_assumption";
+          motorGeneration = 0;
+          dataPoints = 0;
+        } else {
         baseRate = realizationRates.reduce((a, b) => a + b, 0) / realizationRates.length;
+        }
         dataSource = "schedules_only";
         motorGeneration = 0;
         dataPoints = realizationRates.length;
@@ -2793,6 +2797,7 @@ export async function registerRoutes(
 
       // --- Risk Flags ---
       const riskFlags: string[] = [];
+      if (dataSource === "default_assumption") riskFlags.push("Henüz yeterli veri yok — tahmin varsayıma dayalı");
       if (currentMonth === 11 || currentMonth === 12) riskFlags.push("Yıl sonu riski: Kasım/Aralık döneminde üretim kapasitesi düşebilir");
       if (currentMonth === 7 || currentMonth === 8) riskFlags.push("Yaz sezonu: İzin döneminde personel eksikliği riski");
       if (currentMonth === 1) riskFlags.push("Yılbaşı geçişi: Yeni yıl başlangıcında adaptasyon süreci");
@@ -2823,7 +2828,7 @@ export async function registerRoutes(
       const predictedOutput = Math.round(planQty * avgRealizationRate);
       const gap = predictedOutput - planQty;
       const isRealistic = avgRealizationRate >= 0.85;
-      const confidence = Math.round(avgRealizationRate * 100);
+      const confidence = dataSource === "default_assumption" ? 40 : Math.round(avgRealizationRate * 100);
 
       // Senaryolar
       const baseUnitTime = Number(line.currentUnitTimeMin) || 1;
@@ -2839,7 +2844,9 @@ export async function registerRoutes(
 
       // Öneri
       let recommendation = "";
-      if (avgRealizationRate >= 0.95) {
+      if (dataSource === "default_assumption") {
+        recommendation = "Bu hat için henüz gerçekleşme verisi yok. Tahmin %85 varsayıma dayalıdır. İlk hafta tamamlandıktan sonra motor öğrenmeye başlayacak.";
+      } else if (avgRealizationRate >= 0.95) {
         recommendation = "Mevcut performans hedeflere çok yakın. Planlanan miktar gerçekçi.";
       } else if (avgRealizationRate >= 0.85) {
         recommendation = `Ortalama gerçekleşme %${confidence}. Plan miktarını %${Math.round((1 / avgRealizationRate - 1) * 100)} artırarak hedefi tutturabilirsiniz.`;
