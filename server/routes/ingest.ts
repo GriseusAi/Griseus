@@ -192,6 +192,33 @@ export function getIngestError(fileName: string): IngestError {
    HELPERS
    ═══════════════════════════════════════════════════════════════════════ */
 
+/**
+ * Normalize Turkish text for flexible matching.
+ * Strips diacritics so "İMALAT TARİHİ" and "IMALAT TARIHI" match,
+ * "GERÇEKLEŞEN" and "GERCEKLESEN" match, etc.
+ */
+function normalizeTR(text: string): string {
+  return text
+    .toUpperCase()
+    .replace(/İ/g, "I")
+    .replace(/Ş/g, "S")
+    .replace(/Ç/g, "C")
+    .replace(/Ğ/g, "G")
+    .replace(/Ü/g, "U")
+    .replace(/Ö/g, "O")
+    .replace(/ı/gi, "I")
+    .replace(/ş/gi, "S")
+    .replace(/ç/gi, "C")
+    .replace(/ğ/gi, "G")
+    .replace(/ü/gi, "U")
+    .replace(/ö/gi, "O");
+}
+
+/** Normalize a row of cells into a single searchable string */
+function rowToNorm(row: any[]): string {
+  return normalizeTR(row.map((c: any) => String(c || "")).join(" "));
+}
+
 function sheetToRows(wb: XLSX.WorkBook, sheetName: string): any[][] {
   const ws = wb.Sheets[sheetName];
   if (!ws) return [];
@@ -199,7 +226,8 @@ function sheetToRows(wb: XLSX.WorkBook, sheetName: string): any[][] {
 }
 
 function findSheetByPattern(wb: XLSX.WorkBook, pattern: RegExp): string | null {
-  return wb.SheetNames.find(n => pattern.test(n)) || null;
+  // Match against both original and normalized sheet names
+  return wb.SheetNames.find(n => pattern.test(n) || pattern.test(normalizeTR(n))) || null;
 }
 
 function findWeeklySheets(wb: XLSX.WorkBook): string[] {
@@ -235,35 +263,36 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
 
   // Parse monthly totals from TOPLAM rows
   const monthlyTotals: { month: string; qty: number }[] = [];
-  const monthNames = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"];
+  // Normalized month names (no diacritics) for matching
+  const monthNamesNorm = ["OCAK", "SUBAT", "MART", "NISAN", "MAYIS", "HAZIRAN", "TEMMUZ", "AGUSTOS", "EYLUL", "EKIM", "KASIM", "ARALIK"];
+  // Display names for notes
+  const monthNamesDisplay = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowStr = row.map((c: any) => String(c || "").toUpperCase()).join(" ");
+    const rowStr = rowToNorm(row);
 
     // Look for TOPLAM rows that contain month totals
     if (rowStr.includes("TOPLAM")) {
-      // Try to find a quantity value in the row
       for (let j = row.length - 1; j >= 0; j--) {
         const val = Number(row[j]);
         if (val > 0 && val < 100000) {
-          // Try to determine which month this is
-          let monthFound = "";
-          // Check nearby rows or the row itself for month name
-          for (const mn of monthNames) {
-            if (rowStr.includes(mn)) { monthFound = mn; break; }
+          let monthIdx = -1;
+          // Check row itself for month name
+          for (let m = 0; m < monthNamesNorm.length; m++) {
+            if (rowStr.includes(monthNamesNorm[m])) { monthIdx = m; break; }
           }
           // Check preceding rows for month context
-          if (!monthFound) {
+          if (monthIdx < 0) {
             for (let k = Math.max(0, i - 30); k < i; k++) {
-              const prevStr = rows[k].map((c: any) => String(c || "").toUpperCase()).join(" ");
-              for (const mn of monthNames) {
-                if (prevStr.includes(mn)) monthFound = mn;
+              const prevStr = rowToNorm(rows[k]);
+              for (let m = 0; m < monthNamesNorm.length; m++) {
+                if (prevStr.includes(monthNamesNorm[m])) monthIdx = m;
               }
             }
           }
-          if (monthFound) {
-            monthlyTotals.push({ month: monthFound, qty: val });
+          if (monthIdx >= 0) {
+            monthlyTotals.push({ month: monthNamesDisplay[monthIdx], qty: val });
             processed++;
           }
           break;
@@ -274,7 +303,7 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
 
   // Write operations (monthly aggregates)
   for (const mt of monthlyTotals) {
-    const monthIdx = monthNames.indexOf(mt.month);
+    const monthIdx = monthNamesDisplay.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
 
     await db.insert(operations).values({
@@ -296,10 +325,10 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
     let plannedQty = 0, actualQty = 0;
 
     for (const row of wRows) {
-      const rowStr = row.map((c: any) => String(c || "").toUpperCase()).join(" ");
+      const rowStr = rowToNorm(row);
 
       // "DEPOYA SEVK EDİLEN TOPLAM" or similar
-      if (rowStr.includes("DEPOYA") && rowStr.includes("TOPLAM") || rowStr.includes("SEVK") && rowStr.includes("TOPLAM")) {
+      if ((rowStr.includes("DEPOYA") && rowStr.includes("TOPLAM")) || (rowStr.includes("SEVK") && rowStr.includes("TOPLAM"))) {
         for (let j = 0; j < row.length; j++) {
           const val = Number(row[j]);
           if (val > 0 && val < 10000) {
@@ -309,14 +338,15 @@ async function parseElektrikli(wb: XLSX.WorkBook, fileName: string): Promise<Ing
         }
       }
 
-      // Also look for plan/actual headers
-      if (rowStr.includes("PLAN") || rowStr.includes("HEDEF")) {
+      // Plan/hedef/imalat keywords
+      if (rowStr.includes("PLAN") || rowStr.includes("HEDEF") || rowStr.includes("IMALAT")) {
         for (let j = row.length - 1; j >= 0; j--) {
           const val = Number(row[j]);
           if (val > 0 && val < 10000) { plannedQty = val; break; }
         }
       }
-      if (rowStr.includes("GERÇEKLEŞEN") || rowStr.includes("GERCEKLESEN") || rowStr.includes("FİİLİ")) {
+      // Gerçekleşen/fiili/actual keywords — all normalized
+      if (rowStr.includes("GERCEKLESEN") || rowStr.includes("GERCEKLESMIS") || rowStr.includes("FIILI") || rowStr.includes("ACTUAL")) {
         for (let j = row.length - 1; j >= 0; j--) {
           const val = Number(row[j]);
           if (val > 0 && val < 10000) { actualQty = val; break; }
@@ -364,28 +394,29 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
   const rows = sheetToRows(wb, genelSheet);
 
   const monthlyTotals: { month: string; qty: number }[] = [];
-  const monthNames = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"];
+  const monthNamesNorm = ["OCAK", "SUBAT", "MART", "NISAN", "MAYIS", "HAZIRAN", "TEMMUZ", "AGUSTOS", "EYLUL", "EKIM", "KASIM", "ARALIK"];
+  const monthNamesDisplay = ["OCAK", "ŞUBAT", "MART", "NİSAN", "MAYIS", "HAZİRAN", "TEMMUZ", "AĞUSTOS", "EYLÜL", "EKİM", "KASIM", "ARALIK"];
 
   for (let i = 0; i < rows.length; i++) {
     const row = rows[i];
-    const rowStr = row.map((c: any) => String(c || "").toUpperCase()).join(" ");
+    const rowStr = rowToNorm(row);
 
     if (rowStr.includes("TOPLAM")) {
       for (let j = row.length - 1; j >= 0; j--) {
         const val = Number(row[j]);
         if (val > 0 && val < 100000) {
-          let monthFound = "";
-          for (const mn of monthNames) {
-            if (rowStr.includes(mn)) { monthFound = mn; break; }
+          let monthIdx = -1;
+          for (let m = 0; m < monthNamesNorm.length; m++) {
+            if (rowStr.includes(monthNamesNorm[m])) { monthIdx = m; break; }
           }
-          if (!monthFound) {
+          if (monthIdx < 0) {
             for (let k = Math.max(0, i - 30); k < i; k++) {
-              const prevStr = rows[k].map((c: any) => String(c || "").toUpperCase()).join(" ");
-              for (const mn of monthNames) { if (prevStr.includes(mn)) monthFound = mn; }
+              const prevStr = rowToNorm(rows[k]);
+              for (let m = 0; m < monthNamesNorm.length; m++) { if (prevStr.includes(monthNamesNorm[m])) monthIdx = m; }
             }
           }
-          if (monthFound) {
-            monthlyTotals.push({ month: monthFound, qty: val });
+          if (monthIdx >= 0) {
+            monthlyTotals.push({ month: monthNamesDisplay[monthIdx], qty: val });
             processed++;
           }
           break;
@@ -396,7 +427,7 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
 
   // Write operations (monthly aggregates)
   for (const mt of monthlyTotals) {
-    const monthIdx = monthNames.indexOf(mt.month);
+    const monthIdx = monthNamesDisplay.indexOf(mt.month);
     const periodDate = `2025-${String(monthIdx + 1).padStart(2, "0")}-01`;
 
     await db.insert(operations).values({
@@ -418,7 +449,7 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
     let plannedQty = 0, actualQty = 0;
 
     for (const row of wRows) {
-      const rowStr = row.map((c: any) => String(c || "").toUpperCase()).join(" ");
+      const rowStr = rowToNorm(row);
       if ((rowStr.includes("DEPOYA") && rowStr.includes("TOPLAM")) || (rowStr.includes("SEVK") && rowStr.includes("TOPLAM"))) {
         for (let j = 0; j < row.length; j++) {
           const val = Number(row[j]);
@@ -428,12 +459,12 @@ async function parseGazli(wb: XLSX.WorkBook, fileName: string): Promise<IngestRe
           }
         }
       }
-      if (rowStr.includes("PLAN") || rowStr.includes("HEDEF")) {
+      if (rowStr.includes("PLAN") || rowStr.includes("HEDEF") || rowStr.includes("IMALAT")) {
         for (let j = row.length - 1; j >= 0; j--) {
           const val = Number(row[j]); if (val > 0 && val < 10000) { plannedQty = val; break; }
         }
       }
-      if (rowStr.includes("GERÇEKLEŞEN") || rowStr.includes("GERCEKLESEN") || rowStr.includes("FİİLİ")) {
+      if (rowStr.includes("GERCEKLESEN") || rowStr.includes("GERCEKLESMIS") || rowStr.includes("FIILI") || rowStr.includes("ACTUAL")) {
         for (let j = row.length - 1; j >= 0; j--) {
           const val = Number(row[j]); if (val > 0 && val < 10000) { actualQty = val; break; }
         }
@@ -469,10 +500,10 @@ async function parseKapasite(wb: XLSX.WorkBook, fileName: string): Promise<Inges
   const sheet = findSheetByPattern(wb, /KAPASİTE|KAPASITE|CAPACITY/i) || wb.SheetNames[0];
   const rows = sheetToRows(wb, sheet);
 
-  // Look for lines and their capacity data
-  const lineTypes: Array<{ type: "elektrikli" | "gazli"; patterns: string[] }> = [
-    { type: "elektrikli", patterns: ["ELEKTRİKLİ", "ELEKTRIKLI"] },
-    { type: "gazli", patterns: ["GAZLI", "GAZ"] },
+  // Look for lines and their capacity data — normalized patterns
+  const lineTypes: Array<{ type: "elektrikli" | "gazli"; pattern: string }> = [
+    { type: "elektrikli", pattern: "ELEKTRIKLI" },
+    { type: "gazli", pattern: "GAZLI" },
   ];
 
   for (const lt of lineTypes) {
@@ -485,20 +516,19 @@ async function parseKapasite(wb: XLSX.WorkBook, fileName: string): Promise<Inges
     let dailyHours: number | null = null;
 
     for (const row of rows) {
-      const rowStr = row.map((c: any) => String(c || "").toUpperCase()).join(" ");
-      const matchesLine = lt.patterns.some(p => rowStr.includes(p));
-      if (!matchesLine) continue;
+      const rowStr = rowToNorm(row);
+      if (!rowStr.includes(lt.pattern)) continue;
 
       processed++;
 
-      // Extract numeric values based on keywords
-      if (rowStr.includes("KİŞİ") || rowStr.includes("KISI") || rowStr.includes("PERSONEL") || rowStr.includes("WORKER")) {
+      // Extract numeric values based on normalized keywords
+      if (rowStr.includes("KISI") || rowStr.includes("PERSONEL") || rowStr.includes("WORKER")) {
         for (const cell of row) { const v = Number(cell); if (v > 0 && v < 100) { workerCount = v; break; } }
       }
-      if (rowStr.includes("TEORİK") || rowStr.includes("TEORIK") || rowStr.includes("KAPASİTE") && rowStr.includes("BİRİM")) {
+      if (rowStr.includes("TEORIK") || (rowStr.includes("KAPASITE") && rowStr.includes("BIRIM"))) {
         for (const cell of row) { const v = Number(cell); if (v > 0 && v < 120) { capacityUnitTime = v; break; } }
       }
-      if (rowStr.includes("MEVCUT") || rowStr.includes("GÜNCEL") || rowStr.includes("GUNCEL")) {
+      if (rowStr.includes("MEVCUT") || rowStr.includes("GUNCEL")) {
         for (const cell of row) { const v = Number(cell); if (v > 0 && v < 120) { currentUnitTime = v; break; } }
       }
       if (rowStr.includes("SAAT") || rowStr.includes("MESAI")) {
