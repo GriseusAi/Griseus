@@ -16,7 +16,8 @@ const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 /* ── Types ── */
 type LayerKey = "applications" | "intelligence" | "ontology" | "ingestion";
-type OntoNode = "facility" | "elektrikli" | "gazli" | "workers" | "operations" | "products" | "schedules" | "capacity" | "kpi" | null;
+type OntoNodeKey = "facility" | "elektrikli" | "gazli" | "workers" | "operations" | "products" | "schedules" | "capacity" | "kpi";
+type OntoNode = OntoNodeKey | null;
 type IntelTab = "simulation" | "bottleneck";
 type AppChartTab = "monthly" | "weekly";
 
@@ -47,7 +48,7 @@ interface MotorAccuracy {
   total_plans: number; completed_plans: number; active_plans: number;
   avg_realization_rate: number; avg_prediction_accuracy: number; best_accuracy: number;
   motor_generation: number; trend: string;
-  history: { week: string; planned: number; predicted: number | null; actual: number | null; realization_rate: number; prediction_accuracy: number | null }[];
+  history: { week: string; planned: number; predicted: number | null; actual: number | null; realization_rate: number; prediction_accuracy: number | null; line_id?: number | null }[];
   active_list: { id: number; week_label: string; line_id: number | null; planned_qty: number; predicted_qty: number | null; created_at: string }[];
   top_deviation?: { reason: string; label: string; count: number } | null;
   deviation_counts?: Record<string, number>;
@@ -532,6 +533,7 @@ export default function EnginePage() {
   const handleLayerClick = (id: LayerKey) => {
     if (activeLayer === id) { setActiveLayer(null); return; }
     setActiveLayer(id);
+    setAiOpen(false);
     setOntoNode(null);
     if (id === "ontology") { fetchWorkers(); fetchSchedules(); fetchOps(); fetchCaps(); fetchMotorAccuracy(); }
     if (id === "applications") { fetchRiskPlans(); fetchMotorRecs(); }
@@ -1262,16 +1264,16 @@ export default function EnginePage() {
               {(() => {
                 const eOut = summary?.lines?.[0]?.totalOutput || 0;
                 const gOut = summary?.lines?.[1]?.totalOutput || 0;
-                const nds: { key: OntoNode; label: string; sub: string; color: string; x: number; y: number }[] = [
-                  { key: "facility", label: "Cukurova Isi", sub: "Gebze · Aktif", color: C.white, x: 0, y: 0 },
-                  { key: "elektrikli", label: "Elektrikli Hat", sub: `${fmt(eOut)} uretim`, color: C.white, x: -140, y: 80 },
-                  { key: "gazli", label: "Gazli Hat", sub: `${fmt(gOut)} uretim`, color: C.white, x: 140, y: 80 },
-                  { key: "workers", label: `${workersData.length || 16} Calisan`, sub: "6 dept", color: C.white, x: 0, y: -90 },
-                  { key: "operations", label: "24 Operasyon", sub: `${fmt(summary?.totalProduction || 0)} toplam`, color: C.white, x: -170, y: 170 },
-                  { key: "products", label: "21 Urun", sub: "E + G", color: C.white, x: 0, y: 180 },
-                  { key: "schedules", label: `${schedsData.length || 23} Cizelge`, sub: "Haftalik", color: C.white, x: 170, y: 170 },
-                  { key: "capacity", label: "Kapasite", sub: "%64 / %87", color: C.white, x: 195, y: -30 },
-                  { key: "kpi", label: "KPI", sub: "Tanimlanmadi", color: C.white, x: -195, y: -40 },
+                const nds: { key: OntoNodeKey; label: string; sub: string; color: string; x: number; y: number }[] = [
+                  { key: "facility", label: "Cukurova Isi", sub: "Gebze · Aktif", color: C.green, x: 0, y: 0 },
+                  { key: "elektrikli", label: "Elektrikli Hat", sub: `${fmt(eOut)} uretim`, color: C.indigo, x: -140, y: 80 },
+                  { key: "gazli", label: "Gazli Hat", sub: `${fmt(gOut)} uretim`, color: C.pink, x: 140, y: 80 },
+                  { key: "workers", label: `${workersData.length || 16} Calisan`, sub: "6 dept", color: C.amber, x: 0, y: -90 },
+                  { key: "operations", label: "24 Operasyon", sub: `${fmt(summary?.totalProduction || 0)} toplam`, color: C.pink, x: -170, y: 170 },
+                  { key: "products", label: "21 Urun", sub: "E + G", color: "#a78bfa", x: 0, y: 180 },
+                  { key: "schedules", label: `${schedsData.length || 23} Cizelge`, sub: "Haftalik", color: "#fb923c", x: 170, y: 170 },
+                  { key: "capacity", label: "Kapasite", sub: "%64 / %87", color: "#38bdf8", x: 195, y: -30 },
+                  { key: "kpi", label: "KPI", sub: "Tanimlanmadi", color: "#f87171", x: -195, y: -40 },
                 ];
                 const eds = [
                   { from: "facility", to: "elektrikli", label: "has_line" },
@@ -1288,10 +1290,10 @@ export default function EnginePage() {
                 const isConn = (k: string) => !ontoNode || k === ontoNode || eds.some(e => (e.from === ontoNode && e.to === k) || (e.to === ontoNode && e.from === k));
                 const NW = 90, NH = 36;
                 return (
-                  <svg viewBox="-230 -120 460 320" style={{ width: "100%", marginBottom: 8 }}>
+                  <svg viewBox="-260 -130 520 340" style={{ width: "100%", height: "auto", aspectRatio: "520 / 340", marginBottom: 8 }}>
                     {/* Dot grid */}
-                    {Array.from({ length: 12 }).map((_, i) => Array.from({ length: 8 }).map((_, j) => (
-                      <circle key={`${i}-${j}`} cx={-230 + i * 42} cy={-120 + j * 42} r={0.3} fill="rgba(255,255,255,0.03)" />
+                    {Array.from({ length: 13 }).map((_, i) => Array.from({ length: 9 }).map((_, j) => (
+                      <circle key={`${i}-${j}`} cx={-260 + i * 42} cy={-130 + j * 42} r={0.3} fill="rgba(255,255,255,0.03)" />
                     )))}
                     {/* Edges */}
                     {eds.map((e, i) => {
