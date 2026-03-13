@@ -1748,6 +1748,97 @@ export default function EnginePage() {
                       })}
                     </PanelSection>
                   )}
+
+                  {/* Motor Performansi — verim oranı, doğruluk, aylık grafik */}
+                  {motorAccuracy && motorAccuracy.completed_plans > 0 && (
+                    <PanelSection title="Motor Performansi" color={C.white}>
+                      {/* Big accuracy ring */}
+                      <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 12 }}>
+                        <Ring pct={Math.round(motorAccuracy.avg_prediction_accuracy * 100)} color={C.white} size={64} stroke={5} />
+                        <div>
+                          <div style={{ fontFamily: mono, fontSize: 22, fontWeight: 700, color: C.white }}>%{Math.round(motorAccuracy.avg_prediction_accuracy * 100)}</div>
+                          <div style={{ fontSize: 11, color: C.dim }}>Ortalama Tahmin Isabeti</div>
+                          <div style={{ fontSize: 11, fontFamily: mono, marginTop: 2, color: motorAccuracy.trend === "improving" ? C.green : motorAccuracy.trend === "declining" ? C.err : C.mid }}>
+                            {motorAccuracy.trend === "improving" ? "Gelisiyor" : motorAccuracy.trend === "declining" ? "Gerileme" : "Stabil"} · Gen {motorAccuracy.motor_generation}
+                          </div>
+                        </div>
+                      </div>
+                      {/* Stats row */}
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 4, marginBottom: 12 }}>
+                        <MetricCard value={`${motorAccuracy.completed_plans}`} label="Tamamlanan" color={C.green} />
+                        <MetricCard value={`%${Math.round(motorAccuracy.avg_realization_rate * 100)}`} label="Gerceklesme" color={C.white} />
+                        <MetricCard value={`%${Math.round(motorAccuracy.best_accuracy * 100)}`} label="En Iyi" color={C.white} />
+                      </div>
+                      {/* Top deviation reason */}
+                      {motorAccuracy.top_deviation && (
+                        <div style={{ padding: "8px 10px", marginBottom: 10, borderRadius: 6, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <span style={{ fontSize: 11, color: C.mid }}>En sik sapma nedeni</span>
+                          <span style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: C.white }}>{motorAccuracy.top_deviation.count} kez: {motorAccuracy.top_deviation.label}</span>
+                        </div>
+                      )}
+                      {/* Risk flags */}
+                      {motorAccuracy.risk_flags && motorAccuracy.risk_flags.length > 0 && (
+                        <div style={{ marginBottom: 10 }}>
+                          {motorAccuracy.risk_flags.map((flag, i) => (
+                            <div key={i} style={{ padding: "5px 10px", marginBottom: 3, borderRadius: 4, fontSize: 11, fontFamily: mono, background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.15)", color: C.err }}>
+                              {flag}
+                            </div>
+                          ))}
+                        </div>
+                      )}
+                      {/* Monthly realization bar chart */}
+                      {motorAccuracy.monthly_avg && motorAccuracy.monthly_avg.some(m => m.count > 0) && (
+                        <div style={{ marginBottom: 12 }}>
+                          <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 8 }}>AYLIK GERCEKLESME</div>
+                          <ResponsiveContainer width="100%" height={120}>
+                            <BarChart data={motorAccuracy.monthly_avg} margin={{ top: 0, right: 0, bottom: 0, left: 0 }}>
+                              <XAxis dataKey="label" tick={{ fontSize: 10, fill: C.dim }} axisLine={false} tickLine={false} />
+                              <YAxis hide domain={[0, 1.2]} />
+                              <Tooltip contentStyle={{ background: C.surface, border: `1px solid ${C.cardBorder}`, borderRadius: 6, fontSize: 11, color: C.white }}
+                                formatter={(v: number) => [`%${Math.round(v * 100)}`, "Ort. Gerceklesme"]} />
+                              <Bar dataKey="avg_rate" radius={[3, 3, 0, 0]} fill="rgba(255,255,255,0.5)" />
+                            </BarChart>
+                          </ResponsiveContainer>
+                        </div>
+                      )}
+                      {/* History table */}
+                      {motorAccuracy.history.length > 0 && (
+                        <div>
+                          <div style={{ fontSize: 12, color: C.dim, fontFamily: mono, marginBottom: 6 }}>GECMIS</div>
+                          <div style={{ maxHeight: 140, overflowY: "auto" }}>
+                            {motorAccuracy.history.map((h, i) => (
+                              <div key={i} style={{ display: "grid", gridTemplateColumns: "60px 1fr 1fr 50px", gap: 4, padding: "5px 0", fontSize: 11, fontFamily: mono, borderBottom: `1px solid ${C.cardBorder}` }}>
+                                <span style={{ color: C.mid }}>{h.week}</span>
+                                <span style={{ color: C.dim }}>P:{h.planned} T:{h.predicted ?? "-"}</span>
+                                <span style={{ color: C.white }}>G:{h.actual ?? "-"}</span>
+                                <span style={{ textAlign: "right", fontWeight: 600, color: h.prediction_accuracy != null && h.prediction_accuracy >= 0.9 ? C.green : h.prediction_accuracy != null && h.prediction_accuracy >= 0.7 ? C.white : C.err }}>
+                                  {h.prediction_accuracy != null ? `%${Math.round(h.prediction_accuracy * 100)}` : "-"}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </PanelSection>
+                  )}
+
+                  {/* Seasonal info — verim tahmini bağlamı */}
+                  {forecastResult && (forecastResult.seasonal_factor != null || forecastResult.historical_same_week != null) && (
+                    <div style={{ display: "flex", gap: 6, marginBottom: 12 }}>
+                      {forecastResult.seasonal_factor != null && (
+                        <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 12, fontFamily: mono, textAlign: "center" }}>
+                          <div style={{ color: C.white, fontWeight: 700 }}>%{forecastResult.seasonal_factor}</div>
+                          <div style={{ color: C.dim, fontSize: 11 }}>Ay Ortalamasi</div>
+                        </div>
+                      )}
+                      {forecastResult.historical_same_week != null && (
+                        <div style={{ flex: 1, padding: "8px 10px", borderRadius: 8, background: "rgba(255,255,255,0.04)", border: "1px solid rgba(255,255,255,0.1)", fontSize: 12, fontFamily: mono, textAlign: "center" }}>
+                          <div style={{ color: C.white, fontWeight: 700 }}>%{forecastResult.historical_same_week}</div>
+                          <div style={{ color: C.dim, fontSize: 11 }}>Hafta Ortalamasi</div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </>
               )}
 
