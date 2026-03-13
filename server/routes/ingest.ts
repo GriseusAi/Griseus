@@ -36,20 +36,91 @@ const SUPPORTED = ["Elektrikli İmalat", "Gazlı İmalat", "Kapasite", "Personel
 
 type ParserFn = (wb: XLSX.WorkBook, fileName: string) => Promise<IngestResult>;
 
-export function detectParser(fileName: string): { name: string; fn: ParserFn } | null {
+/** Filename-based hint (used as tiebreaker, not required) */
+function detectParserByName(fileName: string): { name: string; fn: ParserFn } | null {
   const f = fileName.toUpperCase();
-  const lo = fileName.toLowerCase();
-  if (f.includes("ELEKT") || lo.includes("elekt")) return { name: "ElektrikliParser", fn: parseElektrikli };
-  if (f.includes("GAZL") || lo.includes("gazl")) return { name: "GazliParser", fn: parseGazli };
-  if (f.includes("KAPAS") || lo.includes("kapas")) return { name: "KapasiteParser", fn: parseKapasite };
-  if (f.includes("PERSON") || lo.includes("person")) return { name: "PersonelParser", fn: parsePersonel };
-  if (f.includes("KPI") || lo.includes("kpi")) return { name: "KPIParser", fn: parseKPI };
-  if (f.includes("AKIS") || lo.includes("akis") || f.includes("NETSIS") || lo.includes("netsis")) return { name: "IsAkisParser", fn: parseIsAkis };
+  if (f.includes("ELEKT")) return { name: "ElektrikliParser", fn: parseElektrikli };
+  if (f.includes("GAZL")) return { name: "GazliParser", fn: parseGazli };
+  if (f.includes("KAPAS")) return { name: "KapasiteParser", fn: parseKapasite };
+  if (f.includes("PERSON")) return { name: "PersonelParser", fn: parsePersonel };
+  if (f.includes("KPI")) return { name: "KPIParser", fn: parseKPI };
+  if (f.includes("AKIS") || f.includes("NETSIS")) return { name: "IsAkisParser", fn: parseIsAkis };
   return null;
 }
 
+/** Content-based parser detection — examines sheet names and cell contents */
+export function detectParserFromContent(wb: XLSX.WorkBook, fileName: string): { name: string; fn: ParserFn } | null {
+  // 1. Filename hint takes priority when available
+  const byName = detectParserByName(fileName);
+  if (byName) return byName;
+
+  // 2. Analyse sheet names
+  const sheetsUpper = wb.SheetNames.map(s => s.toUpperCase()).join(" ");
+
+  // Weekly sheets (e.g. "44.HAFTA") → production data → need to check if elektrikli or gazlı
+  const hasWeeklySheets = wb.SheetNames.some(n => /\d+\.?\s*HAFTA/i.test(n));
+
+  // KPI sheets
+  if (/KPI|GÖSTERGE|GOSTERGE|PERFORMANS/.test(sheetsUpper)) return { name: "KPIParser", fn: parseKPI };
+
+  // Capability matrix / iş akış
+  if (/KİŞİLER|KISILER|YETKİ|YETKI|MATRİS|MATRIS/.test(sheetsUpper)) return { name: "IsAkisParser", fn: parseIsAkis };
+
+  // Personel
+  if (/PERSONEL|ÇALIŞAN|CALISAN/.test(sheetsUpper)) return { name: "PersonelParser", fn: parsePersonel };
+
+  // Kapasite
+  if (/KAPASİTE|KAPASITE|CAPACITY/.test(sheetsUpper)) return { name: "KapasiteParser", fn: parseKapasite };
+
+  // 3. Scan cell contents of first sheet (first 50 rows) to detect type
+  const firstSheet = wb.SheetNames[0];
+  const ws = wb.Sheets[firstSheet];
+  if (!ws) return null;
+  const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+  const sampleText = rows.slice(0, 50).flat().map(c => String(c || "").toUpperCase()).join(" ");
+
+  // Production data with weekly sheets → check for line type
+  if (hasWeeklySheets || /HAFTA/.test(sampleText)) {
+    if (/ELEKTRİKLİ|ELEKTRIKLI/.test(sampleText)) return { name: "ElektrikliParser", fn: parseElektrikli };
+    if (/GAZLI|GAZ\b/.test(sampleText)) return { name: "GazliParser", fn: parseGazli };
+    // Has weekly sheets but can't determine line → default to elektrikli (more common)
+    return { name: "ElektrikliParser", fn: parseElektrikli };
+  }
+
+  // KPI-like content
+  if (/KPI|HEDEF.*GERÇEK|TARGET.*ACTUAL/.test(sampleText)) return { name: "KPIParser", fn: parseKPI };
+
+  // Kapasite content
+  if (/KAPASİTE|KAPASITE|TEORİK|TEORIK|BİRİM SÜRE|BIRIM SURE/.test(sampleText)) return { name: "KapasiteParser", fn: parseKapasite };
+
+  // Personel content
+  if (/SİCİL|SICIL|PERSONEL|TC KİMLİK|DEPARTMAN/.test(sampleText)) return { name: "PersonelParser", fn: parsePersonel };
+
+  // Capability matrix — header row has many short column names and body has 1/X/✓ values
+  const headerRow = rows[0] || [];
+  if (headerRow.length > 5) {
+    const bodyValues = rows.slice(1, 10).flat().map(c => String(c || "").trim().toUpperCase());
+    const markerCount = bodyValues.filter(v => ["1", "X", "✓", "✔", "EVET", "VAR"].includes(v)).length;
+    if (markerCount > bodyValues.length * 0.15) return { name: "IsAkisParser", fn: parseIsAkis };
+  }
+
+  // Production data without weekly sheets
+  if (/TOPLAM|DEPOYA|SEVK|ÜRETİM|URETIM/.test(sampleText)) {
+    if (/ELEKTRİKLİ|ELEKTRIKLI/.test(sampleText)) return { name: "ElektrikliParser", fn: parseElektrikli };
+    if (/GAZLI|GAZ\b/.test(sampleText)) return { name: "GazliParser", fn: parseGazli };
+    return { name: "ElektrikliParser", fn: parseElektrikli };
+  }
+
+  return null;
+}
+
+/** @deprecated Use detectParserFromContent instead */
+export function detectParser(fileName: string): { name: string; fn: ParserFn } | null {
+  return detectParserByName(fileName);
+}
+
 export function getIngestError(fileName: string): IngestError {
-  return { success: false, error: `Dosya formatı tanınamadı: "${fileName}"`, supported_formats: SUPPORTED };
+  return { success: false, error: `Dosya içeriği tanınamadı: "${fileName}". İçerikte üretim, kapasite, personel, KPI veya yetki matrisi verisi bulunamadı.`, supported_formats: SUPPORTED };
 }
 
 /* ═══════════════════════════════════════════════════════════════════════

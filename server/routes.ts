@@ -20,7 +20,7 @@ import { db } from "./db";
 import { eq, and, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { detectParser, getIngestError, resetToSeed } from "./routes/ingest";
+import { detectParserFromContent, getIngestError, resetToSeed } from "./routes/ingest";
 import agentRouter from "./routes/agent";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
@@ -2810,14 +2810,14 @@ export async function registerRoutes(
         return res.status(400).json({ success: false, error: `Desteklenmeyen dosya formatı: .${ext}. Desteklenen: .xls, .xlsx, .csv` });
       }
 
-      // Detect parser from filename
-      const parser = detectParser(fileName);
+      // Parse the file first, then detect parser from content
+      const wb = XLSX.read(buffer, { type: "buffer" });
+
+      const parser = detectParserFromContent(wb, fileName);
       if (!parser) return res.status(400).json(getIngestError(fileName));
 
-      console.log("[Ingest] Matched parser:", parser.name);
+      console.log("[Ingest] Matched parser:", parser.name, "(content-based detection)");
 
-      // Parse the file — use "binary" type for .xls compatibility
-      const wb = XLSX.read(buffer, { type: "buffer" });
       const result = await parser.fn(wb, fileName);
 
       // ── Signal chain: recalculate all capacity_metrics after upload ──
