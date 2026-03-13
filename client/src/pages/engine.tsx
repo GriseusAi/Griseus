@@ -131,13 +131,13 @@ const renderMarkdown = (text: string) =>
     .replace(/\n/g, '<br/>');
 
 /* ── Isometric helpers ── */
-function IsoPlatform({ cx, cy, w, d, color, opacity }: { cx: number; cy: number; w: number; d: number; color: string; opacity: number }) {
+function IsoPlatform({ cx, cy, w, d, color: _color, opacity }: { cx: number; cy: number; w: number; d: number; color: string; opacity: number }) {
   const hdx = w * 0.866 / 2, hdy = w * 0.5 / 2, ddx = d * 0.866 / 2, ddy = d * 0.5 / 2;
   const points = `${cx},${cy - hdy - ddy} ${cx + hdx + ddx},${cy} ${cx},${cy + hdy + ddy} ${cx - hdx - ddx},${cy}`;
-  return <polygon points={points} fill={color} opacity={opacity} stroke={color} strokeWidth={0.8} strokeOpacity={0.3} style={{ transition: "opacity 0.3s" }} />;
+  return <polygon points={points} fill="rgba(255,255,255,0.06)" opacity={opacity > 0.1 ? 1 : opacity / 0.06} stroke="rgba(255,255,255,0.5)" strokeWidth={1} style={{ transition: "opacity 0.3s" }} />;
 }
 
-function IsoCube({ cx, cy, size, color, label, delay, active }: {
+function IsoCube({ cx, cy, size, color: _color, label, delay, active }: {
   cx: number; cy: number; size: number; color: string; label: string; delay: number; active: boolean;
 }) {
   const dx = size * 0.866, dy = size * 0.5;
@@ -146,11 +146,15 @@ function IsoCube({ cx, cy, size, color, label, delay, active }: {
   const right = `${cx},${cy - dy} ${cx + dx / 2},${cy - dy - dy / 2} ${cx + dx / 2},${cy - dy / 2} ${cx},${cy}`;
   return (
     <g style={{ opacity: 0, animation: `engFadeIn 0.5s ease ${delay}s forwards` }}>
-      <polygon points={right} fill={color} opacity={0.15} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
-      <polygon points={left} fill={color} opacity={0.25} stroke={color} strokeWidth={0.5} strokeOpacity={0.3} />
-      <polygon points={top} fill={color} opacity={0.4} stroke={color} strokeWidth={0.5} strokeOpacity={0.5} />
+      <polygon points={right} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.18)" strokeWidth={0.5} />
+      <polygon points={left} fill="rgba(255,255,255,0.03)" stroke="rgba(255,255,255,0.18)" strokeWidth={0.5} />
+      <polygon points={top} fill="rgba(255,255,255,0.1)" stroke="rgba(255,255,255,0.45)" strokeWidth={0.5} />
+      {/* Vertical edges */}
+      <line x1={cx} y1={cy - dy} x2={cx} y2={cy} stroke="rgba(255,255,255,0.25)" strokeWidth={0.5} />
+      <line x1={cx - dx / 2} y1={cy - dy - dy / 2} x2={cx - dx / 2} y2={cy - dy / 2} stroke="rgba(255,255,255,0.25)" strokeWidth={0.5} />
+      <line x1={cx + dx / 2} y1={cy - dy - dy / 2} x2={cx + dx / 2} y2={cy - dy / 2} stroke="rgba(255,255,255,0.25)" strokeWidth={0.5} />
       {active && (
-        <text x={cx} y={cy - dy - dy - 8} textAnchor="middle" fill={color} fontSize={8} fontFamily={mono} fontWeight={500}
+        <text x={cx} y={cy - dy - dy - 8} textAnchor="middle" fill="rgba(255,255,255,0.55)" fontSize={8} fontFamily={mono} fontWeight={500}
           style={{ opacity: 0, animation: "engFadeIn 0.3s ease 0.1s forwards" }}>{label}</text>
       )}
     </g>
@@ -159,10 +163,10 @@ function IsoCube({ cx, cy, size, color, label, delay, active }: {
 
 /* ── Layer definitions ── */
 const LAYERS = [
-  { id: "ingestion" as LayerKey, num: "01", title: "Data Ingestion", subtitle: "Veri toplama katmani", color: C.pink, cubes: ["Excel", "ERP", "CSV", "API"] },
-  { id: "ontology" as LayerKey, num: "02", title: "Griseus Ontology", subtitle: "Baglanti katmani", color: C.amber, cubes: ["Worker", "Facility", "Operation", "Schedule"] },
-  { id: "intelligence" as LayerKey, num: "03", title: "Intelligence Engine", subtitle: "Karar katmani", color: C.indigo, cubes: ["Simulasyon", "Darbogaz", "Optimizasyon", "Risk"] },
-  { id: "applications" as LayerKey, num: "04", title: "Applications", subtitle: "Sonuc katmani", color: C.green, cubes: ["Digital Twin", "Efficiency", "Scheduling", "Trust"] },
+  { id: "ingestion" as LayerKey, num: "01", title: "Data Ingestion", subtitle: "Veri toplama katmani", color: "rgba(255,255,255,0.5)", cubes: ["Excel", "ERP", "CSV", "API"] },
+  { id: "ontology" as LayerKey, num: "02", title: "Griseus Ontology", subtitle: "Baglanti katmani", color: "rgba(255,255,255,0.5)", cubes: ["Worker", "Facility", "Operation", "Schedule"] },
+  { id: "intelligence" as LayerKey, num: "03", title: "Intelligence Engine", subtitle: "Karar katmani", color: "rgba(255,255,255,0.5)", cubes: ["Simulasyon", "Darbogaz", "Optimizasyon", "Risk"] },
+  { id: "applications" as LayerKey, num: "04", title: "Applications", subtitle: "Sonuc katmani", color: "rgba(255,255,255,0.5)", cubes: ["Digital Twin", "Efficiency", "Scheduling", "Trust"] },
 ];
 
 /* ════════════════════════════════════════════════════════════════════
@@ -625,7 +629,7 @@ export default function EnginePage() {
           onClick={(e) => { if ((e.target as Element).tagName === "DIV") { setActiveLayer(null); setAiOpen(false); } }}>
           {/* Scan line */}
           <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 1,
-            background: `linear-gradient(90deg, transparent, ${C.indigo}40, transparent)`,
+            background: "linear-gradient(90deg, transparent, rgba(255,255,255,0.15), transparent)",
             animation: "engScan 7s linear infinite", pointerEvents: "none", zIndex: 2 }} />
 
           <svg viewBox="0 0 585 510" style={{ width: "100%", maxHeight: "calc(100vh - 80px)", display: "block" }}>
@@ -634,10 +638,10 @@ export default function EnginePage() {
               const y1 = BASE_Y - i * GAP, y2 = BASE_Y - (i + 1) * GAP;
               return (
                 <g key={`conn-${i}`}>
-                  <line x1={CX} y1={y1 - 18} x2={CX} y2={y2 + 18} stroke={C.dim} strokeWidth={1} strokeDasharray="3 6" style={{ animation: "engDash 1.5s linear infinite" }} />
-                  <circle cx={CX} cy={y1 - 18} r={2.5} fill={LAYERS[i + 1].color}>
+                  <line x1={CX} y1={y1 - 18} x2={CX} y2={y2 + 18} stroke="rgba(255,255,255,0.2)" strokeWidth={1} strokeDasharray="3 3" style={{ animation: "engDash 1.5s linear infinite" }} />
+                  <circle cx={CX} cy={y1 - 18} r={2.5} fill="rgba(255,255,255,0.4)">
                     <animate attributeName="cy" values={`${y1 - 18};${y2 + 18}`} dur="2s" repeatCount="indefinite" />
-                    <animate attributeName="opacity" values="1;0.3;1" dur="2s" repeatCount="indefinite" />
+                    <animate attributeName="opacity" values="0.5;0.15;0.5" dur="2s" repeatCount="indefinite" />
                   </circle>
                 </g>
               );
@@ -661,7 +665,7 @@ export default function EnginePage() {
                   onMouseLeave={() => setHoveredLayer(null)}>
                   <IsoPlatform cx={CX} cy={cy} w={PW} d={PD} color={layer.color} opacity={platOpacity} />
                   {(isActive || isHovered) && (
-                    <ellipse cx={CX} cy={cy} rx={PW * 0.5} ry={PD * 0.35} fill={layer.color} opacity={isActive ? 0.08 : 0.04}
+                    <ellipse cx={CX} cy={cy} rx={PW * 0.5} ry={PD * 0.35} fill="rgba(255,255,255,0.08)" opacity={isActive ? 0.6 : 0.3}
                       style={{ filter: "blur(20px)", pointerEvents: "none" }} />
                   )}
                   {layer.cubes.map((cube, ci) => (
@@ -670,18 +674,18 @@ export default function EnginePage() {
                       delay={0.3 + i * 0.15 + ci * 0.08} active={isActive || isHovered} />
                   ))}
                   <text x={CX - PW * 0.55} y={cy + 5} textAnchor="end"
-                    fill={isActive ? layer.color : C.dim} fontSize={18} fontFamily={mono} fontWeight={700}
+                    fill="rgba(255,255,255,0.8)" fontSize={18} fontFamily={mono} fontWeight={700}
                     opacity={isActive ? 1 : 0.35} style={{ transition: "all 0.3s" }}>{layer.num}</text>
                   <g>
                     {isActive && (
                       <line x1={CX + PW * 0.55 + 8} y1={cy - 12} x2={CX + PW * 0.55 + 8} y2={cy + 12}
-                        stroke={layer.color} strokeWidth={2} strokeLinecap="round" opacity={0.8} />
+                        stroke="rgba(255,255,255,0.5)" strokeWidth={2} strokeLinecap="round" opacity={0.8} />
                     )}
                     <text x={CX + PW * 0.55 + (isActive ? 18 : 12)} y={cy - 3}
-                      fill={isActive ? C.white : C.mid} fontSize={12} fontFamily={sans} fontWeight={600}
+                      fill={isActive ? "rgba(255,255,255,0.9)" : "rgba(255,255,255,0.45)"} fontSize={12} fontFamily={sans} fontWeight={600}
                       style={{ transition: "fill 0.3s" }}>{layer.title}</text>
                     <text x={CX + PW * 0.55 + (isActive ? 18 : 12)} y={cy + 10}
-                      fill={C.dim} fontSize={9} fontFamily={sans}>{layer.subtitle}</text>
+                      fill="rgba(255,255,255,0.25)" fontSize={9} fontFamily={sans}>{layer.subtitle}</text>
                   </g>
                 </g>
               );
@@ -690,7 +694,7 @@ export default function EnginePage() {
             {/* Core diamond */}
             <g style={{ animation: "engFloat 3s ease-in-out infinite" }}>
               <polygon points={`${CX},${BASE_Y - 2 * GAP - 26} ${CX + 8},${BASE_Y - 2 * GAP - 18} ${CX},${BASE_Y - 2 * GAP - 10} ${CX - 8},${BASE_Y - 2 * GAP - 18}`}
-                fill={C.indigo} opacity={0.6} stroke={C.indigo} strokeWidth={0.5} />
+                fill="rgba(255,255,255,0.15)" opacity={0.6} stroke="rgba(255,255,255,0.5)" strokeWidth={0.5} />
             </g>
           </svg>
         </div>
