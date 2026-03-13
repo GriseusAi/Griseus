@@ -360,6 +360,52 @@ export default function EnginePage() {
     setCompleteLoading(null);
   }, [completeInputs, deviationReasons, deviationNotes, fetchMotorAccuracy]);
 
+  /* ── AI response quantity parser ── */
+  const extractPlanSuggestion = useCallback((aiText: string, userText: string): { qty: number; lineId: number } | null => {
+    // Detect line from conversation context
+    let lineId = forecastLineId;
+    if (/elektrikli/i.test(userText + aiText)) lineId = 1;
+    else if (/gazl[ıi]/i.test(userText + aiText)) lineId = 2;
+
+    // Try to extract a specific number AI recommends as production target
+    // Patterns: "90 birim", "150-200 birim" (take midpoint), "hedef: 120", "%81 ile 73 birim"
+    const patterns = [
+      /(\d+)\s*[-–]\s*(\d+)\s*birim/i,                    // range: "150-200 birim"
+      /hedef[:\s]+(\d+)/i,                                  // "hedef: 120"
+      /(\d+)\s*birim\s*(?:plan|hede|üret|öneri)/i,          // "90 birim planla"
+      /plan[:\s]+(\d+)/i,                                   // "plan: 90"
+      /öneri[myz]*[:\s]+(\d+)/i,                            // "önerim: 85"
+      /(\d+)\s*birim\s*(?:üretil|üretme|üretim|hedef)/i,   // "73 birim üretilir"
+      /tahmin[:\s]+(\d+)/i,                                 // "tahmin: 73"
+    ];
+
+    for (const pat of patterns) {
+      const m = aiText.match(pat);
+      if (m) {
+        if (m[2]) {
+          // Range — take the midpoint
+          const mid = Math.round((parseInt(m[1]) + parseInt(m[2])) / 2);
+          if (mid > 0 && mid < 10000) return { qty: mid, lineId };
+        } else {
+          const val = parseInt(m[1]);
+          if (val > 0 && val < 10000) return { qty: val, lineId };
+        }
+      }
+    }
+    return null;
+  }, [forecastLineId]);
+
+  const applyAiSuggestion = useCallback((qty: number, lineId: number) => {
+    setActiveLayer("ontology");
+    setOntoNode("schedules");
+    setForecastLineId(lineId);
+    setForecastPlanQty(String(qty));
+    setPlanSaved(false);
+    setForecastResult(null);
+    fetchCurrentWeekPlan(lineId);
+    fetchWorkers(); fetchSchedules(); fetchOps(); fetchCaps(); fetchMotorAccuracy();
+  }, [fetchWorkers, fetchSchedules, fetchOps, fetchCaps, fetchMotorAccuracy, fetchCurrentWeekPlan]);
+
   /* ── AI Chat ── */
   const sendAiMessage = useCallback(async () => {
     const msg = aiInput.trim();
@@ -611,7 +657,11 @@ export default function EnginePage() {
                     ))}
                   </div>
                 )}
-                {aiMessages.map((m, i) => (
+                {aiMessages.map((m, i) => {
+                  // Find preceding user message for context
+                  const prevUserMsg = m.role === "assistant" ? [...aiMessages].slice(0, i).reverse().find(x => x.role === "user")?.content || "" : "";
+                  const suggestion = m.role === "assistant" ? extractPlanSuggestion(m.content, prevUserMsg) : null;
+                  return (
                   <div key={i} style={{ display: "flex", flexDirection: "column", alignItems: m.role === "user" ? "flex-end" : "flex-start" }}>
                     <div style={{
                       maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans,
@@ -630,8 +680,24 @@ export default function EnginePage() {
                         ))}
                       </div>
                     )}
+                    {suggestion && (
+                      <button onClick={() => applyAiSuggestion(suggestion.qty, suggestion.lineId)}
+                        style={{
+                          marginTop: 6, padding: "8px 14px", borderRadius: 8, fontSize: 12, fontWeight: 700, fontFamily: sans,
+                          background: "linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.08))",
+                          border: "1px solid rgba(251,146,60,0.3)", color: "#fb923c", cursor: "pointer",
+                          display: "flex", alignItems: "center", gap: 6, transition: "all 0.2s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.background = "rgba(251,146,60,0.25)"; }}
+                        onMouseLeave={e => { e.currentTarget.style.background = "linear-gradient(135deg, rgba(251,146,60,0.15), rgba(251,146,60,0.08))"; }}
+                      >
+                        <span style={{ fontSize: 14 }}>📋</span>
+                        Bu Plani Olustur — {suggestion.qty} birim / {suggestion.lineId === 1 ? "Elektrikli" : "Gazli"} Hat
+                      </button>
+                    )}
                   </div>
-                ))}
+                  );
+                })}
                 {aiLoading && (
                   <div style={{ display: "flex", alignItems: "center", gap: 8, padding: "10px 14px", background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 12, alignSelf: "flex-start" }}>
                     <span style={{ animation: "engPulse 1.5s ease-in-out infinite", fontSize: 12 }}>●</span>
