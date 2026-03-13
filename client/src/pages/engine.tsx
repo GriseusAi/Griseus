@@ -221,6 +221,8 @@ export default function EnginePage() {
   const [uploadLoading, setUploadLoading] = useState(false);
   const [uploadResult, setUploadResult] = useState<any>(null);
   const [uploadError, setUploadError] = useState("");
+  const [uploadNeedsType, setUploadNeedsType] = useState<{ value: string; label: string }[] | null>(null);
+  const [uploadSelectedType, setUploadSelectedType] = useState("");
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   /* ── AI Chat state ── */
@@ -432,16 +434,20 @@ export default function EnginePage() {
   useEffect(() => { if (aiScrollRef.current) aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight; }, [aiMessages, aiLoading]);
 
   /* ── Upload handler ── */
-  const handleUpload = useCallback(async () => {
+  const handleUpload = useCallback(async (parserType?: string) => {
     if (!uploadFile) return;
-    setUploadLoading(true); setUploadResult(null); setUploadError("");
+    setUploadLoading(true); setUploadResult(null); setUploadError(""); setUploadNeedsType(null);
     try {
       const fd = new FormData(); fd.append("file", uploadFile);
-      const r = await fetch("/api/v1/ingest/upload", { method: "POST", body: fd });
+      const url = parserType ? `/api/v1/ingest/upload?parser_type=${parserType}` : "/api/v1/ingest/upload";
+      const r = await fetch(url, { method: "POST", body: fd });
       const d = await r.json();
       if (d.success) {
         setUploadResult(d);
         localStorage.setItem("griseus_last_upload", JSON.stringify({ name: uploadFile.name, date: new Date().toLocaleString("tr-TR") }));
+      } else if (d.needs_selection) {
+        setUploadNeedsType(d.supported_types);
+        setUploadSelectedType(d.supported_types[0]?.value || "");
       } else { setUploadError(d.error || "Hata"); }
     } catch { setUploadError("Yukleme hatasi"); }
     setUploadLoading(false);
@@ -1663,17 +1669,47 @@ export default function EnginePage() {
                 )}
               </div>
 
-              {uploadFile && !uploadLoading && !uploadResult && (
-                <button onClick={handleUpload} style={{
+              {uploadFile && !uploadLoading && !uploadResult && !uploadNeedsType && (
+                <button onClick={() => handleUpload()} style={{
                   width: "100%", padding: "10px", borderRadius: 8, background: C.pink, color: "#000", fontSize: 12, fontWeight: 600,
                   border: "none", cursor: "pointer", marginBottom: 12,
                 }}>Yukle ve Islem Yap</button>
               )}
               {uploadLoading && <div style={{ textAlign: "center", fontSize: 12, color: C.mid, padding: 16 }}>Isleniyor...</div>}
+              {uploadNeedsType && (
+                <div style={{ padding: 12, background: "rgba(251,146,60,0.06)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 10, marginBottom: 12 }}>
+                  <div style={{ fontSize: 12, fontWeight: 700, color: "#fb923c", marginBottom: 8 }}>Dosya turu otomatik belirlenemedi</div>
+                  <div style={{ fontSize: 11, color: C.mid, marginBottom: 8 }}>Lutfen dosya turunu secin:</div>
+                  <select value={uploadSelectedType} onChange={e => setUploadSelectedType(e.target.value)}
+                    style={{
+                      width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12, fontFamily: sans,
+                      background: C.card, border: `1px solid ${C.cardBorder}`, color: C.white, marginBottom: 8, outline: "none",
+                    }}>
+                    {uploadNeedsType.map(t => (
+                      <option key={t.value} value={t.value}>{t.label}</option>
+                    ))}
+                  </select>
+                  <button onClick={() => { setUploadNeedsType(null); handleUpload(uploadSelectedType); }} style={{
+                    width: "100%", padding: "10px", borderRadius: 8, background: "#fb923c", color: "#000", fontSize: 12, fontWeight: 600,
+                    border: "none", cursor: "pointer",
+                  }}>Bu Turle Yukle</button>
+                </div>
+              )}
               {uploadResult && (
                 <div style={{ padding: 12, background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10, marginBottom: 12 }}>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: C.green, marginBottom: 4 }}>Basarili</div>
-                  <div style={{ fontSize: 12, color: C.mid }}>{uploadResult.message || "Veri islendi"}</div>
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 4 }}>
+                    <span style={{ fontSize: 12, fontWeight: 700, color: C.green }}>Basarili</span>
+                    {uploadResult.detection_method && (
+                      <span style={{ fontSize: 10, fontFamily: mono, padding: "1px 6px", borderRadius: 3,
+                        background: uploadResult.detection_method === "ai" ? "rgba(99,102,241,0.15)" : "rgba(52,211,153,0.1)",
+                        color: uploadResult.detection_method === "ai" ? C.indigo : C.green,
+                        border: `1px solid ${uploadResult.detection_method === "ai" ? "rgba(99,102,241,0.3)" : "rgba(52,211,153,0.2)"}`,
+                      }}>
+                        {uploadResult.detection_method === "ai" ? "AI algilama" : uploadResult.detection_method === "manual" ? "Manuel secim" : "Icerik algilama"}
+                      </span>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 12, color: C.mid }}>{uploadResult.summary || uploadResult.message || "Veri islendi"}</div>
                 </div>
               )}
               {uploadError && (
@@ -1812,11 +1848,27 @@ export default function EnginePage() {
                 <div style={{ fontSize: 12, color: C.dim }}>Dosya surukle veya tikla</div>
               )}
             </div>
-            {uploadFile && !uploadLoading && !uploadResult && (
-              <button onClick={async () => { setUploadOpen(false); handleUpload(); }}
+            {uploadFile && !uploadLoading && !uploadResult && !uploadNeedsType && (
+              <button onClick={async () => { handleUpload(); }}
                 style={{ width: "100%", padding: "12px", borderRadius: 8, background: C.indigo, color: "#000", fontSize: 14, fontWeight: 600, border: "none", cursor: "pointer" }}>
                 Yukle
               </button>
+            )}
+            {uploadNeedsType && (
+              <div style={{ padding: 12, background: "rgba(251,146,60,0.06)", border: "1px solid rgba(251,146,60,0.2)", borderRadius: 10, marginBottom: 12 }}>
+                <div style={{ fontSize: 12, fontWeight: 700, color: "#fb923c", marginBottom: 8 }}>Dosya turu belirlenemedi</div>
+                <select value={uploadSelectedType} onChange={e => setUploadSelectedType(e.target.value)}
+                  style={{ width: "100%", padding: "8px 10px", borderRadius: 6, fontSize: 12, fontFamily: sans,
+                    background: C.card, border: `1px solid ${C.cardBorder}`, color: C.white, marginBottom: 8, outline: "none" }}>
+                  {uploadNeedsType.map(t => (
+                    <option key={t.value} value={t.value}>{t.label}</option>
+                  ))}
+                </select>
+                <button onClick={() => { setUploadNeedsType(null); handleUpload(uploadSelectedType); }} style={{
+                  width: "100%", padding: "10px", borderRadius: 8, background: "#fb923c", color: "#000", fontSize: 12, fontWeight: 600,
+                  border: "none", cursor: "pointer",
+                }}>Bu Turle Yukle</button>
+              </div>
             )}
             {uploadResult && (
               <div style={{ padding: 12, background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)", borderRadius: 10 }}>
@@ -1824,7 +1876,7 @@ export default function EnginePage() {
               </div>
             )}
             <div style={{ fontSize: 11, color: C.dim, marginTop: 12, textAlign: "center" }}>
-              Desteklenen: Elektrikli/Gazli Imalat, Kapasite, Personel, KPI, Is Akis
+              Tur otomatik algilanir. Algilanamezse secim yapabilirsiniz.
             </div>
           </div>
         </div>

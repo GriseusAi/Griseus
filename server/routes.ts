@@ -20,7 +20,7 @@ import { db } from "./db";
 import { eq, and, desc, sql, sum } from "drizzle-orm";
 import multer from "multer";
 import * as XLSX from "xlsx";
-import { detectParserFromContent, getIngestError, resetToSeed } from "./routes/ingest";
+import { detectParserFromContent, detectParserWithAI, getParserByType, getIngestError, resetToSeed } from "./routes/ingest";
 import agentRouter from "./routes/agent";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
@@ -2810,15 +2810,45 @@ export async function registerRoutes(
         return res.status(400).json({ success: false, error: `Desteklenmeyen dosya formatı: .${ext}. Desteklenen: .xls, .xlsx, .csv` });
       }
 
-      // Parse the file first, then detect parser from content
+      // Parse the file
       const wb = XLSX.read(buffer, { type: "buffer" });
 
-      const parser = detectParserFromContent(wb, fileName);
-      if (!parser) return res.status(400).json(getIngestError(fileName));
+      // 3-tier detection: manual override → content-based → AI-powered → ask user
+      const manualType = req.query.parser_type as string | undefined;
+      let parser = manualType ? getParserByType(manualType) : null;
+      let detectionMethod = manualType ? "manual" : "";
 
-      console.log("[Ingest] Matched parser:", parser.name, "(content-based detection)");
+      if (!parser) {
+        parser = detectParserFromContent(wb, fileName);
+        detectionMethod = parser ? "content" : "";
+      }
+
+      if (!parser) {
+        console.log("[Ingest] Content detection failed, trying AI...");
+        parser = await detectParserWithAI(wb);
+        detectionMethod = parser ? "ai" : "";
+      }
+
+      if (!parser) {
+        return res.status(422).json({
+          success: false,
+          needs_selection: true,
+          error: "Dosya türü otomatik belirlenemedi. Lütfen türü seçin.",
+          supported_types: [
+            { value: "elektrikli", label: "Elektrikli Üretim" },
+            { value: "gazli", label: "Gazlı Üretim" },
+            { value: "kapasite", label: "Kapasite Verileri" },
+            { value: "personel", label: "Personel Listesi" },
+            { value: "kpi", label: "KPI / Performans" },
+            { value: "isakis", label: "İş Akış / Yetki Matrisi" },
+          ],
+        });
+      }
+
+      console.log("[Ingest] Matched parser:", parser.name, `(${detectionMethod} detection)`);
 
       const result = await parser.fn(wb, fileName);
+      (result as any).detection_method = detectionMethod;
 
       // ── Signal chain: recalculate all capacity_metrics after upload ──
       try {

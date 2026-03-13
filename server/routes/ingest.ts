@@ -114,6 +114,71 @@ export function detectParserFromContent(wb: XLSX.WorkBook, fileName: string): { 
   return null;
 }
 
+/** AI-powered parser detection — sends column headers to Claude */
+export async function detectParserWithAI(wb: XLSX.WorkBook): Promise<{ name: string; fn: ParserFn } | null> {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+
+  // Collect headers: sheet names + first 3 rows of each sheet (max 3 sheets)
+  const sheetSamples: string[] = [];
+  for (const sName of wb.SheetNames.slice(0, 3)) {
+    const ws = wb.Sheets[sName];
+    if (!ws) continue;
+    const rows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: "" }) as any[][];
+    const sample = rows.slice(0, 3).map(r => r.map(c => String(c || "").substring(0, 40)).join(" | ")).join("\n");
+    sheetSamples.push(`Sheet "${sName}":\n${sample}`);
+  }
+
+  const prompt = `Asagidaki Excel dosyasinin sheet isimleri ve kolon basliklarini inceleyerek dosya turunu belirle.
+Sadece su turlerden birini yaz, baska hicbir sey yazma:
+elektrikli, gazli, kapasite, personel, kpi, isakis, bilinmiyor
+
+Sheet listesi: ${wb.SheetNames.join(", ")}
+
+Icerik ornekleri:
+${sheetSamples.join("\n\n")}
+
+Dosya turu:`;
+
+  try {
+    const resp = await fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: { "content-type": "application/json", "x-api-key": apiKey, "anthropic-version": "2023-06-01" },
+      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: 20, messages: [{ role: "user", content: prompt }] }),
+    });
+    const data = await resp.json();
+    const answer = (data.content?.[0]?.text || "").trim().toLowerCase();
+    console.log("[Ingest AI] Claude response:", answer);
+
+    const map: Record<string, { name: string; fn: ParserFn } | null> = {
+      elektrikli: { name: "ElektrikliParser", fn: parseElektrikli },
+      gazli: { name: "GazliParser", fn: parseGazli },
+      kapasite: { name: "KapasiteParser", fn: parseKapasite },
+      personel: { name: "PersonelParser", fn: parsePersonel },
+      kpi: { name: "KPIParser", fn: parseKPI },
+      isakis: { name: "IsAkisParser", fn: parseIsAkis },
+    };
+
+    return map[answer] || null;
+  } catch (err: any) {
+    console.error("[Ingest AI] Detection failed:", err.message);
+    return null;
+  }
+}
+
+/** Resolve parser by manual type string from frontend dropdown */
+export function getParserByType(type: string): { name: string; fn: ParserFn } | null {
+  const map: Record<string, { name: string; fn: ParserFn }> = {
+    elektrikli: { name: "ElektrikliParser", fn: parseElektrikli },
+    gazli: { name: "GazliParser", fn: parseGazli },
+    kapasite: { name: "KapasiteParser", fn: parseKapasite },
+    personel: { name: "PersonelParser", fn: parsePersonel },
+    kpi: { name: "KPIParser", fn: parseKPI },
+    isakis: { name: "IsAkisParser", fn: parseIsAkis },
+  };
+  return map[type.toLowerCase()] || null;
+}
+
 /** @deprecated Use detectParserFromContent instead */
 export function detectParser(fileName: string): { name: string; fn: ParserFn } | null {
   return detectParserByName(fileName);
