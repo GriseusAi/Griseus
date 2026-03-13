@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useLocation } from "wouter";
 
 /* ── Shared tokens ──────────────────────────────────────────── */
 const C = {
@@ -202,6 +203,8 @@ function TrustDiagram() {
 
 /* ── Main landing page ──────────────────────────────────────── */
 export default function OnboardingPage() {
+  const [, setLocation] = useLocation();
+
   const stats = [
     { n: 12, label: "Trades mapped" },
     { n: 29, label: "Certifications" },
@@ -241,8 +244,8 @@ export default function OnboardingPage() {
       <nav style={{ display: "flex", justifyContent: "space-between", alignItems: "center", padding: "20px 48px", borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0, background: C.bg, zIndex: 50 }}>
         <span style={{ fontSize: 18, fontWeight: 700, letterSpacing: "0.08em" }}>GRISEUS</span>
         <div style={{ display: "flex", gap: 12 }}>
-          <button style={{ padding: "8px 20px", border: `1px solid ${C.border}`, borderRadius: 6, background: "transparent", color: C.mid, cursor: "pointer", fontSize: 13 }}>Sign In</button>
-          <button style={{ padding: "8px 20px", border: "none", borderRadius: 6, background: "rgba(255,255,255,0.92)", color: "#07070b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Sign Up</button>
+          <button onClick={() => setLocation("/login")} style={{ padding: "8px 20px", border: `1px solid ${C.border}`, borderRadius: 6, background: "transparent", color: C.mid, cursor: "pointer", fontSize: 13 }}>Sign In</button>
+          <button onClick={() => setLocation("/register")} style={{ padding: "8px 20px", border: "none", borderRadius: 6, background: "rgba(255,255,255,0.92)", color: "#07070b", cursor: "pointer", fontSize: 13, fontWeight: 600 }}>Sign Up</button>
         </div>
       </nav>
 
@@ -259,10 +262,10 @@ export default function OnboardingPage() {
           Griseus is the intelligence layer for data center construction workforce planning — from phase scheduling to verified worker trust scores.
         </p>
         <div style={{ display: "flex", gap: 12, justifyContent: "center", flexWrap: "wrap" }}>
-          <button style={{ padding: "14px 32px", background: C.bright, color: C.bg, border: "none", borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: "pointer", letterSpacing: "0.02em" }}>
+          <button onClick={() => setLocation("/register")} style={{ padding: "14px 32px", background: C.bright, color: C.bg, border: "none", borderRadius: 8, fontWeight: 700, fontSize: 15, cursor: "pointer", letterSpacing: "0.02em" }}>
             See the Platform →
           </button>
-          <button style={{ padding: "14px 32px", background: "transparent", color: C.mid, border: `1px solid ${C.border}`, borderRadius: 8, fontWeight: 500, fontSize: 15, cursor: "pointer" }}>
+          <button onClick={() => setLocation("/login")} style={{ padding: "14px 32px", background: "transparent", color: C.mid, border: `1px solid ${C.border}`, borderRadius: 8, fontWeight: 500, fontSize: 15, cursor: "pointer" }}>
             Request Demo
           </button>
         </div>
@@ -382,7 +385,7 @@ export default function OnboardingPage() {
         <p style={{ color: C.mid, fontSize: 17, marginBottom: 40 }}>
           Join the first platform built for data center construction workforce intelligence.
         </p>
-        <button style={{ padding: "16px 40px", background: C.bright, color: C.bg, border: "none", borderRadius: 8, fontWeight: 700, fontSize: 16, cursor: "pointer", letterSpacing: "0.02em" }}>
+        <button onClick={() => setLocation("/register")} style={{ padding: "16px 40px", background: C.bright, color: C.bg, border: "none", borderRadius: 8, fontWeight: 700, fontSize: 16, cursor: "pointer", letterSpacing: "0.02em" }}>
           Get Early Access
         </button>
         <div style={{ marginTop: 64, paddingTop: 32, borderTop: `1px solid ${C.border}`, display: "flex", justifyContent: "center", gap: 48, flexWrap: "wrap" }}>
