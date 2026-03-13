@@ -407,8 +407,7 @@ export default function EnginePage() {
   }, [fetchWorkers, fetchSchedules, fetchOps, fetchCaps, fetchMotorAccuracy, fetchCurrentWeekPlan]);
 
   /* ── AI Chat ── */
-  const sendAiMessage = useCallback(async () => {
-    const msg = aiInput.trim();
+  const sendDirectMessage = useCallback(async (msg: string) => {
     if (!msg || aiLoading) return;
     setAiInput(""); setAiError("");
     const newMsgs = [...aiMessages, { role: "user" as const, content: msg }];
@@ -422,7 +421,13 @@ export default function EnginePage() {
       setAiMessages([...newMsgs, { role: "assistant", content: data.response, tools: data.tools_used }]);
     } catch { setAiError("AI Assistant'a baglanilamadi."); }
     setAiLoading(false);
-  }, [aiInput, aiLoading, aiMessages]);
+  }, [aiLoading, aiMessages]);
+
+  const sendAiMessage = useCallback(async () => {
+    const msg = aiInput.trim();
+    if (!msg) return;
+    sendDirectMessage(msg);
+  }, [aiInput, sendDirectMessage]);
 
   useEffect(() => { if (aiScrollRef.current) aiScrollRef.current.scrollTop = aiScrollRef.current.scrollHeight; }, [aiMessages, aiLoading]);
 
@@ -903,7 +908,22 @@ export default function EnginePage() {
                             <span style={{ fontSize: 12, fontWeight: 700, color: C.white, lineHeight: 1.3 }}>{rec.title}</span>
                           </div>
                           <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.5, marginBottom: 4 }}>{rec.reason}</div>
-                          <div style={{ fontSize: 11, color: p.color, fontFamily: mono, fontWeight: 600 }}>↳ {rec.impact}</div>
+                          <div style={{ fontSize: 11, color: p.color, fontFamily: mono, fontWeight: 600, marginBottom: 6 }}>↳ {rec.impact}</div>
+                          <button onClick={() => {
+                            const msg = `${rec.title}. ${rec.reason} Önerilen aksiyon: ${rec.impact}. Bu konuda ne yapmalıyım?`;
+                            setActiveLayer(null);
+                            setTimeout(() => { setAiOpen(true); sendDirectMessage(msg); }, 150);
+                          }} style={{
+                            width: "100%", padding: "6px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600, fontFamily: sans,
+                            background: "rgba(255,255,255,0.04)", border: `1px solid ${p.border}`,
+                            color: p.color, cursor: "pointer", transition: "all 0.2s",
+                            display: "flex", alignItems: "center", justifyContent: "center", gap: 5,
+                          }}
+                            onMouseEnter={e => { e.currentTarget.style.background = `${p.bg.replace("0.08", "0.2")}`; }}
+                            onMouseLeave={e => { e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                          >
+                            <span style={{ fontSize: 12 }}>⚡</span> Aksiyon Al
+                          </button>
                         </div>
                       );
                     })}
