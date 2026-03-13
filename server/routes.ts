@@ -331,6 +331,107 @@ Email: ${user.email}${user.trade ? `\nTrade: ${user.trade}` : ""}${user.yearsExp
   return sections.join("\n");
 }
 
+function buildCeoSystemPrompt(ctx: PlatformContext): string {
+  const sections: string[] = [];
+
+  // CEO identity & behavior
+  sections.push(
+    `Sen Çukurova Isı Sistemleri CEO'sunun kişisel asistanısın.
+Bu asistan sadece Çukurova Isı yöneticilerine özeldir — genel bir yapay zeka değilsin, şirketi ve verilerini tanıyan bir karar destek sistemisin.
+
+Şirket profili:
+- 30+ yıllık HVAC üreticisi, 20.000+ kurulum referansı
+- Elektrikli ve Gazlı ısıtma sistemi üretimi
+- Türkiye'nin önde gelen ısıtma sistemi üreticilerinden biri
+
+CEO'nun sorumluluk alanları:
+- Dış ticaret ve ihracat operasyonları
+- Tedarikçi ilişkileri ve satın alma kararları
+- Üretim planlama ve kapasite yönetimi
+- Genel şirket yönetimi
+
+Davranış kuralları:
+- Kullanıcı Türkçe sorarsa Türkçe, İngilizce sorarsa İngilizce cevap ver
+- Cevaplar kısa, net, aksiyon odaklı olsun
+- 'Genel olarak...' diye başlama, Çukurova'ya özel konuş
+- Her cevabın sonunda 1 somut öneri veya soru sor
+- Geçmiş konuşmaları hatırla ve bağlantı kur
+- Use plain text only, no markdown formatting. Use newlines to separate points.`
+  );
+
+  // Inject platform data — capacity metrics, projects, workforce
+  if (ctx.activeProjects.length > 0) {
+    const projectLines = ctx.activeProjects.map(p => {
+      const parts = [`  - ${p.name} (${p.location})`];
+      parts.push(`    Durum: ${p.status}, İlerleme: ${p.progress}%`);
+      if (p.tradesNeeded && p.tradesNeeded.length > 0) parts.push(`    Gerekli işçilik: ${p.tradesNeeded.join(", ")}`);
+      if (p.hourlyRate) parts.push(`    Saat ücreti: ${p.hourlyRate}`);
+      if (p.client) parts.push(`    Müşteri: ${p.client}`);
+      return parts.join("\n");
+    });
+    sections.push(`\n--- AKTİF PROJELER (${ctx.activeProjects.length}) ---\n${projectLines.join("\n")}`);
+  }
+
+  if (ctx.workers.length > 0) {
+    const tradeCounts = new Map<string, { total: number; available: number }>();
+    for (const w of ctx.workers) {
+      const entry = tradeCounts.get(w.trade) || { total: 0, available: 0 };
+      entry.total++;
+      if (w.available) entry.available++;
+      tradeCounts.set(w.trade, entry);
+    }
+    const summaryLines = Array.from(tradeCounts.entries()).map(
+      ([trade, c]) => `  - ${trade}: ${c.total} toplam, ${c.available} müsait`
+    );
+    sections.push(`\n--- İŞGÜCÜ ÖZETİ (${ctx.workers.length} çalışan) ---\n${summaryLines.join("\n")}`);
+  }
+
+  // Phase-trade requirements as capacity/planning data
+  if (ctx.phaseTradeRequirements.length > 0) {
+    const tradeIdToName = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const phaseIdToName = new Map(ctx.projectPhases?.map(p => [p.id, p.name]) || []);
+    const byPhase = new Map<string, PhaseTradeRequirement[]>();
+    for (const r of ctx.phaseTradeRequirements) {
+      if (!byPhase.has(r.projectPhaseId)) byPhase.set(r.projectPhaseId, []);
+      byPhase.get(r.projectPhaseId)!.push(r);
+    }
+    const phaseLines: string[] = [];
+    Array.from(byPhase.entries()).forEach(([phaseId, reqs]) => {
+      const phaseName = phaseIdToName.get(phaseId) || phaseId;
+      const tradeLines = reqs.map(r => {
+        const trade = tradeIdToName.get(r.tradeId) || "Unknown";
+        return `    ${trade}: ${r.workersNeeded} işçi, ${r.durationWeeks} hafta, öncelik=${r.priority}`;
+      });
+      phaseLines.push(`  ${phaseName}:\n${tradeLines.join("\n")}`);
+    });
+    sections.push(`\n--- KAPASİTE VE PLANLAMA VERİLERİ ---\n${phaseLines.join("\n")}`);
+  }
+
+  // Wage data for cost analysis
+  if (ctx.wageData.length > 0) {
+    const tradeIdToName = new Map(ctx.trades.map(t => [t.id, t.name]));
+    const wageLines = ctx.wageData.map(w => {
+      const trade = tradeIdToName.get(w.tradeId) || "Unknown";
+      return `  - ${trade} (${w.region}, ${w.experienceLevel}): $${w.hourlyRateMin}-${w.hourlyRateMax}/saat`;
+    });
+    sections.push(`\n--- MALİYET VERİLERİ ---\n${wageLines.join("\n")}`);
+  }
+
+  // Risk flags — projects with low progress or missing trades
+  const riskProjects = ctx.activeProjects.filter(p =>
+    (p.progress != null && p.progress < 30 && p.status === "active") ||
+    (p.tradesNeeded && p.tradesNeeded.length > 3)
+  );
+  if (riskProjects.length > 0) {
+    const riskLines = riskProjects.map(p =>
+      `  ⚠ ${p.name}: ilerleme ${p.progress}%, gerekli meslek sayısı: ${p.tradesNeeded?.length || 0}`
+    );
+    sections.push(`\n--- RİSK BAYRAKLARI ---\n${riskLines.join("\n")}`);
+  }
+
+  return sections.join("\n");
+}
+
 export async function registerRoutes(
   httpServer: Server,
   app: Express
@@ -1220,7 +1321,7 @@ export async function registerRoutes(
   // AI Chat endpoint — context-aware with real platform data
   app.post("/api/ai/chat", async (req, res) => {
     try {
-      const { messages } = req.body;
+      const { messages, mode } = req.body;
       const apiKey = process.env.ANTHROPIC_API_KEY;
       if (!apiKey) {
         return res.json({ response: "Site AI is currently unavailable." });
@@ -1232,37 +1333,45 @@ export async function registerRoutes(
       // Gather all platform data in parallel
       const ctx = await gatherPlatformContext();
 
-      // Resolve linked worker ID for worker-role users
-      let linkedWorkerId: string | null = null;
-      if (user?.role === "worker" && user.email) {
-        const linkedWorker = ctx.workers.find(w => w.email === user.email);
-        if (linkedWorker) linkedWorkerId = linkedWorker.id;
-      }
+      let systemPrompt: string;
 
-      // Extract last user message for intent detection
-      const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
-
-      // Detect matching intent
-      const intent = detectMatchingIntent(lastUserMessage, ctx.projects, linkedWorkerId);
-
-      // Run matching engine if intent detected
-      let matchingResults: { workers?: WorkerMatchResult[]; jobs?: ProjectMatchResult[] } | undefined;
-      if (intent) {
-        try {
-          if (intent.type === "workers-for-project" && intent.projectId) {
-            const workers = await findWorkersForProject(intent.projectId);
-            matchingResults = { workers };
-          } else if (intent.type === "jobs-for-worker" && intent.workerId) {
-            const jobs = await findJobsForWorker(intent.workerId);
-            matchingResults = { jobs };
-          }
-        } catch {
-          // Matching engine errors are non-fatal — AI still has full context
+      if (mode === "ceo") {
+        // CEO/Executive mode — build CEO-specific system prompt with platform data injection
+        systemPrompt = buildCeoSystemPrompt(ctx);
+      } else {
+        // Normal Site AI mode
+        // Resolve linked worker ID for worker-role users
+        let linkedWorkerId: string | null = null;
+        if (user?.role === "worker" && user.email) {
+          const linkedWorker = ctx.workers.find(w => w.email === user.email);
+          if (linkedWorker) linkedWorkerId = linkedWorker.id;
         }
-      }
 
-      // Build enriched system prompt
-      const systemPrompt = buildSystemPrompt(user, ctx, matchingResults);
+        // Extract last user message for intent detection
+        const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user")?.content || "";
+
+        // Detect matching intent
+        const intent = detectMatchingIntent(lastUserMessage, ctx.projects, linkedWorkerId);
+
+        // Run matching engine if intent detected
+        let matchingResults: { workers?: WorkerMatchResult[]; jobs?: ProjectMatchResult[] } | undefined;
+        if (intent) {
+          try {
+            if (intent.type === "workers-for-project" && intent.projectId) {
+              const workers = await findWorkersForProject(intent.projectId);
+              matchingResults = { workers };
+            } else if (intent.type === "jobs-for-worker" && intent.workerId) {
+              const jobs = await findJobsForWorker(intent.workerId);
+              matchingResults = { jobs };
+            }
+          } catch {
+            // Matching engine errors are non-fatal — AI still has full context
+          }
+        }
+
+        // Build enriched system prompt
+        systemPrompt = buildSystemPrompt(user, ctx, matchingResults);
+      }
 
       const apiResponse = await fetch("https://api.anthropic.com/v1/messages", {
         method: "POST",
