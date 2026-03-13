@@ -242,6 +242,83 @@ async function callTool(toolName: string, input: Record<string, any>, baseUrl: s
   return resp.json();
 }
 
+const CEO_SYSTEM_PROMPT = `Sen Çukurova Isı Sistemleri CEO'sunun kişisel asistanısın.
+Bu asistan sadece Çukurova Isı yöneticilerine özeldir — genel bir yapay zeka değilsin, şirketi ve verilerini tanıyan bir karar destek sistemisin.
+
+Şirket profili:
+- 30+ yıllık HVAC üreticisi, 20.000+ kurulum referansı
+- Elektrikli ve Gazlı ısıtma sistemi üretimi
+- Türkiye'nin önde gelen ısıtma sistemi üreticilerinden biri
+
+CEO'nun sorumluluk alanları:
+- Dış ticaret ve ihracat operasyonları
+- Tedarikçi ilişkileri ve satın alma kararları
+- Üretim planlama ve kapasite yönetimi
+- Genel şirket yönetimi
+
+Davranış kuralları:
+- Kullanıcı Türkçe sorarsa Türkçe, İngilizce sorarsa İngilizce cevap ver
+- Cevaplar kısa, net, aksiyon odaklı olsun
+- 'Genel olarak...' diye başlama, Çukurova'ya özel konuş
+- Her cevabın sonunda 1 somut öneri veya soru sor
+- Geçmiş konuşmaları hatırla ve bağlantı kur
+- Markdown formatı kullanma. Düz metin yaz.`;
+
+async function buildCeoSystemPrompt(): Promise<string> {
+  const sections: string[] = [CEO_SYSTEM_PROMPT];
+
+  // Inject the same real platform data as normal mode
+  const recentPlans = await db.select().from(weeklyPlans)
+    .orderBy(desc(weeklyPlans.createdAt))
+    .limit(10);
+
+  if (recentPlans.length > 0) {
+    const planLines = recentPlans.map(p => {
+      const actual = p.actualQty != null ? `gerçek: ${p.actualQty}` : "gerçek: -";
+      const rate = p.realizationRate ? `gerçekleşme: %${Math.round(parseFloat(p.realizationRate) * 100)}` : "";
+      const risk = p.riskFlag ? " [RİSK]" : "";
+      const reason = p.deviationReason ? ` sapma: ${p.deviationReason}` : "";
+      return `  - ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} | ${actual} | ${rate}${reason}${risk} | durum: ${p.status}`;
+    });
+    sections.push(`\n--- HAFTALIK PLANLAR ---\n${planLines.join("\n")}`);
+  }
+
+  const lines = await db.select().from(productionLines);
+  const latestCapacity = await db.select().from(capacityMetrics)
+    .orderBy(desc(capacityMetrics.calculatedAt));
+
+  if (latestCapacity.length > 0) {
+    const lineMap = new Map(lines.map(l => [l.id, l.name]));
+    const seen = new Set<number>();
+    const capLines: string[] = [];
+    for (const c of latestCapacity) {
+      if (c.lineId && !seen.has(c.lineId)) {
+        seen.add(c.lineId);
+        const lineName = lineMap.get(c.lineId) || `Hat ${c.lineId}`;
+        capLines.push(`  - ${lineName}: kapasite %${c.utilizationPct || 0} | teorik maks: ${c.theoreticalMax} | gerçek: ${c.actualOutput}`);
+      }
+    }
+    if (capLines.length > 0) {
+      sections.push(`\n--- KAPASİTE METRİKLERİ ---\n${capLines.join("\n")}`);
+    }
+  }
+
+  const riskyPlans = await db.select().from(weeklyPlans)
+    .where(eq(weeklyPlans.riskFlag, true))
+    .orderBy(desc(weeklyPlans.completedAt));
+
+  if (riskyPlans.length > 0) {
+    const riskLines = riskyPlans.map(p => {
+      const rate = p.realizationRate ? `gerçekleşme: %${Math.round(parseFloat(p.realizationRate) * 100)}` : "";
+      const reason = p.deviationReason || "belirtilmemiş";
+      return `  ⚠ ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} gerçek: ${p.actualQty || "-"} | ${rate} | sapma: ${reason}`;
+    });
+    sections.push(`\n--- RİSK BAYRAKLARI ---\n${riskLines.join("\n")}`);
+  }
+
+  return sections.join("\n");
+}
+
 router.post("/agent/chat", async (req: Request, res: Response) => {
   try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
@@ -249,9 +326,10 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       return res.status(503).json({ error: "API key eksik. ANTHROPIC_API_KEY ortam değişkenini yapılandırın." });
     }
 
-    const { message, history } = req.body as {
+    const { message, history, mode } = req.body as {
       message: string;
       history?: { role: string; content: string }[];
+      mode?: string;
     };
 
     if (!message || typeof message !== "string") {
@@ -261,8 +339,10 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const client = new Anthropic({ apiKey });
     const baseUrl = getBaseUrl(req);
 
-    // Build contextual system prompt with real data
-    const systemPrompt = await buildContextualSystemPrompt();
+    // Build contextual system prompt — CEO mode uses dedicated prompt
+    const systemPrompt = mode === "ceo"
+      ? await buildCeoSystemPrompt()
+      : await buildContextualSystemPrompt();
 
     // Build messages from history + new message
     const messages: Anthropic.MessageParam[] = [

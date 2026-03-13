@@ -233,6 +233,43 @@ export default function EnginePage() {
   const [aiError, setAiError] = useState("");
   const aiScrollRef = useRef<HTMLDivElement>(null);
 
+  /* ── CEO Mode state ── */
+  const [isCeoMode, setIsCeoMode] = useState(false);
+  const [normalAiMessages, setNormalAiMessages] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
+  const [ceoAiMessages, setCeoAiMessages] = useState<{ role: "user" | "assistant"; content: string; tools?: string[] }[]>([]);
+  const [showCeoHistory, setShowCeoHistory] = useState(false);
+
+  const CEO_WELCOME_MSG = "Çukurova Isı Sistemleri Yönetici Asistanına hoş geldiniz. Üretim verileri, tedarik süreçleri veya dış ticaret konularında size nasıl yardımcı olabilirim?";
+
+  // CEO history from localStorage
+  const loadCeoHistory = useCallback(() => {
+    try {
+      const raw = localStorage.getItem("ceo_chat_history");
+      return raw ? JSON.parse(raw) : [];
+    } catch { return []; }
+  }, []);
+
+  const [ceoHistory, setCeoHistory] = useState<{ id: string; timestamp: number; messages: any[]; preview: string }[]>(() => loadCeoHistory());
+  const [activeCeoConvId, setActiveCeoConvId] = useState<string | null>(null);
+
+  const saveCeoHistoryToStorage = useCallback((convs: any[]) => {
+    localStorage.setItem("ceo_chat_history", JSON.stringify(convs));
+  }, []);
+
+  const handleToggleCeoMode = useCallback(() => {
+    if (isCeoMode) {
+      setCeoAiMessages(aiMessages);
+      setAiMessages(normalAiMessages);
+    } else {
+      setNormalAiMessages(aiMessages);
+      setActiveCeoConvId(null);
+      setCeoAiMessages([]);
+      setAiMessages([]);
+    }
+    setIsCeoMode(prev => !prev);
+    setShowCeoHistory(false);
+  }, [isCeoMode, aiMessages, normalAiMessages]);
+
   /* ── Load fonts ── */
   useEffect(() => {
     if (!document.querySelector('link[href*="Outfit"]')) {
@@ -417,13 +454,33 @@ export default function EnginePage() {
     setAiLoading(true);
     try {
       const history = aiMessages.map(m => ({ role: m.role, content: m.content }));
-      const resp = await fetch("/api/v1/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ message: msg, history }) });
+      const payload: any = { message: msg, history };
+      if (isCeoMode) payload.mode = "ceo";
+      const resp = await fetch("/api/v1/agent/chat", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
       const data = await resp.json();
       if (!resp.ok) { setAiError(data.error || "Hata"); setAiLoading(false); return; }
-      setAiMessages([...newMsgs, { role: "assistant", content: data.response, tools: data.tools_used }]);
-    } catch { setAiError("AI Assistant'a baglanilamadi."); }
+      const updatedMsgs = [...newMsgs, { role: "assistant" as const, content: data.response, tools: data.tools_used }];
+      setAiMessages(updatedMsgs);
+      // Save CEO conversation to localStorage
+      if (isCeoMode) {
+        setCeoAiMessages(updatedMsgs);
+        const userMsgs = updatedMsgs.filter(m => m.role === "user");
+        if (userMsgs.length > 0) {
+          const id = activeCeoConvId || `ceo_${Date.now()}`;
+          if (!activeCeoConvId) setActiveCeoConvId(id);
+          const preview = userMsgs[0].content.slice(0, 60) + (userMsgs[0].content.length > 60 ? "..." : "");
+          const updated = ceoHistory.filter(c => c.id !== id);
+          updated.unshift({ id, timestamp: Date.now(), messages: updatedMsgs, preview });
+          const trimmed = updated.slice(0, 50);
+          setCeoHistory(trimmed);
+          saveCeoHistoryToStorage(trimmed);
+        }
+      } else {
+        setNormalAiMessages(updatedMsgs);
+      }
+    } catch { setAiError(isCeoMode ? "Yönetici asistanına bağlanılamadı." : "AI Assistant'a baglanilamadi."); }
     setAiLoading(false);
-  }, [aiLoading, aiMessages]);
+  }, [aiLoading, aiMessages, isCeoMode, activeCeoConvId, ceoHistory, saveCeoHistoryToStorage]);
 
   const sendAiMessage = useCallback(async () => {
     const msg = aiInput.trim();
@@ -645,25 +702,59 @@ export default function EnginePage() {
           {aiOpen ? (
             <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
               <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 16 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                  <span style={{ fontSize: 14, fontWeight: 700 }}>Griseus AI</span>
-                  <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: C.green }}>
-                    <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />Live
-                  </span>
+                <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                    <span style={{ fontSize: 14, fontWeight: 700, color: isCeoMode ? "#f59e0b" : C.white }}>
+                      {isCeoMode ? "Çukurova Isı — Yönetici Asistanı" : "Griseus AI"}
+                    </span>
+                    {!isCeoMode && (
+                      <span style={{ display: "flex", alignItems: "center", gap: 4, fontSize: 12, fontWeight: 600, color: C.green }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: C.green, boxShadow: `0 0 6px ${C.green}` }} />Live
+                      </span>
+                    )}
+                  </div>
+                  {isCeoMode && (
+                    <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b", display: "flex", alignItems: "center", gap: 4 }}>
+                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px #f59e0b" }} />
+                      Kişisel Asistan
+                    </span>
+                  )}
                 </div>
-                <button onClick={() => setAiOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
+                <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <button onClick={handleToggleCeoMode}
+                    style={{
+                      padding: "4px 12px", fontSize: 11, fontWeight: 700, fontFamily: mono,
+                      background: isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(100,116,139,0.15)",
+                      border: `1px solid ${isCeoMode ? "rgba(245,158,11,0.4)" : "rgba(100,116,139,0.3)"}`,
+                      borderRadius: 6, color: isCeoMode ? "#fbbf24" : C.mid, cursor: "pointer",
+                      transition: "all 0.2s", display: "flex", alignItems: "center", gap: 5,
+                    }}
+                    onMouseEnter={e => { e.currentTarget.style.background = isCeoMode ? "rgba(245,158,11,0.25)" : "rgba(100,116,139,0.25)"; }}
+                    onMouseLeave={e => { e.currentTarget.style.background = isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(100,116,139,0.15)"; }}
+                    title={isCeoMode ? "Normal moda geç" : "CEO Moduna geç"}
+                  >
+                    <span>⚡</span> CEO
+                  </button>
+                  <button onClick={() => setAiOpen(false)} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 18 }}>✕</button>
+                </div>
               </div>
 
               <div ref={aiScrollRef} style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10, marginBottom: 12 }}>
                 {aiMessages.length === 0 && !aiError && (
                   <div style={{ textAlign: "center", marginTop: 32 }}>
-                    <div style={{ fontSize: 28, marginBottom: 10 }}>🤖</div>
-                    <div style={{ fontSize: 12, color: C.mid, marginBottom: 16 }}>Uretim verilerine dayali sorular sorun</div>
-                    {["Bu hafta ne planlamaliyim?", "Darbogaz nerede?", "En kritik calisanim kim?", "Kapasiteyi artirmak icin ne yapmaliyim?"].map(q => (
+                    <div style={{ fontSize: 28, marginBottom: 10 }}>{isCeoMode ? "⚡" : "🤖"}</div>
+                    <div style={{ fontSize: 12, color: isCeoMode ? "#fbbf24" : C.mid, marginBottom: 16 }}>
+                      {isCeoMode ? CEO_WELCOME_MSG : "Uretim verilerine dayali sorular sorun"}
+                    </div>
+                    {(isCeoMode
+                      ? ["Haftalık üretim performansı nasıl?", "Kapasite darboğazı var mı?", "Risk bayraklı planları göster", "İhracat için kapasite uygun mu?"]
+                      : ["Bu hafta ne planlamaliyim?", "Darbogaz nerede?", "En kritik calisanim kim?", "Kapasiteyi artirmak icin ne yapmaliyim?"]
+                    ).map(q => (
                       <button key={q} onClick={() => setAiInput(q)} style={{
                         display: "block", width: "100%", textAlign: "left", marginBottom: 6,
-                        background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8,
-                        padding: "8px 12px", fontSize: 12, color: C.mid, cursor: "pointer", fontFamily: sans,
+                        background: isCeoMode ? "rgba(245,158,11,0.06)" : C.card,
+                        border: `1px solid ${isCeoMode ? "rgba(245,158,11,0.2)" : C.cardBorder}`, borderRadius: 8,
+                        padding: "8px 12px", fontSize: 12, color: isCeoMode ? "#fbbf24" : C.mid, cursor: "pointer", fontFamily: sans,
                       }}>{q}</button>
                     ))}
                   </div>
@@ -677,9 +768,9 @@ export default function EnginePage() {
                     <div style={{
                       maxWidth: "85%", padding: "10px 14px", borderRadius: 12, fontSize: 12, lineHeight: 1.7, fontFamily: sans,
                       whiteSpace: m.role === "user" ? "pre-wrap" : undefined,
-                      background: m.role === "user" ? "rgba(99,102,241,0.2)" : C.card,
-                      border: m.role === "user" ? "1px solid rgba(99,102,241,0.3)" : `1px solid ${C.cardBorder}`,
-                      color: m.role === "user" ? "#c7d2fe" : C.white,
+                      background: m.role === "user" ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(99,102,241,0.2)") : C.card,
+                      border: m.role === "user" ? `1px solid ${isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(99,102,241,0.3)"}` : `1px solid ${C.cardBorder}`,
+                      color: m.role === "user" ? (isCeoMode ? "#fde68a" : "#c7d2fe") : C.white,
                     }}>
                       {m.role === "user" ? m.content : <div dangerouslySetInnerHTML={{ __html: renderMarkdown(m.content) }} />}
                     </div>
@@ -718,15 +809,60 @@ export default function EnginePage() {
                 {aiError && <div style={{ padding: "10px 14px", background: "rgba(239,68,68,0.08)", border: "1px solid rgba(239,68,68,0.2)", borderRadius: 12, fontSize: 12, color: C.err }}>{aiError}</div>}
               </div>
 
+              {/* CEO History Panel */}
+              {isCeoMode && (
+                <div style={{ borderTop: `1px solid ${C.cardBorder}`, marginBottom: 8, paddingTop: 8 }}>
+                  <button onClick={() => setShowCeoHistory(!showCeoHistory)}
+                    style={{ display: "flex", alignItems: "center", justifyContent: "space-between", width: "100%",
+                      background: "none", border: "none", color: "#fbbf24", fontSize: 11, fontWeight: 600, cursor: "pointer", padding: "4px 0", fontFamily: sans }}>
+                    <span>Geçmiş Konuşmalar ({ceoHistory.length})</span>
+                    <span style={{ fontSize: 10 }}>{showCeoHistory ? "▼" : "▲"}</span>
+                  </button>
+                  {showCeoHistory && (
+                    <div style={{ maxHeight: 140, overflowY: "auto", marginTop: 6 }}>
+                      <button onClick={() => { setActiveCeoConvId(null); setCeoAiMessages([]); setAiMessages([]); setShowCeoHistory(false); }}
+                        style={{ display: "block", width: "100%", textAlign: "left", marginBottom: 4, background: "rgba(245,158,11,0.08)",
+                          border: "1px solid rgba(245,158,11,0.2)", borderRadius: 6, padding: "6px 10px", fontSize: 11,
+                          color: "#fbbf24", cursor: "pointer", fontFamily: sans, fontWeight: 600 }}>
+                        + Yeni Konuşma Başlat
+                      </button>
+                      {ceoHistory.map(conv => (
+                        <div key={conv.id} onClick={() => { setActiveCeoConvId(conv.id); setCeoAiMessages(conv.messages); setAiMessages(conv.messages); setShowCeoHistory(false); }}
+                          style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "6px 10px", borderRadius: 6,
+                            marginBottom: 2, cursor: "pointer", fontSize: 11, fontFamily: sans, transition: "all 0.15s",
+                            background: activeCeoConvId === conv.id ? "rgba(245,158,11,0.1)" : "transparent",
+                            color: activeCeoConvId === conv.id ? "#fbbf24" : C.mid,
+                            border: `1px solid ${activeCeoConvId === conv.id ? "rgba(245,158,11,0.2)" : "transparent"}` }}>
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{conv.preview}</div>
+                            <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                              {new Date(conv.timestamp).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}
+                            </div>
+                          </div>
+                          <button onClick={e => { e.stopPropagation(); const updated = ceoHistory.filter(c => c.id !== conv.id); setCeoHistory(updated); saveCeoHistoryToStorage(updated);
+                            if (activeCeoConvId === conv.id) { setActiveCeoConvId(null); setCeoAiMessages([]); setAiMessages([]); } }}
+                            style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12, padding: "2px 4px", marginLeft: 6 }}
+                            title="Sil">✕</button>
+                        </div>
+                      ))}
+                      {ceoHistory.length === 0 && (
+                        <div style={{ textAlign: "center", fontSize: 11, color: C.dim, padding: "8px 0" }}>Henüz geçmiş konuşma yok</div>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
+
               <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                 <input value={aiInput} onChange={e => setAiInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}
-                  placeholder="Bir soru sorun..."
-                  style={{ flex: 1, background: C.card, border: `1px solid ${C.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.white, fontFamily: sans, outline: "none" }} />
+                  placeholder={isCeoMode ? "Yönetici asistanına sorun..." : "Bir soru sorun..."}
+                  style={{ flex: 1, background: C.card, border: `1px solid ${isCeoMode ? "rgba(245,158,11,0.2)" : C.cardBorder}`, borderRadius: 8, padding: "10px 14px", fontSize: 12, color: C.white, fontFamily: sans, outline: "none" }} />
                 <button onClick={sendAiMessage} disabled={aiLoading || !aiInput.trim()}
-                  style={{ padding: "10px 16px", background: aiInput.trim() ? "rgba(52,211,153,0.15)" : C.card,
-                    border: `1px solid ${aiInput.trim() ? "rgba(52,211,153,0.3)" : C.cardBorder}`, borderRadius: 8,
-                    color: aiInput.trim() ? C.green : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
+                  style={{ padding: "10px 16px",
+                    background: aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.15)" : "rgba(52,211,153,0.15)") : C.card,
+                    border: `1px solid ${aiInput.trim() ? (isCeoMode ? "rgba(245,158,11,0.3)" : "rgba(52,211,153,0.3)") : C.cardBorder}`, borderRadius: 8,
+                    color: aiInput.trim() ? (isCeoMode ? "#fbbf24" : C.green) : C.dim, cursor: aiInput.trim() ? "pointer" : "default", fontSize: 12, fontWeight: 600 }}>
                   Gonder
                 </button>
               </div>
