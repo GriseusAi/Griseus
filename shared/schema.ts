@@ -577,8 +577,3 @@ export const insertWeeklyPlanSchema = createInsertSchema(weeklyPlans).omit({ id:
 export type InsertWeeklyPlan = z.infer<typeof insertWeeklyPlanSchema>;
 export type WeeklyPlan = typeof weeklyPlans.$inferSelect;
 
-export const dismissedAlerts = pgTable("dismissed_alerts", {
-  id: serial("id").primaryKey(),
-  alertId: text("alert_id").notNull().unique(),
-  dismissedAt: timestamp("dismissed_at").defaultNow(),
-});
