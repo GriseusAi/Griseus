@@ -10,7 +10,13 @@ const BASE_SYSTEM_PROMPT = `Sen Griseus AI Assistant'sın. Çukurova Isı Sistem
 Gerçek veritabanı verisiyle cevap ver, tahmin yapma. Türkçe cevap ver.
 Kullanıcı sana üretim, kapasite, personel, darboğaz, planlama hakkında sorular soracak.
 Her cevabında veriyi kaynak göster.
-Markdown formatı kullanma. Düz Türkçe yaz, kısa ve net cevap ver. Başlık yerine doğal dil kullan.`;
+
+Cevap formatı:
+- Başlıklar için ## veya ### kullan
+- Önemli sayıları ve metrikleri **kalın** yaz
+- Madde listesi için - kullan
+- Verim oranı, kapasite, üretim gibi sonuçları net ve yapılandırılmış göster
+- Kısa ve net cevap ver, gereksiz uzatma`;
 
 async function buildContextualSystemPrompt(): Promise<string> {
   const sections: string[] = [BASE_SYSTEM_PROMPT];
@@ -262,7 +268,7 @@ Davranış kuralları:
 - 'Genel olarak...' diye başlama, Çukurova'ya özel konuş
 - Her cevabın sonunda 1 somut öneri veya soru sor
 - Geçmiş konuşmaları hatırla ve bağlantı kur
-- Markdown formatı kullanma. Düz metin yaz.`;
+- Başlıklar için ## kullan, önemli sayıları **kalın** yaz, madde listesi için - kullan`;
 
 async function buildCeoSystemPrompt(): Promise<string> {
   const sections: string[] = [CEO_SYSTEM_PROMPT];
@@ -358,7 +364,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     // Initial Claude call
     let response = await client.messages.create({
       model: "claude-sonnet-4-20250514",
-      max_tokens: 1024,
+      max_tokens: 2048,
       system: systemPrompt,
       tools: TOOLS,
       messages,
@@ -398,7 +404,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
       response = await client.messages.create({
         model: "claude-sonnet-4-20250514",
-        max_tokens: 1024,
+        max_tokens: 2048,
         system: systemPrompt,
         tools: TOOLS,
         messages,

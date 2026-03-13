@@ -127,8 +127,11 @@ const renderMarkdown = (text: string) =>
   text
     .replace(/### (.*?)(\n|$)/g, '<div style="font-size:13px;font-weight:700;color:#fff;margin:10px 0 4px">$1</div>')
     .replace(/## (.*?)(\n|$)/g, '<div style="font-size:14px;font-weight:700;color:#fff;margin:12px 0 6px">$1</div>')
-    .replace(/\*\*(.*?)\*\*/g, '<span style="font-weight:600;color:#e2e8f0">$1</span>')
-    .replace(/- (.*?)(\n|$)/g, '<div style="padding-left:12px;margin:2px 0">\u2022 $1</div>')
+    .replace(/\*\*(.*?)\*\*/g, '<span style="font-weight:700;color:#fff">$1</span>')
+    .replace(/`([^`]+)`/g, '<code style="background:rgba(255,255,255,0.08);padding:1px 5px;border-radius:3px;font-size:11px">$1</code>')
+    .replace(/^\d+\.\s+(.*?)(\n|$)/gm, '<div style="padding-left:12px;margin:2px 0">$&</div>')
+    .replace(/^- (.*?)(\n|$)/gm, '<div style="padding-left:12px;margin:2px 0">\u2022 $1</div>')
+    .replace(/---/g, '<hr style="border:none;border-top:1px solid rgba(255,255,255,0.1);margin:8px 0"/>')
     .replace(/\n/g, '<br/>');
 
 /* ── Isometric helpers ── */
