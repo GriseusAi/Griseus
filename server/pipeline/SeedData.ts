@@ -66,6 +66,24 @@ export async function seedOntologyEngine() {
     role: "string",
   }, "Çukurova staff from Netsis HR data");
 
+  await ontologyService.createObjectType("semi_finished_product", "Yarı Mamül (Semi-Finished)", {
+    category: "string",
+    stage: "string",
+    unit_cost: "number",
+    current_stock: "number",
+    monthly_production: "number[]",
+    requires_new_facility: "boolean",
+  }, "Semi-finished goods — steel casings, panels before assembly. Produced at new rented facility.");
+
+  await ontologyService.createObjectType("raw_material", "Ham Madde (Raw Material)", {
+    category: "string",
+    supplier: "string",
+    unit_cost: "number",
+    current_stock: "number",
+    lead_time_days: "number",
+    reorder_point: "number",
+  }, "Raw materials from external suppliers — steel, copper, components");
+
   // ═══════════════════════════════════════════════════════════════════
   // 2. Products (Gazlı İmalat line — real data)
   // ═══════════════════════════════════════════════════════════════════
@@ -184,6 +202,111 @@ export async function seedOntologyEngine() {
   await ontologyService.createLinkType("ordered_by", "Sipariş Veren", "production_order", "customer", "many_to_one");
   await ontologyService.createLinkType("tracks_inventory", "Stok Takibi", "inventory_level", "product", "one_to_one");
   await ontologyService.createLinkType("supplied_by", "Tedarik Eden", "product", "supplier", "many_to_many");
+  await ontologyService.createLinkType("assembles_into", "Montajlanır", "semi_finished_product", "product", "many_to_many", {
+    quantity: "number",
+  });
+  await ontologyService.createLinkType("composed_of", "İçerir", "product", "raw_material", "many_to_many", {
+    quantity: "number",
+  });
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5b. Semi-finished products (Yarı Mamül) — new facility
+  // ═══════════════════════════════════════════════════════════════════
+
+  const semiFinishedData = [
+    { sku: "KASA-ELT-7",    name: "Kasa ELT 7-11 (Çelik Gövde)",      unitCost: 65,  stock: 180, monthly: [40, 35, 50, 20, 30, 48, 28, 44, 38, 52, 32, 12] },
+    { sku: "KASA-CC-7",     name: "Kasa CC 7-11 (Çelik Gövde)",       unitCost: 60,  stock: 95,  monthly: [18, 14, 20, 8, 12, 20, 10, 18, 14, 22, 12, 4] },
+    { sku: "KASA-BH-55",    name: "Kasa BH 55 (Havlu Kasa)",          unitCost: 45,  stock: 55,  monthly: [12, 8, 14, 5, 8, 14, 7, 12, 10, 16, 8, 3] },
+    { sku: "PANEL-SSP-40",  name: "Panel SSP 40/60 (Sac Panel Yarı)", unitCost: 70,  stock: 120, monthly: [10, 8, 12, 4, 7, 12, 6, 10, 8, 14, 8, 2] },
+    { sku: "KASA-CPH-33",   name: "Kasa CPH 33 (Compact Gövde)",      unitCost: 55,  stock: 40,  monthly: [6, 4, 7, 2, 4, 7, 3, 6, 4, 8, 4, 1] },
+    { sku: "ELEMAN-SSE-27", name: "Eleman SSE 27/40 (Sac Eleman)",    unitCost: 75,  stock: 30,  monthly: [3, 2, 4, 1, 2, 4, 2, 3, 2, 4, 2, 1] },
+  ];
+
+  for (const sf of semiFinishedData) {
+    await ontologyService.createObject("semi_finished_product", sf.sku, sf.name, {
+      category: "yari_mamul",
+      stage: "uretim",
+      unit_cost: sf.unitCost,
+      current_stock: sf.stock,
+      monthly_production: sf.monthly,
+      requires_new_facility: true,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5c. Raw materials (Ham Madde)
+  // ═══════════════════════════════════════════════════════════════════
+
+  const rawMaterialData = [
+    { sku: "HM-CELIK-DKP",   name: "DKP Çelik Sac (0.8mm)",      unitCost: 28, stock: 4500, leadTime: 10, reorder: 1500, supplier: "Erdemir" },
+    { sku: "HM-CELIK-GAL",   name: "Galvaniz Sac (0.6mm)",        unitCost: 32, stock: 3200, leadTime: 10, reorder: 1200, supplier: "Erdemir" },
+    { sku: "HM-BAKIR-BORU",  name: "Bakır Boru (8mm)",            unitCost: 85, stock: 800,  leadTime: 14, reorder: 300,  supplier: "Sarkuysan" },
+    { sku: "HM-BRULOR",      name: "Brülör Seti (Gazlı)",         unitCost: 120,stock: 350,  leadTime: 21, reorder: 150,  supplier: "Honeywell TR" },
+    { sku: "HM-REZISTANS",   name: "Rezistans Elemanı (Elektrik)",unitCost: 45, stock: 1200, leadTime: 7,  reorder: 500,  supplier: "EAE Elektrik" },
+    { sku: "HM-TERMOSTAT",   name: "Termostat (Dijital)",         unitCost: 35, stock: 900,  leadTime: 14, reorder: 400,  supplier: "Danfoss TR" },
+    { sku: "HM-BOYA-RAL",    name: "Elektrostatik Boya (RAL 9016)",unitCost: 18,stock: 600,  leadTime: 5,  reorder: 200,  supplier: "Pulver Boya" },
+    { sku: "HM-IZOLASYON",   name: "Cam Yünü İzolasyon",          unitCost: 22, stock: 1500, leadTime: 7,  reorder: 500,  supplier: "İzocam" },
+  ];
+
+  for (const rm of rawMaterialData) {
+    await ontologyService.createObject("raw_material", rm.sku, rm.name, {
+      category: "ham_madde",
+      supplier: rm.supplier,
+      unit_cost: rm.unitCost,
+      current_stock: rm.stock,
+      lead_time_days: rm.leadTime,
+      reorder_point: rm.reorder,
+    });
+  }
+
+  // ═══════════════════════════════════════════════════════════════════
+  // 5d. Links: semi_finished → product, product → raw_material
+  // ═══════════════════════════════════════════════════════════════════
+
+  const allProducts = await ontologyService.getObjectsByType("product");
+  const allSemiFinished = await ontologyService.getObjectsByType("semi_finished_product");
+  const allRawMaterials = await ontologyService.getObjectsByType("raw_material");
+
+  // Semi-finished → Product links (casings assemble into finished goods)
+  const sfToProductMap: Record<string, string[]> = {
+    "KASA-ELT-7":    ["ELT.7-11", "ELT.5-7"],
+    "KASA-CC-7":     ["CC.7-11", "CC.5-7"],
+    "KASA-BH-55":    ["BH 55", "BH 20", "BH 15"],
+    "PANEL-SSP-40":  ["SSP 40/60", "SSP 47/70"],
+    "KASA-CPH-33":   ["CPH.33", "CPH.22", "CPH.44"],
+    "ELEMAN-SSE-27": ["SSE 27/40", "SSE 20/30"],
+  };
+
+  for (const [sfSku, productSkus] of Object.entries(sfToProductMap)) {
+    const sfObj = allSemiFinished.find(o => o.externalId === sfSku);
+    if (!sfObj) continue;
+    for (const pSku of productSkus) {
+      const pObj = allProducts.find(o => o.externalId === pSku);
+      if (pObj) {
+        await ontologyService.createLink("assembles_into", sfObj.id, pObj.id, { quantity: 1 });
+      }
+    }
+  }
+
+  // Product → Raw Material links (products need raw materials)
+  const productToRmMap: Record<string, string[]> = {
+    "ELT.7-11":  ["HM-CELIK-DKP", "HM-BAKIR-BORU", "HM-BRULOR", "HM-TERMOSTAT", "HM-BOYA-RAL", "HM-IZOLASYON"],
+    "CC.7-11":   ["HM-CELIK-DKP", "HM-BAKIR-BORU", "HM-BRULOR", "HM-TERMOSTAT", "HM-BOYA-RAL"],
+    "BH 55":     ["HM-CELIK-GAL", "HM-BAKIR-BORU", "HM-REZISTANS", "HM-BOYA-RAL"],
+    "SSP 40/60": ["HM-CELIK-DKP", "HM-CELIK-GAL", "HM-BOYA-RAL", "HM-IZOLASYON"],
+    "SSE 27/40": ["HM-CELIK-DKP", "HM-CELIK-GAL", "HM-REZISTANS", "HM-BOYA-RAL"],
+  };
+
+  for (const [pSku, rmSkus] of Object.entries(productToRmMap)) {
+    const pObj = allProducts.find(o => o.externalId === pSku);
+    if (!pObj) continue;
+    for (const rmSku of rmSkus) {
+      const rmObj = allRawMaterials.find(o => o.externalId === rmSku);
+      if (rmObj) {
+        await ontologyService.createLink("composed_of", pObj.id, rmObj.id, { quantity: 1 });
+      }
+    }
+  }
 
   // ═══════════════════════════════════════════════════════════════════
   // 6. Create links: production_line → products

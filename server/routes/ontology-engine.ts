@@ -260,6 +260,129 @@ router.get("/intelligence/reorder-alerts", async (_req, res) => {
 });
 
 // ══════════════════════════════════════════════════════════════════════
+// PRODUCTION FLOW — 3-tier manufacturing view
+// ══════════════════════════════════════════════════════════════════════
+
+router.get("/production-flow", async (_req, res) => {
+  try {
+    // Fetch all three tier object types
+    const products = await ontologyService.getObjectsByType("product");
+    const semiFinished = await ontologyService.getObjectsByType("semi_finished_product");
+    const rawMaterials = await ontologyService.getObjectsByType("raw_material");
+    const productionLines = await ontologyService.getObjectsByType("production_line");
+
+    // Compute tier metrics
+    const computeRag = (items: any[]) => {
+      let red = 0, amber = 0, green = 0;
+      for (const item of items) {
+        const props = (item.properties || item.computedProperties || {}) as any;
+        const rag = props.rag_status || props.status || "green";
+        if (rag === "red") red++;
+        else if (rag === "amber") amber++;
+        else green++;
+      }
+      return { red, amber, green, total: items.length };
+    };
+
+    const totalCapacity = productionLines.reduce((sum, pl) => {
+      const props = pl.properties as any;
+      return sum + (props?.daily_capacity || 0) * 250;
+    }, 0);
+
+    const totalProduction = products.reduce((sum, p) => {
+      const props = p.properties as any;
+      const monthly = props?.monthly_production || [];
+      return sum + monthly.reduce((s: number, v: number) => s + v, 0);
+    }, 0);
+
+    const tiers = [
+      {
+        id: "mamul",
+        tier: 1,
+        label: "MAMÜL",
+        subtitle: "Bitmiş Ürünler",
+        stages: ["Depo", "Satış"],
+        itemCount: products.length,
+        rag: computeRag(products),
+        metric: { label: "Toplam Üretim", value: totalProduction, unit: "adet/yıl" },
+        items: products.map(p => {
+          const props = (p.properties || {}) as any;
+          const cp = (p.computedProperties || {}) as any;
+          return {
+            id: p.id,
+            title: p.title,
+            externalId: p.externalId,
+            rag: cp.rag_status || "green",
+            stock: props.current_stock || 0,
+            monthlyAvg: Math.round((props.monthly_production || []).reduce((s: number, v: number) => s + v, 0) / 12),
+          };
+        }),
+      },
+      {
+        id: "yari_mamul",
+        tier: 2,
+        label: "YARI MAMÜL",
+        subtitle: "Yarı Mamül Ürünler",
+        stages: ["Üretim", "Depo", "Satış"],
+        badge: "Yeni Tesis",
+        itemCount: semiFinished.length,
+        rag: computeRag(semiFinished),
+        metric: { label: "Alt Montaj", value: semiFinished.length, unit: "bileşen" },
+        items: semiFinished.map(sf => {
+          const props = (sf.properties || {}) as any;
+          return {
+            id: sf.id,
+            title: sf.title,
+            externalId: sf.externalId,
+            rag: props.status || "green",
+            stock: props.current_stock || 0,
+            monthlyAvg: props.monthly_usage || 0,
+            requiresNewFacility: props.requires_new_facility || false,
+          };
+        }),
+      },
+      {
+        id: "ham_madde",
+        tier: 3,
+        label: "HAM MADDE",
+        subtitle: "Hammaddeler",
+        stages: ["Üretim", "Depo", "Satış"],
+        itemCount: rawMaterials.length,
+        rag: computeRag(rawMaterials),
+        metric: { label: "Tedarikçi", value: new Set(rawMaterials.map(r => (r.properties as any)?.supplier)).size, unit: "firma" },
+        items: rawMaterials.map(rm => {
+          const props = (rm.properties || {}) as any;
+          return {
+            id: rm.id,
+            title: rm.title,
+            externalId: rm.externalId,
+            rag: props.status || "green",
+            stock: props.current_stock || 0,
+            unit: props.unit || "",
+            supplier: props.supplier || "",
+            leadTimeDays: props.lead_time_days || 0,
+          };
+        }),
+      },
+    ];
+
+    res.json({
+      tiers,
+      summary: {
+        totalProducts: products.length,
+        totalSemiFinished: semiFinished.length,
+        totalRawMaterials: rawMaterials.length,
+        totalCapacity,
+        totalProduction,
+        productionLines: productionLines.length,
+      },
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
 // BOM
 // ══════════════════════════════════════════════════════════════════════
 

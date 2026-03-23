@@ -1103,6 +1103,20 @@ export default function EnginePage() {
               >
                 📊 Stok İstihbarat Paneli →
               </button>
+
+              {/* Link to Production Flow */}
+              <button onClick={() => { window.location.href = "/production-flow"; }} style={{
+                width: "100%", padding: "12px 16px", borderRadius: 10, marginTop: 8,
+                background: "rgba(251,191,36,0.06)", border: "1px solid rgba(251,191,36,0.2)",
+                color: "#fbbf24", fontSize: 13, fontWeight: 700, fontFamily: sans, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "all 0.2s",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(251,191,36,0.12)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(251,191,36,0.06)"; }}
+              >
+                🏭 Üretim Akış Haritası →
+              </button>
             </div>
 
           /* ── LAYER 03: Intelligence ── */
