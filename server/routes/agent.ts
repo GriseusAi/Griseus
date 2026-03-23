@@ -3,6 +3,8 @@ import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
 import { weeklyPlans, capacityMetrics, productionLines } from "@shared/schema";
 import { eq, desc, sql } from "drizzle-orm";
+import { getAgentContext } from "../ontology/AgentDataProvider";
+import { detectAndRunWhatIf } from "../ontology/WhatIfEngine";
 
 const router = Router();
 
@@ -248,32 +250,61 @@ async function callTool(toolName: string, input: Record<string, any>, baseUrl: s
   return resp.json();
 }
 
-const CEO_SYSTEM_PROMPT = `Sen Çukurova Isı Sistemleri CEO'sunun kişisel asistanısın.
-Bu asistan sadece Çukurova Isı yöneticilerine özeldir — genel bir yapay zeka değilsin, şirketi ve verilerini tanıyan bir karar destek sistemisin.
+const CEO_SYSTEM_PROMPT = `Sen Çukurova Isı Sistemleri'nin CEO Yapay Zeka Danışmanısın. Griseus Ontoloji Motoru'na bağlısın ve gerçek zamanlı üretim, stok ve istihbarat verilerine erişimin var.
 
-Şirket profili:
+TEMEL KURALLAR:
+1. Her zaman GERÇEK VERİYE dayalı cevap ver. Aşağıdaki canlı veriyi kullan.
+2. Türkçe konuş, teknik terimleri de Türkçe kullan (stok, üretim, kapasite, risk skoru).
+3. Somut rakamlar ver — "risk var" değil, ürün adı, stok miktarı, risk skoru, bağlı sermaye ile cevap ver.
+4. Aksiyon öner — "üretimi durdurun", "stoku eritin", "kapasiteyi kaydırın" gibi somut tavsiyeler.
+5. Mevsimselliği hesaba kat — HVAC için Ekim-Ocak yüksek sezon, Nisan-Haziran düşük sezon.
+6. Sorulmadıkça genel bilgi verme, her cevabı Çukurova'ya özel tut.
+
+ŞİRKET PROFİLİ:
 - 30+ yıllık HVAC üreticisi, 20.000+ kurulum referansı
-- Elektrikli ve Gazlı ısıtma sistemi üretimi
-- Türkiye'nin önde gelen ısıtma sistemi üreticilerinden biri
+- Elektrikli ve Gazlı ısıtma sistemi üretimi, ~34.000 adet/yıl
+- 40+ SKU, 2 üretim hattı, yeni yarı mamül tesisi kiralandı
 
-CEO'nun sorumluluk alanları:
+CEO'NUN SORUMLULUK ALANLARI:
 - Dış ticaret ve ihracat operasyonları
 - Tedarikçi ilişkileri ve satın alma kararları
 - Üretim planlama ve kapasite yönetimi
-- Genel şirket yönetimi
+- Stok optimizasyonu ve sermaye verimliliği
 
-Davranış kuralları:
+SENİN YETKİN:
+- Stok durumu sorgulama ve risk analizi
+- Mevsimsel talep tahmini
+- Üretim planı önerisi
+- Sermaye verimliliği analizi
+- Ürün bazlı detaylı rapor
+- What-if senaryoları ("X ürünün üretimini durdursam ne olur?")
+
+DAVRANIŞ KURALLARI:
 - Kullanıcı Türkçe sorarsa Türkçe, İngilizce sorarsa İngilizce cevap ver
 - Cevaplar kısa, net, aksiyon odaklı olsun
 - 'Genel olarak...' diye başlama, Çukurova'ya özel konuş
 - Her cevabın sonunda 1 somut öneri veya soru sor
 - Geçmiş konuşmaları hatırla ve bağlantı kur
-- Başlıklar için ## kullan, önemli sayıları **kalın** yaz, madde listesi için - kullan`;
+- Başlıklar için ## kullan, önemli sayıları **kalın** yaz, madde listesi için - kullan
+- RAG durumlarını emoji ile göster: 🔴 kırmızı, 🟡 sarı, 🟢 yeşil, 🔵 fazla stok`;
 
-async function buildCeoSystemPrompt(): Promise<string> {
+async function buildCeoSystemPrompt(whatIfResult?: string | null): Promise<string> {
   const sections: string[] = [CEO_SYSTEM_PROMPT];
 
-  // Inject the same real platform data as normal mode
+  // ── Inject LIVE ontology data ──
+  try {
+    const ontologyContext = await getAgentContext();
+    sections.push(`\n${ontologyContext}`);
+  } catch (err: any) {
+    console.error("[buildCeoSystemPrompt] Ontology data error:", err.message);
+  }
+
+  // ── Inject what-if simulation result if detected ──
+  if (whatIfResult) {
+    sections.push(`\n### WHAT-IF SİMÜLASYON SONUCU\n${whatIfResult}\n\nYukarıdaki simülasyon sonucunu kullanarak kullanıcının sorusunu cevapla. Rakamları ve önerileri doğrudan paylaş.`);
+  }
+
+  // ── Also inject weekly plans and capacity (existing data) ──
   const recentPlans = await db.select().from(weeklyPlans)
     .orderBy(desc(weeklyPlans.createdAt))
     .limit(10);
@@ -286,7 +317,7 @@ async function buildCeoSystemPrompt(): Promise<string> {
       const reason = p.deviationReason ? ` sapma: ${p.deviationReason}` : "";
       return `  - ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} | ${actual} | ${rate}${reason}${risk} | durum: ${p.status}`;
     });
-    sections.push(`\n--- HAFTALIK PLANLAR ---\n${planLines.join("\n")}`);
+    sections.push(`\n### HAFTALIK PLANLAR\n${planLines.join("\n")}`);
   }
 
   const lines = await db.select().from(productionLines);
@@ -305,7 +336,7 @@ async function buildCeoSystemPrompt(): Promise<string> {
       }
     }
     if (capLines.length > 0) {
-      sections.push(`\n--- KAPASİTE METRİKLERİ ---\n${capLines.join("\n")}`);
+      sections.push(`\n### KAPASİTE METRİKLERİ\n${capLines.join("\n")}`);
     }
   }
 
@@ -319,7 +350,7 @@ async function buildCeoSystemPrompt(): Promise<string> {
       const reason = p.deviationReason || "belirtilmemiş";
       return `  ⚠ ${p.weekLabel} | hat ${p.lineId} | plan: ${p.plannedQty} gerçek: ${p.actualQty || "-"} | ${rate} | sapma: ${reason}`;
     });
-    sections.push(`\n--- RİSK BAYRAKLARI ---\n${riskLines.join("\n")}`);
+    sections.push(`\n### RİSK BAYRAKLARI\n${riskLines.join("\n")}`);
   }
 
   return sections.join("\n");
@@ -345,9 +376,19 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const client = new Anthropic({ apiKey });
     const baseUrl = getBaseUrl(req);
 
-    // Build contextual system prompt — CEO mode uses dedicated prompt
+    // Detect what-if questions and run simulations (CEO mode only)
+    let whatIfResult: string | null = null;
+    if (mode === "ceo") {
+      try {
+        whatIfResult = await detectAndRunWhatIf(message);
+      } catch (err: any) {
+        console.error("[agent/chat] What-if detection error:", err.message);
+      }
+    }
+
+    // Build contextual system prompt — CEO mode uses dedicated prompt with ontology data
     const systemPrompt = mode === "ceo"
-      ? await buildCeoSystemPrompt()
+      ? await buildCeoSystemPrompt(whatIfResult)
       : await buildContextualSystemPrompt();
 
     // Build messages from history + new message

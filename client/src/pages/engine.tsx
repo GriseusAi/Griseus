@@ -724,10 +724,22 @@ export default function EnginePage() {
                     )}
                   </div>
                   {isCeoMode && (
-                    <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b", display: "flex", alignItems: "center", gap: 4 }}>
-                      <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px #f59e0b" }} />
-                      Kişisel Asistan
-                    </span>
+                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                      <span style={{ fontSize: 11, fontWeight: 600, color: "#f59e0b", display: "flex", alignItems: "center", gap: 4 }}>
+                        <span style={{ width: 6, height: 6, borderRadius: "50%", background: "#f59e0b", boxShadow: "0 0 6px #f59e0b" }} />
+                        Kişisel Asistan
+                      </span>
+                      <span style={{
+                        fontSize: 9, fontWeight: 700, fontFamily: mono,
+                        padding: "2px 6px", borderRadius: 4,
+                        background: "rgba(52,211,153,0.12)", color: C.green,
+                        border: "1px solid rgba(52,211,153,0.25)",
+                        display: "flex", alignItems: "center", gap: 3,
+                      }}>
+                        <span style={{ width: 5, height: 5, borderRadius: "50%", background: C.green, boxShadow: `0 0 4px ${C.green}` }} />
+                        Ontoloji Bağlı
+                      </span>
+                    </div>
                   )}
                 </div>
                 <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
@@ -757,7 +769,7 @@ export default function EnginePage() {
                       {isCeoMode ? CEO_WELCOME_MSG : "Uretim verilerine dayali sorular sorun"}
                     </div>
                     {(isCeoMode
-                      ? ["Haftalık üretim performansı nasıl?", "Kapasite darboğazı var mı?", "Risk bayraklı planları göster", "İhracat için kapasite uygun mu?"]
+                      ? ["Şu anki stok durumunu ve risk analizini göster", "Önümüzdeki 3 ay için üretim planı öner", "Fazla stoktaki bağlı sermayeyi analiz et", "Eğer SSP 40/60 üretimini 2 ay durdursak ne olur?"]
                       : ["Bu hafta ne planlamaliyim?", "Darbogaz nerede?", "En kritik calisanim kim?", "Kapasiteyi artirmak icin ne yapmaliyim?"]
                     ).map(q => (
                       <button key={q} onClick={() => setAiInput(q)} style={{
@@ -863,6 +875,26 @@ export default function EnginePage() {
                 </div>
               )}
 
+              {/* Quick action buttons for CEO mode */}
+              {isCeoMode && aiMessages.length > 0 && (
+                <div style={{ display: "flex", gap: 6, flexShrink: 0, flexWrap: "wrap", marginBottom: 6 }}>
+                  {[
+                    { label: "📊 Stok Durumu", msg: "Şu anki stok durumunu ve risk analizini göster" },
+                    { label: "📅 Üretim Planı", msg: "Önümüzdeki 3 ay için üretim planı öner" },
+                    { label: "💰 Sermaye", msg: "Fazla stoktaki bağlı sermayeyi analiz et" },
+                    { label: "🔮 What-If", msg: "Eğer SSP 40/60 üretimini 2 ay durdursak ne olur?" },
+                  ].map(btn => (
+                    <button key={btn.label} onClick={() => setAiInput(btn.msg)} style={{
+                      padding: "3px 8px", fontSize: 10, fontWeight: 600, fontFamily: mono, borderRadius: 5,
+                      background: "rgba(245,158,11,0.06)", border: "1px solid rgba(245,158,11,0.15)",
+                      color: "#fbbf24", cursor: "pointer", transition: "all 0.15s",
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.background = "rgba(245,158,11,0.12)"; }}
+                      onMouseLeave={e => { e.currentTarget.style.background = "rgba(245,158,11,0.06)"; }}
+                    >{btn.label}</button>
+                  ))}
+                </div>
+              )}
               <div style={{ display: "flex", gap: 8, flexShrink: 0 }}>
                 <input value={aiInput} onChange={e => setAiInput(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); sendAiMessage(); } }}

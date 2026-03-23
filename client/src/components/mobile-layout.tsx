@@ -180,7 +180,7 @@ function AIChatOverlay({ onClose }: { onClose: () => void }) {
   };
 
   const headerTitle = isCeoMode ? "Çukurova Isı — Yönetici Asistanı" : "Site AI";
-  const headerSub = isCeoMode ? "● Kişisel Asistan" : "Always available on site";
+  const headerSub = isCeoMode ? "● Kişisel Asistan — Ontoloji Bağlı" : "Always available on site";
   const headerIconBg = isCeoMode ? "bg-amber-500/15" : "bg-blue-500/15";
   const headerIconColor = isCeoMode ? "text-amber-400" : "text-blue-400";
 
