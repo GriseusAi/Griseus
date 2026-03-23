@@ -467,6 +467,7 @@ export default function CukurovaOverview() {
               </span>
               {[
                 { label: "Engine", path: "/engine", color: "#fbbf24" },
+                { label: "Stok İstihbarat", path: "/intelligence", color: "#3B8BD4" },
               ].map((nav) => (
                 <button key={nav.path} onClick={() => navigate(nav.path)} style={{
                   display: "inline-flex", alignItems: "center", gap: 6, padding: "5px 14px", borderRadius: 20,

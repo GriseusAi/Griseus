@@ -1089,6 +1089,20 @@ export default function EnginePage() {
                   </div>
                 )}
               </div>
+
+              {/* Link to Stock Intelligence */}
+              <button onClick={() => { window.location.href = "/intelligence"; }} style={{
+                width: "100%", padding: "12px 16px", borderRadius: 10, marginTop: 14,
+                background: "rgba(59,139,212,0.08)", border: "1px solid rgba(59,139,212,0.25)",
+                color: "#3B8BD4", fontSize: 13, fontWeight: 700, fontFamily: sans, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "all 0.2s",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(59,139,212,0.15)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(59,139,212,0.08)"; }}
+              >
+                📊 Stok İstihbarat Paneli →
+              </button>
             </div>
 
           /* ── LAYER 03: Intelligence ── */

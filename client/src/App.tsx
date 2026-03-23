@@ -13,6 +13,7 @@ import ForgotPasswordPage from "@/pages/forgot-password";
 import EnginePage from "@/pages/engine";
 import CukurovaSim from "@/pages/cukurova-sim";
 import OntologyMap from "@/pages/ontology-map";
+import IntelligencePage from "@/pages/intelligence";
 
 function AppContent() {
   const [location] = useLocation();
@@ -35,6 +36,7 @@ function AppContent() {
           <Route path="/engine" component={EnginePage} />
           <Route path="/cukurova-sim" component={CukurovaSim} />
           <Route path="/ontology" component={OntologyMap} />
+          <Route path="/intelligence" component={IntelligencePage} />
           <Route>{() => <OnboardingPage />}</Route>
         </Switch>
       </motion.div>

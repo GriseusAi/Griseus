@@ -56,7 +56,7 @@ export class BomService {
     }
 
     const objectMap = new Map<string, GEObject>();
-    for (const oid of objectIds) {
+    for (const oid of Array.from(objectIds)) {
       const [obj] = await db.select().from(objects).where(eq(objects.id, oid));
       if (obj) objectMap.set(oid, obj);
     }
