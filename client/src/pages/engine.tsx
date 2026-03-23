@@ -798,10 +798,20 @@ export default function EnginePage() {
                     </div>
                     {m.tools && m.tools.length > 0 && (
                       <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                        {m.tools.map((t, j) => (
-                          <span key={j} style={{ fontSize: 11, fontFamily: mono, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
-                            borderRadius: 4, padding: "2px 6px", color: C.green }}>📊 {t}</span>
-                        ))}
+                        {m.tools.map((t, j) => {
+                          const toolLabels: Record<string, string> = {
+                            query_stock_status: "🔍 Stok Sorgu",
+                            run_what_if_simulation: "🔮 Simülasyon",
+                            query_seasonal_forecast: "📅 Tahmin",
+                            query_overstock_report: "📦 Fazla Stok",
+                            compute_production_plan: "🏭 Üretim Planı",
+                            query_capacity_utilization: "⚙️ Kapasite",
+                          };
+                          return (
+                            <span key={j} style={{ fontSize: 11, fontFamily: mono, background: "rgba(52,211,153,0.1)", border: "1px solid rgba(52,211,153,0.2)",
+                              borderRadius: 4, padding: "2px 6px", color: C.green }}>{toolLabels[t] || `📊 ${t}`}</span>
+                          );
+                        })}
                       </div>
                     )}
                     {suggestion && (
