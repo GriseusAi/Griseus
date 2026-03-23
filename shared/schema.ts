@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb, serial, numeric, date } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb, serial, numeric, date, index, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -576,4 +576,92 @@ export const weeklyPlans = pgTable("weekly_plans", {
 export const insertWeeklyPlanSchema = createInsertSchema(weeklyPlans).omit({ id: true, createdAt: true, completedAt: true });
 export type InsertWeeklyPlan = z.infer<typeof insertWeeklyPlanSchema>;
 export type WeeklyPlan = typeof weeklyPlans.$inferSelect;
+
+// =============================================
+// --- Griseus Ontology Engine: Stock Intelligence Layer ---
+// =============================================
+
+export const objectTypes = pgTable("ge_object_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  apiName: varchar("api_name", { length: 100 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  description: text("description"),
+  propertySchema: jsonb("property_schema").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertObjectTypeSchema = createInsertSchema(objectTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertObjectType = z.infer<typeof insertObjectTypeSchema>;
+export type ObjectType = typeof objectTypes.$inferSelect;
+
+export const objects = pgTable("ge_objects", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  objectTypeId: varchar("object_type_id").notNull().references(() => objectTypes.id),
+  externalId: varchar("external_id", { length: 255 }),
+  title: varchar("title", { length: 500 }).notNull(),
+  properties: jsonb("properties").default({}),
+  computedProperties: jsonb("computed_properties").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+}, (table) => [
+  uniqueIndex("ge_objects_type_external_idx").on(table.objectTypeId, table.externalId),
+]);
+
+export const insertObjectSchema = createInsertSchema(objects).omit({ id: true, createdAt: true, updatedAt: true, computedProperties: true });
+export type InsertObject = z.infer<typeof insertObjectSchema>;
+export type GEObject = typeof objects.$inferSelect;
+
+export const linkTypes = pgTable("ge_link_types", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  apiName: varchar("api_name", { length: 100 }).notNull().unique(),
+  displayName: varchar("display_name", { length: 255 }).notNull(),
+  sourceTypeId: varchar("source_type_id").notNull().references(() => objectTypes.id),
+  targetTypeId: varchar("target_type_id").notNull().references(() => objectTypes.id),
+  cardinality: varchar("cardinality", { length: 20 }).notNull().default("one_to_many"),
+  propertiesSchema: jsonb("properties_schema").default({}),
+});
+
+export const insertLinkTypeSchema = createInsertSchema(linkTypes).omit({ id: true });
+export type InsertLinkType = z.infer<typeof insertLinkTypeSchema>;
+export type LinkType = typeof linkTypes.$inferSelect;
+
+export const links = pgTable("ge_links", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  linkTypeId: varchar("link_type_id").notNull().references(() => linkTypes.id),
+  sourceObjectId: varchar("source_object_id").notNull().references(() => objects.id, { onDelete: "cascade" }),
+  targetObjectId: varchar("target_object_id").notNull().references(() => objects.id, { onDelete: "cascade" }),
+  properties: jsonb("properties").default({}),
+}, (table) => [
+  uniqueIndex("ge_links_unique_idx").on(table.linkTypeId, table.sourceObjectId, table.targetObjectId),
+]);
+
+export const insertLinkSchema = createInsertSchema(links).omit({ id: true });
+export type InsertLink = z.infer<typeof insertLinkSchema>;
+export type Link = typeof links.$inferSelect;
+
+export const rawImports = pgTable("ge_raw_imports", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  batchId: varchar("batch_id").notNull(),
+  sourceFile: varchar("source_file", { length: 500 }),
+  rowNumber: integer("row_number"),
+  rawData: jsonb("raw_data").default({}),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  errors: jsonb("errors"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertRawImportSchema = createInsertSchema(rawImports).omit({ id: true, createdAt: true });
+export type InsertRawImport = z.infer<typeof insertRawImportSchema>;
+export type RawImport = typeof rawImports.$inferSelect;
+
+export const actionsLog = pgTable("ge_actions_log", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  actionType: varchar("action_type", { length: 100 }).notNull(),
+  actor: varchar("actor", { length: 255 }),
+  targetObjectId: varchar("target_object_id").references(() => objects.id),
+  payload: jsonb("payload").default({}),
+  result: jsonb("result").default({}),
+  createdAt: timestamp("created_at").defaultNow(),
+});
 

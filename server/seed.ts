@@ -736,4 +736,12 @@ export async function seedDatabase() {
   await seedCertificationRequirements();
   await seedWageData();
   await seedPhaseTradeRequirements();
+
+  // Seed Griseus Ontology Engine (stock intelligence)
+  try {
+    const { seedOntologyEngine } = await import("./pipeline/SeedData");
+    await seedOntologyEngine();
+  } catch (err: any) {
+    console.warn("[griseus] Ontology engine seed error (tables may not exist yet):", err.message);
+  }
 }

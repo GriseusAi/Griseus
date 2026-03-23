@@ -22,6 +22,7 @@ import multer from "multer";
 import * as XLSX from "xlsx";
 import { detectParserFromContent, detectParserWithAI, getParserByType, getIngestError, resetToSeed } from "./routes/ingest";
 import agentRouter from "./routes/agent";
+import ontologyEngineRouter from "./routes/ontology-engine";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -438,6 +439,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   // AI Agent router
   app.use("/api/v1", agentRouter);
+
+  // Griseus Ontology Engine router
+  app.use("/api/ontology", ontologyEngineRouter);
 
   // Auth routes
   app.post("/api/register", async (req, res, next) => {
