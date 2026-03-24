@@ -126,26 +126,40 @@ export default function StokHareket() {
     }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
-      {/* Header */}
+      {/* Header — Unified nav */}
       <header style={{
         padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
         borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0,
         background: "rgba(6,6,10,0.9)", backdropFilter: "blur(12px)", zIndex: 10,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => navigate("/engine")} style={{
-            background: C.surface, border: `1px solid ${C.border}`,
-            borderRadius: 8, padding: "6px 12px", color: C.dim, fontFamily: sans, fontSize: 12, cursor: "pointer",
-          }}>
-            ← Motor
-          </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div>
-            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>HIZLI STOK GİRİŞİ</h1>
-            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginTop: 1 }}>Üretim Operasyon Paneli</div>
+            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>GRISEUS</h1>
+            <div style={{ fontSize: 8, color: C.dim, fontFamily: mono, marginTop: 1, letterSpacing: 1 }}>
+              MANUFACTURING INTELLIGENCE
+            </div>
           </div>
+          <nav style={{ display: "flex", gap: 2 }}>
+            {[
+              { path: "/", label: "Stok" },
+              { path: "/stok/hareket", label: "Giriş", active: true },
+              { path: "/engine", label: "AI Agent" },
+              { path: "/intelligence", label: "İstihbarat" },
+              { path: "/ontology", label: "Ontoloji" },
+            ].map(n => (
+              <button key={n.path} onClick={() => navigate(n.path)} style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: n.active ? C.accentDim : "transparent",
+                border: `1px solid ${n.active ? "rgba(99,102,241,0.4)" : "transparent"}`,
+                color: n.active ? C.accent : C.dim,
+                cursor: "pointer", fontFamily: sans, transition: "all 0.15s",
+              }}>
+                {n.label}
+              </button>
+            ))}
+          </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          {/* Live badge */}
           <div style={{
             display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20,
             background: connected ? C.okDim : C.errDim,
@@ -159,12 +173,6 @@ export default function StokHareket() {
               {connected ? "CANLI" : "KESİLDİ"}
             </span>
           </div>
-          <button onClick={() => navigate("/stok/durum")} style={{
-            background: C.accentDim, border: `1px solid ${C.borderActive}`,
-            borderRadius: 8, padding: "6px 14px", color: C.accent, fontFamily: mono, fontSize: 11, cursor: "pointer", fontWeight: 700,
-          }}>
-            DURUM →
-          </button>
         </div>
       </header>
 

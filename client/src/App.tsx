@@ -1,23 +1,42 @@
-import { Switch, Route, useLocation } from "wouter";
+import { Switch, Route, useLocation, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { ThemeProvider } from "@/lib/theme";
 import { motion, AnimatePresence } from "framer-motion";
-import OnboardingPage from "@/pages/onboarding";
+
+/* ═══════════════════════════════════════════════════════════
+   GRISEUS — Manufacturing Intelligence Platform
+
+   Core routes (Palantir-aligned):
+   ┌─────────────────────────────────────────────────────┐
+   │  /              → Stok Komuta Merkezi (hub)         │
+   │  /stok/hareket  → Operasyon Paneli (quick entry)    │
+   │  /engine        → AI Agent (CEO Danışman)           │
+   │  /ontology      → Ontoloji Haritası (graph view)    │
+   │  /intelligence  → Stok İstihbarat (analytics)       │
+   │  /product/:code → Ürün Detay (object detail)        │
+   └─────────────────────────────────────────────────────┘
+
+   Everything else is secondary or legacy.
+   ═══════════════════════════════════════════════════════════ */
+
+// ── Core pages (manufacturing intelligence)
+import StokDurum from "@/pages/stok-durum";
+import StokHareket from "@/pages/stok-hareket";
+import EnginePage from "@/pages/engine";
+import OntologyMap from "@/pages/ontology-map";
+import IntelligencePage from "@/pages/intelligence";
+import ProductDetail from "@/pages/product-detail";
+
+// ── Secondary pages (kept for compatibility, not in main nav)
 import CukurovaOverview from "@/pages/cukurova-overview";
+import CukurovaSim from "@/pages/cukurova-sim";
+import ProductionFlow from "@/pages/production-flow";
 import LoginPage from "@/pages/login";
 import RegisterPage from "@/pages/register";
 import ForgotPasswordPage from "@/pages/forgot-password";
-import EnginePage from "@/pages/engine";
-import CukurovaSim from "@/pages/cukurova-sim";
-import OntologyMap from "@/pages/ontology-map";
-import IntelligencePage from "@/pages/intelligence";
-import ProductionFlow from "@/pages/production-flow";
-import ProductDetail from "@/pages/product-detail";
-import StokHareket from "@/pages/stok-hareket";
-import StokDurum from "@/pages/stok-durum";
 
 function AppContent() {
   const [location] = useLocation();
@@ -32,20 +51,27 @@ function AppContent() {
         transition={{ duration: 0.25, ease: "easeOut" }}
       >
         <Switch>
-          <Route path="/" component={OnboardingPage} />
+          {/* ── Core Manufacturing Routes ── */}
+          <Route path="/" component={StokDurum} />
+          <Route path="/stok/durum" component={StokDurum} />
+          <Route path="/stok/hareket" component={StokHareket} />
+          <Route path="/engine" component={EnginePage} />
+          <Route path="/ontology" component={OntologyMap} />
+          <Route path="/intelligence" component={IntelligencePage} />
+          <Route path="/product/:productCode" component={ProductDetail} />
+
+          {/* ── Secondary Routes (compatibility) ── */}
           <Route path="/cukurova" component={CukurovaOverview} />
+          <Route path="/cukurova-sim" component={CukurovaSim} />
+          <Route path="/production-flow" component={ProductionFlow} />
+
+          {/* ── Auth ── */}
           <Route path="/login" component={LoginPage} />
           <Route path="/register" component={RegisterPage} />
           <Route path="/forgot-password" component={ForgotPasswordPage} />
-          <Route path="/engine" component={EnginePage} />
-          <Route path="/cukurova-sim" component={CukurovaSim} />
-          <Route path="/ontology" component={OntologyMap} />
-          <Route path="/intelligence" component={IntelligencePage} />
-          <Route path="/production-flow" component={ProductionFlow} />
-          <Route path="/product/:productCode" component={ProductDetail} />
-          <Route path="/stok/hareket" component={StokHareket} />
-          <Route path="/stok/durum" component={StokDurum} />
-          <Route>{() => <OnboardingPage />}</Route>
+
+          {/* ── Fallback → Command Center ── */}
+          <Route>{() => <Redirect to="/" />}</Route>
         </Switch>
       </motion.div>
     </AnimatePresence>

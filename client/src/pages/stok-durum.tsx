@@ -695,23 +695,40 @@ export default function StokDurum() {
 
       <ToastStack toasts={toasts} />
 
-      {/* Header */}
+      {/* Header — Main hub navigation */}
       <header style={{
         padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
         borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0,
         background: "rgba(6,6,10,0.9)", backdropFilter: "blur(12px)", zIndex: 20,
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <button onClick={() => navigate("/engine")} style={{
-            background: C.surface, border: `1px solid ${C.border}`,
-            borderRadius: 8, padding: "6px 12px", color: C.dim, fontFamily: sans, fontSize: 12, cursor: "pointer",
-          }}>← Motor</button>
+        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
           <div>
-            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>STOK KOMUTA MERKEZİ</h1>
-            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginTop: 1 }}>
-              Griseus Ontoloji · Observe → Decide → Act
+            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>GRISEUS</h1>
+            <div style={{ fontSize: 8, color: C.dim, fontFamily: mono, marginTop: 1, letterSpacing: 1 }}>
+              MANUFACTURING INTELLIGENCE
             </div>
           </div>
+          {/* Nav links */}
+          <nav style={{ display: "flex", gap: 2 }}>
+            {[
+              { path: "/", label: "Stok", active: true },
+              { path: "/stok/hareket", label: "Giriş" },
+              { path: "/engine", label: "AI Agent" },
+              { path: "/intelligence", label: "İstihbarat" },
+              { path: "/ontology", label: "Ontoloji" },
+            ].map(n => (
+              <button key={n.path} onClick={() => navigate(n.path)} style={{
+                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
+                background: n.active ? C.accentDim : "transparent",
+                border: `1px solid ${n.active ? C.borderActive : "transparent"}`,
+                color: n.active ? C.accent : C.dim,
+                cursor: "pointer", fontFamily: sans,
+                transition: "all 0.15s",
+              }}>
+                {n.label}
+              </button>
+            ))}
+          </nav>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <LiveBadge connected={connected} />
