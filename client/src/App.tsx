@@ -15,6 +15,7 @@ import CukurovaSim from "@/pages/cukurova-sim";
 import OntologyMap from "@/pages/ontology-map";
 import IntelligencePage from "@/pages/intelligence";
 import ProductionFlow from "@/pages/production-flow";
+import ProductDetail from "@/pages/product-detail";
 
 function AppContent() {
   const [location] = useLocation();
@@ -39,6 +40,7 @@ function AppContent() {
           <Route path="/ontology" component={OntologyMap} />
           <Route path="/intelligence" component={IntelligencePage} />
           <Route path="/production-flow" component={ProductionFlow} />
+          <Route path="/product/:productCode" component={ProductDetail} />
           <Route>{() => <OnboardingPage />}</Route>
         </Switch>
       </motion.div>

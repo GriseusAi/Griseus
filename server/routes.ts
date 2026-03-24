@@ -10,6 +10,7 @@ import {
   insertOntologyObjectSchema, insertOntologyLinkSchema, insertOntologyActionSchema,
   ontologyObjects, ontologyLinks, weeklyPlans,
   facilities, productionLines, products, operations, schedules, capacityMetrics, geWorkers, workerCapabilities,
+  stockStates, stockMovements,
 } from "@shared/schema";
 import { z } from "zod";
 import passport from "passport";
@@ -23,6 +24,8 @@ import * as XLSX from "xlsx";
 import { detectParserFromContent, detectParserWithAI, getParserByType, getIngestError, resetToSeed } from "./routes/ingest";
 import agentRouter from "./routes/agent";
 import ontologyEngineRouter from "./routes/ontology-engine";
+import stockRouter from "./routes/stock";
+import { stockReconciliation } from "./ontology/StockReconciliation";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
 
@@ -439,6 +442,20 @@ export async function registerRoutes(
 ): Promise<Server> {
   // AI Agent router
   app.use("/api/v1", agentRouter);
+
+  // Stock management router (mounted before broader ontology router)
+  app.use("/api/ontology/stock", stockRouter);
+
+  // Blind spots endpoint (convenience alias)
+  app.get("/api/ontology/stock-blind-spots", async (_req, res) => {
+    try {
+      const minHours = Number(_req.query.min_hours) || 24;
+      const blindSpots = await stockReconciliation.getBlindSpots(minHours);
+      res.json(blindSpots);
+    } catch (error: any) {
+      res.status(500).json({ error: error.message });
+    }
+  });
 
   // Griseus Ontology Engine router
   app.use("/api/ontology", ontologyEngineRouter);
@@ -1864,6 +1881,30 @@ export async function registerRoutes(
 
   // Seed on startup
   seedOntologyIfEmpty().catch(err => console.error("[ontology] Seed error:", err));
+
+  // Seed stock_states for all existing products if empty
+  async function seedStockStatesIfEmpty() {
+    const existingStates = await db.select().from(stockStates);
+    if (existingStates.length > 0) return;
+
+    const allProducts = await db.select().from(products);
+    if (allProducts.length === 0) return;
+
+    for (const product of allProducts) {
+      await db.insert(stockStates).values({
+        productId: product.id,
+        confirmedQuantity: 0,
+        predictedQuantity: 0,
+        pendingProduction: 0,
+        pendingSales: 0,
+        blindSpotHours: 999,
+        confidenceScore: "20",
+        status: "critical",
+      });
+    }
+    console.log(`[stock] Seeded ${allProducts.length} stock_states entries`);
+  }
+  seedStockStatesIfEmpty().catch(err => console.error("[stock] Seed error:", err));
 
   // ── GET /api/ontology/objects/:type ─────────────────────────────────
   app.get("/api/ontology/objects/:type", async (req, res) => {

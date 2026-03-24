@@ -1,5 +1,5 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb, serial, numeric, date, index, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, doublePrecision, jsonb, serial, numeric, date, index, uniqueIndex, uuid } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -664,4 +664,44 @@ export const actionsLog = pgTable("ge_actions_log", {
   result: jsonb("result").default({}),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// --- Real-Time Stock Foundation: Dual-State Stock Model ---
+
+export const stockStates = pgTable("stock_states", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  confirmedQuantity: integer("confirmed_quantity").notNull().default(0),
+  confirmedUpdatedAt: timestamp("confirmed_updated_at"),
+  predictedQuantity: integer("predicted_quantity").notNull().default(0),
+  predictedUpdatedAt: timestamp("predicted_updated_at"),
+  pendingProduction: integer("pending_production").notNull().default(0),
+  pendingSales: integer("pending_sales").notNull().default(0),
+  blindSpotHours: integer("blind_spot_hours").notNull().default(999),
+  confidenceScore: numeric("confidence_score").notNull().default("20"),
+  status: varchar("status", { length: 20 }).notNull().default("critical"), // 'in_sync' | 'drifting' | 'stale' | 'critical'
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertStockStateSchema = createInsertSchema(stockStates).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertStockState = z.infer<typeof insertStockStateSchema>;
+export type StockState = typeof stockStates.$inferSelect;
+
+export const stockMovements = pgTable("stock_movements", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  movementType: varchar("movement_type", { length: 20 }).notNull(), // 'production' | 'sale' | 'adjustment' | 'return' | 'transfer'
+  quantity: integer("quantity").notNull(), // positive = addition, negative = deduction
+  source: varchar("source", { length: 50 }).notNull(), // 'netsis_sync' | 'manual_entry' | 'production_report' | 'sales_order'
+  referenceId: varchar("reference_id", { length: 255 }),
+  enteredBy: varchar("entered_by", { length: 255 }),
+  enteredAt: timestamp("entered_at").notNull().defaultNow(),
+  syncedAt: timestamp("synced_at"), // null = pending confirmation
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertStockMovementSchema = createInsertSchema(stockMovements).omit({ id: true, createdAt: true });
+export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
+export type StockMovement = typeof stockMovements.$inferSelect;
 

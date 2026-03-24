@@ -28,7 +28,7 @@ interface IngestError {
   supported_formats: string[];
 }
 
-const SUPPORTED = ["Elektrikli İmalat", "Gazlı İmalat", "Kapasite", "Personel", "KPI", "İş Akış"];
+const SUPPORTED = ["Elektrikli İmalat", "Gazlı İmalat", "Kapasite", "Personel", "KPI", "İş Akış", "Stok Seviye", "Satış Verisi"];
 
 /* ═══════════════════════════════════════════════════════════════════════
    PARSER DETECTION
@@ -44,7 +44,10 @@ function detectParserByName(fileName: string): { name: string; fn: ParserFn } | 
   if (f.includes("KAPAS")) return { name: "KapasiteParser", fn: parseKapasite };
   if (f.includes("PERSON")) return { name: "PersonelParser", fn: parsePersonel };
   if (f.includes("KPI")) return { name: "KPIParser", fn: parseKPI };
-  if (f.includes("AKIS") || f.includes("NETSIS")) return { name: "IsAkisParser", fn: parseIsAkis };
+  if (f.includes("AKIS")) return { name: "IsAkisParser", fn: parseIsAkis };
+  if (f.includes("STOK") && (f.includes("SEVİYE") || f.includes("SEVIYE") || f.includes("DEPO"))) return { name: "StokSeviyeParser", fn: parseStokSeviye };
+  if (f.includes("SATIS") || f.includes("SEVK")) return { name: "SatisParser", fn: parseSatisVerisi };
+  if (f.includes("NETSIS")) return { name: "StokSeviyeParser", fn: parseStokSeviye };
   return null;
 }
 
@@ -104,6 +107,18 @@ export function detectParserFromContent(wb: XLSX.WorkBook, fileName: string): { 
     if (markerCount > bodyValues.length * 0.15) return { name: "IsAkisParser", fn: parseIsAkis };
   }
 
+  // Stock level document: has STOK KODU + ADET/MIKTAR + DEPO
+  const normalizeT = (s: string) => s.replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ç/g, "C").replace(/Ö/g, "O").replace(/Ü/g, "U").replace(/Ğ/g, "G");
+  const normalizedSample = normalizeT(sampleText);
+  if (/STOK.*(KOD|KODU)/.test(normalizedSample)) {
+    if (/ADET|MIKTAR|QTY/.test(normalizedSample) && /DEPO|WAREHOUSE|BAKIYE/.test(normalizedSample)) {
+      return { name: "StokSeviyeParser", fn: parseStokSeviye };
+    }
+    if (/SEVK|SATIS|MUSTERI|FATURA/.test(normalizedSample)) {
+      return { name: "SatisParser", fn: parseSatisVerisi };
+    }
+  }
+
   // Production data without weekly sheets
   if (/TOPLAM|DEPOYA|SEVK|ÜRETİM|URETIM/.test(sampleText)) {
     if (/ELEKTRİKLİ|ELEKTRIKLI/.test(sampleText)) return { name: "ElektrikliParser", fn: parseElektrikli };
@@ -131,7 +146,7 @@ export async function detectParserWithAI(wb: XLSX.WorkBook): Promise<{ name: str
 
   const prompt = `Asagidaki Excel dosyasinin sheet isimleri ve kolon basliklarini inceleyerek dosya turunu belirle.
 Sadece su turlerden birini yaz, baska hicbir sey yazma:
-elektrikli, gazli, kapasite, personel, kpi, isakis, bilinmiyor
+elektrikli, gazli, kapasite, personel, kpi, isakis, stok, satis, bilinmiyor
 
 Sheet listesi: ${wb.SheetNames.join(", ")}
 
@@ -175,6 +190,8 @@ export function getParserByType(type: string): { name: string; fn: ParserFn } | 
     personel: { name: "PersonelParser", fn: parsePersonel },
     kpi: { name: "KPIParser", fn: parseKPI },
     isakis: { name: "IsAkisParser", fn: parseIsAkis },
+    stok: { name: "StokSeviyeParser", fn: parseStokSeviye },
+    satis: { name: "SatisParser", fn: parseSatisVerisi },
   };
   return map[type.toLowerCase()] || null;
 }
@@ -885,4 +902,118 @@ export async function resetToSeed(): Promise<{ operations: number; schedules: nu
   );
 
   return { operations: elektrikliMonthly.length + gazliMonthly.length, schedules: elektrikliWeekly.length + gazliWeekly.length };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   STOCK LEVEL PARSER — Netsis stok seviye belgesi
+   Expects columns: STOK KODU + ADET/MİKTAR + DEPO
+   ═══════════════════════════════════════════════════════════════════════ */
+
+import { stockStates, stockMovements } from "@shared/schema";
+import { stockReconciliation } from "../ontology/StockReconciliation";
+
+function normalizeTurkish(s: string): string {
+  return s.replace(/İ/g, "I").replace(/Ş/g, "S").replace(/Ç/g, "C").replace(/Ö/g, "O").replace(/Ü/g, "U").replace(/Ğ/g, "G").toUpperCase().trim();
+}
+
+function findColumn(headers: string[], ...keywords: string[]): string | null {
+  for (const h of headers) {
+    const norm = normalizeTurkish(h);
+    if (keywords.some(k => norm.includes(k))) return h;
+  }
+  return null;
+}
+
+async function parseStokSeviye(wb: XLSX.WorkBook, fileName: string): Promise<IngestResult> {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Boş dosya");
+
+  const rows = XLSX.utils.sheet_to_json(ws) as Record<string, any>[];
+  if (rows.length === 0) throw new Error("Veri bulunamadı");
+
+  const headers = Object.keys(rows[0]);
+  const skuCol = findColumn(headers, "STOK KOD", "STOK_KOD", "SKU", "MALZEME KOD");
+  const qtyCol = findColumn(headers, "ADET", "MIKTAR", "QTY", "BAKIYE", "STOK MIKT");
+
+  if (!skuCol || !qtyCol) {
+    throw new Error(`Gerekli sütunlar bulunamadı. Bulunan: ${headers.join(", ")}. Beklenen: STOK KODU + ADET/MİKTAR`);
+  }
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const sku = String(row[skuCol] || "").trim();
+    const qty = parseInt(String(row[qtyCol] || "0"), 10);
+    if (!sku || isNaN(qty)) { skipped++; continue; }
+
+    const [product] = await db.select().from(products).where(eq(products.sku, sku));
+    if (!product) { skipped++; continue; }
+
+    await stockReconciliation.ensureStockState(product.id);
+    await stockReconciliation.syncFromNetsis(product.id, qty);
+    imported++;
+  }
+
+  return {
+    success: true,
+    file_name: fileName,
+    parser_used: "StokSeviyeParser",
+    records_processed: rows.length,
+    records_inserted: imported,
+    records_updated: imported,
+    tables_affected: ["stock_states", "stock_movements"],
+    summary: `Netsis stok senkronizasyonu: ${imported} ürün güncellendi, ${skipped} atlandı`,
+  };
+}
+
+/* ═══════════════════════════════════════════════════════════════════════
+   SALES DATA PARSER — Satış/sevk belgesi
+   Expects columns: STOK KODU + ADET/MİKTAR + SEVK/SATIŞ/MÜŞTERİ
+   ═══════════════════════════════════════════════════════════════════════ */
+
+async function parseSatisVerisi(wb: XLSX.WorkBook, fileName: string): Promise<IngestResult> {
+  const ws = wb.Sheets[wb.SheetNames[0]];
+  if (!ws) throw new Error("Boş dosya");
+
+  const rows = XLSX.utils.sheet_to_json(ws) as Record<string, any>[];
+  if (rows.length === 0) throw new Error("Veri bulunamadı");
+
+  const headers = Object.keys(rows[0]);
+  const skuCol = findColumn(headers, "STOK KOD", "STOK_KOD", "SKU", "MALZEME KOD");
+  const qtyCol = findColumn(headers, "ADET", "MIKTAR", "QTY", "SEVK MIKT");
+  const refCol = findColumn(headers, "FATURA", "FIS", "BELGE", "MUSTERI", "SIPARIS");
+
+  if (!skuCol || !qtyCol) {
+    throw new Error(`Gerekli sütunlar bulunamadı. Bulunan: ${headers.join(", ")}. Beklenen: STOK KODU + ADET/MİKTAR`);
+  }
+
+  let imported = 0;
+  let skipped = 0;
+
+  for (const row of rows) {
+    const sku = String(row[skuCol] || "").trim();
+    const qty = parseInt(String(row[qtyCol] || "0"), 10);
+    if (!sku || isNaN(qty) || qty === 0) { skipped++; continue; }
+
+    const [product] = await db.select().from(products).where(eq(products.sku, sku));
+    if (!product) { skipped++; continue; }
+
+    const ref = refCol ? String(row[refCol] || "").trim() : undefined;
+
+    await stockReconciliation.ensureStockState(product.id);
+    await stockReconciliation.recordSale(product.id, Math.abs(qty), "excel_import", ref);
+    imported++;
+  }
+
+  return {
+    success: true,
+    file_name: fileName,
+    parser_used: "SatisParser",
+    records_processed: rows.length,
+    records_inserted: imported,
+    records_updated: 0,
+    tables_affected: ["stock_movements", "stock_states"],
+    summary: `Satış verisi aktarıldı: ${imported} satış kaydedildi, ${skipped} atlandı`,
+  };
 }
