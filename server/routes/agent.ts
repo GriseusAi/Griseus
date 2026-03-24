@@ -1,8 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { weeklyPlans, capacityMetrics, productionLines } from "@shared/schema";
-import { eq, desc, sql } from "drizzle-orm";
+import { weeklyPlans, capacityMetrics, productionLines, stockLevels, stockMovementsV2, products } from "@shared/schema";
+import { eq, desc, sql, and } from "drizzle-orm";
 import { computeEngine } from "../ontology/ComputeEngine";
 import { ontologyService } from "../ontology/OntologyService";
 import { whatIfEngine } from "../ontology/WhatIfEngine";
@@ -277,7 +277,13 @@ TOOL KULLANIM KURALLARI:
 - "fazla stok", "sermaye", "overstock" → query_overstock_report kullan
 - "üretim planı", "ne üretmeliyiz" → compute_production_plan kullan
 - "kapasite", "hat", "verimlilik" → query_capacity_utilization kullan
+- "depoda ne var", "üretimde ne var", "anlık stok", "canlı stok" → get_live_stock_levels kullan
+- "hareket geçmişi", "son hareketler", "kim ne yaptı", "stok log" → get_stock_movement_history kullan
+- "sipariş gelse", "karşılayabilir miyiz", "yeter mi", "sipariş simülasyonu" → simulate_order_fulfillment kullan
+- "uyarılar", "kritik stok", "stok alarmı", "eksik ne var" → check_stock_alerts kullan
+- "transfer önerisi", "depoya transfer", "neyi transfer etmeliyiz" → suggest_stock_transfers kullan
 - Birden fazla tool çağırabilirsin — önce veri çek, sonra analiz et.
+- Canlı stok verisi için MUTLAKA get_live_stock_levels veya ilgili stok tool'unu kullan — tahmini değer verme.
 
 FORMAT:
 - Başlıklar için ## kullan, önemli sayıları **kalın** yaz
@@ -408,6 +414,80 @@ const CEO_TOOLS: Anthropic.Tool[] = [
           description: "Belirli hat (boş bırakılırsa tüm hatlar)",
         },
       },
+      required: [],
+    },
+  },
+  // ── Canlı Stok Tablosu Tool'ları ──
+  {
+    name: "get_live_stock_levels",
+    description: "Canlı stok durumu. stock_levels tablosundan tüm ürünlerin üretimde (inProduction), depoda (inWarehouse) ve satılan (totalSold) miktarlarını getirir. Belirli ürün kodu verilirse sadece o ürünü döner.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_code: {
+          type: "string",
+          description: "Ürün kodu veya adı (ör: 'BH55', 'ELT'). Boş bırakılırsa tüm ürünler döner.",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_stock_movement_history",
+    description: "Stok hareket geçmişi. stock_movements tablosundan son hareketleri getirir: üretim, depoya transfer, satış, geri alma vb. Filtre: ürün kodu, hareket tipi, limit.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_code: {
+          type: "string",
+          description: "Ürün kodu ile filtrele (ör: 'BH55'). Boş = tüm ürünler.",
+        },
+        movement_type: {
+          type: "string",
+          enum: ["produced", "to_warehouse", "to_sales", "raw_material_in", "undo", "inventory_count"],
+          description: "Hareket tipi filtresi. Boş = tüm tipler.",
+        },
+        limit: {
+          type: "number",
+          description: "Kaç kayıt getirilecek (varsayılan 30, max 100)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "simulate_order_fulfillment",
+    description: "Sipariş simülasyonu. Belirli bir ürün için verilen miktarda sipariş geldiğinde depodaki stoktan karşılanıp karşılanamayacağını hesaplar. Eksik varsa üretimdeki stokla birlikte durumu analiz eder.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_code: {
+          type: "string",
+          description: "Ürün kodu (ör: 'BH55', 'SSP 40/60')",
+        },
+        quantity: {
+          type: "number",
+          description: "Sipariş miktarı (adet)",
+        },
+      },
+      required: ["product_code", "quantity"],
+    },
+  },
+  {
+    name: "check_stock_alerts",
+    description: "Stok uyarıları. Depoda 0 olan, üretimde bekleyip depoya transfer edilmemiş, veya kritik düşük stoklu ürünleri tespit eder.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "suggest_stock_transfers",
+    description: "Transfer önerileri. Üretimde stok varken depoda stok olmayan veya düşük olan ürünleri tespit edip depoya transfer önerileri sunar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
       required: [],
     },
   },
@@ -629,6 +709,298 @@ async function callCeoTool(toolName: string, input: Record<string, any>): Promis
         }),
         total_daily_capacity: filtered.reduce((sum, pl) => sum + ((pl.properties as any).daily_capacity || 0), 0),
         total_workers: filtered.reduce((sum, pl) => sum + ((pl.properties as any).worker_count || 0), 0),
+      };
+    }
+
+    // ── Canlı Stok Tablosu Tool Implementasyonları ──
+
+    case "get_live_stock_levels": {
+      const rows = await db
+        .select({
+          productId: stockLevels.productId,
+          productSku: products.sku,
+          productName: products.name,
+          productCategory: products.category,
+          inProduction: stockLevels.inProduction,
+          inWarehouse: stockLevels.inWarehouse,
+          totalSold: stockLevels.totalSold,
+          updatedAt: stockLevels.updatedAt,
+        })
+        .from(stockLevels)
+        .innerJoin(products, eq(stockLevels.productId, products.id))
+        .orderBy(products.sku);
+
+      let filtered = rows;
+      if (input.product_code) {
+        const code = input.product_code.toLowerCase();
+        filtered = rows.filter(r =>
+          (r.productSku || "").toLowerCase().includes(code) ||
+          (r.productName || "").toLowerCase().includes(code)
+        );
+      }
+
+      const totalInProduction = filtered.reduce((s, r) => s + r.inProduction, 0);
+      const totalInWarehouse = filtered.reduce((s, r) => s + r.inWarehouse, 0);
+      const totalSold = filtered.reduce((s, r) => s + r.totalSold, 0);
+
+      return {
+        products: filtered.map(r => ({
+          sku: r.productSku,
+          name: r.productName,
+          category: r.productCategory,
+          in_production: r.inProduction,
+          in_warehouse: r.inWarehouse,
+          total_sold: r.totalSold,
+          total_available: r.inProduction + r.inWarehouse,
+          updated_at: r.updatedAt,
+        })),
+        count: filtered.length,
+        summary: {
+          total_in_production: totalInProduction,
+          total_in_warehouse: totalInWarehouse,
+          total_sold: totalSold,
+          total_available: totalInProduction + totalInWarehouse,
+        },
+      };
+    }
+
+    case "get_stock_movement_history": {
+      const limit = Math.min(input.limit || 30, 100);
+
+      let productId: number | null = null;
+      if (input.product_code) {
+        const code = input.product_code.toLowerCase();
+        const allProducts = await db.select().from(products);
+        const match = allProducts.find(p =>
+          (p.sku || "").toLowerCase().includes(code) ||
+          (p.name || "").toLowerCase().includes(code)
+        );
+        if (!match) return { error: `Ürün bulunamadı: "${input.product_code}"`, available_products: allProducts.map(p => p.sku) };
+        productId = match.id;
+      }
+
+      const conditions = [];
+      if (productId) conditions.push(eq(stockMovementsV2.productId, productId));
+      if (input.movement_type) conditions.push(eq(stockMovementsV2.movementType, input.movement_type));
+
+      let query = db
+        .select({
+          id: stockMovementsV2.id,
+          productSku: products.sku,
+          productName: products.name,
+          movementType: stockMovementsV2.movementType,
+          quantity: stockMovementsV2.quantity,
+          previousState: stockMovementsV2.previousState,
+          note: stockMovementsV2.note,
+          createdBy: stockMovementsV2.createdBy,
+          createdAt: stockMovementsV2.createdAt,
+        })
+        .from(stockMovementsV2)
+        .innerJoin(products, eq(stockMovementsV2.productId, products.id))
+        .orderBy(desc(stockMovementsV2.createdAt))
+        .limit(limit);
+
+      if (conditions.length > 0) {
+        query = query.where(and(...conditions)) as any;
+      }
+
+      const rows = await query;
+
+      const typeLabels: Record<string, string> = {
+        produced: "Üretildi",
+        to_warehouse: "Depoya Transfer",
+        to_sales: "Satışa Çıktı",
+        raw_material_in: "Hammadde Girişi",
+        undo: "Geri Alma",
+        inventory_count: "Sayım",
+      };
+
+      return {
+        movements: rows.map(r => ({
+          id: r.id,
+          sku: r.productSku,
+          product_name: r.productName,
+          type: r.movementType,
+          type_label: typeLabels[r.movementType] || r.movementType,
+          quantity: r.quantity,
+          note: r.note,
+          created_by: r.createdBy,
+          created_at: r.createdAt,
+        })),
+        count: rows.length,
+      };
+    }
+
+    case "simulate_order_fulfillment": {
+      const code = (input.product_code || "").toLowerCase();
+      const orderQty = input.quantity;
+
+      if (!code || !orderQty) return { error: "product_code ve quantity gerekli" };
+
+      const rows = await db
+        .select({
+          productId: stockLevels.productId,
+          productSku: products.sku,
+          productName: products.name,
+          inProduction: stockLevels.inProduction,
+          inWarehouse: stockLevels.inWarehouse,
+        })
+        .from(stockLevels)
+        .innerJoin(products, eq(stockLevels.productId, products.id));
+
+      const match = rows.find(r =>
+        (r.productSku || "").toLowerCase().includes(code) ||
+        (r.productName || "").toLowerCase().includes(code)
+      );
+
+      if (!match) {
+        return { error: `Ürün bulunamadı: "${input.product_code}"`, available_products: rows.map(r => r.productSku) };
+      }
+
+      const canFulfillFromWarehouse = match.inWarehouse >= orderQty;
+      const warehouseDeficit = Math.max(0, orderQty - match.inWarehouse);
+      const canFulfillWithProduction = (match.inWarehouse + match.inProduction) >= orderQty;
+      const totalDeficit = Math.max(0, orderQty - match.inWarehouse - match.inProduction);
+
+      return {
+        product: { sku: match.productSku, name: match.productName },
+        order_quantity: orderQty,
+        warehouse_stock: match.inWarehouse,
+        production_stock: match.inProduction,
+        total_available: match.inWarehouse + match.inProduction,
+        can_fulfill_from_warehouse: canFulfillFromWarehouse,
+        can_fulfill_with_production_transfer: canFulfillWithProduction,
+        warehouse_deficit: warehouseDeficit,
+        total_deficit: totalDeficit,
+        recommendation: canFulfillFromWarehouse
+          ? `✅ Sipariş karşılanabilir. Depoda ${match.inWarehouse} adet mevcut, ${orderQty} adet sipariş karşılanır.`
+          : canFulfillWithProduction
+            ? `⚠️ Depo yetersiz (${match.inWarehouse} adet). Üretimden ${warehouseDeficit} adet depoya transfer edilirse sipariş karşılanabilir.`
+            : `❌ Karşılanamaz. Toplam mevcut: ${match.inWarehouse + match.inProduction} adet, eksik: ${totalDeficit} adet. Yeni üretim gerekli.`,
+      };
+    }
+
+    case "check_stock_alerts": {
+      const rows = await db
+        .select({
+          productId: stockLevels.productId,
+          productSku: products.sku,
+          productName: products.name,
+          inProduction: stockLevels.inProduction,
+          inWarehouse: stockLevels.inWarehouse,
+          totalSold: stockLevels.totalSold,
+          updatedAt: stockLevels.updatedAt,
+        })
+        .from(stockLevels)
+        .innerJoin(products, eq(stockLevels.productId, products.id));
+
+      const alerts: any[] = [];
+
+      for (const r of rows) {
+        // Depoda 0 olan ürünler
+        if (r.inWarehouse === 0 && r.inProduction === 0) {
+          alerts.push({
+            sku: r.productSku,
+            name: r.productName,
+            alert_type: "STOK_YOK",
+            severity: "critical",
+            message: `🔴 ${r.productSku} — Hem depoda hem üretimde stok yok! Acil üretim gerekli.`,
+            in_production: r.inProduction,
+            in_warehouse: r.inWarehouse,
+          });
+        }
+        // Depoda 0 ama üretimde var — transfer gerekli
+        else if (r.inWarehouse === 0 && r.inProduction > 0) {
+          alerts.push({
+            sku: r.productSku,
+            name: r.productName,
+            alert_type: "TRANSFER_BEKLIYOR",
+            severity: "high",
+            message: `🟡 ${r.productSku} — Depoda stok yok ama üretimde ${r.inProduction} adet bekliyor. Depoya transfer edilmeli.`,
+            in_production: r.inProduction,
+            in_warehouse: r.inWarehouse,
+          });
+        }
+        // Depoda çok düşük stok (5'in altı)
+        else if (r.inWarehouse > 0 && r.inWarehouse <= 5) {
+          alerts.push({
+            sku: r.productSku,
+            name: r.productName,
+            alert_type: "DUSUK_STOK",
+            severity: "medium",
+            message: `🟠 ${r.productSku} — Depoda sadece ${r.inWarehouse} adet kaldı. Stok takviyesi önerilir.`,
+            in_production: r.inProduction,
+            in_warehouse: r.inWarehouse,
+          });
+        }
+      }
+
+      // Sort: critical > high > medium
+      const severityOrder: Record<string, number> = { critical: 0, high: 1, medium: 2 };
+      alerts.sort((a, b) => (severityOrder[a.severity] ?? 3) - (severityOrder[b.severity] ?? 3));
+
+      return {
+        alerts,
+        alert_count: alerts.length,
+        summary: {
+          critical: alerts.filter(a => a.severity === "critical").length,
+          high: alerts.filter(a => a.severity === "high").length,
+          medium: alerts.filter(a => a.severity === "medium").length,
+        },
+        total_products_checked: rows.length,
+      };
+    }
+
+    case "suggest_stock_transfers": {
+      const rows = await db
+        .select({
+          productId: stockLevels.productId,
+          productSku: products.sku,
+          productName: products.name,
+          inProduction: stockLevels.inProduction,
+          inWarehouse: stockLevels.inWarehouse,
+        })
+        .from(stockLevels)
+        .innerJoin(products, eq(stockLevels.productId, products.id));
+
+      const suggestions: any[] = [];
+
+      for (const r of rows) {
+        if (r.inProduction > 0 && r.inWarehouse === 0) {
+          // Depoda hiç yok, tamamını transfer et
+          suggestions.push({
+            sku: r.productSku,
+            name: r.productName,
+            priority: "high",
+            in_production: r.inProduction,
+            in_warehouse: r.inWarehouse,
+            transfer_quantity: r.inProduction,
+            reason: `Depoda stok yok. Üretimdeki ${r.inProduction} adedin tamamı depoya transfer edilmeli.`,
+          });
+        } else if (r.inProduction > 0 && r.inWarehouse > 0 && r.inWarehouse <= 5) {
+          // Depoda az var, üretimden takviye
+          const transferQty = Math.min(r.inProduction, 10); // Max 10 veya mevcut üretim stoku
+          suggestions.push({
+            sku: r.productSku,
+            name: r.productName,
+            priority: "medium",
+            in_production: r.inProduction,
+            in_warehouse: r.inWarehouse,
+            transfer_quantity: transferQty,
+            reason: `Depoda sadece ${r.inWarehouse} adet var. Üretimden ${transferQty} adet transfer önerilir.`,
+          });
+        }
+      }
+
+      // Sort by priority
+      const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
+      suggestions.sort((a, b) => (priorityOrder[a.priority] ?? 3) - (priorityOrder[b.priority] ?? 3));
+
+      return {
+        suggestions,
+        suggestion_count: suggestions.length,
+        total_transfer_units: suggestions.reduce((s: number, t: any) => s + t.transfer_quantity, 0),
+        total_products_checked: rows.length,
       };
     }
 
