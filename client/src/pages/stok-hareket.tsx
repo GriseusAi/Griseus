@@ -25,6 +25,7 @@ const MOVEMENT_TYPES = [
   { value: "to_warehouse", label: "Depoya Transfer", icon: "📦", color: C.blue, desc: "Üretimden depoya" },
   { value: "to_sales", label: "Satışa Çıktı", icon: "🚚", color: C.purple, desc: "Depodan satışa" },
   { value: "raw_material_in", label: "Hammadde Girişi", icon: "🏗️", color: C.warn, desc: "Hammadde stokuna ekle" },
+  { value: "inventory_count", label: "Sayım Girişi", icon: "📋", color: "#f97316", desc: "Stoku elle set et" },
 ];
 
 function timeAgo(dateStr: string): string {
@@ -38,6 +39,7 @@ function timeAgo(dateStr: string): string {
 }
 
 function movementLabel(type: string): string {
+  if (type === "undo") return "Geri Alındı";
   return MOVEMENT_TYPES.find(m => m.value === type)?.label || type;
 }
 function movementColor(type: string): string {
@@ -52,6 +54,7 @@ export default function StokHareket() {
   const [selectedProduct, setSelectedProduct] = useState<number | "">("");
   const [quantity, setQuantity] = useState("");
   const [movementType, setMovementType] = useState("");
+  const [countTarget, setCountTarget] = useState<"warehouse" | "production">("warehouse");
   const [note, setNote] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
@@ -70,12 +73,14 @@ export default function StokHareket() {
   // Create movement
   const createMutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/stock/movements", {
+      const body: any = {
         product_id: selectedProduct,
         movement_type: movementType,
         quantity: parseInt(quantity, 10),
         note: note || undefined,
-      });
+      };
+      if (movementType === "inventory_count") body.target = countTarget;
+      const res = await apiRequest("POST", "/api/stock/movements", body);
       return res.json();
     },
     onSuccess: (data) => {
@@ -120,7 +125,10 @@ export default function StokHareket() {
     },
   });
 
-  const canSubmit = selectedProduct !== "" && quantity && parseInt(quantity, 10) > 0 && movementType && !createMutation.isPending;
+  const qtyNum = parseInt(quantity, 10);
+  const canSubmit = selectedProduct !== "" && quantity !== "" && !isNaN(qtyNum) &&
+    (movementType === "inventory_count" ? qtyNum >= 0 : qtyNum > 0) &&
+    movementType && !createMutation.isPending;
 
   const selectedProductInfo = productList.find(p => p.id === selectedProduct);
 
@@ -187,9 +195,9 @@ export default function StokHareket() {
           </label>
           <input
             type="number"
-            min={1}
+            min={movementType === "inventory_count" ? 0 : 1}
             inputMode="numeric"
-            placeholder="Kaç adet?"
+            placeholder={movementType === "inventory_count" ? "Mevcut adet (örn: 42)" : "Kaç adet?"}
             value={quantity}
             onChange={(e) => setQuantity(e.target.value)}
             style={{
@@ -224,6 +232,35 @@ export default function StokHareket() {
               </button>
             ))}
           </div>
+
+          {/* Inventory count target selector */}
+          {movementType === "inventory_count" && (
+            <div style={{ marginBottom: 16 }}>
+              <label style={{ display: "block", fontSize: 12, color: C.mid, marginBottom: 6, fontWeight: 600 }}>
+                NEREYE SAYIM?
+              </label>
+              <div style={{ display: "flex", gap: 8 }}>
+                {([
+                  { value: "warehouse" as const, label: "Depoda", icon: "📦" },
+                  { value: "production" as const, label: "Üretimde", icon: "🔨" },
+                ] as const).map(t => (
+                  <button
+                    key={t.value}
+                    onClick={() => setCountTarget(t.value)}
+                    style={{
+                      flex: 1, padding: "12px 8px", borderRadius: 10, cursor: "pointer",
+                      background: countTarget === t.value ? "rgba(249,115,22,0.12)" : "rgba(255,255,255,0.02)",
+                      border: `2px solid ${countTarget === t.value ? "#f97316" : C.cardBorder}`,
+                      color: countTarget === t.value ? "#f97316" : C.mid,
+                      fontFamily: sans, fontSize: 14, fontWeight: 600, textAlign: "center",
+                    }}
+                  >
+                    {t.icon} {t.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Note */}
           <label style={{ display: "block", fontSize: 12, color: C.mid, marginBottom: 6, fontWeight: 600 }}>

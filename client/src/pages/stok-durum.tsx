@@ -40,14 +40,15 @@ function timeAgo(dateStr: string | null): string {
 function movementLabel(type: string): string {
   const map: Record<string, string> = {
     produced: "Üretildi", to_warehouse: "Depoya Transfer", to_sales: "Satışa Çıktı",
-    raw_material_in: "Hammadde Girişi", undo: "Geri Alındı",
+    raw_material_in: "Hammadde Girişi", inventory_count: "Sayım Girişi", undo: "Geri Alındı",
   };
   return map[type] || type;
 }
 
 function movementColor(type: string): string {
   const map: Record<string, string> = {
-    produced: C.ok, to_warehouse: C.blue, to_sales: C.purple, raw_material_in: C.warn, undo: C.err,
+    produced: C.ok, to_warehouse: C.blue, to_sales: C.purple,
+    raw_material_in: C.warn, inventory_count: "#f97316", undo: C.err,
   };
   return map[type] || C.mid;
 }
@@ -271,6 +272,7 @@ export default function StokDurum() {
                     { value: "produced", label: "Üretim" },
                     { value: "to_warehouse", label: "Depo" },
                     { value: "to_sales", label: "Satış" },
+                    { value: "inventory_count", label: "Sayım" },
                     { value: "undo", label: "Geri Al" },
                   ].map(f => (
                     <button
