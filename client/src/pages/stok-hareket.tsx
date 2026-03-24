@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
+import { useStockWebSocket } from "@/lib/useStockWebSocket";
 
 /* ── Palette ── */
 const C = {
@@ -64,11 +65,16 @@ export default function StokHareket() {
     queryKey: ["/api/stock/products"],
   });
 
-  // Fetch recent movements
+  // Fetch recent movements — no polling, WebSocket drives updates
   const { data: movements = [] } = useQuery<Movement[]>({
     queryKey: ["/api/stock/movements?limit=10"],
-    refetchInterval: 10000,
   });
+
+  // WebSocket: refresh movements on any stock update
+  const handleWsUpdate = useCallback(() => {
+    qc.invalidateQueries({ queryKey: ["/api/stock/movements?limit=10"] });
+  }, [qc]);
+  const { connected } = useStockWebSocket(handleWsUpdate);
 
   // Create movement
   const createMutation = useMutation({
@@ -150,12 +156,29 @@ export default function StokHareket() {
           </button>
           <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Hızlı Stok Girişi</h1>
         </div>
-        <button onClick={() => navigate("/stok/durum")} style={{
-          background: "rgba(59,130,246,0.1)", border: `1px solid rgba(59,130,246,0.3)`,
-          borderRadius: 8, padding: "6px 12px", color: C.blue, fontFamily: sans, fontSize: 12, cursor: "pointer",
-        }}>
-          Stok Durumu →
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <div style={{
+            display: "flex", alignItems: "center", gap: 6,
+            padding: "4px 10px", borderRadius: 20,
+            background: connected ? "rgba(52,211,153,0.08)" : "rgba(239,68,68,0.08)",
+            border: `1px solid ${connected ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.25)"}`,
+          }}>
+            <div style={{
+              width: 7, height: 7, borderRadius: "50%",
+              background: connected ? C.ok : C.err,
+              boxShadow: connected ? `0 0 6px ${C.ok}` : "none",
+            }} />
+            <span style={{ fontSize: 11, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 600 }}>
+              {connected ? "Canlı" : "Bağlantı kesildi"}
+            </span>
+          </div>
+          <button onClick={() => navigate("/stok/durum")} style={{
+            background: "rgba(59,130,246,0.1)", border: `1px solid rgba(59,130,246,0.3)`,
+            borderRadius: 8, padding: "6px 12px", color: C.blue, fontFamily: sans, fontSize: 12, cursor: "pointer",
+          }}>
+            Stok Durumu →
+          </button>
+        </div>
       </header>
 
       <motion.div

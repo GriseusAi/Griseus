@@ -8,6 +8,7 @@ import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { storage } from "./storage";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
+import { initWebSocket } from "./ws";
 
 const app = express();
 const httpServer = createServer(app);
@@ -139,6 +140,7 @@ app.use((req, res, next) => {
 (async () => {
   const { seedDatabase } = await import("./seed");
   await seedDatabase();
+  initWebSocket(httpServer);
   await registerRoutes(httpServer, app);
 
   app.use((err: any, _req: Request, res: Response, next: NextFunction) => {

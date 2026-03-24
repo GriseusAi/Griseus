@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
+import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocket";
 
 /* ── Palette ── */
 const C = {
@@ -72,22 +73,57 @@ function SummaryCard({ label, value, color }: { label: string; value: string | n
   );
 }
 
+/* ── Connection Indicator ── */
+function ConnectionBadge({ connected }: { connected: boolean }) {
+  return (
+    <div style={{
+      display: "flex", alignItems: "center", gap: 6,
+      padding: "4px 10px", borderRadius: 20,
+      background: connected ? "rgba(52,211,153,0.08)" : "rgba(239,68,68,0.08)",
+      border: `1px solid ${connected ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.25)"}`,
+    }}>
+      <div style={{
+        width: 7, height: 7, borderRadius: "50%",
+        background: connected ? C.ok : C.err,
+        boxShadow: connected ? `0 0 6px ${C.ok}` : "none",
+        animation: connected ? "pulse 2s infinite" : "none",
+      }} />
+      <span style={{ fontSize: 11, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 600 }}>
+        {connected ? "Canlı" : "Bağlantı kesildi"}
+      </span>
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        @keyframes flashGreen {
+          0% { background: rgba(52,211,153,0.25); }
+          100% { background: transparent; }
+        }
+        .stock-row-flash {
+          animation: flashGreen 0.5s ease-out;
+        }
+      `}</style>
+    </div>
+  );
+}
+
 export default function StokDurum() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
   const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string>("");
+  const [flashedProductId, setFlashedProductId] = useState<number | null>(null);
+  const flashTimer = useRef<ReturnType<typeof setTimeout>>();
 
-  // Fetch stock levels
+  // Fetch stock levels — no polling, WebSocket drives updates
   const { data: levels = [] } = useQuery<StockLevel[]>({
     queryKey: ["/api/stock/levels"],
-    refetchInterval: 10000,
   });
 
   // Fetch summary
   const { data: summary } = useQuery<Summary>({
     queryKey: ["/api/stock/summary"],
-    refetchInterval: 10000,
   });
 
   // Fetch movements for selected product
@@ -97,8 +133,23 @@ export default function StokDurum() {
   const { data: movements = [] } = useQuery<Movement[]>({
     queryKey: [movementQuery],
     enabled: !!selectedProductId,
-    refetchInterval: 10000,
   });
+
+  // WebSocket handler — invalidate queries and trigger flash
+  const handleStockUpdate = useCallback((data: StockUpdateEvent) => {
+    qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
+    if (selectedProductId) {
+      qc.invalidateQueries({ queryKey: [`/api/stock/movements?product_id=${selectedProductId}&limit=30`] });
+    }
+
+    // Flash the updated row
+    setFlashedProductId(data.productId);
+    if (flashTimer.current) clearTimeout(flashTimer.current);
+    flashTimer.current = setTimeout(() => setFlashedProductId(null), 600);
+  }, [qc, selectedProductId]);
+
+  const { connected } = useStockWebSocket(handleStockUpdate);
 
   // Undo
   const undoMutation = useMutation({
@@ -137,12 +188,15 @@ export default function StokDurum() {
           </button>
           <h1 style={{ fontSize: 16, fontWeight: 700, margin: 0 }}>Stok Durumu</h1>
         </div>
-        <button onClick={() => navigate("/stok/hareket")} style={{
-          background: "rgba(52,211,153,0.1)", border: `1px solid rgba(52,211,153,0.3)`,
-          borderRadius: 8, padding: "6px 12px", color: C.ok, fontFamily: sans, fontSize: 12, cursor: "pointer", fontWeight: 600,
-        }}>
-          + Hızlı Giriş
-        </button>
+        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+          <ConnectionBadge connected={connected} />
+          <button onClick={() => navigate("/stok/hareket")} style={{
+            background: "rgba(52,211,153,0.1)", border: `1px solid rgba(52,211,153,0.3)`,
+            borderRadius: 8, padding: "6px 12px", color: C.ok, fontFamily: sans, fontSize: 12, cursor: "pointer", fontWeight: 600,
+          }}>
+            + Hızlı Giriş
+          </button>
+        </div>
       </header>
 
       <motion.div
@@ -180,10 +234,12 @@ export default function StokDurum() {
             const isLow = level.inWarehouse > 0 && level.inWarehouse < 5;
             const isEmpty = level.inWarehouse === 0 && level.totalSold > 0;
             const rowBg = isEmpty ? "rgba(239,68,68,0.04)" : isLow ? "rgba(251,191,36,0.04)" : "transparent";
+            const isFlashing = flashedProductId === level.productId;
 
             return (
               <div
                 key={level.productId}
+                className={isFlashing ? "stock-row-flash" : ""}
                 onClick={() => setSelectedProductId(level.productId === selectedProductId ? null : level.productId)}
                 style={{
                   display: "grid", gridTemplateColumns: "1fr 1.5fr repeat(3, 80px) 90px",

@@ -2,6 +2,7 @@ import { Router } from "express";
 import { db } from "../db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { products, stockLevels, stockMovementsV2 } from "@shared/schema";
+import { broadcastStockUpdate } from "../ws";
 
 const stockPocRouter = Router();
 
@@ -211,6 +212,15 @@ stockPocRouter.post("/movements", async (req, res) => {
           .where(eq(stockLevels.productId, product_id));
       });
 
+      broadcastStockUpdate({
+        event: "stock_update",
+        productId: product_id,
+        productSku: product.sku || "?",
+        movementType: "inventory_count",
+        quantity,
+        stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
+      });
+
       return res.json({
         success: true,
         stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
@@ -270,6 +280,15 @@ stockPocRouter.post("/movements", async (req, res) => {
         .where(eq(stockLevels.productId, product_id));
     });
 
+    broadcastStockUpdate({
+      event: "stock_update",
+      productId: product_id,
+      productSku: product.sku || "?",
+      movementType: movement_type,
+      quantity,
+      stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
+    });
+
     res.json({
       success: true,
       stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
@@ -326,6 +345,18 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
           updatedAt: new Date(),
         })
         .where(eq(stockLevels.productId, movement.productId));
+    });
+
+    // Get product SKU for broadcast
+    const [prod] = await db.select({ sku: products.sku }).from(products).where(eq(products.id, movement.productId));
+
+    broadcastStockUpdate({
+      event: "stock_update",
+      productId: movement.productId,
+      productSku: prod?.sku || "?",
+      movementType: "undo",
+      quantity: movement.quantity,
+      stockLevel: { inProduction: prev.inProduction, inWarehouse: prev.inWarehouse, totalSold: prev.totalSold },
     });
 
     res.json({
