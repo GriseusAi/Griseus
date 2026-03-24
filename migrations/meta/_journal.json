@@ -15,6 +15,13 @@
       "when": 1774343988835,
       "tag": "0001_adorable_betty_ross",
       "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "7",
+      "when": 1774347964338,
+      "tag": "0002_bizarre_lake",
+      "breakpoints": true
     }
   ]
 }

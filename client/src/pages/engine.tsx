@@ -1132,8 +1132,8 @@ export default function EnginePage() {
                 )}
               </div>
 
-              {/* Link to Stock Intelligence */}
-              <button onClick={() => { window.location.href = "/intelligence"; }} style={{
+              {/* Link to Stock Status */}
+              <button onClick={() => { window.location.href = "/stok/durum"; }} style={{
                 width: "100%", padding: "12px 16px", borderRadius: 10, marginTop: 14,
                 background: "rgba(59,139,212,0.08)", border: "1px solid rgba(59,139,212,0.25)",
                 color: "#3B8BD4", fontSize: 13, fontWeight: 700, fontFamily: sans, cursor: "pointer",
@@ -1144,6 +1144,20 @@ export default function EnginePage() {
                 onMouseLeave={e => { e.currentTarget.style.background = "rgba(59,139,212,0.08)"; }}
               >
                 📊 Stok İstihbarat Paneli →
+              </button>
+
+              {/* Link to Quick Stock Entry */}
+              <button onClick={() => { window.location.href = "/stok/hareket"; }} style={{
+                width: "100%", padding: "12px 16px", borderRadius: 10, marginTop: 8,
+                background: "rgba(52,211,153,0.06)", border: "1px solid rgba(52,211,153,0.2)",
+                color: "#34d399", fontSize: 13, fontWeight: 700, fontFamily: sans, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center", gap: 8,
+                transition: "all 0.2s",
+              }}
+                onMouseEnter={e => { e.currentTarget.style.background = "rgba(52,211,153,0.12)"; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "rgba(52,211,153,0.06)"; }}
+              >
+                ⚡ Hızlı Stok Girişi →
               </button>
 
               {/* Link to Production Flow */}

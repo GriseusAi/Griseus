@@ -705,3 +705,29 @@ export const insertStockMovementSchema = createInsertSchema(stockMovements).omit
 export type InsertStockMovement = z.infer<typeof insertStockMovementSchema>;
 export type StockMovement = typeof stockMovements.$inferSelect;
 
+// --- Stok Hareket Sistemi (PoC) ---
+
+export const stockLevels = pgTable("stock_levels", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id).notNull().unique(),
+  inProduction: integer("in_production").notNull().default(0),
+  inWarehouse: integer("in_warehouse").notNull().default(0),
+  totalSold: integer("total_sold").notNull().default(0),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type StockLevel = typeof stockLevels.$inferSelect;
+
+export const stockMovementsV2 = pgTable("stock_movements_v2", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  movementType: text("movement_type").notNull(), // 'produced' | 'to_warehouse' | 'to_sales' | 'raw_material_in' | 'undo'
+  quantity: integer("quantity").notNull(),
+  previousState: jsonb("previous_state"),
+  note: text("note"),
+  createdBy: text("created_by").default("üretim_şefi"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type StockMovementV2 = typeof stockMovementsV2.$inferSelect;
+
