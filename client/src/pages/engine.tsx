@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
+import IsometricLayers from "../components/IsometricLayers";
 
 /* ── Palette ── */
 const C = {
@@ -112,140 +113,146 @@ export default function EnginePage() {
         </div>
       </div>
 
-      {/* ── Chat Area ── */}
-      <div ref={scrollRef} style={{
-        flex: 1, overflowY: "auto", padding: "24px",
-        maxWidth: 800, width: "100%", margin: "0 auto",
-      }}>
-        {/* Welcome state */}
-        {messages.length === 0 && (
-          <div style={{ textAlign: "center", marginTop: 80 }}>
-            <div style={{ fontSize: 36, fontWeight: 800, marginBottom: 8, color: C.accent }}>
-              Griseus
-            </div>
-            <div style={{ fontSize: 14, color: C.mid, marginBottom: 40 }}>
-              Stok istihbaratı, üretim kapasitesi ve BOM analizi
-            </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, maxWidth: 500, margin: "0 auto" }}>
-              {SUGGESTIONS.map(s => (
-                <button key={s} onClick={() => sendMessage(s)} style={{
-                  padding: "12px 16px", borderRadius: 10, textAlign: "left",
-                  background: C.card, border: `1px solid ${C.border}`,
-                  color: C.mid, fontSize: 13, cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-                  onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.white; }}
-                  onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.mid; }}
-                >
-                  {s}
-                </button>
-              ))}
-            </div>
-          </div>
-        )}
+      {/* ── MAIN: Layers + Chat ── */}
+      <div style={{ flex: 1, display: "grid", gridTemplateColumns: "1fr 520px", overflow: "hidden" }}>
 
-        {/* Messages */}
-        {messages.map((m, i) => (
-          <div key={i} style={{
-            marginBottom: 20,
-            display: "flex", flexDirection: "column",
-            alignItems: m.role === "user" ? "flex-end" : "flex-start",
-          }}>
-            <div style={{
-              maxWidth: "85%", padding: "14px 18px", borderRadius: 14,
-              background: m.role === "user" ? C.accentDim : C.card,
-              border: `1px solid ${m.role === "user" ? C.borderActive : C.border}`,
-            }}>
-              {m.role === "assistant" ? (
-                <div
-                  style={{ fontSize: 14, lineHeight: 1.7, color: C.white, whiteSpace: "pre-wrap" }}
-                  dangerouslySetInnerHTML={{
-                    __html: m.content
-                      .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
-                      .replace(/## (.*)/g, '<h3 style="margin: 12px 0 6px; font-size: 15px; font-weight: 700;">$1</h3>')
-                      .replace(/### (.*)/g, '<h4 style="margin: 8px 0 4px; font-size: 14px; font-weight: 600;">$1</h4>')
-                      .replace(/^- (.*)/gm, '<div style="padding-left: 12px;">• $1</div>')
-                  }}
-                />
-              ) : (
-                <div style={{ fontSize: 14, color: C.white }}>{m.content}</div>
-              )}
-            </div>
-            {m.tools && m.tools.length > 0 && (
-              <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
-                {m.tools.map((t, j) => (
-                  <span key={j} style={{
-                    fontSize: 9, fontFamily: mono, padding: "2px 8px", borderRadius: 4,
-                    background: C.okDim, color: C.ok,
-                  }}>
-                    {t}
-                  </span>
-                ))}
+        {/* ── LEFT: Isometric Layers ── */}
+        <div style={{ display: "flex", alignItems: "center", justifyContent: "center", overflow: "hidden", borderRight: `1px solid ${C.border}` }}>
+          <IsometricLayers style={{ width: "100%", height: "100%", borderRadius: 0 }} />
+        </div>
+
+        {/* ── RIGHT: Chat ── */}
+        <div style={{ display: "flex", flexDirection: "column", height: "100%" }}>
+          {/* Chat Area */}
+          <div ref={scrollRef} style={{ flex: 1, overflowY: "auto", padding: "24px" }}>
+            {/* Welcome state */}
+            {messages.length === 0 && (
+              <div style={{ textAlign: "center", marginTop: 60 }}>
+                <div style={{ fontSize: 28, fontWeight: 800, marginBottom: 8, color: C.accent }}>
+                  Griseus
+                </div>
+                <div style={{ fontSize: 13, color: C.mid, marginBottom: 32 }}>
+                  Stok istihbaratı, üretim kapasitesi ve BOM analizi
+                </div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {SUGGESTIONS.map(s => (
+                    <button key={s} onClick={() => sendMessage(s)} style={{
+                      padding: "10px 14px", borderRadius: 10, textAlign: "left",
+                      background: C.card, border: `1px solid ${C.border}`,
+                      color: C.mid, fontSize: 12, cursor: "pointer",
+                      transition: "all 0.15s",
+                    }}
+                      onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.white; }}
+                      onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.mid; }}
+                    >
+                      {s}
+                    </button>
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* Messages */}
+            {messages.map((m, i) => (
+              <div key={i} style={{
+                marginBottom: 16,
+                display: "flex", flexDirection: "column",
+                alignItems: m.role === "user" ? "flex-end" : "flex-start",
+              }}>
+                <div style={{
+                  maxWidth: "90%", padding: "12px 16px", borderRadius: 14,
+                  background: m.role === "user" ? C.accentDim : C.card,
+                  border: `1px solid ${m.role === "user" ? C.borderActive : C.border}`,
+                }}>
+                  {m.role === "assistant" ? (
+                    <div
+                      style={{ fontSize: 13, lineHeight: 1.7, color: C.white, whiteSpace: "pre-wrap" }}
+                      dangerouslySetInnerHTML={{
+                        __html: m.content
+                          .replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>')
+                          .replace(/## (.*)/g, '<h3 style="margin: 12px 0 6px; font-size: 14px; font-weight: 700;">$1</h3>')
+                          .replace(/### (.*)/g, '<h4 style="margin: 8px 0 4px; font-size: 13px; font-weight: 600;">$1</h4>')
+                          .replace(/^- (.*)/gm, '<div style="padding-left: 12px;">• $1</div>')
+                      }}
+                    />
+                  ) : (
+                    <div style={{ fontSize: 13, color: C.white }}>{m.content}</div>
+                  )}
+                </div>
+                {m.tools && m.tools.length > 0 && (
+                  <div style={{ display: "flex", gap: 4, marginTop: 4, flexWrap: "wrap" }}>
+                    {m.tools.map((t, j) => (
+                      <span key={j} style={{
+                        fontSize: 9, fontFamily: mono, padding: "2px 8px", borderRadius: 4,
+                        background: C.okDim, color: C.ok,
+                      }}>
+                        {t}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            ))}
+
+            {/* Loading indicator */}
+            {loading && (
+              <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 16 }}>
+                <div style={{
+                  width: 8, height: 8, borderRadius: "50%", background: C.accent,
+                  animation: "pulse 1s infinite",
+                }} />
+                <span style={{ fontSize: 12, fontFamily: mono, color: C.dim }}>Düşünüyor...</span>
+              </div>
+            )}
+
+            {error && (
+              <div style={{
+                padding: "10px 16px", borderRadius: 8, background: C.errDim,
+                border: `1px solid rgba(239,68,68,0.2)`, color: C.err,
+                fontSize: 12, fontFamily: mono, marginBottom: 16,
+              }}>
+                {error}
               </div>
             )}
           </div>
-        ))}
 
-        {/* Loading indicator */}
-        {loading && (
-          <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 20 }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: "50%", background: C.accent,
-              animation: "pulse 1s infinite",
-            }} />
-            <span style={{ fontSize: 12, fontFamily: mono, color: C.dim }}>Düşünüyor...</span>
-          </div>
-        )}
-
-        {error && (
+          {/* Input Bar */}
           <div style={{
-            padding: "10px 16px", borderRadius: 8, background: C.errDim,
-            border: `1px solid rgba(239,68,68,0.2)`, color: C.err,
-            fontSize: 12, fontFamily: mono, marginBottom: 16,
+            padding: "12px 16px", borderTop: `1px solid ${C.border}`,
+            background: "rgba(8,8,12,0.95)", backdropFilter: "blur(12px)",
           }}>
-            {error}
+            <div style={{ display: "flex", gap: 8, alignItems: "flex-end" }}>
+              <textarea
+                ref={inputRef}
+                value={input}
+                onChange={e => setInput(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Stok hakkında bir soru sor..."
+                rows={1}
+                style={{
+                  flex: 1, padding: "10px 14px", borderRadius: 10,
+                  background: C.surface, border: `1px solid ${C.border}`,
+                  color: C.white, fontSize: 13, fontFamily: sans,
+                  outline: "none", resize: "none", lineHeight: 1.5,
+                }}
+                onFocus={e => { e.target.style.borderColor = C.accent; }}
+                onBlur={e => { e.target.style.borderColor = C.border; }}
+              />
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={loading || !input.trim()}
+                style={{
+                  padding: "10px 18px", borderRadius: 10, border: "none",
+                  background: input.trim() ? C.accent : C.dim,
+                  color: "#fff", fontFamily: mono, fontSize: 12, fontWeight: 700,
+                  cursor: input.trim() ? "pointer" : "default",
+                  opacity: loading ? 0.5 : 1,
+                }}
+              >
+                Gönder
+              </button>
+            </div>
           </div>
-        )}
-      </div>
-
-      {/* ── Input Bar ── */}
-      <div style={{
-        padding: "16px 24px", borderTop: `1px solid ${C.border}`,
-        background: "rgba(8,8,12,0.95)", backdropFilter: "blur(12px)",
-      }}>
-        <div style={{
-          maxWidth: 800, margin: "0 auto",
-          display: "flex", gap: 8, alignItems: "flex-end",
-        }}>
-          <textarea
-            ref={inputRef}
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder="Stok hakkında bir soru sor..."
-            rows={1}
-            style={{
-              flex: 1, padding: "12px 16px", borderRadius: 12,
-              background: C.surface, border: `1px solid ${C.border}`,
-              color: C.white, fontSize: 14, fontFamily: sans,
-              outline: "none", resize: "none", lineHeight: 1.5,
-            }}
-            onFocus={e => { e.target.style.borderColor = C.accent; }}
-            onBlur={e => { e.target.style.borderColor = C.border; }}
-          />
-          <button
-            onClick={() => sendMessage(input)}
-            disabled={loading || !input.trim()}
-            style={{
-              padding: "12px 20px", borderRadius: 12, border: "none",
-              background: input.trim() ? C.accent : C.dim,
-              color: "#fff", fontFamily: mono, fontSize: 12, fontWeight: 700,
-              cursor: input.trim() ? "pointer" : "default",
-              opacity: loading ? 0.5 : 1,
-            }}
-          >
-            Gönder
-          </button>
         </div>
       </div>
 
