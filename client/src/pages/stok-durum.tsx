@@ -1,4 +1,4 @@
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -7,7 +7,7 @@ import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocke
 import TopNav from "@/components/top-nav";
 
 /* ═══════════════════════════════════════════════════════════
-   PALETTE & TOKENS — Palantir-inspired dark operational UI
+   PALETTE — Palantir Foundry dark operational UI
    ═══════════════════════════════════════════════════════════ */
 const C = {
   bg: "#06060a", surface: "rgba(255,255,255,0.02)", surfaceHover: "rgba(255,255,255,0.04)",
@@ -29,6 +29,7 @@ const GLOBAL_STYLES = `
   @keyframes flashGreen { 0% { box-shadow: inset 0 0 0 1px ${C.ok}, 0 0 20px ${C.okDim}; } 100% { box-shadow: none; } }
   @keyframes slideIn { from { transform: translateX(20px); opacity: 0; } to { transform: translateX(0); opacity: 1; } }
   @keyframes fadeOut { from { opacity: 1; } to { opacity: 0; transform: translateY(-8px); } }
+  @keyframes capacityGlow { 0%,100% { box-shadow: 0 0 20px rgba(129,140,248,0.15); } 50% { box-shadow: 0 0 40px rgba(129,140,248,0.3); } }
   .stock-flash { animation: flashGreen 0.6s ease-out; }
   .toast-enter { animation: slideIn 0.3s ease-out; }
   .toast-exit  { animation: fadeOut 0.3s ease-out forwards; }
@@ -47,22 +48,30 @@ interface Movement {
   movementType: string; quantity: number; note: string | null;
   createdBy: string | null; createdAt: string;
 }
+interface BomComponent {
+  code: string; name: string; requiredPerUnit: number; unit: string;
+  tier: number; parentComponentCode: string | null;
+  currentStock: number; maxProducts: number | null;
+  status: "critical" | "warning" | "ok" | "abundant" | "N/A";
+}
+interface Capacity {
+  product: string; maxProducible: number;
+  bottlenecks: Array<{
+    code: string; name: string; tier: number; stock: number;
+    required: number; maxProducts: number; note?: string;
+  }>;
+  subAssemblyStatus: Record<string, {
+    name: string; currentStock: number; producibleFromParts: number;
+    partBottleneck: string;
+    parts: Array<{ code: string; name: string; stock: number; required: number; maxProducts: number }>;
+  }>;
+}
 interface Toast { id: number; sku: string; type: string; qty: number; ts: number; exiting?: boolean; }
 
-/* ── Object Set Definitions (Palantir pattern) ── */
-type ObjectSetKey = "all" | "critical" | "transfer" | "low" | "normal";
-const OBJECT_SETS: { key: ObjectSetKey; label: string; color: string; filter: (p: StockLevel) => boolean }[] = [
-  { key: "all", label: "Tümü", color: C.mid, filter: () => true },
-  { key: "critical", label: "Kritik", color: C.err, filter: p => p.inWarehouse === 0 && p.inProduction === 0 },
-  { key: "transfer", label: "Transfer Bekliyor", color: C.warn, filter: p => p.inWarehouse === 0 && p.inProduction > 0 },
-  { key: "low", label: "Düşük Stok", color: C.warn, filter: p => p.inWarehouse > 0 && p.inWarehouse <= 5 },
-  { key: "normal", label: "Normal", color: C.ok, filter: p => p.inWarehouse > 5 },
-];
-
-/* ── Quick Action definitions ── */
+/* ── Quick Actions ── */
 const QUICK_ACTIONS = [
-  { type: "to_warehouse", label: "Depoya Transfer", icon: "📦", color: C.blue, bg: C.blueDim, border: C.blueBorder, desc: "Üretimden depoya taşı" },
   { type: "produced", label: "Üretim Girişi", icon: "⚙", color: C.ok, bg: C.okDim, border: C.okBorder, desc: "Yeni üretim kaydet" },
+  { type: "to_warehouse", label: "Depoya Transfer", icon: "📦", color: C.blue, bg: C.blueDim, border: C.blueBorder, desc: "Üretimden depoya taşı" },
   { type: "to_sales", label: "Satış Çıkışı", icon: "🚚", color: C.purple, bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.25)", desc: "Depodan satışa çıkar" },
 ];
 
@@ -90,63 +99,37 @@ const moveColor: Record<string, string> = {
   produced: C.ok, to_warehouse: C.blue, to_sales: C.purple,
   raw_material_in: C.warn, inventory_count: "#f97316", undo: C.err,
 };
-function getProductStatus(p: StockLevel): { color: string; label: string; bg: string; border: string } {
-  if (p.inWarehouse === 0 && p.inProduction === 0) return { color: C.err, label: "KRİTİK", bg: C.errDim, border: C.errBorder };
-  if (p.inWarehouse === 0 && p.inProduction > 0) return { color: C.warn, label: "TRANSFER BEKLİYOR", bg: C.warnDim, border: C.warnBorder };
-  if (p.inWarehouse > 0 && p.inWarehouse <= 5) return { color: C.warn, label: "DÜŞÜK STOK", bg: C.warnDim, border: C.warnBorder };
-  return { color: C.ok, label: "NORMAL", bg: C.okDim, border: C.okBorder };
-}
+const fmt = (n: number) => n.toLocaleString("tr-TR");
 
-/* ══════════════════════════════════════════════════════
+type OntologyFilter = "all" | "critical" | "warning" | "ok" | "tier1" | "tier2" | "tier3";
+
+/* ═══════════════════════════════════════════════════════════
    SUB-COMPONENTS
-   ══════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════ */
 
-function LiveBadge({ connected }: { connected: boolean }) {
-  return (
-    <div style={{
-      display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20,
-      background: connected ? C.okDim : C.errDim,
-      border: `1px solid ${connected ? C.okBorder : C.errBorder}`,
-    }}>
-      <div style={{
-        width: 6, height: 6, borderRadius: "50%", background: connected ? C.ok : C.err,
-        boxShadow: connected ? `0 0 8px ${C.ok}` : "none",
-        animation: connected ? "pulse 2s infinite" : "none",
-      }} />
-      <span style={{ fontSize: 10, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 600, letterSpacing: 0.5 }}>
-        {connected ? "CANLI" : "BAĞLANTI KESİLDİ"}
-      </span>
-    </div>
-  );
-}
-
-/* ── Pipeline Flow ── */
-function PipelineView({ summary }: { summary: Summary | undefined }) {
+/* ── Pipeline ── */
+function Pipeline({ product }: { product: StockLevel | null }) {
   const stages = [
-    { label: "ÜRETİMDE", value: summary?.totalInProduction ?? 0, color: C.warn, icon: "⚙" },
-    { label: "DEPODA", value: summary?.totalInWarehouse ?? 0, color: C.ok, icon: "📦" },
-    { label: "SATILAN", value: summary?.todaySold ?? 0, color: C.purple, icon: "🚚", sub: "bugün" },
+    { label: "ÜRETİMDE", value: product?.inProduction ?? 0, color: C.warn, icon: "⚙" },
+    { label: "DEPODA", value: product?.inWarehouse ?? 0, color: product && product.inWarehouse === 0 ? C.err : C.ok, icon: "📦" },
+    { label: "SATILAN", value: product?.totalSold ?? 0, color: C.purple, icon: "🚚", sub: "toplam" },
   ];
   return (
-    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0, padding: "24px 16px", marginBottom: 4 }}>
+    <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }}>
       {stages.map((s, i) => (
         <div key={s.label} style={{ display: "flex", alignItems: "center" }}>
           <div style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
-            padding: "16px 28px", textAlign: "center", position: "relative", minWidth: 130,
+            padding: "14px 24px", textAlign: "center", position: "relative", minWidth: 120,
           }}>
-            <div style={{ fontSize: 11, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 1, marginBottom: 6 }}>
+            <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>
               {s.icon} {s.label}
             </div>
             <div style={{ fontSize: 32, fontWeight: 700, fontFamily: mono, color: s.color, lineHeight: 1 }}>{s.value}</div>
             {s.sub && <div style={{ fontSize: 9, color: C.dim, marginTop: 4, fontFamily: mono }}>{s.sub}</div>}
-            <div style={{
-              position: "absolute", bottom: -8, left: "50%", transform: "translateX(-50%)",
-              width: 60, height: 4, borderRadius: 4, background: s.color, opacity: 0.2, filter: "blur(4px)",
-            }} />
           </div>
           {i < stages.length - 1 && (
-            <div style={{ display: "flex", alignItems: "center", width: 60, position: "relative" }}>
+            <div style={{ display: "flex", alignItems: "center", width: 50, position: "relative" }}>
               <div style={{
                 width: "100%", height: 2,
                 background: `repeating-linear-gradient(90deg, ${C.accentGlow} 0px, ${C.accentGlow} 8px, transparent 8px, transparent 16px)`,
@@ -165,419 +148,171 @@ function PipelineView({ summary }: { summary: Summary | undefined }) {
   );
 }
 
-/* ── Alert Banner (Clickable → selects product) ── */
-function AlertBanner({ levels, onSelectProduct }: { levels: StockLevel[]; onSelectProduct: (id: number) => void }) {
-  const alerts: { productId: number; sku: string; msg: string; color: string; severity: number; actionLabel?: string }[] = [];
-  for (const p of levels) {
-    if (p.inWarehouse === 0 && p.inProduction === 0) {
-      alerts.push({ productId: p.productId, sku: p.productSku, msg: "Stok yok — acil üretim gerekli", color: C.err, severity: 0 });
-    } else if (p.inWarehouse === 0 && p.inProduction > 0) {
-      alerts.push({ productId: p.productId, sku: p.productSku, msg: `Üretimde ${p.inProduction} adet bekliyor`, color: C.warn, severity: 1, actionLabel: "Transfer Et →" });
-    } else if (p.inWarehouse > 0 && p.inWarehouse <= 5) {
-      alerts.push({ productId: p.productId, sku: p.productSku, msg: `Depoda sadece ${p.inWarehouse} adet`, color: C.warn, severity: 2 });
-    }
-  }
-  alerts.sort((a, b) => a.severity - b.severity);
-
-  if (alerts.length === 0) return null;
-
+/* ── Capacity Gauge ── */
+function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
+  if (!capacity) return null;
+  const max = capacity.maxProducible;
+  const top = capacity.bottlenecks[0];
   return (
-    <div style={{ marginBottom: 16, padding: "0 16px" }}>
-      <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1, marginBottom: 8 }}>
-        ⚡ {alerts.length} UYARI — tıkla ve aksiyon al
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: "20px 24px", textAlign: "center", animation: "capacityGlow 4s ease-in-out infinite",
+    }}>
+      <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 8 }}>
+        MAKSİMUM ÜRETİLEBİLİR
       </div>
-      <div style={{ display: "flex", gap: 8, overflowX: "auto", paddingBottom: 4 }}>
-        {alerts.map((a, i) => (
-          <div key={i} onClick={() => onSelectProduct(a.productId)} style={{
-            flex: "0 0 auto", padding: "8px 14px", borderRadius: 10, cursor: "pointer",
-            background: a.color === C.err ? C.errDim : C.warnDim,
-            border: `1px solid ${a.color === C.err ? C.errBorder : C.warnBorder}`,
-            display: "flex", alignItems: "center", gap: 8,
-            transition: "transform 0.1s",
-          }}
-            onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.02)"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-          >
-            <span style={{ fontFamily: mono, fontSize: 12, fontWeight: 700, color: a.color }}>{a.sku}</span>
-            <span style={{ fontSize: 11, color: C.mid }}>{a.msg}</span>
-            {a.actionLabel && (
-              <span style={{ fontSize: 10, fontWeight: 700, color: a.color, marginLeft: 4 }}>{a.actionLabel}</span>
-            )}
-          </div>
-        ))}
+      <div style={{ fontSize: 48, fontWeight: 800, fontFamily: mono, color: C.accent, lineHeight: 1, marginBottom: 4 }}>
+        {fmt(max)}
       </div>
+      <div style={{ fontSize: 13, color: C.mid, marginBottom: 12 }}>adet ELT.7-11</div>
+      {top && (
+        <div style={{
+          display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px",
+          borderRadius: 20, background: C.errDim, border: `1px solid ${C.errBorder}`,
+        }}>
+          <span style={{ fontSize: 11, color: C.err, fontWeight: 700, fontFamily: mono }}>Darboğaz:</span>
+          <span style={{ fontSize: 11, color: C.mid }}>
+            {top.name} ({fmt(top.stock)}/{top.required} = {fmt(top.maxProducts)})
+          </span>
+        </div>
+      )}
     </div>
   );
 }
 
-/* ── Object Set Tabs ── */
-function ObjectSetTabs({ activeSet, counts, onSelect }: {
-  activeSet: ObjectSetKey; counts: Record<ObjectSetKey, number>; onSelect: (k: ObjectSetKey) => void;
-}) {
-  return (
-    <div style={{ display: "flex", gap: 4, marginBottom: 14, flexWrap: "wrap" }}>
-      {OBJECT_SETS.map(os => {
-        const isActive = activeSet === os.key;
-        const count = counts[os.key];
-        return (
-          <button key={os.key} onClick={() => onSelect(os.key)} style={{
-            padding: "6px 12px", borderRadius: 8, cursor: "pointer",
-            background: isActive ? `${os.color}18` : "transparent",
-            border: `1px solid ${isActive ? `${os.color}40` : C.border}`,
-            color: isActive ? os.color : C.dim,
-            fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
-            display: "flex", alignItems: "center", gap: 6,
-            transition: "all 0.15s",
-          }}>
-            {os.label}
-            <span style={{
-              fontSize: 9, padding: "1px 5px", borderRadius: 4,
-              background: isActive ? `${os.color}20` : "rgba(255,255,255,0.03)",
-              color: isActive ? os.color : C.dim,
-            }}>
-              {count}
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
+/* ── Component Card (Ontology Object) ── */
+function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onClick: () => void; isFlashing: boolean }) {
+  const statusColor = comp.status === "critical" ? C.err : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok;
+  const statusBg = comp.status === "critical" ? C.errDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim;
+  const statusLabel = comp.status === "critical" ? "KRİTİK" : comp.status === "warning" ? "DÜŞÜK" : comp.status === "ok" ? "YETERLİ" : "BOL";
+  const maxP = comp.maxProducts ?? 0;
+  // Bar: percentage of 500 max for visual
+  const barPct = Math.min(maxP / 500, 1);
 
-/* ── Product Card ── */
-function ProductCard({
-  level, isSelected, isFlashing, onSelect,
-}: {
-  level: StockLevel; isSelected: boolean; isFlashing: boolean; onSelect: () => void;
-}) {
-  const status = getProductStatus(level);
   return (
     <div
       className={isFlashing ? "stock-flash" : ""}
-      onClick={onSelect}
+      onClick={onClick}
       style={{
-        background: isSelected ? C.accentDim : C.surface,
-        border: `1px solid ${isSelected ? C.borderActive : C.border}`,
-        borderRadius: 14, padding: "14px 16px", cursor: "pointer",
-        transition: "all 0.15s", position: "relative", overflow: "hidden",
+        background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+        padding: "10px 12px", cursor: "pointer", position: "relative", overflow: "hidden",
+        transition: "all 0.15s",
       }}
-      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = C.surfaceHover; }}
-      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = C.surface; }}
+      onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceHover; e.currentTarget.style.borderColor = statusColor + "40"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; }}
     >
-      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: status.color, opacity: 0.6 }} />
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 10 }}>
-        <div>
-          <div style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: C.white, letterSpacing: 0.5 }}>{level.productSku}</div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 2, maxWidth: 140, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {level.productName}
-          </div>
-        </div>
+      {/* Top status bar */}
+      <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: statusColor, opacity: 0.6 }} />
+
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.white, letterSpacing: 0.5 }}>{comp.code}</div>
         <div style={{
-          fontSize: 8, fontFamily: mono, fontWeight: 700, letterSpacing: 0.8,
-          padding: "3px 7px", borderRadius: 6, background: status.bg, color: status.color, border: `1px solid ${status.border}`,
+          fontSize: 7, fontFamily: mono, fontWeight: 700, letterSpacing: 0.8,
+          padding: "2px 5px", borderRadius: 4, background: statusBg, color: statusColor,
         }}>
-          {status.label}
+          {statusLabel}
         </div>
       </div>
-      <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
-        <MiniNode label="P" value={level.inProduction} color={C.warn} />
-        <span style={{ color: C.dim, fontSize: 10, opacity: 0.4 }}>›</span>
-        <MiniNode label="D" value={level.inWarehouse} color={level.inWarehouse === 0 ? C.err : C.ok} />
-        <span style={{ color: C.dim, fontSize: 10, opacity: 0.4 }}>›</span>
-        <MiniNode label="S" value={level.totalSold} color={C.purple} />
+      <div style={{ fontSize: 10, color: C.dim, marginBottom: 8, height: 28, overflow: "hidden", lineHeight: "14px" }}>
+        {comp.name}
       </div>
-      <div style={{ marginTop: 10, fontSize: 9, color: C.dim, fontFamily: mono, textAlign: "right" }}>{timeAgo(level.updatedAt)}</div>
-    </div>
-  );
-}
-function MiniNode({ label, value, color }: { label: string; value: number; color: string }) {
-  return (
-    <div style={{ flex: 1, textAlign: "center", padding: "6px 2px", borderRadius: 8, background: "rgba(255,255,255,0.02)" }}>
-      <div style={{ fontSize: 8, color: C.dim, fontFamily: mono, fontWeight: 600 }}>{label}</div>
-      <div style={{ fontSize: 16, fontWeight: 700, fontFamily: mono, color, lineHeight: 1.2 }}>{value}</div>
-    </div>
-  );
-}
 
-/* ── Detail Panel with Quick Actions ── */
-function DetailPanel({
-  product, movements, filterType, setFilterType, onClose, onUndo, onAction,
-}: {
-  product: StockLevel; movements: Movement[]; filterType: string;
-  setFilterType: (t: string) => void; onClose: () => void; onUndo: (id: number) => void;
-  onAction: (type: string, qty: number) => void;
-}) {
-  const status = getProductStatus(product);
-  const filtered = filterType ? movements.filter(m => m.movementType === filterType) : movements;
-  const needsTransfer = product.inWarehouse === 0 && product.inProduction > 0;
-  const [actionType, setActionType] = useState<string | null>(null);
-  const [actionQty, setActionQty] = useState("");
-
-  const activeAction = QUICK_ACTIONS.find(a => a.type === actionType);
-
-  // Max quantity validation
-  const maxQty = actionType === "to_warehouse" ? product.inProduction
-    : actionType === "to_sales" ? product.inWarehouse
-    : 9999;
-  const qtyNum = parseInt(actionQty, 10);
-  const canExecute = !isNaN(qtyNum) && qtyNum > 0 && qtyNum <= maxQty;
-
-  return (
-    <motion.div
-      initial={{ opacity: 0, y: 16 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 16 }}
-      transition={{ duration: 0.2 }}
-      style={{
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18,
-        padding: "20px", marginTop: 16, position: "relative",
-        backgroundImage: `linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px)`,
-        backgroundSize: "30px 30px",
-      }}
-    >
-      <button onClick={onClose} style={{
-        position: "absolute", top: 14, right: 14, background: "none",
-        border: "none", color: C.dim, cursor: "pointer", fontSize: 16,
-      }}>✕</button>
-
-      {/* Header */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
-          <span style={{ fontFamily: mono, fontSize: 18, fontWeight: 700, color: C.accent }}>{product.productSku}</span>
-          <div style={{
-            fontSize: 9, fontFamily: mono, fontWeight: 700, letterSpacing: 0.8,
-            padding: "3px 8px", borderRadius: 6, background: status.bg, color: status.color, border: `1px solid ${status.border}`,
-          }}>
-            {status.label}
+      {/* Stock info */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
+        <div>
+          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
+            {fmt(comp.currentStock)}
           </div>
+          <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>{comp.unit} stok</div>
         </div>
-        <div style={{ fontSize: 13, color: C.mid }}>{product.productName}</div>
-      </div>
-
-      {/* Pipeline */}
-      <div style={{
-        display: "flex", alignItems: "center", justifyContent: "center", gap: 0,
-        padding: "16px 0", marginBottom: 16, background: "rgba(0,0,0,0.2)", borderRadius: 14,
-        border: `1px solid ${C.border}`,
-      }}>
-        <PNode label="ÜRETİMDE" value={product.inProduction} color={C.warn} icon="⚙" />
-        <FConn active={product.inProduction > 0} />
-        <PNode label="DEPODA" value={product.inWarehouse} color={product.inWarehouse === 0 ? C.err : C.ok} icon="📦"
-          alert={needsTransfer ? `${product.inProduction} adet transfer bekliyor` : undefined} />
-        <FConn active={product.inWarehouse > 0} />
-        <PNode label="SATILAN" value={product.totalSold} color={C.purple} icon="🚚" />
-      </div>
-
-      {/* ══ QUICK ACTIONS — Palantir "Actions" pattern ══ */}
-      <div style={{ marginBottom: 16 }}>
-        <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1, marginBottom: 8 }}>
-          ⚡ EYLEMLER
-        </div>
-
-        {/* Action buttons */}
-        <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
-          {QUICK_ACTIONS.map(a => {
-            const isActive = actionType === a.type;
-            const isDisabled = (a.type === "to_warehouse" && product.inProduction === 0) ||
-              (a.type === "to_sales" && product.inWarehouse === 0);
-            return (
-              <button
-                key={a.type}
-                onClick={() => { setActionType(isActive ? null : a.type); setActionQty(""); }}
-                disabled={isDisabled}
-                style={{
-                  flex: 1, padding: "10px 8px", borderRadius: 10, cursor: isDisabled ? "default" : "pointer",
-                  background: isActive ? a.bg : C.surface,
-                  border: `1px solid ${isActive ? a.border : C.border}`,
-                  color: isDisabled ? C.dimmer : isActive ? a.color : C.mid,
-                  fontFamily: sans, fontSize: 11, fontWeight: 600, textAlign: "center",
-                  transition: "all 0.15s", opacity: isDisabled ? 0.4 : 1,
-                }}
-              >
-                <div style={{ fontSize: 18, marginBottom: 2 }}>{a.icon}</div>
-                {a.label}
-              </button>
-            );
-          })}
-        </div>
-
-        {/* Action execution form */}
-        <AnimatePresence>
-          {actionType && activeAction && (
-            <motion.div
-              initial={{ opacity: 0, height: 0 }}
-              animate={{ opacity: 1, height: "auto" }}
-              exit={{ opacity: 0, height: 0 }}
-              style={{ overflow: "hidden" }}
-            >
-              <div style={{
-                padding: "12px 14px", borderRadius: 12,
-                background: activeAction.bg, border: `1px solid ${activeAction.border}`,
-                display: "flex", alignItems: "center", gap: 10,
-              }}>
-                <div style={{ flex: 1 }}>
-                  <div style={{ fontSize: 11, color: activeAction.color, fontWeight: 700, marginBottom: 4 }}>
-                    {activeAction.icon} {activeAction.desc}
-                    {maxQty < 9999 && (
-                      <span style={{ color: C.mid, fontWeight: 400 }}> · maks {maxQty} adet</span>
-                    )}
-                  </div>
-                  <div style={{ display: "flex", gap: 8 }}>
-                    <input
-                      type="number"
-                      min={1}
-                      max={maxQty}
-                      inputMode="numeric"
-                      placeholder="Adet"
-                      value={actionQty}
-                      onChange={(e) => setActionQty(e.target.value)}
-                      autoFocus
-                      style={{
-                        width: 100, padding: "8px 10px", borderRadius: 8,
-                        background: "rgba(0,0,0,0.3)", border: `1px solid ${C.border}`,
-                        color: C.white, fontFamily: mono, fontSize: 16, fontWeight: 700,
-                        textAlign: "center",
-                      }}
-                    />
-                    <button
-                      onClick={() => { if (canExecute) { onAction(actionType, qtyNum); setActionType(null); setActionQty(""); } }}
-                      disabled={!canExecute}
-                      style={{
-                        padding: "8px 20px", borderRadius: 8, border: "none",
-                        background: canExecute ? activeAction.color : C.dimmer,
-                        color: canExecute ? "#000" : C.dim,
-                        fontFamily: mono, fontSize: 12, fontWeight: 700, cursor: canExecute ? "pointer" : "default",
-                        transition: "all 0.15s",
-                      }}
-                    >
-                      UYGULA
-                    </button>
-                  </div>
-                </div>
-              </div>
-            </motion.div>
-          )}
-        </AnimatePresence>
-      </div>
-
-      {/* Transfer recommendation with action */}
-      {needsTransfer && !actionType && (
-        <div
-          onClick={() => { setActionType("to_warehouse"); setActionQty(String(product.inProduction)); }}
-          style={{
-            padding: "12px 16px", borderRadius: 12, marginBottom: 16, cursor: "pointer",
-            background: C.warnDim, border: `1px solid ${C.warnBorder}`,
-            display: "flex", alignItems: "center", justifyContent: "space-between",
-            transition: "transform 0.1s",
-          }}
-          onMouseEnter={(e) => { e.currentTarget.style.transform = "scale(1.01)"; }}
-          onMouseLeave={(e) => { e.currentTarget.style.transform = "scale(1)"; }}
-        >
-          <div>
-            <div style={{ fontSize: 12, fontWeight: 700, color: C.warn }}>⚡ Transfer Önerisi</div>
-            <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
-              Üretimde {product.inProduction} adet hazır — tıkla ve transfer et
-            </div>
+        <div style={{ textAlign: "right" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: C.mid, lineHeight: 1 }}>
+            {maxP === null ? "—" : fmt(maxP)}
           </div>
-          <div style={{
-            padding: "8px 16px", borderRadius: 8, fontFamily: mono, fontSize: 12, fontWeight: 700,
-            background: "rgba(251,191,36,0.2)", color: C.warn, border: `1px solid ${C.warnBorder}`,
-          }}>
-            TRANSFER ET →
-          </div>
+          <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>ürün yeter</div>
+        </div>
+      </div>
+
+      {/* Capacity bar */}
+      <div style={{ marginTop: 6, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.04)" }}>
+        <div style={{
+          width: `${barPct * 100}%`, height: "100%", borderRadius: 2,
+          background: statusColor, transition: "width 0.5s ease",
+        }} />
+      </div>
+
+      {/* Tier badge */}
+      {comp.tier > 1 && (
+        <div style={{
+          position: "absolute", bottom: 6, right: 8, fontSize: 8, fontFamily: mono,
+          color: C.dim, opacity: 0.5,
+        }}>
+          T{comp.tier}
         </div>
       )}
+    </div>
+  );
+}
 
-      {/* Movement Filter */}
-      <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
-        {[
-          { v: "", l: "Tümü" }, { v: "produced", l: "Üretim" }, { v: "to_warehouse", l: "Depo" },
-          { v: "to_sales", l: "Satış" }, { v: "inventory_count", l: "Sayım" }, { v: "undo", l: "Geri Al" },
-        ].map(f => (
-          <button key={f.v} onClick={() => setFilterType(f.v)} style={{
-            padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600,
-            background: filterType === f.v ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.02)",
-            border: `1px solid ${filterType === f.v ? "rgba(255,255,255,0.15)" : C.border}`,
-            color: filterType === f.v ? C.white : C.dim, cursor: "pointer", fontFamily: sans,
-          }}>
-            {f.l}
-          </button>
-        ))}
+/* ── Brülör Sub-Assembly Panel ── */
+function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
+  if (!capacity) return null;
+  const brulor = capacity.subAssemblyStatus["27.125"];
+  if (!brulor) return null;
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.warnBorder}`, borderRadius: 16,
+      padding: "16px 20px",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.warn, fontFamily: sans }}>
+            ⚙ Brülör (Yerli Malzeme) <span style={{ color: C.dim, fontWeight: 400, fontSize: 11 }}>27.125</span>
+          </div>
+          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>YARI MAMÜL — montaj gerektirir</div>
+        </div>
+        <div style={{ display: "flex", gap: 16, textAlign: "center" }}>
+          <div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>HAZIR</div>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: mono, color: brulor.currentStock === 0 ? C.err : C.ok }}>{brulor.currentStock}</div>
+          </div>
+          <div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>MONTELENEBİLİR</div>
+            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: mono, color: C.warn }}>{fmt(brulor.producibleFromParts)}</div>
+          </div>
+        </div>
       </div>
 
-      {/* Timeline */}
-      <div style={{ maxHeight: 280, overflowY: "auto" }}>
-        {filtered.length === 0 ? (
-          <div style={{ textAlign: "center", padding: 24, color: C.dim, fontSize: 12 }}>Hareket bulunamadı</div>
-        ) : (
-          filtered.map((m, i) => (
-            <div key={m.id} style={{
-              display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
-              borderBottom: i < filtered.length - 1 ? `1px solid ${C.border}` : "none",
+      {/* Sub-parts */}
+      <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+        {brulor.parts.map(p => {
+          const isBottleneck = p.maxProducts === Math.min(...brulor.parts.map(x => x.maxProducts));
+          return (
+            <div key={p.code} style={{
+              flex: "1 1 calc(50% - 3px)", padding: "8px 10px", borderRadius: 8,
+              background: isBottleneck ? C.errDim : "rgba(0,0,0,0.2)",
+              border: `1px solid ${isBottleneck ? C.errBorder : C.border}`,
             }}>
-              <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4, flexShrink: 0 }}>
-                <div style={{
-                  width: 8, height: 8, borderRadius: "50%",
-                  background: moveColor[m.movementType] || C.mid,
-                  boxShadow: `0 0 6px ${moveColor[m.movementType] || C.mid}40`,
-                }} />
-                {i < filtered.length - 1 && <div style={{ width: 1, height: 28, background: C.border, marginTop: 2 }} />}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: moveColor[m.movementType] || C.mid, fontWeight: 600 }}>
-                  {moveLabel[m.movementType] || m.movementType} — {m.quantity} adet
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <div>
+                  <div style={{ fontFamily: mono, fontSize: 9, color: C.mid, fontWeight: 600 }}>{p.code}</div>
+                  <div style={{ fontSize: 10, color: isBottleneck ? C.err : C.mid, marginTop: 1 }}>{p.name}</div>
                 </div>
-                <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
-                  {formatDate(m.createdAt)} · {m.createdBy || "?"}{m.note ? ` · ${m.note}` : ""}
+                <div style={{ textAlign: "right" }}>
+                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: isBottleneck ? C.err : C.white }}>{fmt(p.stock)}</div>
+                  <div style={{ fontSize: 8, fontFamily: mono, color: C.dim }}>→ {fmt(p.maxProducts)} brülör</div>
                 </div>
               </div>
-              {m.movementType !== "undo" && (
-                <button onClick={(e) => { e.stopPropagation(); onUndo(m.id); }} style={{
-                  background: C.errDim, border: `1px solid ${C.errBorder}`, borderRadius: 6,
-                  padding: "3px 8px", color: C.err, fontSize: 9, fontWeight: 600,
-                  fontFamily: sans, cursor: "pointer", flexShrink: 0,
-                }}>
-                  Geri Al
-                </button>
+              {isBottleneck && (
+                <div style={{ fontSize: 8, fontFamily: mono, color: C.err, fontWeight: 700, marginTop: 4, letterSpacing: 0.5 }}>
+                  ▲ DARBOĞAZ
+                </div>
               )}
             </div>
-          ))
-        )}
+          );
+        })}
       </div>
-    </motion.div>
-  );
-}
-
-function PNode({ label, value, color, icon, alert }: { label: string; value: number; color: string; icon: string; alert?: string }) {
-  return (
-    <div style={{ textAlign: "center", padding: "8px 20px", position: "relative" }}>
-      <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 0.8, marginBottom: 4 }}>{icon} {label}</div>
-      <div style={{ fontSize: 28, fontWeight: 700, fontFamily: mono, color, lineHeight: 1 }}>{value}</div>
-      {alert && (
-        <div style={{
-          position: "absolute", bottom: -18, left: "50%", transform: "translateX(-50%)",
-          fontSize: 8, color: C.warn, fontFamily: mono, whiteSpace: "nowrap", fontWeight: 600,
-        }}>↑ {alert}</div>
-      )}
-    </div>
-  );
-}
-function FConn({ active }: { active: boolean }) {
-  return (
-    <div style={{ width: 48, display: "flex", alignItems: "center", position: "relative" }}>
-      <div style={{
-        width: "100%", height: 2,
-        background: active
-          ? `repeating-linear-gradient(90deg, ${C.accent}80 0px, ${C.accent}80 6px, transparent 6px, transparent 12px)`
-          : `repeating-linear-gradient(90deg, ${C.dim}40 0px, ${C.dim}40 4px, transparent 4px, transparent 8px)`,
-        backgroundSize: active ? "24px 2px" : "16px 2px",
-        animation: active ? "flowRight 0.8s linear infinite" : "none",
-      }} />
-      <div style={{
-        position: "absolute", right: -2, top: "50%", transform: "translateY(-50%)",
-        width: 0, height: 0, borderTop: "4px solid transparent", borderBottom: "4px solid transparent",
-        borderLeft: `5px solid ${active ? C.accent + "80" : C.dim + "40"}`,
-      }} />
     </div>
   );
 }
@@ -602,88 +337,126 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
   );
 }
 
-/* ══════════════════════════════════════════════════════
+/* ═══════════════════════════════════════════════════════════
    MAIN COMPONENT
-   ══════════════════════════════════════════════════════ */
+   ═══════════════════════════════════════════════════════════ */
 export default function StokDurum() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const [selectedProductId, setSelectedProductId] = useState<number | null>(null);
   const [filterType, setFilterType] = useState<string>("");
-  const [activeSet, setActiveSet] = useState<ObjectSetKey>("all");
-  const [flashedProductId, setFlashedProductId] = useState<number | null>(null);
+  const [ontologyFilter, setOntologyFilter] = useState<OntologyFilter>("all");
+  const [flashedCode, setFlashedCode] = useState<string | null>(null);
   const [toasts, setToasts] = useState<Toast[]>([]);
+  const [actionType, setActionType] = useState<string | null>(null);
+  const [actionQty, setActionQty] = useState("");
+  const [resetDone, setResetDone] = useState(false);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>();
   const toastIdRef = useRef(0);
 
   // Data
   const { data: levels = [] } = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
   const { data: summary } = useQuery<Summary>({ queryKey: ["/api/stock/summary"] });
-  const movementQuery = selectedProductId ? `/api/stock/movements?product_id=${selectedProductId}&limit=30` : null;
-  const { data: movements = [] } = useQuery<Movement[]>({ queryKey: [movementQuery], enabled: !!selectedProductId });
+  const { data: bomData } = useQuery<{ product: string; components: BomComponent[] }>({
+    queryKey: ["/api/bom/ELT.7-11/stock"],
+  });
+  const { data: capacity } = useQuery<Capacity>({
+    queryKey: ["/api/bom/ELT.7-11/production-capacity"],
+  });
 
-  // Object Set counts
-  const objectSetCounts = OBJECT_SETS.reduce((acc, os) => {
-    acc[os.key] = levels.filter(os.filter).length;
-    return acc;
-  }, {} as Record<ObjectSetKey, number>);
+  // Find ELT.7-11 product
+  const product = levels.find(l => l.productSku === "ELT.7-11") || null;
+  const productId = product?.productId;
 
-  // Filtered levels by active Object Set
-  const filteredLevels = levels.filter(OBJECT_SETS.find(os => os.key === activeSet)!.filter);
+  const { data: movements = [] } = useQuery<Movement[]>({
+    queryKey: [`/api/stock/movements?product_id=${productId}&limit=30`],
+    enabled: !!productId,
+  });
+
+  // Auto-reset: clean test data on first load if there are non-ELT products
+  const hasOldData = levels.length > 0 && levels.some(l => l.productSku !== "ELT.7-11");
+  useEffect(() => {
+    if (hasOldData && !resetDone) {
+      fetch("/api/stock/reset", { method: "POST" }).then(() => {
+        setResetDone(true);
+        qc.invalidateQueries();
+      }).catch(() => {});
+    }
+  }, [hasOldData, resetDone, qc]);
+
+  // Component filtering
+  const components = bomData?.components || [];
+  const tier1 = components.filter(c => c.tier === 1);
+  const tier2 = components.filter(c => c.tier === 2);
+  const tier3 = components.filter(c => c.tier === 3);
+
+  const filteredComponents = ontologyFilter === "all" ? components
+    : ontologyFilter === "critical" ? components.filter(c => c.status === "critical")
+    : ontologyFilter === "warning" ? components.filter(c => c.status === "warning")
+    : ontologyFilter === "ok" ? components.filter(c => c.status === "ok" || c.status === "abundant")
+    : ontologyFilter === "tier1" ? tier1
+    : ontologyFilter === "tier2" ? tier2
+    : tier3;
+
+  // Sort by maxProducts ascending (worst first)
+  const sortedComponents = [...filteredComponents].sort((a, b) => (a.maxProducts ?? 0) - (b.maxProducts ?? 0));
+
+  const ontologyCounts = {
+    all: components.length,
+    critical: components.filter(c => c.status === "critical").length,
+    warning: components.filter(c => c.status === "warning").length,
+    ok: components.filter(c => c.status === "ok" || c.status === "abundant").length,
+    tier1: tier1.length,
+    tier2: tier2.length,
+    tier3: tier3.length,
+  };
 
   // WebSocket
   const handleStockUpdate = useCallback((data: StockUpdateEvent) => {
     qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
     qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-    if (selectedProductId) {
-      qc.invalidateQueries({ queryKey: [`/api/stock/movements?product_id=${selectedProductId}&limit=30`] });
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/stock"] });
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/production-capacity"] });
+    if (productId) {
+      qc.invalidateQueries({ queryKey: [`/api/stock/movements?product_id=${productId}&limit=30`] });
     }
-    setFlashedProductId(data.productId);
+    setFlashedCode(data.productSku);
     if (flashTimer.current) clearTimeout(flashTimer.current);
-    flashTimer.current = setTimeout(() => setFlashedProductId(null), 700);
+    flashTimer.current = setTimeout(() => setFlashedCode(null), 700);
     const id = ++toastIdRef.current;
     setToasts(prev => [...prev.slice(-2), { id, sku: data.productSku, type: data.movementType, qty: data.quantity, ts: Date.now() }]);
     setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t)), 2500);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
-  }, [qc, selectedProductId]);
+  }, [qc, productId]);
 
   const { connected } = useStockWebSocket(handleStockUpdate);
 
-  // Undo
+  // Mutations
   const undoMutation = useMutation({
     mutationFn: async (id: number) => { const res = await apiRequest("POST", `/api/stock/movements/${id}/undo`, {}); return res.json(); },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-      if (movementQuery) qc.invalidateQueries({ queryKey: [movementQuery] });
-    },
+    onSuccess: () => { qc.invalidateQueries(); },
   });
 
-  // Quick Action — execute movement from detail panel (Palantir "Action" pattern)
   const actionMutation = useMutation({
-    mutationFn: async ({ productId, movementType, quantity }: { productId: number; movementType: string; quantity: number }) => {
+    mutationFn: async ({ movementType, quantity }: { movementType: string; quantity: number }) => {
+      if (!productId) throw new Error("Ürün bulunamadı");
       const res = await apiRequest("POST", "/api/stock/movements", {
         product_id: productId,
         movement_type: movementType,
         quantity,
-        created_by: "yönetim",
+        created_by: "üretim_şefi",
       });
       return res.json();
     },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-      if (movementQuery) qc.invalidateQueries({ queryKey: [movementQuery] });
-    },
+    onSuccess: () => { qc.invalidateQueries(); },
   });
 
-  const handleAction = (type: string, qty: number) => {
-    if (selectedProductId) {
-      actionMutation.mutate({ productId: selectedProductId, movementType: type, quantity: qty });
-    }
-  };
+  const activeAction = QUICK_ACTIONS.find(a => a.type === actionType);
+  const maxQty = actionType === "to_warehouse" ? (product?.inProduction ?? 0)
+    : actionType === "to_sales" ? (product?.inWarehouse ?? 0) : 9999;
+  const qtyNum = parseInt(actionQty, 10);
+  const canExecute = !isNaN(qtyNum) && qtyNum > 0 && qtyNum <= maxQty;
 
-  const selectedProduct = levels.find(l => l.productId === selectedProductId);
+  const filtered = filterType ? movements.filter(m => m.movementType === filterType) : movements;
 
   return (
     <div style={{
@@ -695,72 +468,269 @@ export default function StokDurum() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <ToastStack toasts={toasts} />
-
       <TopNav connected={connected} />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto" }}>
-        <PipelineView summary={summary} />
-        <AlertBanner levels={levels} onSelectProduct={(id) => setSelectedProductId(id)} />
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
 
-        {/* Product Grid */}
-        <div style={{ padding: "0 16px" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-            <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>
-              OBJECT SETS · {filteredLevels.length} NESNE
+        {/* ════ HERO — Product Identity ════ */}
+        <div style={{ textAlign: "center", padding: "28px 0 8px" }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>
+            ÇUKUROVA ISI SİSTEMLERİ — TEK ÜRÜN KOMUTA MERKEZİ
+          </div>
+          <div style={{ fontSize: 22, fontWeight: 800, color: C.white, letterSpacing: -0.5, marginBottom: 4 }}>
+            <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
+          </div>
+          <div style={{ fontSize: 12, color: C.dim }}>
+            Seramik Plakalı Camlı Radyant Isıtıcı — 7/9/11 KW Üç kademeli
+          </div>
+        </div>
+
+        {/* ════ PIPELINE + CAPACITY ════ */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20, marginTop: 16 }}>
+          <div style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+            padding: "20px", display: "flex", alignItems: "center", justifyContent: "center",
+          }}>
+            <Pipeline product={product} />
+          </div>
+          <CapacityGauge capacity={capacity} />
+        </div>
+
+        {/* ════ QUICK ACTIONS ════ */}
+        <div style={{
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+          padding: "16px 20px", marginBottom: 20,
+        }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
+            ⚡ AKSİYONLAR — ELT.7-11 Stok Hareketi
+          </div>
+          <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
+            {QUICK_ACTIONS.map(a => {
+              const isActive = actionType === a.type;
+              const isDisabled = !product ||
+                (a.type === "to_warehouse" && product.inProduction === 0) ||
+                (a.type === "to_sales" && product.inWarehouse === 0);
+              return (
+                <button
+                  key={a.type}
+                  onClick={() => { setActionType(isActive ? null : a.type); setActionQty(""); }}
+                  disabled={isDisabled}
+                  style={{
+                    flex: 1, padding: "12px 8px", borderRadius: 12, cursor: isDisabled ? "default" : "pointer",
+                    background: isActive ? a.bg : "rgba(0,0,0,0.2)",
+                    border: `1px solid ${isActive ? a.border : C.border}`,
+                    color: isDisabled ? C.dimmer : isActive ? a.color : C.mid,
+                    fontFamily: sans, fontSize: 12, fontWeight: 600, textAlign: "center",
+                    transition: "all 0.15s", opacity: isDisabled ? 0.4 : 1,
+                  }}
+                >
+                  <div style={{ fontSize: 22, marginBottom: 4 }}>{a.icon}</div>
+                  {a.label}
+                </button>
+              );
+            })}
+          </div>
+
+          <AnimatePresence>
+            {actionType && activeAction && (
+              <motion.div
+                initial={{ opacity: 0, height: 0 }}
+                animate={{ opacity: 1, height: "auto" }}
+                exit={{ opacity: 0, height: 0 }}
+                style={{ overflow: "hidden" }}
+              >
+                <div style={{
+                  padding: "12px 14px", borderRadius: 12,
+                  background: activeAction.bg, border: `1px solid ${activeAction.border}`,
+                  display: "flex", alignItems: "center", gap: 10,
+                }}>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 12, color: activeAction.color, fontWeight: 700, marginBottom: 6 }}>
+                      {activeAction.icon} {activeAction.desc}
+                      {maxQty < 9999 && <span style={{ color: C.mid, fontWeight: 400 }}> · maks {maxQty} adet</span>}
+                    </div>
+                    <div style={{ display: "flex", gap: 8 }}>
+                      <input
+                        type="number" min={1} max={maxQty} inputMode="numeric" placeholder="Adet"
+                        value={actionQty} onChange={e => setActionQty(e.target.value)} autoFocus
+                        style={{
+                          width: 120, padding: "10px 12px", borderRadius: 10,
+                          background: "rgba(0,0,0,0.3)", border: `1px solid ${C.border}`,
+                          color: C.white, fontFamily: mono, fontSize: 18, fontWeight: 700, textAlign: "center",
+                        }}
+                      />
+                      <button
+                        onClick={() => { if (canExecute) { actionMutation.mutate({ movementType: actionType, quantity: qtyNum }); setActionType(null); setActionQty(""); } }}
+                        disabled={!canExecute}
+                        style={{
+                          padding: "10px 24px", borderRadius: 10, border: "none",
+                          background: canExecute ? activeAction.color : C.dimmer,
+                          color: canExecute ? "#000" : C.dim,
+                          fontFamily: mono, fontSize: 13, fontWeight: 700, cursor: canExecute ? "pointer" : "default",
+                        }}
+                      >
+                        UYGULA
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </motion.div>
+            )}
+          </AnimatePresence>
+        </div>
+
+        {/* ════ BRÜLÖR SUB-ASSEMBLY ════ */}
+        <div style={{ marginBottom: 20 }}>
+          <SubAssemblyPanel capacity={capacity} />
+        </div>
+
+        {/* ════ COMPONENT ONTOLOGY ════ */}
+        <div style={{ marginBottom: 20 }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+            <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5 }}>
+              ONTOLOGY OBJECTS · {sortedComponents.length} BİLEŞEN
             </div>
             <div style={{ fontSize: 9, fontFamily: mono, color: C.dim }}>
-              Son: {timeAgo(summary?.lastMovementAt ?? null)}
+              {fmt(tier1.length)} direkt + {fmt(tier2.length)} yarı mamül + {fmt(tier3.length)} alt parça
             </div>
           </div>
 
-          <ObjectSetTabs activeSet={activeSet} counts={objectSetCounts} onSelect={setActiveSet} />
+          {/* Filter tabs */}
+          <div style={{ display: "flex", gap: 4, marginBottom: 12, flexWrap: "wrap" }}>
+            {([
+              { key: "all" as const, label: "Tümü", color: C.mid },
+              { key: "critical" as const, label: "Kritik", color: C.err },
+              { key: "warning" as const, label: "Düşük", color: C.warn },
+              { key: "ok" as const, label: "Yeterli", color: C.ok },
+              { key: "tier1" as const, label: "Tier 1", color: C.accent },
+              { key: "tier2" as const, label: "Tier 2", color: C.warn },
+              { key: "tier3" as const, label: "Tier 3", color: C.blue },
+            ]).map(f => {
+              const isActive = ontologyFilter === f.key;
+              const count = ontologyCounts[f.key];
+              return (
+                <button key={f.key} onClick={() => setOntologyFilter(f.key)} style={{
+                  padding: "5px 10px", borderRadius: 8, cursor: "pointer",
+                  background: isActive ? `${f.color}18` : "transparent",
+                  border: `1px solid ${isActive ? `${f.color}40` : C.border}`,
+                  color: isActive ? f.color : C.dim,
+                  fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                  display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
+                }}>
+                  {f.label}
+                  <span style={{
+                    fontSize: 9, padding: "1px 5px", borderRadius: 4,
+                    background: isActive ? `${f.color}20` : "rgba(255,255,255,0.03)",
+                    color: isActive ? f.color : C.dim,
+                  }}>
+                    {count}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 10 }}>
-            {filteredLevels.map(level => (
-              <ProductCard
-                key={level.productId}
-                level={level}
-                isSelected={selectedProductId === level.productId}
-                isFlashing={flashedProductId === level.productId}
-                onSelect={() => setSelectedProductId(level.productId === selectedProductId ? null : level.productId)}
+          {/* Component Grid */}
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 8 }}>
+            {sortedComponents.map(comp => (
+              <ComponentCard
+                key={comp.code}
+                comp={comp}
+                isFlashing={flashedCode === comp.code}
+                onClick={() => {/* future: drill-down */}}
               />
             ))}
           </div>
 
-          {filteredLevels.length === 0 && levels.length > 0 && (
+          {sortedComponents.length === 0 && components.length > 0 && (
             <div style={{
               textAlign: "center", padding: 32, color: C.dim, fontSize: 12,
-              background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`, marginTop: 8,
+              background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`,
             }}>
-              Bu filtrede ürün yok
+              Bu filtrede bileşen yok
             </div>
           )}
-          {levels.length === 0 && (
+          {components.length === 0 && (
             <div style={{
               textAlign: "center", padding: 48, color: C.dim, fontSize: 13,
               background: C.surface, borderRadius: 16, border: `1px solid ${C.border}`,
             }}>
-              Ürün verisi yükleniyor...
+              BOM verisi yükleniyor...
             </div>
           )}
         </div>
 
-        {/* Detail Panel */}
-        <div style={{ padding: "0 16px", paddingBottom: 40 }}>
-          <AnimatePresence>
-            {selectedProductId && selectedProduct && (
-              <DetailPanel
-                product={selectedProduct}
-                movements={movements}
-                filterType={filterType}
-                setFilterType={setFilterType}
-                onClose={() => setSelectedProductId(null)}
-                onUndo={(id) => undoMutation.mutate(id)}
-                onAction={handleAction}
-              />
+        {/* ════ MOVEMENT HISTORY ════ */}
+        <div style={{
+          background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+          padding: "16px 20px", marginBottom: 40,
+        }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
+            SON HAREKETLER — ELT.7-11
+          </div>
+
+          {/* Filters */}
+          <div style={{ display: "flex", gap: 6, marginBottom: 12, flexWrap: "wrap" }}>
+            {[
+              { v: "", l: "Tümü" }, { v: "produced", l: "Üretim" }, { v: "to_warehouse", l: "Depo" },
+              { v: "to_sales", l: "Satış" }, { v: "inventory_count", l: "Sayım" }, { v: "undo", l: "Geri Al" },
+            ].map(f => (
+              <button key={f.v} onClick={() => setFilterType(f.v)} style={{
+                padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+                background: filterType === f.v ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.02)",
+                border: `1px solid ${filterType === f.v ? "rgba(255,255,255,0.15)" : C.border}`,
+                color: filterType === f.v ? C.white : C.dim, cursor: "pointer", fontFamily: sans,
+              }}>
+                {f.l}
+              </button>
+            ))}
+          </div>
+
+          {/* Timeline */}
+          <div style={{ maxHeight: 300, overflowY: "auto" }}>
+            {!productId ? (
+              <div style={{ textAlign: "center", padding: 24, color: C.dim, fontSize: 12 }}>
+                Henüz stok kaydı yok — ilk hareket girişini yapın
+              </div>
+            ) : filtered.length === 0 ? (
+              <div style={{ textAlign: "center", padding: 24, color: C.dim, fontSize: 12 }}>Hareket bulunamadı</div>
+            ) : (
+              filtered.map((m, i) => (
+                <div key={m.id} style={{
+                  display: "flex", alignItems: "flex-start", gap: 10, padding: "10px 0",
+                  borderBottom: i < filtered.length - 1 ? `1px solid ${C.border}` : "none",
+                }}>
+                  <div style={{ display: "flex", flexDirection: "column", alignItems: "center", paddingTop: 4, flexShrink: 0 }}>
+                    <div style={{
+                      width: 8, height: 8, borderRadius: "50%",
+                      background: moveColor[m.movementType] || C.mid,
+                      boxShadow: `0 0 6px ${moveColor[m.movementType] || C.mid}40`,
+                    }} />
+                    {i < filtered.length - 1 && <div style={{ width: 1, height: 28, background: C.border, marginTop: 2 }} />}
+                  </div>
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div style={{ fontSize: 12, color: moveColor[m.movementType] || C.mid, fontWeight: 600 }}>
+                      {moveLabel[m.movementType] || m.movementType} — {m.quantity} adet
+                    </div>
+                    <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
+                      {formatDate(m.createdAt)} · {m.createdBy || "?"}{m.note ? ` · ${m.note}` : ""}
+                    </div>
+                  </div>
+                  {m.movementType !== "undo" && (
+                    <button onClick={() => undoMutation.mutate(m.id)} style={{
+                      background: C.errDim, border: `1px solid ${C.errBorder}`, borderRadius: 6,
+                      padding: "3px 8px", color: C.err, fontSize: 9, fontWeight: 600,
+                      fontFamily: sans, cursor: "pointer", flexShrink: 0,
+                    }}>
+                      Geri Al
+                    </button>
+                  )}
+                </div>
+              ))
             )}
-          </AnimatePresence>
+          </div>
         </div>
+
       </div>
     </div>
   );
