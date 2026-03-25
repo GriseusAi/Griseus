@@ -1,11 +1,11 @@
 import { useState, useCallback } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
+import TopNav from "@/components/top-nav";
 
-/* ── Palette — matches stok-durum ── */
+/* ── Palette ── */
 const C = {
   bg: "#06060a", surface: "rgba(255,255,255,0.02)", surfaceHover: "rgba(255,255,255,0.04)",
   border: "rgba(255,255,255,0.06)", borderActive: "rgba(99,102,241,0.4)",
@@ -54,7 +54,6 @@ const moveColor: Record<string, string> = {
 };
 
 export default function StokHareket() {
-  const [, navigate] = useLocation();
   const qc = useQueryClient();
 
   const [selectedProduct, setSelectedProduct] = useState<number | "">("");
@@ -65,30 +64,38 @@ export default function StokHareket() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
+  // Only fetch ELT.7-11 product
   const { data: productList = [] } = useQuery<Product[]>({ queryKey: ["/api/stock/products"] });
-  const { data: movements = [] } = useQuery<Movement[]>({ queryKey: ["/api/stock/movements?limit=10"] });
+  const eltProducts = productList.filter(p => p.sku === "ELT.7-11");
+
+  // Auto-select ELT.7-11 when loaded
+  const eltProduct = eltProducts[0];
+  if (eltProduct && selectedProduct === "") {
+    setSelectedProduct(eltProduct.id);
+  }
+
+  const { data: movements = [] } = useQuery<Movement[]>({ queryKey: ["/api/stock/movements?limit=15"] });
 
   const handleWsUpdate = useCallback(() => {
-    qc.invalidateQueries({ queryKey: ["/api/stock/movements?limit=10"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/movements?limit=15"] });
   }, [qc]);
   const { connected } = useStockWebSocket(handleWsUpdate);
 
   const createMutation = useMutation({
     mutationFn: async () => {
-      const body: any = { product_id: selectedProduct, movement_type: movementType, quantity: parseInt(quantity, 10), note: note || undefined };
+      const body: any = { product_id: selectedProduct, movement_type: movementType, quantity: parseInt(quantity, 10), note: note || undefined, created_by: "üretim_şefi" };
       if (movementType === "inventory_count") body.target = countTarget;
       const res = await apiRequest("POST", "/api/stock/movements", body);
       return res.json();
     },
     onSuccess: (data) => {
-      setSuccessMsg(`Kaydedildi! P:${data.stockLevel.inProduction} D:${data.stockLevel.inWarehouse} S:${data.stockLevel.totalSold}`);
+      setSuccessMsg(`Kaydedildi! Üretimde: ${data.stockLevel.inProduction} · Depoda: ${data.stockLevel.inWarehouse} · Satılan: ${data.stockLevel.totalSold}`);
       setErrorMsg("");
       setQuantity("");
       setNote("");
-      qc.invalidateQueries({ queryKey: ["/api/stock/movements?limit=10"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-      setTimeout(() => setSuccessMsg(""), 4000);
+      setMovementType("");
+      qc.invalidateQueries();
+      setTimeout(() => setSuccessMsg(""), 5000);
     },
     onError: (err: Error) => {
       try { setErrorMsg(JSON.parse(err.message.replace(/^\d+:\s*/, "")).error || err.message); }
@@ -99,11 +106,7 @@ export default function StokHareket() {
 
   const undoMutation = useMutation({
     mutationFn: async (id: number) => { const res = await apiRequest("POST", `/api/stock/movements/${id}/undo`, {}); return res.json(); },
-    onSuccess: () => {
-      qc.invalidateQueries({ queryKey: ["/api/stock/movements?limit=10"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
-      qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-    },
+    onSuccess: () => { qc.invalidateQueries(); },
     onError: (err: Error) => {
       try { setErrorMsg(JSON.parse(err.message.replace(/^\d+:\s*/, "")).error || err.message); }
       catch { setErrorMsg(err.message); }
@@ -118,98 +121,41 @@ export default function StokHareket() {
   return (
     <div style={{
       minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans,
-      backgroundImage: `
-        linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px),
-        linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)
-      `,
+      backgroundImage: `linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)`,
       backgroundSize: "60px 60px",
     }}>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
-      {/* Header — Unified nav */}
-      <header style={{
-        padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0,
-        background: "rgba(6,6,10,0.9)", backdropFilter: "blur(12px)", zIndex: 10,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div>
-            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>GRISEUS</h1>
-            <div style={{ fontSize: 8, color: C.dim, fontFamily: mono, marginTop: 1, letterSpacing: 1 }}>
-              MANUFACTURING INTELLIGENCE
-            </div>
-          </div>
-          <nav style={{ display: "flex", gap: 2 }}>
-            {[
-              { path: "/", label: "Stok" },
-              { path: "/stok/hareket", label: "Giriş", active: true },
-              { path: "/engine", label: "AI Agent" },
-              { path: "/intelligence", label: "İstihbarat" },
-              { path: "/ontology", label: "Ontoloji" },
-            ].map(n => (
-              <button key={n.path} onClick={() => navigate(n.path)} style={{
-                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                background: n.active ? C.accentDim : "transparent",
-                border: `1px solid ${n.active ? "rgba(99,102,241,0.4)" : "transparent"}`,
-                color: n.active ? C.accent : C.dim,
-                cursor: "pointer", fontFamily: sans, transition: "all 0.15s",
-              }}>
-                {n.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20,
-            background: connected ? C.okDim : C.errDim,
-            border: `1px solid ${connected ? C.okBorder : C.errBorder}`,
-          }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: "50%", background: connected ? C.ok : C.err,
-              boxShadow: connected ? `0 0 8px ${C.ok}` : "none",
-            }} />
-            <span style={{ fontSize: 10, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 600 }}>
-              {connected ? "CANLI" : "KESİLDİ"}
-            </span>
-          </div>
-        </div>
-      </header>
+      <TopNav connected={connected} />
 
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
         style={{ padding: "16px", maxWidth: 560, margin: "0 auto" }}
       >
+        {/* ── Product Header ── */}
+        <div style={{
+          textAlign: "center", padding: "20px 0 16px",
+        }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>
+            STOK HAREKETİ GİRİŞİ
+          </div>
+          <div style={{ fontSize: 18, fontWeight: 700, color: C.white }}>
+            <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
+          </div>
+          <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>
+            Seramik Plakalı Camlı Radyant Isıtıcı
+          </div>
+        </div>
+
         {/* ── FORM ── */}
         <div style={{
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 18, padding: "20px 16px",
         }}>
-          {/* 1. Ürün Seç */}
-          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
-            1 · ÜRÜN SEÇ
-          </label>
-          <select
-            value={selectedProduct}
-            onChange={(e) => setSelectedProduct(e.target.value ? Number(e.target.value) : "")}
-            style={{
-              width: "100%", padding: "14px 12px", borderRadius: 10,
-              background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
-              color: C.white, fontFamily: mono, fontSize: 14, marginBottom: 16,
-              appearance: "none", WebkitAppearance: "none",
-            }}
-          >
-            <option value="">— Ürün seç —</option>
-            {productList.map(p => (
-              <option key={p.id} value={p.id} style={{ background: "#0a0a14", color: C.white }}>
-                {p.sku} — {p.name}
-              </option>
-            ))}
-          </select>
 
-          {/* 2. Adet */}
+          {/* 1. Adet */}
           <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
-            2 · ADET
+            1 · ADET
           </label>
           <input
             type="number"
@@ -226,9 +172,9 @@ export default function StokHareket() {
             }}
           />
 
-          {/* 3. Hareket Tipi */}
+          {/* 2. Hareket Tipi */}
           <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 8, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
-            3 · HAREKET TİPİ
+            2 · HAREKET TİPİ
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
             {MOVEMENT_TYPES.map(mt => (
@@ -355,7 +301,6 @@ export default function StokHareket() {
                 padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
                 borderBottom: i < movements.length - 1 ? `1px solid ${C.border}` : "none",
               }}>
-                {/* Timeline dot */}
                 <div style={{
                   width: 32, height: 32, borderRadius: 10, display: "flex", alignItems: "center", justifyContent: "center",
                   background: `${moveColor[m.movementType] || C.mid}10`, fontSize: 14, flexShrink: 0,
