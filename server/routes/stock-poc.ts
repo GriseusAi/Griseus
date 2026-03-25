@@ -370,6 +370,9 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
     // Get current state for the undo movement's previousState
     const currentState = await ensureStockLevel(movement.productId);
 
+    // Get product SKU (needed for BOM restore)
+    const [prod] = await db.select({ sku: products.sku }).from(products).where(eq(products.id, movement.productId));
+
     await db.transaction(async (tx) => {
       // Record undo movement
       await tx.insert(stockMovementsV2).values({
@@ -391,10 +394,29 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
           updatedAt: new Date(),
         })
         .where(eq(stockLevels.productId, movement.productId));
-    });
 
-    // Get product SKU for broadcast
-    const [prod] = await db.select({ sku: products.sku }).from(products).where(eq(products.id, movement.productId));
+      // ── BOM GERİ YÜKLEME — üretim geri alındığında bileşen stokları geri eklenir ──
+      if (movement.movementType === "produced" && prod?.sku) {
+        const bom = await tx
+          .select({
+            code: bomItems.componentCode,
+            requiredQty: bomItems.requiredQuantity,
+          })
+          .from(bomItems)
+          .where(eq(bomItems.parentProductSku, prod.sku));
+
+        for (const item of bom) {
+          const reqQty = parseFloat(item.requiredQty as string);
+          const totalRestore = reqQty * movement.quantity;
+          await tx.execute(sql`
+            UPDATE component_stock
+            SET current_stock = CAST(current_stock AS numeric) + ${totalRestore},
+                updated_at = NOW()
+            WHERE component_code = ${item.code}
+          `);
+        }
+      }
+    });
 
     broadcastStockUpdate({
       event: "stock_update",
