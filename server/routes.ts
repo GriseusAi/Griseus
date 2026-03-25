@@ -26,6 +26,7 @@ import agentRouter from "./routes/agent";
 import ontologyEngineRouter from "./routes/ontology-engine";
 import stockRouter from "./routes/stock";
 import stockPocRouter from "./routes/stock-poc";
+import bomRouter from "./routes/bom";
 import { stockReconciliation } from "./ontology/StockReconciliation";
 
 // ── AI Chat Helpers ──────────────────────────────────────────────────
@@ -443,6 +444,9 @@ export async function registerRoutes(
 ): Promise<Server> {
   // AI Agent router
   app.use("/api/v1", agentRouter);
+
+  // BOM (Ürün Ağacı) router
+  app.use("/api/bom", bomRouter);
 
   // Stock PoC router (hareket sistemi)
   app.use("/api/stock", stockPocRouter);

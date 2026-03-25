@@ -713,6 +713,7 @@ export default function StokDurum() {
             {[
               { path: "/", label: "Stok", active: true },
               { path: "/stok/hareket", label: "Giriş" },
+              { path: "/stok/urun/ELT.7-11", label: "Ürün İstihbaratı" },
               { path: "/engine", label: "AI Agent" },
               { path: "/intelligence", label: "İstihbarat" },
               { path: "/ontology", label: "Ontoloji" },

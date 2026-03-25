@@ -731,3 +731,37 @@ export const stockMovementsV2 = pgTable("stock_movements_v2", {
 
 export type StockMovementV2 = typeof stockMovementsV2.$inferSelect;
 
+// --- BOM (Ürün Ağacı / Reçete) ---
+
+export const bomItems = pgTable("bom_items", {
+  id: serial("id").primaryKey(),
+  parentProductSku: text("parent_product_sku").notNull(), // ana ürün kodu (ELT.7-11)
+  componentCode: text("component_code").notNull().unique(), // alt bileşen kodu
+  componentName: text("component_name").notNull(),
+  requiredQuantity: numeric("required_quantity").notNull(), // ürün başına gereken miktar
+  unit: text("unit").notNull(), // AD, KG, TK
+  tier: integer("tier").notNull(), // 1=hammadde, 2=yarı mamül, 3=yarı mamülün alt bileşeni
+  parentComponentCode: text("parent_component_code"), // tier=3 ise hangi yarı mamülün altında
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertBomItemSchema = createInsertSchema(bomItems).omit({ id: true, createdAt: true });
+export type InsertBomItem = z.infer<typeof insertBomItemSchema>;
+export type BomItem = typeof bomItems.$inferSelect;
+
+// --- Bileşen Stokları ---
+
+export const componentStock = pgTable("component_stock", {
+  id: serial("id").primaryKey(),
+  componentCode: text("component_code").notNull().unique(), // bom_items referans
+  currentStock: numeric("current_stock").notNull(), // mevcut stok
+  unit: text("unit").notNull(),
+  lastCountedAt: timestamp("last_counted_at").defaultNow(),
+  lastCountedBy: text("last_counted_by").default("netsis_import"),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertComponentStockSchema = createInsertSchema(componentStock).omit({ id: true, updatedAt: true });
+export type InsertComponentStock = z.infer<typeof insertComponentStockSchema>;
+export type ComponentStock = typeof componentStock.$inferSelect;
+

@@ -1,7 +1,8 @@
 import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { weeklyPlans, capacityMetrics, productionLines, stockLevels, stockMovementsV2, products } from "@shared/schema";
+import { weeklyPlans, capacityMetrics, productionLines, stockLevels, stockMovementsV2, products, bomItems, componentStock } from "@shared/schema";
+import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "./bom";
 import { eq, desc, sql, and } from "drizzle-orm";
 import { computeEngine } from "../ontology/ComputeEngine";
 import { ontologyService } from "../ontology/OntologyService";
@@ -282,8 +283,13 @@ TOOL KULLANIM KURALLARI:
 - "sipariş gelse", "karşılayabilir miyiz", "yeter mi", "sipariş simülasyonu" → simulate_order_fulfillment kullan
 - "uyarılar", "kritik stok", "stok alarmı", "eksik ne var" → check_stock_alerts kullan
 - "transfer önerisi", "depoya transfer", "neyi transfer etmeliyiz" → suggest_stock_transfers kullan
+- "kaç adet üretebiliriz", "üretim kapasitesi", "darboğaz" → get_production_capacity kullan
+- "100 adet üretebilir miyiz", "sipariş karşılama", "yeter mi" (BOM bazlı) → simulate_production kullan
+- "reçete", "BOM", "ürün ağacı", "bileşenler" → get_bom_tree kullan
+- "bileşen stoku", "parça stoku", "seramik taş kaç var" → get_component_stock kullan
 - Birden fazla tool çağırabilirsin — önce veri çek, sonra analiz et.
 - Canlı stok verisi için MUTLAKA get_live_stock_levels veya ilgili stok tool'unu kullan — tahmini değer verme.
+- BOM/reçete bazlı sorularda MUTLAKA get_production_capacity veya simulate_production kullan.
 
 FORMAT:
 - Başlıklar için ## kullan, önemli sayıları **kalın** yaz
@@ -488,6 +494,67 @@ const CEO_TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [],
+    },
+  },
+  // ── BOM (Ürün Ağacı / Reçete) Tool'ları ──
+  {
+    name: "get_production_capacity",
+    description: "BOM bazlı üretim kapasitesi hesapla. Mevcut bileşen stokları ile kaç adet ürün üretilebileceğini, darboğazları ve yarı mamül montaj ihtiyaçlarını hesaplar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: {
+          type: "string",
+          description: "Ürün kodu (ör: 'ELT.7-11'). Varsayılan: ELT.7-11",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "simulate_production",
+    description: "BOM bazlı üretim simülasyonu. Belirli miktarda ürün üretmek için gereken malzemeleri, eksikleri ve yeterliliği hesaplar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: {
+          type: "string",
+          description: "Ürün kodu (ör: 'ELT.7-11')",
+        },
+        quantity: {
+          type: "number",
+          description: "Kaç adet üretilmek isteniyor",
+        },
+      },
+      required: ["quantity"],
+    },
+  },
+  {
+    name: "get_bom_tree",
+    description: "Ürün ağacını (reçete/BOM) getir. Tüm bileşenleri, miktarlarını ve tier yapısını döner. Tier 1=hammadde, Tier 2=yarı mamül, Tier 3=yarı mamülün alt bileşeni.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: {
+          type: "string",
+          description: "Ürün kodu (ör: 'ELT.7-11')",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_component_stock",
+    description: "Tek bileşenin veya tüm bileşenlerin stok durumunu getir. Bileşen kodu verilmezse tüm bileşen stoklarını döner.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        component_code: {
+          type: "string",
+          description: "Bileşen kodu (ör: '27.125', '27.031'). Boş bırakılırsa tüm bileşenler döner.",
+        },
+      },
       required: [],
     },
   },
@@ -1001,6 +1068,105 @@ async function callCeoTool(toolName: string, input: Record<string, any>): Promis
         suggestion_count: suggestions.length,
         total_transfer_units: suggestions.reduce((s: number, t: any) => s + t.transfer_quantity, 0),
         total_products_checked: rows.length,
+      };
+    }
+
+    // ── BOM Tools ──
+
+    case "get_production_capacity": {
+      const sku = input.sku || "ELT.7-11";
+      const items = await getBomWithStock(sku);
+      if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
+      const capacity = computeProductionCapacity(items);
+      return {
+        product: sku,
+        maxProducible: capacity.maxProducible,
+        bottlenecks: capacity.bottlenecks.slice(0, 10),
+        subAssemblyStatus: capacity.subAssemblyStatus,
+        total_components: items.length,
+      };
+    }
+
+    case "simulate_production": {
+      const sku = input.sku || "ELT.7-11";
+      const quantity = input.quantity || 100;
+      const items = await getBomWithStock(sku);
+      if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
+      const capacity = computeProductionCapacity(items);
+      const canProduce = capacity.maxProducible >= quantity;
+      const shortages: any[] = [];
+      const materialsNeeded: any[] = [];
+      const tier1and2 = items.filter(i => i.tier === 1 || i.tier === 2);
+      for (const item of tier1and2) {
+        const need = item.requiredQty * quantity;
+        let effectiveStock = item.currentStock;
+        let mustAssemble: number | undefined;
+        if (item.tier === 2) {
+          const sub = computeSubAssemblyCapacity(item.code, items);
+          effectiveStock = item.currentStock + sub.producible;
+          if (item.currentStock < need) mustAssemble = Math.min(need - item.currentStock, sub.producible);
+        }
+        const remaining = effectiveStock - need;
+        materialsNeeded.push({ code: item.code, name: item.name, need, have: effectiveStock, remaining, mustAssemble });
+        if (remaining < 0) shortages.push({ code: item.code, name: item.name, need, have: effectiveStock, shortage: Math.abs(remaining) });
+      }
+      materialsNeeded.sort((a: any, b: any) => a.remaining - b.remaining);
+      return {
+        product: sku, requestedQuantity: quantity, canProduce,
+        maxProducible: capacity.maxProducible, shortages,
+        materialsNeeded: materialsNeeded.slice(0, 15),
+        subAssemblyStatus: capacity.subAssemblyStatus,
+      };
+    }
+
+    case "get_bom_tree": {
+      const sku = input.sku || "ELT.7-11";
+      const items = await getBomWithStock(sku);
+      if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
+      const tier1 = items.filter(i => i.tier === 1).map(i => ({
+        code: i.code, name: i.name, requiredQty: i.requiredQty, unit: i.unit, stock: i.currentStock,
+      }));
+      const tier2 = items.filter(i => i.tier === 2).map(sa => ({
+        code: sa.code, name: sa.name, requiredQty: sa.requiredQty, unit: sa.unit, stock: sa.currentStock,
+        children: items.filter(i => i.parentComponentCode === sa.code).map(c => ({
+          code: c.code, name: c.name, requiredQty: c.requiredQty, unit: c.unit, stock: c.currentStock,
+        })),
+      }));
+      return { product: sku, totalComponents: items.length, directMaterials: tier1, subAssemblies: tier2 };
+    }
+
+    case "get_component_stock": {
+      if (input.component_code) {
+        const rows = await db.select().from(componentStock).where(eq(componentStock.componentCode, input.component_code));
+        if (rows.length === 0) return { error: `Bileşen bulunamadı: ${input.component_code}` };
+        const bom = await db.select().from(bomItems).where(eq(bomItems.componentCode, input.component_code));
+        const bomInfo = bom[0];
+        return {
+          componentCode: rows[0].componentCode,
+          currentStock: parseFloat(rows[0].currentStock as string),
+          unit: rows[0].unit,
+          lastCountedAt: rows[0].lastCountedAt,
+          lastCountedBy: rows[0].lastCountedBy,
+          componentName: bomInfo?.componentName,
+          requiredPerUnit: bomInfo ? parseFloat(bomInfo.requiredQuantity as string) : null,
+          tier: bomInfo?.tier,
+        };
+      }
+      // All components
+      const allStock = await db.select({
+        code: componentStock.componentCode,
+        stock: componentStock.currentStock,
+        unit: componentStock.unit,
+        lastCounted: componentStock.lastCountedAt,
+      }).from(componentStock);
+      return {
+        total: allStock.length,
+        components: allStock.map(s => ({
+          code: s.code,
+          stock: parseFloat(s.stock as string),
+          unit: s.unit,
+          lastCounted: s.lastCounted,
+        })),
       };
     }
 

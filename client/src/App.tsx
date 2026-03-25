@@ -30,6 +30,8 @@ import OntologyMap from "@/pages/ontology-map";
 import IntelligencePage from "@/pages/intelligence";
 import ProductDetail from "@/pages/product-detail";
 
+import UrunIstihbarat from "@/pages/urun-istihbarat";
+
 // ── Secondary pages (kept for compatibility, not in main nav)
 import CukurovaOverview from "@/pages/cukurova-overview";
 import CukurovaSim from "@/pages/cukurova-sim";
@@ -59,6 +61,7 @@ function AppContent() {
           <Route path="/ontology" component={OntologyMap} />
           <Route path="/intelligence" component={IntelligencePage} />
           <Route path="/product/:productCode" component={ProductDetail} />
+          <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
 
           {/* ── Secondary Routes (compatibility) ── */}
           <Route path="/cukurova" component={CukurovaOverview} />
