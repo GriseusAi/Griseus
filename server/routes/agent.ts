@@ -377,8 +377,12 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     const client = new Anthropic({ apiKey });
 
+    // Filter out empty/invalid history entries and ensure alternating roles
+    const cleanHistory = (history || []).filter(
+      (h) => h.content && typeof h.content === "string" && h.content.trim().length > 0
+    );
     const messages: Anthropic.MessageParam[] = [
-      ...(history || []).map((h) => ({
+      ...cleanHistory.map((h) => ({
         role: h.role as "user" | "assistant",
         content: h.content,
       })),
@@ -388,7 +392,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const toolsUsed: string[] = [];
 
     let response = await client.messages.create({
-      model: "claude-sonnet-4-20250514",
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
       tools: TOOLS,
@@ -420,7 +424,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       messages.push({ role: "user", content: toolResults });
 
       response = await client.messages.create({
-        model: "claude-sonnet-4-20250514",
+        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
         tools: TOOLS,
@@ -433,8 +437,9 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     res.json({ response: responseText, tools_used: toolsUsed });
   } catch (err: any) {
-    console.error("[agent/chat] Error:", err.message || err);
-    res.status(500).json({ error: err.message || "AI Agent hatası" });
+    console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);
+    const msg = err.error?.message || err.message || "AI Agent hatası";
+    res.status(err.status || 500).json({ error: msg });
   }
 });
 
