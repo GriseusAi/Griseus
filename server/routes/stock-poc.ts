@@ -1,7 +1,7 @@
 import { Router } from "express";
 import { db } from "../db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
-import { products, stockLevels, stockMovementsV2 } from "@shared/schema";
+import { products, stockLevels, stockMovementsV2, bomItems, componentStock } from "@shared/schema";
 import { broadcastStockUpdate } from "../ws";
 
 const stockPocRouter = Router();
@@ -264,6 +264,9 @@ stockPocRouter.post("/movements", async (req, res) => {
         break;
     }
 
+    // BOM bileşenlerini düş (sadece "produced" harekette)
+    let bomDeductions: Array<{ code: string; name: string; deducted: number; remaining: number }> = [];
+
     await db.transaction(async (tx) => {
       await tx.insert(stockMovementsV2).values({
         productId: product_id,
@@ -278,6 +281,45 @@ stockPocRouter.post("/movements", async (req, res) => {
         .update(stockLevels)
         .set({ inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold, updatedAt: new Date() })
         .where(eq(stockLevels.productId, product_id));
+
+      // ── REÇETE DÜŞÜMÜ — üretim yapıldığında bileşen stokları otomatik düşer ──
+      if (movement_type === "produced" && product.sku) {
+        const bom = await tx
+          .select({
+            code: bomItems.componentCode,
+            name: bomItems.componentName,
+            requiredQty: bomItems.requiredQuantity,
+            tier: bomItems.tier,
+          })
+          .from(bomItems)
+          .where(eq(bomItems.parentProductSku, product.sku));
+
+        for (const item of bom) {
+          const reqQty = parseFloat(item.requiredQty as string);
+          const totalDeduct = reqQty * quantity;
+
+          // Stoku düş
+          await tx.execute(sql`
+            UPDATE component_stock
+            SET current_stock = GREATEST(0, CAST(current_stock AS numeric) - ${totalDeduct}),
+                updated_at = NOW()
+            WHERE component_code = ${item.code}
+          `);
+
+          // Güncel stoku al
+          const [updated] = await tx
+            .select({ currentStock: componentStock.currentStock })
+            .from(componentStock)
+            .where(eq(componentStock.componentCode, item.code));
+
+          bomDeductions.push({
+            code: item.code,
+            name: item.name,
+            deducted: totalDeduct,
+            remaining: updated ? parseFloat(updated.currentStock as string) : 0,
+          });
+        }
+      }
     });
 
     broadcastStockUpdate({
@@ -292,6 +334,10 @@ stockPocRouter.post("/movements", async (req, res) => {
     res.json({
       success: true,
       stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
+      ...(bomDeductions.length > 0 && {
+        bomDeductions,
+        bomMessage: `${bomDeductions.length} bileşenin stoku reçeteye göre düşürüldü (${quantity} adet üretim)`,
+      }),
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
