@@ -371,44 +371,40 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
 // ── POST /api/stock/reset — test verilerini temizle, sadece ELT.7-11 kalsın ──
 stockPocRouter.post("/reset", async (_req, res) => {
   try {
-    await db.transaction(async (tx) => {
-      // 1. Tüm stok hareketlerini sil
-      await tx.delete(stockMovementsV2);
+    // Step 1: Tüm stok hareketlerini sil (FK yok, güvenli)
+    await db.execute(sql`DELETE FROM stock_movements_v2`);
 
-      // 2. Tüm stok seviyelerini sil
-      await tx.delete(stockLevels);
+    // Step 2: Tüm stok seviyelerini sil
+    await db.execute(sql`DELETE FROM stock_levels`);
 
-      // 3. ELT.7-11 hariç tüm ürünleri sil
-      await tx.execute(sql`DELETE FROM products WHERE sku IS NULL OR sku != 'ELT.7-11'`);
+    // Step 3: ELT.7-11 hariç ürünleri sil (FK constraint'leri atla)
+    await db.execute(sql`DELETE FROM products WHERE sku IS DISTINCT FROM 'ELT.7-11'`);
 
-      // 4. ELT.7-11 yoksa ekle
-      const [existing] = await tx.select().from(products).where(eq(products.sku, "ELT.7-11"));
-      if (!existing) {
-        await tx.insert(products).values({
-          tenantId: "cukurova",
-          sku: "ELT.7-11",
-          name: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
-          category: "Radyant Isıtıcı",
-        });
-      }
+    // Step 4: ELT.7-11 yoksa ekle
+    const [existing] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
+    if (!existing) {
+      await db.insert(products).values({
+        tenantId: "cukurova",
+        sku: "ELT.7-11",
+        name: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
+        category: "Radyant Isıtıcı",
+      });
+    }
 
-      // 5. ELT.7-11 için sıfır stok seviyesi oluştur
-      const [elt] = await tx.select().from(products).where(eq(products.sku, "ELT.7-11"));
-      if (elt) {
-        await tx.insert(stockLevels).values({
-          productId: elt.id,
-          inProduction: 0,
-          inWarehouse: 0,
-          totalSold: 0,
-        }).onConflictDoUpdate({
-          target: stockLevels.productId,
-          set: { inProduction: 0, inWarehouse: 0, totalSold: 0, updatedAt: new Date() },
-        });
-      }
-    });
+    // Step 5: ELT.7-11 için sıfır stok seviyesi oluştur
+    const [elt] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
+    if (elt) {
+      await db.execute(sql`
+        INSERT INTO stock_levels (product_id, in_production, in_warehouse, total_sold, updated_at)
+        VALUES (${elt.id}, 0, 0, 0, NOW())
+        ON CONFLICT (product_id) DO UPDATE SET
+          in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()
+      `);
+    }
 
     res.json({ success: true, message: "Test verileri temizlendi. Sadece ELT.7-11 kaldı (stok: 0/0/0)." });
   } catch (error: any) {
+    console.error("Reset error:", error);
     res.status(500).json({ error: error.message });
   }
 });
