@@ -18,7 +18,7 @@ async function ensureStockLevel(productId: number, tx?: any): Promise<{
   return { inProduction: created.inProduction, inWarehouse: created.inWarehouse, totalSold: created.totalSold };
 }
 
-// ── GET /api/stock/levels — tüm ürünlerin stok durumu ───────────────
+// ── GET /api/stock/levels — sadece ELT.7-11 stok durumu ───────────────
 stockPocRouter.get("/levels", async (_req, res) => {
   try {
     const rows = await db
@@ -35,7 +35,7 @@ stockPocRouter.get("/levels", async (_req, res) => {
       })
       .from(stockLevels)
       .innerJoin(products, eq(stockLevels.productId, products.id))
-      .orderBy(products.sku);
+      .where(eq(products.sku, "ELT.7-11"));
 
     res.json(rows);
   } catch (error: any) {
@@ -368,19 +368,16 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
   }
 });
 
-// ── POST /api/stock/reset — test verilerini temizle, sadece ELT.7-11 kalsın ──
+// ── POST /api/stock/reset — stok verilerini sıfırla ──
 stockPocRouter.post("/reset", async (_req, res) => {
   try {
-    // Step 1: Tüm stok hareketlerini sil (FK yok, güvenli)
-    await db.execute(sql`DELETE FROM stock_movements_v2`);
+    // 1. Tüm hareketleri sil
+    await db.delete(stockMovementsV2);
 
-    // Step 2: Tüm stok seviyelerini sil
-    await db.execute(sql`DELETE FROM stock_levels`);
+    // 2. Tüm stok seviyelerini sıfırla (silmek yerine güncelle)
+    await db.execute(sql`UPDATE stock_levels SET in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()`);
 
-    // Step 3: ELT.7-11 hariç ürünleri sil (FK constraint'leri atla)
-    await db.execute(sql`DELETE FROM products WHERE sku IS DISTINCT FROM 'ELT.7-11'`);
-
-    // Step 4: ELT.7-11 yoksa ekle
+    // 3. ELT.7-11 ürünü yoksa ekle
     const [existing] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
     if (!existing) {
       await db.insert(products).values({
@@ -391,31 +388,20 @@ stockPocRouter.post("/reset", async (_req, res) => {
       });
     }
 
-    // Step 5: ELT.7-11 için sıfır stok seviyesi oluştur
-    const [elt] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
-    if (elt) {
-      await db.execute(sql`
-        INSERT INTO stock_levels (product_id, in_production, in_warehouse, total_sold, updated_at)
-        VALUES (${elt.id}, 0, 0, 0, NOW())
-        ON CONFLICT (product_id) DO UPDATE SET
-          in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()
-      `);
-    }
-
-    res.json({ success: true, message: "Test verileri temizlendi. Sadece ELT.7-11 kaldı (stok: 0/0/0)." });
+    res.json({ success: true, message: "Stok sıfırlandı. Tüm hareketler silindi, stoklar 0/0/0." });
   } catch (error: any) {
     console.error("Reset error:", error);
     res.status(500).json({ error: error.message });
   }
 });
 
-// ── GET /api/stock/products — dropdown için ürün listesi ────────────
+// ── GET /api/stock/products — sadece ELT.7-11 ────────────
 stockPocRouter.get("/products", async (_req, res) => {
   try {
     const rows = await db
       .select({ id: products.id, sku: products.sku, name: products.name, category: products.category })
       .from(products)
-      .orderBy(products.sku);
+      .where(eq(products.sku, "ELT.7-11"));
     res.json(rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
