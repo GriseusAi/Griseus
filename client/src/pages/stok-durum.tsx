@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocket";
+import TopNav from "@/components/top-nav";
 
 /* ═══════════════════════════════════════════════════════════
    PALETTE & TOKENS — Palantir-inspired dark operational UI
@@ -695,50 +696,7 @@ export default function StokDurum() {
 
       <ToastStack toasts={toasts} />
 
-      {/* Header — Main hub navigation */}
-      <header style={{
-        padding: "10px 16px", display: "flex", justifyContent: "space-between", alignItems: "center",
-        borderBottom: `1px solid ${C.border}`, position: "sticky", top: 0,
-        background: "rgba(6,6,10,0.9)", backdropFilter: "blur(12px)", zIndex: 20,
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <div>
-            <h1 style={{ fontSize: 14, fontWeight: 700, margin: 0, letterSpacing: 0.5 }}>GRISEUS</h1>
-            <div style={{ fontSize: 8, color: C.dim, fontFamily: mono, marginTop: 1, letterSpacing: 1 }}>
-              MANUFACTURING INTELLIGENCE
-            </div>
-          </div>
-          {/* Nav links */}
-          <nav style={{ display: "flex", gap: 2 }}>
-            {[
-              { path: "/", label: "Stok", active: true },
-              { path: "/stok/hareket", label: "Giriş" },
-              { path: "/stok/urun/ELT.7-11", label: "Ürün İstihbaratı" },
-              { path: "/engine", label: "AI Agent" },
-              { path: "/intelligence", label: "İstihbarat" },
-              { path: "/ontology", label: "Ontoloji" },
-            ].map(n => (
-              <button key={n.path} onClick={() => navigate(n.path)} style={{
-                padding: "5px 10px", borderRadius: 6, fontSize: 11, fontWeight: 600,
-                background: n.active ? C.accentDim : "transparent",
-                border: `1px solid ${n.active ? C.borderActive : "transparent"}`,
-                color: n.active ? C.accent : C.dim,
-                cursor: "pointer", fontFamily: sans,
-                transition: "all 0.15s",
-              }}>
-                {n.label}
-              </button>
-            ))}
-          </nav>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
-          <LiveBadge connected={connected} />
-          <button onClick={() => navigate("/stok/hareket")} style={{
-            background: C.okDim, border: `1px solid ${C.okBorder}`,
-            borderRadius: 8, padding: "6px 14px", color: C.ok, fontFamily: mono, fontSize: 11, cursor: "pointer", fontWeight: 700,
-          }}>+ GİRİŞ</button>
-        </div>
-      </header>
+      <TopNav connected={connected} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto" }}>
         <PipelineView summary={summary} />

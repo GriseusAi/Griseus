@@ -4,6 +4,7 @@ import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
+import TopNav from "@/components/top-nav";
 
 /* ═══════════════════════════════════════════════════════════
    PALETTE — same Palantir dark theme as stok-durum
@@ -160,47 +161,7 @@ export default function UrunIstihbarat() {
     <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans }}>
       <style>{GLOBAL_STYLES}</style>
 
-      {/* ── Top Bar ── */}
-      <div style={{
-        padding: "16px 24px", borderBottom: `1px solid ${C.border}`,
-        display: "flex", alignItems: "center", justifyContent: "space-between",
-      }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 16 }}>
-          <button onClick={() => navigate("/")} style={{
-            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 8,
-            padding: "6px 14px", color: C.mid, fontFamily: mono, fontSize: 11,
-            cursor: "pointer", transition: "all 0.2s",
-          }}
-            onMouseEnter={e => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
-            onMouseLeave={e => { e.currentTarget.style.borderColor = C.border; e.currentTarget.style.color = C.mid; }}
-          >
-            ← Komuta Merkezi
-          </button>
-          <div>
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>
-              ÜRÜN İSTİHBARATI
-            </div>
-            <div style={{ fontSize: 20, fontWeight: 700, color: C.white }}>
-              {sku}
-            </div>
-          </div>
-        </div>
-        <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-          <div style={{
-            display: "flex", alignItems: "center", gap: 6, padding: "5px 12px", borderRadius: 20,
-            background: connected ? C.okDim : C.errDim,
-            border: `1px solid ${connected ? C.okBorder : C.errBorder}`,
-          }}>
-            <div style={{
-              width: 6, height: 6, borderRadius: "50%", background: connected ? C.ok : C.err,
-              animation: connected ? "pulse 2s infinite" : "none",
-            }} />
-            <span style={{ fontSize: 10, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 600 }}>
-              {connected ? "CANLI" : "BAĞLANTI KESİLDİ"}
-            </span>
-          </div>
-        </div>
-      </div>
+      <TopNav connected={connected} />
 
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px" }}>
         {/* ═══ Section 1: Production Capacity Card ═══ */}

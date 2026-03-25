@@ -1,33 +1,9 @@
 import { useUser } from "@/hooks/use-user";
 import { Redirect } from "wouter";
-import { Loader2 } from "lucide-react";
 
 export function ProtectedRoute({ children }: { children: React.ReactNode }) {
   const { user, isLoading } = useUser();
-
-  if (isLoading) {
-    return (
-      <div className="flex items-center justify-center min-h-screen">
-        <Loader2 className="h-8 w-8 animate-spin text-muted-foreground" />
-      </div>
-    );
-  }
-
-  if (!user || !user.role) {
-    return <Redirect to="/login" />;
-  }
-
-  if (user.role === "worker") {
-    return <Redirect to="/mobile" />;
-  }
-
-  if (user.role === "admin") {
-    return <Redirect to="/admin" />;
-  }
-
-  if (user.role === "company" && user.companyType === "manufacturing") {
-    return <Redirect to="/operations" />;
-  }
-
+  if (isLoading) return <div style={{ display: "flex", justifyContent: "center", alignItems: "center", minHeight: "100vh" }}>Yükleniyor...</div>;
+  if (!user) return <Redirect to="/login" />;
   return <>{children}</>;
 }
