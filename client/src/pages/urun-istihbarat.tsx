@@ -10,9 +10,9 @@ import TopNav from "@/components/top-nav";
    PALETTE — same Palantir dark theme as stok-durum
    ═══════════════════════════════════════════════════════════ */
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.008)", surfaceHover: "rgba(255,255,255,0.025)",
-  border: "rgba(255,255,255,0.04)", borderActive: "rgba(255,255,255,0.12)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.08)", accentGlow: "rgba(99,102,241,0.15)",
+  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
+  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.20)",
   ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
   warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
   err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
@@ -199,8 +199,8 @@ export default function UrunIstihbarat() {
           style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
             padding: "32px 40px", marginBottom: 24, textAlign: "center", position: "relative",
-            overflow: "hidden", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+            overflow: "hidden", backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
           }}
         >
           <div style={{

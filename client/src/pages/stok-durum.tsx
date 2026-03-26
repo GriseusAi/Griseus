@@ -10,9 +10,9 @@ import TopNav from "@/components/top-nav";
    PALETTE — Palantir Foundry dark operational UI
    ═══════════════════════════════════════════════════════════ */
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.008)", surfaceHover: "rgba(255,255,255,0.025)",
-  border: "rgba(255,255,255,0.04)", borderActive: "rgba(255,255,255,0.12)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.08)", accentGlow: "rgba(99,102,241,0.15)",
+  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
+  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.20)",
   ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
   warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
   err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
@@ -22,6 +22,11 @@ const C = {
 };
 const mono = "'Space Mono', monospace";
 const sans = "'DM Sans', sans-serif";
+/* Glass card mixin — spread into any card style object */
+const glass = {
+  backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
+} as const;
 
 const GLOBAL_STYLES = `
   @keyframes flowRight { from { background-position: 0 0; } to { background-position: 24px 0; } }
@@ -121,8 +126,8 @@ function Pipeline({ product }: { product: StockLevel | null }) {
           <div style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
             padding: "14px 24px", textAlign: "center", position: "relative", minWidth: 120,
-            backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
           }}>
             <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>
               {s.icon} {s.label}
@@ -158,9 +163,9 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
   return (
     <div style={{
       background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
-      padding: "20px 24px", textAlign: "center", animation: "capacityGlow 4s ease-in-out infinite",
-      backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
-      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
+      padding: "20px 24px", textAlign: "center",
+      backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
     }}>
       <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 8 }}>
         MAKSİMUM ÜRETİLEBİLİR
@@ -200,7 +205,7 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
       onClick={onClick}
       style={{
         background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
-        padding: "10px 12px", cursor: "pointer", position: "relative", overflow: "hidden",
+        padding: "10px 12px", cursor: "pointer", position: "relative", overflow: "hidden", ...glass,
         transition: "all 0.15s",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceHover; e.currentTarget.style.borderColor = statusColor + "40"; }}
@@ -577,7 +582,7 @@ export default function StokDurum() {
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 16, marginBottom: 20, marginTop: 16 }}>
           <div style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
-            padding: "20px", display: "flex", alignItems: "center", justifyContent: "center",
+            padding: "20px", display: "flex", alignItems: "center", justifyContent: "center", ...glass,
           }}>
             <Pipeline product={product} />
           </div>
@@ -587,7 +592,7 @@ export default function StokDurum() {
         {/* ════ QUICK ACTIONS ════ */}
         <div style={{
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
-          padding: "16px 20px", marginBottom: 20,
+          padding: "16px 20px", marginBottom: 20, ...glass,
         }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
             ⚡ AKSİYONLAR — ELT.7-11 Stok Hareketi
@@ -751,7 +756,7 @@ export default function StokDurum() {
         {/* ════ MOVEMENT HISTORY ════ */}
         <div style={{
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
-          padding: "16px 20px", marginBottom: 40,
+          padding: "16px 20px", marginBottom: 40, ...glass,
         }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
             SON HAREKETLER — ELT.7-11

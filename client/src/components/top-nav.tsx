@@ -1,8 +1,8 @@
 import { useLocation } from "wouter";
 
 const C = {
-  bg: "rgba(5,5,5,0.6)",
-  border: "rgba(255,255,255,0.04)",
+  bg: "rgba(5,5,5,0.4)",
+  border: "rgba(255,255,255,0.08)",
   accent: "#818cf8",
   accentDim: "rgba(99,102,241,0.08)",
   borderActive: "rgba(255,255,255,0.12)",

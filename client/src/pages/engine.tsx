@@ -5,8 +5,8 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /* ── Palette ── */
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.008)", card: "rgba(255,255,255,0.01)",
-  border: "rgba(255,255,255,0.04)", borderActive: "rgba(255,255,255,0.12)",
+  bg: "#050505", surface: "rgba(255,255,255,0.03)", card: "rgba(255,255,255,0.03)",
+  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
   accent: "#818cf8", accentDim: "rgba(99,102,241,0.08)",
   ok: "#34d399", okDim: "rgba(52,211,153,0.06)",
   err: "#ef4444", errDim: "rgba(239,68,68,0.05)",
