@@ -121,9 +121,13 @@ export default function StokHareket() {
   return (
     <div style={{
       minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans,
-      backgroundImage: `linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)`,
-      backgroundSize: "60px 60px",
+      position: "relative", overflow: "hidden",
     }}>
+      <div className="glass-bg-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+      </div>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <TopNav connected={connected} />
@@ -131,7 +135,7 @@ export default function StokHareket() {
       <motion.div
         initial={{ opacity: 0, y: 12 }}
         animate={{ opacity: 1, y: 0 }}
-        style={{ padding: "16px", maxWidth: 560, margin: "0 auto" }}
+        style={{ padding: "16px", maxWidth: 560, margin: "0 auto", position: "relative", zIndex: 1 }}
       >
         {/* ── Product Header ── */}
         <div style={{

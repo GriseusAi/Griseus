@@ -94,7 +94,12 @@ export default function EnginePage() {
   };
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans, display: "flex", flexDirection: "column" }}>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden" }}>
+      <div className="glass-bg-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+      </div>
       {/* ── Top Bar ── */}
       <div style={{
         padding: "12px 24px", borderBottom: `1px solid ${C.border}`,

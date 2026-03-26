@@ -182,19 +182,25 @@ export default function UrunIstihbarat() {
   const topBottleneck = capacity?.bottlenecks?.[0];
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans }}>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans, position: "relative", overflow: "hidden" }}>
+      <div className="glass-bg-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+      </div>
       <style>{GLOBAL_STYLES}</style>
 
       <TopNav connected={connected} />
 
-      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px" }}>
+      <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px", position: "relative", zIndex: 1 }}>
         {/* ═══ Section 1: Production Capacity Card ═══ */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}
           style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
             padding: "32px 40px", marginBottom: 24, textAlign: "center", position: "relative",
-            overflow: "hidden",
+            overflow: "hidden", backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
           }}
         >
           <div style={{

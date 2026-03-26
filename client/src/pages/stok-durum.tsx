@@ -121,6 +121,8 @@ function Pipeline({ product }: { product: StockLevel | null }) {
           <div style={{
             background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
             padding: "14px 24px", textAlign: "center", position: "relative", minWidth: 120,
+            backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
           }}>
             <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>
               {s.icon} {s.label}
@@ -157,6 +159,8 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
     <div style={{
       background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
       padding: "20px 24px", textAlign: "center", animation: "capacityGlow 4s ease-in-out infinite",
+      backdropFilter: "blur(16px)", WebkitBackdropFilter: "blur(16px)",
+      boxShadow: "inset 0 1px 0 rgba(255,255,255,0.03)",
     }}>
       <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 8 }}>
         MAKSİMUM ÜRETİLEBİLİR
@@ -536,9 +540,14 @@ export default function StokDurum() {
   return (
     <div style={{
       minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans,
-      backgroundImage: `linear-gradient(rgba(255,255,255,0.012) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.012) 1px, transparent 1px)`,
-      backgroundSize: "60px 60px",
+      position: "relative", overflow: "hidden",
     }}>
+      {/* Glassmorphism background orbs */}
+      <div className="glass-bg-orbs">
+        <div className="orb orb-1" />
+        <div className="orb orb-2" />
+        <div className="orb orb-3" />
+      </div>
       <style>{GLOBAL_STYLES}</style>
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
@@ -549,7 +558,7 @@ export default function StokDurum() {
       />
       <TopNav connected={connected} />
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>
+      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px", position: "relative", zIndex: 1 }}>
 
         {/* ════ HERO — Product Identity ════ */}
         <div style={{ textAlign: "center", padding: "28px 0 8px" }}>
