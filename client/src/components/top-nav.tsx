@@ -11,7 +11,7 @@ const C = {
   dim: "#4a4a60",
   ok: "#34d399",
 };
-const mono = "'Space Mono', monospace";
+const mono = "'Outfit', sans-serif";
 
 const NAV_ITEMS = [
   { path: "/", label: "Stok Durumu", icon: "🏭" },
@@ -44,7 +44,7 @@ export default function TopNav({ connected }: { connected?: boolean }) {
               key={n.path}
               onClick={() => navigate(n.path)}
               style={{
-                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 600,
+                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 400,
                 background: active ? C.accentDim : "transparent",
                 border: `1px solid ${active ? C.borderActive : "transparent"}`,
                 color: active ? C.accent : C.dim,
@@ -68,7 +68,7 @@ export default function TopNav({ connected }: { connected?: boolean }) {
             width: 6, height: 6, borderRadius: "50%",
             background: connected ? C.ok : "#ef4444",
           }} />
-          <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : "#ef4444", fontWeight: 600 }}>
+          <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : "#ef4444", fontWeight: 400 }}>
             {connected ? "CANLI" : "KOPUK"}
           </span>
         </div>

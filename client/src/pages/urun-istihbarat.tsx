@@ -20,7 +20,7 @@ const C = {
   purple: "#a78bfa",
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
 };
-const mono = "'Space Mono', monospace";
+const mono = "'Outfit', sans-serif";
 const sans = "'Outfit', sans-serif";
 
 const GLOBAL_STYLES = `
@@ -208,11 +208,11 @@ export default function UrunIstihbarat() {
             background: `linear-gradient(90deg, ${C.accent}, ${C.ok}, ${C.accent})`,
             opacity: 0.6,
           }} />
-          <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 2, marginBottom: 12 }}>
+          <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 2, marginBottom: 12 }}>
             MEVCUT STOKLA ÜRETİLEBİLİR
           </div>
           <div style={{
-            fontSize: 72, fontWeight: 800, fontFamily: mono, lineHeight: 1,
+            fontSize: 72, fontWeight: 400, fontFamily: mono, lineHeight: 1,
             color: capacity ? (capacity.maxProducible > 200 ? C.ok : capacity.maxProducible > 50 ? C.warn : C.err) : C.dim,
             marginBottom: 8,
           }}>
@@ -246,7 +246,7 @@ export default function UrunIstihbarat() {
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 18 }}>⚡</span>
                 <div>
-                  <div style={{ fontSize: 13, fontWeight: 700, color: C.white }}>
+                  <div style={{ fontSize: 13, fontWeight: 400, color: C.white }}>
                     {sub.name} <span style={{ color: C.dim, fontFamily: mono, fontSize: 11 }}>({code})</span>
                   </div>
                   <div style={{ fontSize: 11, color: C.mid, fontFamily: mono }}>YARI MAMÜL</div>
@@ -256,7 +256,7 @@ export default function UrunIstihbarat() {
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1 }}>STOKTA</div>
                   <div style={{
-                    fontSize: 24, fontWeight: 700, fontFamily: mono,
+                    fontSize: 24, fontWeight: 400, fontFamily: mono,
                     color: sub.currentStock > 0 ? C.ok : C.err,
                   }}>
                     {sub.currentStock}
@@ -265,7 +265,7 @@ export default function UrunIstihbarat() {
                 <div style={{ width: 1, height: 32, background: C.border }} />
                 <div style={{ textAlign: "center" }}>
                   <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1 }}>ÜRETİLEBİLİR</div>
-                  <div style={{ fontSize: 24, fontWeight: 700, fontFamily: mono, color: C.accent }}>
+                  <div style={{ fontSize: 24, fontWeight: 400, fontFamily: mono, color: C.accent }}>
                     {sub.producibleFromParts}
                   </div>
                 </div>
@@ -315,7 +315,7 @@ export default function UrunIstihbarat() {
               padding: "24px",
             }}
           >
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 16 }}>
               SİPARİŞ SİMÜLASYONU
             </div>
             <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
@@ -328,7 +328,7 @@ export default function UrunIstihbarat() {
                 style={{
                   flex: 1, padding: "10px 14px", borderRadius: 8,
                   background: C.bg, border: `1px solid ${C.border}`, color: C.white,
-                  fontFamily: mono, fontSize: 16, fontWeight: 700, outline: "none",
+                  fontFamily: mono, fontSize: 16, fontWeight: 400, outline: "none",
                 }}
                 onFocus={e => { e.target.style.borderColor = C.accent; }}
                 onBlur={e => { e.target.style.borderColor = C.border; }}
@@ -336,7 +336,7 @@ export default function UrunIstihbarat() {
               <button onClick={() => setRunSim(true)} style={{
                 padding: "10px 24px", borderRadius: 8, border: "none",
                 background: C.accent, color: "#fff", fontFamily: mono, fontSize: 12,
-                fontWeight: 700, cursor: "pointer", letterSpacing: 0.5, transition: "all 0.2s",
+                fontWeight: 400, cursor: "pointer", letterSpacing: 0.5, transition: "all 0.2s",
               }}
                 onMouseEnter={e => { e.currentTarget.style.background = "#6366f1"; }}
                 onMouseLeave={e => { e.currentTarget.style.background = C.accent; }}
@@ -367,14 +367,14 @@ export default function UrunIstihbarat() {
                   marginBottom: 16,
                 }}>
                   <div style={{
-                    fontSize: 16, fontWeight: 700, fontFamily: mono,
+                    fontSize: 16, fontWeight: 400, fontFamily: mono,
                     color: sim.canProduce ? C.ok : C.err, marginBottom: 4,
                   }}>
                     {sim.canProduce ? `✓ EVET — ${simQty} adet üretilebilir` : `✗ HAYIR — maksimum ${sim.maxProducible} adet`}
                   </div>
                   {!sim.canProduce && sim.shortages.length > 0 && (
                     <div style={{ fontSize: 12, color: C.mid, marginTop: 8 }}>
-                      <div style={{ fontFamily: mono, color: C.err, fontWeight: 600, marginBottom: 4 }}>Eksik malzemeler:</div>
+                      <div style={{ fontFamily: mono, color: C.err, fontWeight: 400, marginBottom: 4 }}>Eksik malzemeler:</div>
                       {sim.shortages.map(s => (
                         <div key={s.code} style={{ fontFamily: mono, fontSize: 11, color: C.mid, marginBottom: 2 }}>
                           {s.code} — {s.name}: {s.shortage} {s.need > 0 ? "eksik" : ""}
@@ -431,7 +431,7 @@ export default function UrunIstihbarat() {
               padding: "24px",
             }}
           >
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1, marginBottom: 16 }}>
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 16 }}>
               DARBOĞAZ ANALİZİ — İLK 10
             </div>
             {capacity?.bottlenecks.map((b, i) => {
@@ -452,13 +452,13 @@ export default function UrunIstihbarat() {
                       {b.tier === 2 && (
                         <span style={{
                           fontSize: 8, fontFamily: mono, padding: "1px 6px", borderRadius: 4,
-                          background: C.accentDim, color: C.accent, fontWeight: 700,
+                          background: C.accentDim, color: C.accent, fontWeight: 400,
                         }}>
                           YARI MAMÜL
                         </span>
                       )}
                     </div>
-                    <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 700, color: barColor }}>
+                    <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 400, color: barColor }}>
                       {b.maxProducts}
                     </span>
                   </div>
@@ -489,7 +489,7 @@ export default function UrunIstihbarat() {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
               BİLEŞEN STOK TABLOSU — {stock?.components.length || 0} PARÇA
             </div>
             <button onClick={() => setShowAllComponents(!showAllComponents)} style={{
@@ -506,7 +506,7 @@ export default function UrunIstihbarat() {
             gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
           }}>
             {["KOD", "BİLEŞEN ADI", "GEREKLİ", "BİRİM", "STOK", "ÜRETEBİLİR", "DURUM"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 700, letterSpacing: 1 }}>
+              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
                 {h}
               </div>
             ))}
@@ -537,21 +537,21 @@ export default function UrunIstihbarat() {
                     {c.name}
                     {isSubAssembly && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL</span>}
                   </div>
-                  <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 600 }}>
+                  <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
                     {c.requiredPerUnit}
                   </div>
                   <div style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>
                     {c.unit}
                   </div>
                   <div style={{
-                    fontFamily: mono, fontSize: 12, fontWeight: 700,
+                    fontFamily: mono, fontSize: 12, fontWeight: 400,
                     color: c.currentStock < 0 ? C.err : c.currentStock === 0 ? C.err : c.currentStock < 100 ? C.warn : C.white,
                   }}>
                     {c.currentStock < 0 && "⚠️ "}
                     {c.currentStock % 1 === 0 ? c.currentStock : c.currentStock.toFixed(2)}
                   </div>
                   <div style={{
-                    fontFamily: mono, fontSize: 12, fontWeight: 700,
+                    fontFamily: mono, fontSize: 12, fontWeight: 400,
                     color: c.maxProducts === null ? C.dim :
                       c.maxProducts === 0 ? C.err :
                       c.maxProducts < 50 ? C.err :
@@ -561,7 +561,7 @@ export default function UrunIstihbarat() {
                   </div>
                   <div>
                     <span style={{
-                      fontSize: 9, fontFamily: mono, fontWeight: 700, padding: "2px 8px",
+                      fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
                       borderRadius: 4, background: getStatusBg(c.status), color: statusColor,
                     }}>
                       {getStatusLabel(c.status)}
@@ -581,21 +581,21 @@ export default function UrunIstihbarat() {
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 16 }}>
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
               TÜKETİM İSTİHBARATI
             </div>
             {intel && (
               <div style={{ display: "flex", gap: 8 }}>
                 <span style={{
                   fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
-                  background: C.accentDim, color: C.accent, fontWeight: 600,
+                  background: C.accentDim, color: C.accent, fontWeight: 400,
                 }}>
                   {intel.dailySalesRate} adet/gün satış
                 </span>
                 {intel.criticalCount > 0 && (
                   <span style={{
                     fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
-                    background: C.errDim, color: C.err, fontWeight: 600,
+                    background: C.errDim, color: C.err, fontWeight: 400,
                   }}>
                     {intel.criticalCount} KRİTİK
                   </span>
@@ -603,7 +603,7 @@ export default function UrunIstihbarat() {
                 {intel.warningCount > 0 && (
                   <span style={{
                     fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
-                    background: C.warnDim, color: C.warn, fontWeight: 600,
+                    background: C.warnDim, color: C.warn, fontWeight: 400,
                   }}>
                     {intel.warningCount} DİKKAT
                   </span>
@@ -618,7 +618,7 @@ export default function UrunIstihbarat() {
             gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
           }}>
             {["KOD", "BİLEŞEN", "TÜKETİM/GÜN", "KAÇ GÜN", "SİP.NOKTASI", "TREND", "ACİLİYET"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 700, letterSpacing: 1 }}>
+              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
                 {h}
               </div>
             ))}
@@ -647,11 +647,11 @@ export default function UrunIstihbarat() {
                   {c.name}
                   {c.tier === 2 && <span style={{ fontSize: 8, color: C.accent, fontFamily: mono }}>YARI MAMÜL</span>}
                 </div>
-                <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 600 }}>
+                <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
                   {c.dailyBurnRate}
                 </div>
                 <div style={{
-                  fontFamily: mono, fontSize: 13, fontWeight: 700,
+                  fontFamily: mono, fontSize: 13, fontWeight: 400,
                   color: c.daysToStockout === null ? C.blue
                     : c.daysToStockout < 7 ? C.err
                     : c.daysToStockout < 21 ? C.warn : C.ok,
@@ -665,12 +665,12 @@ export default function UrunIstihbarat() {
                   {c.reorderPoint}
                   {!c.isAboveReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
                 </div>
-                <div style={{ fontFamily: mono, fontSize: 12, color: trendColor, fontWeight: 700 }}>
+                <div style={{ fontFamily: mono, fontSize: 12, color: trendColor, fontWeight: 400 }}>
                   {trendArrow}
                 </div>
                 <div>
                   <span style={{
-                    fontSize: 9, fontFamily: mono, fontWeight: 700, padding: "2px 8px",
+                    fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
                     borderRadius: 4, background: urgencyBg, color: urgencyColor,
                   }}>
                     {urgencyLabel}

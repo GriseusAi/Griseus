@@ -16,7 +16,7 @@ const C = {
   blue: "#60a5fa", purple: "#a78bfa",
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
-const mono = "'Space Mono', monospace";
+const mono = "'Outfit', sans-serif";
 const sans = "'Outfit', sans-serif";
 
 interface Product { id: number; sku: string; name: string; category: string | null }
@@ -141,10 +141,10 @@ export default function StokHareket() {
         <div style={{
           textAlign: "center", padding: "20px 0 16px",
         }}>
-          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 2, marginBottom: 6 }}>
             STOK HAREKETİ GİRİŞİ
           </div>
-          <div style={{ fontSize: 18, fontWeight: 700, color: C.white }}>
+          <div style={{ fontSize: 18, fontWeight: 400, color: C.white }}>
             <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
           </div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>
@@ -158,7 +158,7 @@ export default function StokHareket() {
         }}>
 
           {/* 1. Adet */}
-          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
+          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 400, fontFamily: mono, letterSpacing: 1 }}>
             1 · ADET
           </label>
           <input
@@ -171,13 +171,13 @@ export default function StokHareket() {
             style={{
               width: "100%", padding: "14px 12px", borderRadius: 10, boxSizing: "border-box",
               background: "rgba(255,255,255,0.04)", border: `1px solid ${C.border}`,
-              color: C.white, fontFamily: mono, fontSize: 22, fontWeight: 700, marginBottom: 16,
+              color: C.white, fontFamily: mono, fontSize: 22, fontWeight: 400, marginBottom: 16,
               textAlign: "center",
             }}
           />
 
           {/* 2. Hareket Tipi */}
-          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 8, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
+          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 8, fontWeight: 400, fontFamily: mono, letterSpacing: 1 }}>
             2 · HAREKET TİPİ
           </label>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 16 }}>
@@ -190,7 +190,7 @@ export default function StokHareket() {
                   background: movementType === mt.value ? `${mt.color}12` : C.surface,
                   border: `2px solid ${movementType === mt.value ? mt.color : C.border}`,
                   color: movementType === mt.value ? mt.color : C.dim,
-                  fontFamily: sans, fontSize: 13, fontWeight: 600, textAlign: "center",
+                  fontFamily: sans, fontSize: 13, fontWeight: 400, textAlign: "center",
                   transition: "all 0.15s",
                 }}
               >
@@ -204,7 +204,7 @@ export default function StokHareket() {
           {/* Inventory count target */}
           {movementType === "inventory_count" && (
             <div style={{ marginBottom: 16 }}>
-              <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
+              <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 400, fontFamily: mono, letterSpacing: 1 }}>
                 NEREYE SAYIM?
               </label>
               <div style={{ display: "flex", gap: 8 }}>
@@ -217,7 +217,7 @@ export default function StokHareket() {
                     background: countTarget === t.value ? "rgba(249,115,22,0.1)" : C.surface,
                     border: `2px solid ${countTarget === t.value ? "#f97316" : C.border}`,
                     color: countTarget === t.value ? "#f97316" : C.dim,
-                    fontFamily: sans, fontSize: 14, fontWeight: 600, textAlign: "center",
+                    fontFamily: sans, fontSize: 14, fontWeight: 400, textAlign: "center",
                   }}>
                     {t.icon} {t.label}
                   </button>
@@ -227,7 +227,7 @@ export default function StokHareket() {
           )}
 
           {/* Note */}
-          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 700, fontFamily: mono, letterSpacing: 1 }}>
+          <label style={{ display: "block", fontSize: 10, color: C.dim, marginBottom: 6, fontWeight: 400, fontFamily: mono, letterSpacing: 1 }}>
             NOT (opsiyonel)
           </label>
           <input
@@ -252,7 +252,7 @@ export default function StokHareket() {
                 ? `linear-gradient(135deg, ${C.ok}, #2dd4a0)`
                 : "rgba(255,255,255,0.04)",
               color: canSubmit ? "#000" : C.dim,
-              fontFamily: mono, fontSize: 16, fontWeight: 700, cursor: canSubmit ? "pointer" : "default",
+              fontFamily: mono, fontSize: 16, fontWeight: 400, cursor: canSubmit ? "pointer" : "default",
               transition: "all 0.2s", letterSpacing: 1,
             }}
           >
@@ -285,7 +285,7 @@ export default function StokHareket() {
           display: "flex", justifyContent: "space-between", alignItems: "center",
           marginTop: 24, marginBottom: 12,
         }}>
-          <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 700, color: C.dim, letterSpacing: 1 }}>
+          <div style={{ fontSize: 10, fontFamily: mono, fontWeight: 400, color: C.dim, letterSpacing: 1 }}>
             SON HAREKETLER
           </div>
           <div style={{ fontSize: 9, fontFamily: mono, color: C.dim }}>
@@ -313,11 +313,11 @@ export default function StokHareket() {
                 </div>
 
                 <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 600, color: moveColor[m.movementType] || C.mid }}>
+                  <div style={{ fontSize: 12, fontWeight: 400, color: moveColor[m.movementType] || C.mid }}>
                     {moveLabel[m.movementType] || m.movementType} — {m.quantity} adet
                   </div>
                   <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
-                    <span style={{ fontFamily: mono, fontWeight: 600, color: C.mid }}>{m.productSku}</span>
+                    <span style={{ fontFamily: mono, fontWeight: 400, color: C.mid }}>{m.productSku}</span>
                     {" · "}{timeAgo(m.createdAt)}{m.note ? ` · ${m.note}` : ""}
                   </div>
                 </div>
@@ -325,7 +325,7 @@ export default function StokHareket() {
                 {m.movementType !== "undo" && (
                   <button onClick={() => undoMutation.mutate(m.id)} disabled={undoMutation.isPending} style={{
                     background: C.errDim, border: `1px solid ${C.errBorder}`,
-                    borderRadius: 8, padding: "5px 10px", color: C.err, fontSize: 10, fontWeight: 600,
+                    borderRadius: 8, padding: "5px 10px", color: C.err, fontSize: 10, fontWeight: 400,
                     fontFamily: sans, cursor: "pointer", flexShrink: 0,
                   }}>
                     Geri Al

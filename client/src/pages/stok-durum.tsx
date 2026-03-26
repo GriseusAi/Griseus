@@ -20,7 +20,7 @@ const C = {
   purple: "#a78bfa",
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
 };
-const mono = "'Space Mono', monospace";
+const mono = "'Outfit', sans-serif";
 const sans = "'Outfit', sans-serif";
 /* Glass card mixin — spread into any card style object */
 const glass = {
@@ -129,10 +129,10 @@ function Pipeline({ product }: { product: StockLevel | null }) {
             backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
           }}>
-            <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 1, marginBottom: 4 }}>
+            <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 400, letterSpacing: 1, marginBottom: 4 }}>
               {s.icon} {s.label}
             </div>
-            <div style={{ fontSize: 32, fontWeight: 700, fontFamily: mono, color: s.color, lineHeight: 1 }}>{s.value}</div>
+            <div style={{ fontSize: 32, fontWeight: 400, fontFamily: mono, color: s.color, lineHeight: 1 }}>{s.value}</div>
             {s.sub && <div style={{ fontSize: 9, color: C.dim, marginTop: 4, fontFamily: mono }}>{s.sub}</div>}
           </div>
           {i < stages.length - 1 && (
@@ -167,10 +167,10 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
       backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
     }}>
-      <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 8 }}>
+      <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 8 }}>
         MAKSİMUM ÜRETİLEBİLİR
       </div>
-      <div style={{ fontSize: 48, fontWeight: 800, fontFamily: mono, color: C.accent, lineHeight: 1, marginBottom: 4 }}>
+      <div style={{ fontSize: 48, fontWeight: 400, fontFamily: mono, color: C.accent, lineHeight: 1, marginBottom: 4 }}>
         {fmt(max)}
       </div>
       <div style={{ fontSize: 13, color: C.mid, marginBottom: 12 }}>adet ELT.7-11</div>
@@ -179,7 +179,7 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
           display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px",
           borderRadius: 20, background: C.errDim, border: `1px solid ${C.errBorder}`,
         }}>
-          <span style={{ fontSize: 11, color: C.err, fontWeight: 700, fontFamily: mono }}>Darboğaz:</span>
+          <span style={{ fontSize: 11, color: C.err, fontWeight: 400, fontFamily: mono }}>Darboğaz:</span>
           <span style={{ fontSize: 11, color: C.mid }}>
             {top.name} ({fmt(top.stock)}/{top.required} = {fmt(top.maxProducts)})
           </span>
@@ -215,9 +215,9 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: statusColor, opacity: 0.6 }} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 700, color: C.white, letterSpacing: 0.5 }}>{comp.code}</div>
+        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 400, color: C.white, letterSpacing: 0.5 }}>{comp.code}</div>
         <div style={{
-          fontSize: 7, fontFamily: mono, fontWeight: 700, letterSpacing: 0.8,
+          fontSize: 7, fontFamily: mono, fontWeight: 400, letterSpacing: 0.8,
           padding: "2px 5px", borderRadius: 4, background: statusBg, color: statusColor,
         }}>
           {statusLabel}
@@ -230,13 +230,13 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
       {/* Stock info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
-          <div style={{ fontSize: 18, fontWeight: 700, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
+          <div style={{ fontSize: 18, fontWeight: 400, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
             {fmt(comp.currentStock)}
           </div>
           <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>{comp.unit} stok</div>
         </div>
         <div style={{ textAlign: "right" }}>
-          <div style={{ fontSize: 12, fontWeight: 700, fontFamily: mono, color: C.mid, lineHeight: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 400, fontFamily: mono, color: C.mid, lineHeight: 1 }}>
             {maxP === null ? "—" : fmt(maxP)}
           </div>
           <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>ürün yeter</div>
@@ -277,19 +277,19 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 700, color: C.warn, fontFamily: sans }}>
+          <div style={{ fontSize: 12, fontWeight: 400, color: C.warn, fontFamily: sans }}>
             ⚙ Brülör (Yerli Malzeme) <span style={{ color: C.dim, fontWeight: 400, fontSize: 11 }}>27.125</span>
           </div>
           <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>YARI MAMÜL — montaj gerektirir</div>
         </div>
         <div style={{ display: "flex", gap: 16, textAlign: "center" }}>
           <div>
-            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>HAZIR</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: mono, color: brulor.currentStock === 0 ? C.err : C.ok }}>{brulor.currentStock}</div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>HAZIR</div>
+            <div style={{ fontSize: 22, fontWeight: 400, fontFamily: mono, color: brulor.currentStock === 0 ? C.err : C.ok }}>{brulor.currentStock}</div>
           </div>
           <div>
-            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 600 }}>MONTELENEBİLİR</div>
-            <div style={{ fontSize: 22, fontWeight: 700, fontFamily: mono, color: C.warn }}>{fmt(brulor.producibleFromParts)}</div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>MONTELENEBİLİR</div>
+            <div style={{ fontSize: 22, fontWeight: 400, fontFamily: mono, color: C.warn }}>{fmt(brulor.producibleFromParts)}</div>
           </div>
         </div>
       </div>
@@ -306,16 +306,16 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
-                  <div style={{ fontFamily: mono, fontSize: 9, color: C.mid, fontWeight: 600 }}>{p.code}</div>
+                  <div style={{ fontFamily: mono, fontSize: 9, color: C.mid, fontWeight: 400 }}>{p.code}</div>
                   <div style={{ fontSize: 10, color: isBottleneck ? C.err : C.mid, marginTop: 1 }}>{p.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 14, fontWeight: 700, fontFamily: mono, color: isBottleneck ? C.err : C.white }}>{fmt(p.stock)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 400, fontFamily: mono, color: isBottleneck ? C.err : C.white }}>{fmt(p.stock)}</div>
                   <div style={{ fontSize: 8, fontFamily: mono, color: C.dim }}>→ {fmt(p.maxProducts)} brülör</div>
                 </div>
               </div>
               {isBottleneck && (
-                <div style={{ fontSize: 8, fontFamily: mono, color: C.err, fontWeight: 700, marginTop: 4, letterSpacing: 0.5 }}>
+                <div style={{ fontSize: 8, fontFamily: mono, color: C.err, fontWeight: 400, marginTop: 4, letterSpacing: 0.5 }}>
                   ▲ DARBOĞAZ
                 </div>
               )}
@@ -339,7 +339,7 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
         display: "flex", flexDirection: "column", gap: 8,
       }}
     >
-      <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>
+      <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, fontWeight: 400, letterSpacing: 1, marginBottom: 2 }}>
         ⚡ PROACTIVE INTELLIGENCE
       </div>
       {alerts.map(a => (
@@ -357,7 +357,7 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
               <span style={{ fontSize: 12 }}>{severityIcon[a.severity] || "🔵"}</span>
               <span style={{
-                fontSize: 11, fontWeight: 700, fontFamily: mono,
+                fontSize: 11, fontWeight: 400, fontFamily: mono,
                 color: a.severity === "critical" ? C.err : a.severity === "warning" ? C.warn : C.blue,
               }}>
                 {a.title}
@@ -372,7 +372,7 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
           </div>
           {a.suggestedAction && (
             <div style={{
-              fontSize: 10, fontFamily: mono, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+              fontSize: 10, fontFamily: mono, fontWeight: 400, padding: "4px 10px", borderRadius: 6,
               background: "rgba(99,102,241,0.1)", color: C.accent, display: "inline-block",
               border: `1px solid rgba(99,102,241,0.2)`,
             }}>
@@ -397,7 +397,7 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
           backdropFilter: "blur(12px)", display: "flex", alignItems: "center", gap: 8,
         }}>
           <div style={{ width: 6, height: 6, borderRadius: "50%", background: moveColor[t.type] || C.mid }} />
-          <span style={{ fontFamily: mono, fontSize: 11, color: C.accent, fontWeight: 700 }}>{t.sku}</span>
+          <span style={{ fontFamily: mono, fontSize: 11, color: C.accent, fontWeight: 400 }}>{t.sku}</span>
           <span style={{ fontSize: 11, color: C.mid }}>{moveLabel[t.type] || t.type} · {t.qty} adet</span>
         </div>
       ))}
@@ -567,10 +567,10 @@ export default function StokDurum() {
 
         {/* ════ HERO — Product Identity ════ */}
         <div style={{ textAlign: "center", padding: "28px 0 8px" }}>
-          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 2, marginBottom: 6 }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 2, marginBottom: 6 }}>
             ÇUKUROVA ISI SİSTEMLERİ — TEK ÜRÜN KOMUTA MERKEZİ
           </div>
-          <div style={{ fontSize: 22, fontWeight: 800, color: C.white, letterSpacing: -0.5, marginBottom: 4 }}>
+          <div style={{ fontSize: 22, fontWeight: 400, color: C.white, letterSpacing: -0.5, marginBottom: 4 }}>
             <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
           </div>
           <div style={{ fontSize: 12, color: C.dim }}>
@@ -594,7 +594,7 @@ export default function StokDurum() {
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
           padding: "16px 20px", marginBottom: 20, ...glass,
         }}>
-          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 10 }}>
             ⚡ AKSİYONLAR — ELT.7-11 Stok Hareketi
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
@@ -613,7 +613,7 @@ export default function StokDurum() {
                     background: isActive ? a.bg : "rgba(0,0,0,0.2)",
                     border: `1px solid ${isActive ? a.border : C.border}`,
                     color: isDisabled ? C.dimmer : isActive ? a.color : C.mid,
-                    fontFamily: sans, fontSize: 12, fontWeight: 600, textAlign: "center",
+                    fontFamily: sans, fontSize: 12, fontWeight: 400, textAlign: "center",
                     transition: "all 0.15s", opacity: isDisabled ? 0.4 : 1,
                   }}
                 >
@@ -638,7 +638,7 @@ export default function StokDurum() {
                   display: "flex", alignItems: "center", gap: 10,
                 }}>
                   <div style={{ flex: 1 }}>
-                    <div style={{ fontSize: 12, color: activeAction.color, fontWeight: 700, marginBottom: 6 }}>
+                    <div style={{ fontSize: 12, color: activeAction.color, fontWeight: 400, marginBottom: 6 }}>
                       {activeAction.icon} {activeAction.desc}
                       {maxQty < 9999 && <span style={{ color: C.mid, fontWeight: 400 }}> · maks {maxQty} adet</span>}
                     </div>
@@ -649,7 +649,7 @@ export default function StokDurum() {
                         style={{
                           width: 120, padding: "10px 12px", borderRadius: 10,
                           background: "rgba(0,0,0,0.3)", border: `1px solid ${C.border}`,
-                          color: C.white, fontFamily: mono, fontSize: 18, fontWeight: 700, textAlign: "center",
+                          color: C.white, fontFamily: mono, fontSize: 18, fontWeight: 400, textAlign: "center",
                         }}
                       />
                       <button
@@ -659,7 +659,7 @@ export default function StokDurum() {
                           padding: "10px 24px", borderRadius: 10, border: "none",
                           background: canExecute ? activeAction.color : C.dimmer,
                           color: canExecute ? "#000" : C.dim,
-                          fontFamily: mono, fontSize: 13, fontWeight: 700, cursor: canExecute ? "pointer" : "default",
+                          fontFamily: mono, fontSize: 13, fontWeight: 400, cursor: canExecute ? "pointer" : "default",
                         }}
                       >
                         UYGULA
@@ -680,7 +680,7 @@ export default function StokDurum() {
         {/* ════ COMPONENT ONTOLOGY ════ */}
         <div style={{ marginBottom: 20 }}>
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-            <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5 }}>
+            <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5 }}>
               ONTOLOGY OBJECTS · {sortedComponents.length} BİLEŞEN
             </div>
             <div style={{ fontSize: 9, fontFamily: mono, color: C.dim }}>
@@ -707,7 +707,7 @@ export default function StokDurum() {
                   background: isActive ? `${f.color}18` : "transparent",
                   border: `1px solid ${isActive ? `${f.color}40` : C.border}`,
                   color: isActive ? f.color : C.dim,
-                  fontFamily: mono, fontSize: 10, fontWeight: 700, letterSpacing: 0.5,
+                  fontFamily: mono, fontSize: 10, fontWeight: 400, letterSpacing: 0.5,
                   display: "flex", alignItems: "center", gap: 5, transition: "all 0.15s",
                 }}>
                   {f.label}
@@ -758,7 +758,7 @@ export default function StokDurum() {
           background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
           padding: "16px 20px", marginBottom: 40, ...glass,
         }}>
-          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1.5, marginBottom: 10 }}>
+          <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 10 }}>
             SON HAREKETLER — ELT.7-11
           </div>
 
@@ -769,7 +769,7 @@ export default function StokDurum() {
               { v: "to_sales", l: "Satış" }, { v: "inventory_count", l: "Sayım" }, { v: "undo", l: "Geri Al" },
             ].map(f => (
               <button key={f.v} onClick={() => setFilterType(f.v)} style={{
-                padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 600,
+                padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 400,
                 background: filterType === f.v ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.02)",
                 border: `1px solid ${filterType === f.v ? "rgba(255,255,255,0.15)" : C.border}`,
                 color: filterType === f.v ? C.white : C.dim, cursor: "pointer", fontFamily: sans,
@@ -802,7 +802,7 @@ export default function StokDurum() {
                     {i < filtered.length - 1 && <div style={{ width: 1, height: 28, background: C.border, marginTop: 2 }} />}
                   </div>
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{ fontSize: 12, color: moveColor[m.movementType] || C.mid, fontWeight: 600 }}>
+                    <div style={{ fontSize: 12, color: moveColor[m.movementType] || C.mid, fontWeight: 400 }}>
                       {moveLabel[m.movementType] || m.movementType} — {m.quantity} adet
                     </div>
                     <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>
@@ -812,7 +812,7 @@ export default function StokDurum() {
                   {m.movementType !== "undo" && (
                     <button onClick={() => undoMutation.mutate(m.id)} style={{
                       background: C.errDim, border: `1px solid ${C.errBorder}`, borderRadius: 6,
-                      padding: "3px 8px", color: C.err, fontSize: 9, fontWeight: 600,
+                      padding: "3px 8px", color: C.err, fontSize: 9, fontWeight: 400,
                       fontFamily: sans, cursor: "pointer", flexShrink: 0,
                     }}>
                       Geri Al

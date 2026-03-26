@@ -12,7 +12,7 @@ const C = {
   err: "#ef4444", errDim: "rgba(239,68,68,0.05)",
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
-const mono = "'JetBrains Mono', 'Space Mono', monospace";
+const mono = "'Outfit', sans-serif";
 const sans = "'Outfit', sans-serif";
 
 const SUGGESTIONS = [
@@ -114,10 +114,10 @@ export default function EnginePage() {
             ← Komuta Merkezi
           </button>
           <div>
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 600, letterSpacing: 1 }}>
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
               GRISEUS CEO AGENT
             </div>
-            <div style={{ fontSize: 14, fontWeight: 600, color: C.white }}>
+            <div style={{ fontSize: 14, fontWeight: 400, color: C.white }}>
               Stok İstihbarat Danışmanı
             </div>
           </div>
@@ -125,7 +125,7 @@ export default function EnginePage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <span style={{
             fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
-            background: C.accentDim, color: C.accent, fontWeight: 600,
+            background: C.accentDim, color: C.accent, fontWeight: 400,
           }}>
             12 TOOL AKTİF
           </span>
@@ -263,7 +263,7 @@ export default function EnginePage() {
                 style={{
                   padding: "10px 18px", borderRadius: 10, border: "none",
                   background: input.trim() ? C.accent : C.dim,
-                  color: "#fff", fontFamily: mono, fontSize: 12, fontWeight: 700,
+                  color: "#fff", fontFamily: mono, fontSize: 12, fontWeight: 400,
                   cursor: input.trim() ? "pointer" : "default",
                   opacity: loading ? 0.5 : 1,
                 }}
