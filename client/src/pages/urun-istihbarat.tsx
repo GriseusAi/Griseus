@@ -21,7 +21,7 @@ const C = {
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
 };
 const mono = "'Space Mono', monospace";
-const sans = "'DM Sans', sans-serif";
+const sans = "'Outfit', sans-serif";
 
 const GLOBAL_STYLES = `
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }

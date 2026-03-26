@@ -21,7 +21,7 @@ const C = {
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
 };
 const mono = "'Space Mono', monospace";
-const sans = "'DM Sans', sans-serif";
+const sans = "'Outfit', sans-serif";
 /* Glass card mixin — spread into any card style object */
 const glass = {
   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
@@ -554,7 +554,7 @@ export default function StokDurum() {
         <div className="orb orb-3" />
       </div>
       <style>{GLOBAL_STYLES}</style>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <ToastStack toasts={toasts} />
       <ProactiveAlertPanel

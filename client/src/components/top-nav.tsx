@@ -48,7 +48,7 @@ export default function TopNav({ connected }: { connected?: boolean }) {
                 background: active ? C.accentDim : "transparent",
                 border: `1px solid ${active ? C.borderActive : "transparent"}`,
                 color: active ? C.accent : C.dim,
-                cursor: "pointer", fontFamily: "'DM Sans', sans-serif",
+                cursor: "pointer", fontFamily: "'Outfit', sans-serif",
                 transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
               }}
             >

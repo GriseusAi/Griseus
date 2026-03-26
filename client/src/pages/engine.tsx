@@ -13,7 +13,7 @@ const C = {
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
 const mono = "'JetBrains Mono', 'Space Mono', monospace";
-const sans = "'DM Sans', sans-serif";
+const sans = "'Outfit', sans-serif";
 
 const SUGGESTIONS = [
   "Kaç adet ELT.7-11 üretebiliriz?",

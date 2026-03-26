@@ -28,7 +28,7 @@ export default function LoginPage() {
   return (
     <div style={{
       background: "#050505", minHeight: "100vh", display: "flex", alignItems: "center", justifyContent: "center",
-      fontFamily: "'Inter','Outfit',sans-serif", position: "relative", overflow: "hidden",
+      fontFamily: "'Outfit', sans-serif", position: "relative", overflow: "hidden",
     }}>
 
       {/* ── Animated mesh background ── */}

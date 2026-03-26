@@ -17,7 +17,7 @@ const C = {
   white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
 const mono = "'Space Mono', monospace";
-const sans = "'DM Sans', sans-serif";
+const sans = "'Outfit', sans-serif";
 
 interface Product { id: number; sku: string; name: string; category: string | null }
 interface Movement {
@@ -128,7 +128,7 @@ export default function StokHareket() {
         <div className="orb orb-2" />
         <div className="orb orb-3" />
       </div>
-      <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
+      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <TopNav connected={connected} />
 
