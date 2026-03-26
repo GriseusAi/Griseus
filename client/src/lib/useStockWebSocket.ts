@@ -9,11 +9,33 @@ export interface StockUpdateEvent {
   stockLevel: { inProduction: number; inWarehouse: number; totalSold: number };
 }
 
-export function useStockWebSocket(onUpdate: (data: StockUpdateEvent) => void) {
+export interface ProactiveAlertData {
+  id: string;
+  type: string;
+  severity: "critical" | "warning" | "info";
+  title: string;
+  message: string;
+  componentCode?: string;
+  productSku?: string;
+  suggestedAction?: string;
+  timestamp: string;
+}
+
+export interface ProactiveAlertEvent {
+  event: "proactive_alert";
+  alerts: ProactiveAlertData[];
+}
+
+export function useStockWebSocket(
+  onStockUpdate: (data: StockUpdateEvent) => void,
+  onProactiveAlert?: (data: ProactiveAlertEvent) => void,
+) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
-  const onUpdateRef = useRef(onUpdate);
-  onUpdateRef.current = onUpdate;
+  const onStockUpdateRef = useRef(onStockUpdate);
+  onStockUpdateRef.current = onStockUpdate;
+  const onProactiveAlertRef = useRef(onProactiveAlert);
+  onProactiveAlertRef.current = onProactiveAlert;
 
   const connect = useCallback(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -23,16 +45,17 @@ export function useStockWebSocket(onUpdate: (data: StockUpdateEvent) => void) {
 
     ws.onmessage = (e) => {
       try {
-        const data = JSON.parse(e.data) as StockUpdateEvent;
+        const data = JSON.parse(e.data);
         if (data.event === "stock_update") {
-          onUpdateRef.current(data);
+          onStockUpdateRef.current(data as StockUpdateEvent);
+        } else if (data.event === "proactive_alert") {
+          onProactiveAlertRef.current?.(data as ProactiveAlertEvent);
         }
       } catch { /* ignore malformed */ }
     };
 
     ws.onclose = () => {
       setConnected(false);
-      // Reconnect after 2s
       setTimeout(connect, 2000);
     };
 

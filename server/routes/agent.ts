@@ -1,9 +1,13 @@
 import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import { db } from "../db";
-import { stockLevels, stockMovementsV2, products } from "@shared/schema";
-import { eq, desc, and } from "drizzle-orm";
+import { stockLevels, stockMovementsV2, products, componentStock, bomItems, purchaseSuggestions } from "@shared/schema";
+import { eq, desc, and, sql } from "drizzle-orm";
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "./bom";
+import { ensureStockLevel } from "./stock-poc";
+import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
+import { computeComponentIntelligence } from "./intelligence";
+import { evaluateRules } from "../rules-engine";
 
 const router = Router();
 
@@ -55,6 +59,16 @@ Bu bileşenleri özellikle takip et (darboğaz adayları):
 - 27.116 Kablo Takımı H Tipi — düşük stok
 - 27.026 İç Koli Boru Seperatör — düşük stok
 - 27.125 Brülör — yarı mamül, genelde 0 stok, alt parçalardan monte edilmeli
+
+═══ YAZMA TOOL'LARI — AKSİYON AL ═══
+
+- "üret", "transfer et", "depoya gönder", "satışa çıkar" → create_stock_movement kullan
+- "bileşen stok güncelle", "sayım yap", "stoku set et" → update_component_stock kullan
+- "sipariş öner", "satın alma talebi", "tedarik önerisi" → create_purchase_suggestion kullan
+- "satın alma önerileri", "bekleyen talepler" → get_purchase_suggestions kullan
+- "tüketim hızı", "kaç gün yeter", "sipariş noktası", "trend" → get_component_intelligence kullan
+- YAZMA İŞLEMLERİNDE: Önce mevcut durumu kontrol et, sonra yapılacak işlemi açıkla, sonra gerçekleştir.
+- Aksiyon aldıktan sonra sonucu kullanıcıya raporla.
 
 ═══ FORMAT ═══
 
@@ -148,6 +162,78 @@ const TOOLS: Anthropic.Tool[] = [
       type: "object" as const,
       properties: {
         sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+      },
+      required: [],
+    },
+  },
+  // ── WRITE TOOLS — OAG (Ontology-Augmented Generation) ──
+  {
+    name: "create_stock_movement",
+    description: "Stok hareketi oluştur. Üretim girişi, depoya transfer veya satış çıkışı kaydı yapar. Gerçek stoku değiştirir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        product_code: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11')" },
+        movement_type: {
+          type: "string",
+          enum: ["produced", "to_warehouse", "to_sales"],
+          description: "Hareket tipi: produced=üretim girişi, to_warehouse=depoya transfer, to_sales=satış çıkışı",
+        },
+        quantity: { type: "number", description: "Miktar (adet)" },
+        note: { type: "string", description: "Açıklama notu" },
+      },
+      required: ["product_code", "movement_type", "quantity"],
+    },
+  },
+  {
+    name: "update_component_stock",
+    description: "Bileşen stok miktarını güncelle. Sayım sonrası veya giriş sonrası yeni stok değerini yazar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        component_code: { type: "string", description: "Bileşen kodu (ör: '27.004')" },
+        new_stock: { type: "number", description: "Yeni stok miktarı" },
+        reason: { type: "string", description: "Güncelleme sebebi" },
+      },
+      required: ["component_code", "new_stock"],
+    },
+  },
+  {
+    name: "create_purchase_suggestion",
+    description: "Bileşen satın alma önerisi oluştur. Eksik veya kritik stoklu bileşenler için satın alma talebi kaydeder.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        component_code: { type: "string", description: "Bileşen kodu" },
+        suggested_quantity: { type: "number", description: "Önerilen sipariş miktarı" },
+        reason: { type: "string", description: "Satın alma sebebi (detaylı açıklama)" },
+      },
+      required: ["component_code", "suggested_quantity", "reason"],
+    },
+  },
+  {
+    name: "get_purchase_suggestions",
+    description: "Satın alma önerilerini listele. Bekleyen, onaylanan veya reddedilen önerileri getirir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: {
+          type: "string",
+          enum: ["pending", "approved", "rejected", "ordered", "all"],
+          description: "Filtre (varsayılan: pending)",
+        },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_component_intelligence",
+    description: "Bileşen istihbaratı. Tüketim hızı, stokta kaç gün yeteceği, sipariş noktası ve trend analizi.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+        component_code: { type: "string", description: "Belirli bir bileşen kodu ile filtrele" },
       },
       required: [],
     },
@@ -372,6 +458,181 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
           })),
         })),
       };
+    }
+
+    // ── WRITE TOOLS — OAG ──
+
+    case "create_stock_movement": {
+      const code = (input.product_code || "").toLowerCase();
+      const movementType = input.movement_type;
+      const quantity = input.quantity;
+      if (!code || !movementType || !quantity || quantity <= 0) {
+        return { error: "product_code, movement_type ve quantity (>0) gerekli" };
+      }
+
+      const allProducts = await db.select().from(products);
+      const match = allProducts.find(p =>
+        (p.sku || "").toLowerCase().includes(code) ||
+        (p.name || "").toLowerCase().includes(code)
+      );
+      if (!match) return { error: `Ürün bulunamadı: "${input.product_code}"` };
+
+      const currentLevel = await ensureStockLevel(match.id);
+
+      // Validate
+      if (movementType === "to_warehouse" && currentLevel.inProduction < quantity) {
+        return { error: `Üretimde yeterli stok yok. Üretimde: ${currentLevel.inProduction}, İstenen: ${quantity}` };
+      }
+      if (movementType === "to_sales" && currentLevel.inWarehouse < quantity) {
+        return { error: `Depoda yeterli stok yok. Depoda: ${currentLevel.inWarehouse}, İstenen: ${quantity}` };
+      }
+
+      const previousState = { ...currentLevel };
+      let newInProduction = currentLevel.inProduction;
+      let newInWarehouse = currentLevel.inWarehouse;
+      let newTotalSold = currentLevel.totalSold;
+
+      switch (movementType) {
+        case "produced": newInProduction += quantity; break;
+        case "to_warehouse": newInProduction -= quantity; newInWarehouse += quantity; break;
+        case "to_sales": newInWarehouse -= quantity; newTotalSold += quantity; break;
+      }
+
+      await db.transaction(async (tx) => {
+        await tx.insert(stockMovementsV2).values({
+          productId: match.id,
+          movementType,
+          quantity,
+          previousState,
+          note: input.note || `AI Agent tarafından oluşturuldu`,
+          createdBy: "ai_agent",
+        });
+        await tx.update(stockLevels).set({
+          inProduction: newInProduction, inWarehouse: newInWarehouse,
+          totalSold: newTotalSold, updatedAt: new Date(),
+        }).where(eq(stockLevels.productId, match.id));
+      });
+
+      broadcastStockUpdate({
+        event: "stock_update",
+        productId: match.id,
+        productSku: match.sku || "?",
+        movementType,
+        quantity,
+        stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
+      });
+
+      // Proactive rules (fire-and-forget)
+      evaluateRules({ type: "stock_movement", productId: match.id })
+        .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+        .catch(err => console.error("[rules-engine]", err));
+
+      const typeLabels: Record<string, string> = {
+        produced: "Üretim girişi", to_warehouse: "Depoya transfer", to_sales: "Satış çıkışı",
+      };
+      return {
+        success: true,
+        action: typeLabels[movementType],
+        product: { sku: match.sku, name: match.name },
+        quantity,
+        newStockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
+        message: `${typeLabels[movementType]}: ${quantity} adet ${match.sku}. Yeni durum — Üretimde: ${newInProduction}, Depoda: ${newInWarehouse}, Satılan: ${newTotalSold}`,
+      };
+    }
+
+    case "update_component_stock": {
+      const code = input.component_code;
+      const newStock = input.new_stock;
+      if (!code || newStock === undefined || newStock < 0) {
+        return { error: "component_code ve new_stock (>=0) gerekli" };
+      }
+
+      const [existing] = await db.select().from(componentStock).where(eq(componentStock.componentCode, code));
+      if (!existing) return { error: `Bileşen bulunamadı: ${code}` };
+
+      const oldStock = parseFloat(existing.currentStock as string);
+      await db.update(componentStock).set({
+        currentStock: String(newStock),
+        lastCountedAt: new Date(),
+        lastCountedBy: "ai_agent",
+        updatedAt: new Date(),
+      }).where(eq(componentStock.componentCode, code));
+
+      broadcastStockUpdate({
+        event: "stock_update", productId: 0, productSku: code,
+        movementType: "component_stock_update", quantity: newStock,
+        stockLevel: { inProduction: 0, inWarehouse: newStock, totalSold: 0 },
+      });
+
+      // Proactive rules (fire-and-forget)
+      evaluateRules({ type: "component_stock_update", componentCode: code })
+        .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+        .catch(err => console.error("[rules-engine]", err));
+
+      return {
+        success: true, componentCode: code, oldStock, newStock,
+        message: `${code} stoku güncellendi: ${oldStock} → ${newStock} ${existing.unit}`,
+        reason: input.reason || "AI Agent tarafından güncellendi",
+      };
+    }
+
+    case "create_purchase_suggestion": {
+      const code = input.component_code;
+      const qty = input.suggested_quantity;
+      const reason = input.reason;
+      if (!code || !qty || !reason) {
+        return { error: "component_code, suggested_quantity ve reason gerekli" };
+      }
+
+      // Look up component info from BOM
+      const [bomItem] = await db.select().from(bomItems).where(eq(bomItems.componentCode, code));
+      if (!bomItem) return { error: `Bileşen BOM'da bulunamadı: ${code}` };
+
+      const [created] = await db.insert(purchaseSuggestions).values({
+        componentCode: code,
+        componentName: bomItem.componentName,
+        suggestedQuantity: String(qty),
+        unit: bomItem.unit,
+        reason,
+        createdBy: "ai_agent",
+      }).returning();
+
+      return {
+        success: true,
+        suggestion: {
+          id: created.id, componentCode: code, componentName: bomItem.componentName,
+          quantity: qty, unit: bomItem.unit, reason, status: "pending",
+        },
+        message: `Satın alma önerisi oluşturuldu: ${qty} ${bomItem.unit} ${bomItem.componentName} (${code}) — "${reason}"`,
+      };
+    }
+
+    case "get_purchase_suggestions": {
+      const statusFilter = input.status || "pending";
+      let query = db.select().from(purchaseSuggestions).orderBy(desc(purchaseSuggestions.createdAt));
+      if (statusFilter !== "all") {
+        query = query.where(eq(purchaseSuggestions.status, statusFilter)) as any;
+      }
+      const rows = await query;
+      return {
+        suggestions: rows.map(r => ({
+          id: r.id, componentCode: r.componentCode, componentName: r.componentName,
+          quantity: parseFloat(r.suggestedQuantity as string), unit: r.unit,
+          reason: r.reason, status: r.status,
+          createdBy: r.createdBy, createdAt: r.createdAt,
+        })),
+        count: rows.length,
+        filter: statusFilter,
+      };
+    }
+
+    case "get_component_intelligence": {
+      const sku = input.sku || "ELT.7-11";
+      const result = await computeComponentIntelligence(sku);
+      if (input.component_code) {
+        result.components = result.components.filter(c => c.code === input.component_code);
+      }
+      return result;
     }
 
     default:

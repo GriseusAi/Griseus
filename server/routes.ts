@@ -7,6 +7,7 @@ import { hashPassword } from "./index";
 import agentRouter from "./routes/agent";
 import stockPocRouter from "./routes/stock-poc";
 import bomRouter from "./routes/bom";
+import intelligenceRouter from "./routes/intelligence";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -15,6 +16,7 @@ export async function registerRoutes(
   // ── Routers ──
   app.use("/api/v1", agentRouter);
   app.use("/api/bom", bomRouter);
+  app.use("/api/bom", intelligenceRouter);
   app.use("/api/stock", stockPocRouter);
 
   // ── Auth ──

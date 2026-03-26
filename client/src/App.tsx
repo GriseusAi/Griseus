@@ -10,6 +10,7 @@ import { Toaster } from "@/components/ui/toaster";
    ┌─────────────────────────────────────────────────────┐
    │  /              → Stok Komuta Merkezi               │
    │  /stok/hareket  → Hızlı Giriş (üretim şefi)       │
+   │  /stok/urun/:sku → Ürün İstihbaratı (BOM/kapasite) │
    │  /engine        → CEO Agent                         │
    │  /login         → Giriş                             │
    └─────────────────────────────────────────────────────┘
@@ -17,6 +18,7 @@ import { Toaster } from "@/components/ui/toaster";
 
 import StokDurum from "@/pages/stok-durum";
 import StokHareket from "@/pages/stok-hareket";
+import UrunIstihbarat from "@/pages/urun-istihbarat";
 import EnginePage from "@/pages/engine";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
@@ -28,6 +30,7 @@ function App() {
         <Route path="/" component={StokDurum} />
         <Route path="/stok/durum" component={StokDurum} />
         <Route path="/stok/hareket" component={StokHareket} />
+        <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
         <Route path="/engine" component={EnginePage} />
         <Route path="/login" component={LoginPage} />
         <Route component={NotFound} />

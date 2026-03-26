@@ -16,6 +16,7 @@ const mono = "'Space Mono', monospace";
 const NAV_ITEMS = [
   { path: "/", label: "Stok Durumu", icon: "🏭" },
   { path: "/stok/hareket", label: "Hızlı Giriş", icon: "⚡" },
+  { path: "/stok/urun/ELT.7-11", label: "Ürün İstihbaratı", icon: "📊" },
   { path: "/engine", label: "CEO Agent", icon: "🤖" },
 ];
 
@@ -24,6 +25,7 @@ export default function TopNav({ connected }: { connected?: boolean }) {
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "/stok/durum";
+    if (path.startsWith("/stok/urun")) return location.startsWith("/stok/urun");
     return location === path;
   };
 

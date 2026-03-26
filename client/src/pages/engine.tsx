@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import IsometricLayers from "../components/IsometricLayers";
+import { useQueryClient } from "@tanstack/react-query";
 
 /* ── Palette ── */
 const C = {
@@ -17,10 +18,10 @@ const sans = "'DM Sans', sans-serif";
 const SUGGESTIONS = [
   "Kaç adet ELT.7-11 üretebiliriz?",
   "100 adet sipariş gelse karşılayabilir miyiz?",
-  "En kritik eksik parça ne?",
+  "Hangi bileşenlerin stoku ne zaman bitecek?",
   "Stok durumu nedir?",
-  "Brülör üretmek için ne lazım?",
-  "Darboğaz analizi yap",
+  "Üretimden depoya 5 adet transfer et",
+  "Kritik bileşenler için satın alma önerisi oluştur",
 ];
 
 interface Message {
@@ -29,8 +30,13 @@ interface Message {
   tools?: string[];
 }
 
+const WRITE_TOOLS = new Set([
+  "create_stock_movement", "update_component_stock", "create_purchase_suggestion",
+]);
+
 export default function EnginePage() {
   const [, navigate] = useLocation();
+  const qc = useQueryClient();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -59,11 +65,19 @@ export default function EnginePage() {
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Agent hatası");
+      const usedTools: string[] = data.tools_used || [];
       setMessages(prev => [...prev, {
         role: "assistant",
         content: data.response,
-        tools: data.tools_used,
+        tools: usedTools,
       }]);
+      // Invalidate caches if write tools were used
+      if (usedTools.some(t => WRITE_TOOLS.has(t))) {
+        qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
+        qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
+        qc.invalidateQueries({ queryKey: ["/api/stock/movements"] });
+        qc.invalidateQueries({ queryKey: ["/api/bom"] });
+      }
     } catch (e: any) {
       setError(e.message);
     } finally {
@@ -108,7 +122,7 @@ export default function EnginePage() {
             fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
             background: C.accentDim, color: C.accent, fontWeight: 600,
           }}>
-            7 TOOL AKTIF
+            12 TOOL AKTİF
           </span>
         </div>
       </div>

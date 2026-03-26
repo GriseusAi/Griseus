@@ -2,7 +2,8 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { bomItems, componentStock } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { broadcastStockUpdate } from "../ws";
+import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
+import { evaluateRules } from "../rules-engine";
 
 const router = Router();
 
@@ -261,6 +262,11 @@ router.post("/component-stock/update", async (req: Request, res: Response) => {
     quantity: stock,
     stockLevel: { inProduction: 0, inWarehouse: stock, totalSold: 0 },
   });
+
+  // Proactive rules evaluation (fire-and-forget)
+  evaluateRules({ type: "component_stock_update", componentCode: code })
+    .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+    .catch(err => console.error("[rules-engine]", err));
 
   res.json({ success: true, componentCode: code, newStock: stock });
 });

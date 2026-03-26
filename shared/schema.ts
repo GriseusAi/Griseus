@@ -123,3 +123,21 @@ export const componentStock = pgTable("component_stock", {
 export const insertComponentStockSchema = createInsertSchema(componentStock).omit({ id: true, updatedAt: true });
 export type InsertComponentStock = z.infer<typeof insertComponentStockSchema>;
 export type ComponentStock = typeof componentStock.$inferSelect;
+
+// --- Satın Alma Önerileri (AI Agent tarafından oluşturulur) ---
+
+export const purchaseSuggestions = pgTable("purchase_suggestions", {
+  id: serial("id").primaryKey(),
+  componentCode: text("component_code").notNull(),
+  componentName: text("component_name").notNull(),
+  suggestedQuantity: numeric("suggested_quantity").notNull(),
+  unit: text("unit").notNull(),
+  reason: text("reason").notNull(),
+  status: text("status").notNull().default("pending"), // pending | approved | rejected | ordered
+  createdBy: text("created_by").default("ai_agent"),
+  resolvedBy: text("resolved_by"),
+  resolvedAt: timestamp("resolved_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type PurchaseSuggestion = typeof purchaseSuggestions.$inferSelect;

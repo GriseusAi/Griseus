@@ -32,3 +32,26 @@ export function broadcastStockUpdate(payload: {
     }
   });
 }
+
+export function broadcastProactiveAlert(payload: {
+  event: "proactive_alert";
+  alerts: Array<{
+    id: string;
+    type: string;
+    severity: "critical" | "warning" | "info";
+    title: string;
+    message: string;
+    componentCode?: string;
+    productSku?: string;
+    suggestedAction?: string;
+    timestamp: string;
+  }>;
+}) {
+  if (!wss) return;
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msg);
+    }
+  });
+}

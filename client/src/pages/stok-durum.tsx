@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
-import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocket";
+import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, type ProactiveAlertData } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 
 /* ═══════════════════════════════════════════════════════════
@@ -317,6 +317,64 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
   );
 }
 
+/* ── Proactive Alert Panel ── */
+function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData[]; onDismiss: (id: string) => void }) {
+  if (alerts.length === 0) return null;
+  const severityIcon: Record<string, string> = { critical: "🔴", warning: "🟡", info: "🔵" };
+  return (
+    <motion.div
+      initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+      style={{
+        position: "fixed", top: 60, right: 16, zIndex: 200, width: 360,
+        display: "flex", flexDirection: "column", gap: 8,
+      }}
+    >
+      <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, fontWeight: 700, letterSpacing: 1, marginBottom: 2 }}>
+        ⚡ PROACTIVE INTELLIGENCE
+      </div>
+      {alerts.map(a => (
+        <motion.div key={a.id}
+          initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
+          exit={{ opacity: 0, x: 20 }}
+          style={{
+            padding: "12px 14px", borderRadius: 12,
+            background: a.severity === "critical" ? "rgba(239,68,68,0.08)" : a.severity === "warning" ? "rgba(251,191,36,0.06)" : "rgba(96,165,250,0.06)",
+            border: `1px solid ${a.severity === "critical" ? C.errBorder : a.severity === "warning" ? C.warnBorder : C.blueBorder}`,
+            backdropFilter: "blur(16px)",
+          }}
+        >
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+              <span style={{ fontSize: 12 }}>{severityIcon[a.severity] || "🔵"}</span>
+              <span style={{
+                fontSize: 11, fontWeight: 700, fontFamily: mono,
+                color: a.severity === "critical" ? C.err : a.severity === "warning" ? C.warn : C.blue,
+              }}>
+                {a.title}
+              </span>
+            </div>
+            <button onClick={() => onDismiss(a.id)} style={{
+              background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12, padding: 0,
+            }}>✕</button>
+          </div>
+          <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.5, marginBottom: a.suggestedAction ? 8 : 0 }}>
+            {a.message}
+          </div>
+          {a.suggestedAction && (
+            <div style={{
+              fontSize: 10, fontFamily: mono, fontWeight: 600, padding: "4px 10px", borderRadius: 6,
+              background: "rgba(99,102,241,0.1)", color: C.accent, display: "inline-block",
+              border: `1px solid rgba(99,102,241,0.2)`,
+            }}>
+              → {a.suggestedAction}
+            </div>
+          )}
+        </motion.div>
+      ))}
+    </motion.div>
+  );
+}
+
 /* ── Toast ── */
 function ToastStack({ toasts }: { toasts: Toast[] }) {
   if (toasts.length === 0) return null;
@@ -350,6 +408,7 @@ export default function StokDurum() {
   const [actionType, setActionType] = useState<string | null>(null);
   const [actionQty, setActionQty] = useState("");
   const [resetDone, setResetDone] = useState(false);
+  const [proactiveAlerts, setProactiveAlerts] = useState<ProactiveAlertData[]>([]);
   const flashTimer = useRef<ReturnType<typeof setTimeout>>();
   const toastIdRef = useRef(0);
 
@@ -428,7 +487,22 @@ export default function StokDurum() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, [qc, productId]);
 
-  const { connected } = useStockWebSocket(handleStockUpdate);
+  const handleProactiveAlert = useCallback((data: ProactiveAlertEvent) => {
+    setProactiveAlerts(prev => {
+      const newAlerts = data.alerts.filter(a => !prev.some(p => p.id === a.id));
+      return [...newAlerts, ...prev].slice(0, 5); // Keep max 5 alerts
+    });
+    // Auto-dismiss non-critical after 15s
+    for (const alert of data.alerts) {
+      if (alert.severity !== "critical") {
+        setTimeout(() => {
+          setProactiveAlerts(prev => prev.filter(a => a.id !== alert.id));
+        }, 15000);
+      }
+    }
+  }, []);
+
+  const { connected } = useStockWebSocket(handleStockUpdate, handleProactiveAlert);
 
   // Mutations
   const undoMutation = useMutation({
@@ -468,6 +542,10 @@ export default function StokDurum() {
       <link href="https://fonts.googleapis.com/css2?family=DM+Sans:wght@400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <ToastStack toasts={toasts} />
+      <ProactiveAlertPanel
+        alerts={proactiveAlerts}
+        onDismiss={(id) => setProactiveAlerts(prev => prev.filter(a => a.id !== id))}
+      />
       <TopNav connected={connected} />
 
       <div style={{ maxWidth: 1100, margin: "0 auto", padding: "0 16px" }}>

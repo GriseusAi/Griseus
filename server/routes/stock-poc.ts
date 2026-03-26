@@ -2,12 +2,13 @@ import { Router } from "express";
 import { db } from "../db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { products, stockLevels, stockMovementsV2, bomItems, componentStock } from "@shared/schema";
-import { broadcastStockUpdate } from "../ws";
+import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
+import { evaluateRules } from "../rules-engine";
 
 const stockPocRouter = Router();
 
 // ── Lazy stock_levels creation — row created on first movement ──────
-async function ensureStockLevel(productId: number, tx?: any): Promise<{
+export async function ensureStockLevel(productId: number, tx?: any): Promise<{
   inProduction: number; inWarehouse: number; totalSold: number;
 }> {
   const d = tx || db;
@@ -221,6 +222,11 @@ stockPocRouter.post("/movements", async (req, res) => {
         stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
       });
 
+      // Proactive rules evaluation (fire-and-forget)
+      evaluateRules({ type: "stock_movement", productId: product_id })
+        .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+        .catch(err => console.error("[rules-engine]", err));
+
       return res.json({
         success: true,
         stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
@@ -330,6 +336,11 @@ stockPocRouter.post("/movements", async (req, res) => {
       quantity,
       stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
     });
+
+    // Proactive rules evaluation (fire-and-forget)
+    evaluateRules({ type: "stock_movement", productId: product_id })
+      .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+      .catch(err => console.error("[rules-engine]", err));
 
     res.json({
       success: true,
