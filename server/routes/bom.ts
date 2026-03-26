@@ -194,6 +194,7 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
         currentStock: i.currentStock,
         maxProducts,
         status:
+          i.currentStock < 0 ? "critical" :
           maxProducts === null ? "N/A" :
           maxProducts === 0 ? "critical" :
           maxProducts < 50 ? "critical" :

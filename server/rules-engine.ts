@@ -4,8 +4,8 @@
  * Implements the DECIDE phase of the OODA loop.
  */
 import { db } from "./db";
-import { stockLevels, products, purchaseSuggestions } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { stockLevels, products, purchaseSuggestions, componentStock } from "@shared/schema";
+import { eq, and, lt } from "drizzle-orm";
 import { computeComponentIntelligence } from "./routes/intelligence";
 import { computeProductionCapacity, getBomWithStock } from "./routes/bom";
 
@@ -60,6 +60,32 @@ export async function evaluateRules(trigger: {
           timestamp: now,
         });
       }
+    }
+
+    // ── Rule 1b: Negative Component Stock ──
+    // After production, some components may have gone negative — critical alert
+    if (trigger.type === "stock_movement") {
+      try {
+        const negatives = await db.select({
+          code: componentStock.componentCode,
+          stock: componentStock.currentStock,
+        })
+          .from(componentStock)
+          .where(lt(componentStock.currentStock, "0"));
+
+        for (const comp of negatives) {
+          alerts.push({
+            id: makeAlertId(),
+            type: "negative_stock",
+            severity: "critical",
+            title: "Negatif Stok!",
+            message: `${comp.code} stoku ${comp.stock} adete düştü! Gerçek stok ekside — acil tedarik gerekli.`,
+            componentCode: comp.code,
+            suggestedAction: `${comp.code} için acil sipariş oluştur`,
+            timestamp: now,
+          });
+        }
+      } catch { /* skip */ }
     }
 
     // ── Rule 2: Production Capacity Critical ──

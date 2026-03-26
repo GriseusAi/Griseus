@@ -539,8 +539,9 @@ export default function UrunIstihbarat() {
                   </div>
                   <div style={{
                     fontFamily: mono, fontSize: 12, fontWeight: 700,
-                    color: c.currentStock === 0 ? C.err : c.currentStock < 100 ? C.warn : C.white,
+                    color: c.currentStock < 0 ? C.err : c.currentStock === 0 ? C.err : c.currentStock < 100 ? C.warn : C.white,
                   }}>
+                    {c.currentStock < 0 && "⚠️ "}
                     {c.currentStock % 1 === 0 ? c.currentStock : c.currentStock.toFixed(2)}
                   </div>
                   <div style={{

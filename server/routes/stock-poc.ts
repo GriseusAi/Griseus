@@ -304,10 +304,10 @@ stockPocRouter.post("/movements", async (req, res) => {
           const reqQty = parseFloat(item.requiredQty as string);
           const totalDeduct = reqQty * quantity;
 
-          // Stoku düş
+          // Stoku düş (negatife düşebilir — gerçek durumu yansıtır)
           await tx.execute(sql`
             UPDATE component_stock
-            SET current_stock = GREATEST(0, CAST(current_stock AS numeric) - ${totalDeduct}),
+            SET current_stock = CAST(current_stock AS numeric) - ${totalDeduct},
                 updated_at = NOW()
             WHERE component_code = ${item.code}
           `);
@@ -318,11 +318,14 @@ stockPocRouter.post("/movements", async (req, res) => {
             .from(componentStock)
             .where(eq(componentStock.componentCode, item.code));
 
+          const remaining = updated ? parseFloat(updated.currentStock as string) : 0;
+
           bomDeductions.push({
             code: item.code,
             name: item.name,
             deducted: totalDeduct,
-            remaining: updated ? parseFloat(updated.currentStock as string) : 0,
+            remaining,
+            negative: remaining < 0,
           });
         }
       }
@@ -342,12 +345,25 @@ stockPocRouter.post("/movements", async (req, res) => {
       .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
       .catch(err => console.error("[rules-engine]", err));
 
+    const negativeComponents = bomDeductions.filter((d: any) => d.negative);
+
     res.json({
       success: true,
       stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
       ...(bomDeductions.length > 0 && {
         bomDeductions,
         bomMessage: `${bomDeductions.length} bileşenin stoku reçeteye göre düşürüldü (${quantity} adet üretim)`,
+      }),
+      ...(negativeComponents.length > 0 && {
+        stockWarning: {
+          type: "negative_stock",
+          message: `⚠️ ${negativeComponents.length} bileşen negatif stokta! Acil tedarik gerekli.`,
+          components: negativeComponents.map((c: any) => ({
+            code: c.code,
+            name: c.name,
+            stock: c.remaining,
+          })),
+        },
       }),
     });
   } catch (error: any) {

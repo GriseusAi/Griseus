@@ -182,9 +182,10 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
 
 /* ── Component Card (Ontology Object) ── */
 function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onClick: () => void; isFlashing: boolean }) {
-  const statusColor = comp.status === "critical" ? C.err : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok;
-  const statusBg = comp.status === "critical" ? C.errDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim;
-  const statusLabel = comp.status === "critical" ? "KRİTİK" : comp.status === "warning" ? "DÜŞÜK" : comp.status === "ok" ? "YETERLİ" : "BOL";
+  const isNegative = comp.currentStock < 0;
+  const statusColor = isNegative ? C.err : comp.status === "critical" ? C.err : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok;
+  const statusBg = isNegative ? C.errDim : comp.status === "critical" ? C.errDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim;
+  const statusLabel = isNegative ? "NEGATİF" : comp.status === "critical" ? "KRİTİK" : comp.status === "warning" ? "DÜŞÜK" : comp.status === "ok" ? "YETERLİ" : "BOL";
   const maxP = comp.maxProducts ?? 0;
   // Bar: percentage of 500 max for visual
   const barPct = Math.min(maxP / 500, 1);
