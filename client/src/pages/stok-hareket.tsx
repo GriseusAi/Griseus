@@ -7,14 +7,14 @@ import TopNav from "@/components/top-nav";
 
 /* ── Palette ── */
 const C = {
-  bg: "#06060a", surface: "rgba(255,255,255,0.02)", surfaceHover: "rgba(255,255,255,0.04)",
-  border: "rgba(255,255,255,0.06)", borderActive: "rgba(99,102,241,0.4)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.15)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.12)", okBorder: "rgba(52,211,153,0.25)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.10)", warnBorder: "rgba(251,191,36,0.25)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.08)", errBorder: "rgba(239,68,68,0.2)",
+  bg: "#050505", surface: "rgba(255,255,255,0.008)", surfaceHover: "rgba(255,255,255,0.025)",
+  border: "rgba(255,255,255,0.04)", borderActive: "rgba(255,255,255,0.12)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.08)",
+  ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
+  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
+  err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
   blue: "#60a5fa", purple: "#a78bfa",
-  white: "#f0f0f5", mid: "#8888a0", dim: "#4a4a60",
+  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
 const mono = "'Space Mono', monospace";
 const sans = "'DM Sans', sans-serif";

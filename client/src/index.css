@@ -9,20 +9,20 @@
   --opaque-button-border-intensity: 8;
   --elevate-1: rgba(255,255,255, .04);
   --elevate-2: rgba(255,255,255, .08);
-  /* bg: #0F172A deep navy */
-  --background: 222 47% 11%;
+  /* bg: near-black glassmorphism */
+  --background: 0 0% 2%;
   /* foreground: #F1F5F9 near-white */
   --foreground: 210 40% 96%;
-  /* border: subtle white */
-  --border: 217 33% 17%;
-  /* card: #1A1A2E deep indigo */
-  --card: 240 28% 14%;
+  /* border: ultra-subtle */
+  --border: 0 0% 8%;
+  /* card: transparent glass */
+  --card: 0 0% 4%;
   --card-foreground: 210 40% 96%;
-  --card-border: 217 33% 17%;
-  /* sidebar: dark */
-  --sidebar: 240 28% 11%;
+  --card-border: 0 0% 8%;
+  /* sidebar: transparent glass */
+  --sidebar: 0 0% 3%;
   --sidebar-foreground: 210 40% 96%;
-  --sidebar-border: 217 33% 17%;
+  --sidebar-border: 0 0% 8%;
   /* sidebar active: blue accent #3B82F6 */
   --sidebar-primary: 217 91% 60%;
   --sidebar-primary-foreground: 0 0% 100%;
@@ -30,20 +30,20 @@
   --sidebar-accent-foreground: 210 40% 96%;
   --sidebar-ring: 217 91% 60%;
   /* popover */
-  --popover: 240 28% 14%;
+  --popover: 0 0% 4%;
   --popover-foreground: 210 40% 96%;
-  --popover-border: 217 33% 17%;
+  --popover-border: 0 0% 8%;
   /* primary: #3B82F6 blue */
   --primary: 217 91% 60%;
   --primary-foreground: 0 0% 100%;
-  /* secondary: dark surface */
-  --secondary: 217 33% 17%;
+  /* secondary: transparent surface */
+  --secondary: 0 0% 8%;
   --secondary-foreground: 210 40% 80%;
   /* muted */
-  --muted: 217 33% 17%;
-  --muted-foreground: 215 20% 55%;
+  --muted: 0 0% 8%;
+  --muted-foreground: 215 20% 50%;
   /* accent */
-  --accent: 217 33% 17%;
+  --accent: 0 0% 8%;
   --accent-foreground: 210 40% 96%;
   /* semantic */
   --destructive: 0 62% 55%;
@@ -55,7 +55,7 @@
   --info: 217 91% 60%;
   --info-foreground: 0 0% 100%;
   /* input */
-  --input: 217 33% 20%;
+  --input: 0 0% 10%;
   --ring: 217 91% 60%;
   /* charts — blue/emerald/amber */
   --chart-1: 217 91% 60%;
@@ -253,10 +253,11 @@
 
   /* Glass effect — glassmorphism */
   .glass {
-    background: hsl(var(--card) / 0.60);
-    backdrop-filter: blur(16px);
-    -webkit-backdrop-filter: blur(16px);
-    border: 1px solid rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.008);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid rgba(255, 255, 255, 0.04);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
   }
 
   /* Gradient text */
@@ -399,10 +400,11 @@
 
 /* Glassmorphism card utility */
 .glass-card {
-  background: rgba(26, 26, 46, 0.6);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  background: rgba(255, 255, 255, 0.008);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.04);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.02);
 }
 
 /* Focus glow for inputs */

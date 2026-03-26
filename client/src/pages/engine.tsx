@@ -5,12 +5,12 @@ import { useQueryClient } from "@tanstack/react-query";
 
 /* ── Palette ── */
 const C = {
-  bg: "#08080c", surface: "rgba(255,255,255,0.02)", card: "rgba(255,255,255,0.03)",
-  border: "rgba(255,255,255,0.06)", borderActive: "rgba(99,102,241,0.4)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.15)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.12)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.08)",
-  white: "#f0f0f5", mid: "#8888a0", dim: "#4a4a60",
+  bg: "#050505", surface: "rgba(255,255,255,0.008)", card: "rgba(255,255,255,0.01)",
+  border: "rgba(255,255,255,0.04)", borderActive: "rgba(255,255,255,0.12)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.08)",
+  ok: "#34d399", okDim: "rgba(52,211,153,0.06)",
+  err: "#ef4444", errDim: "rgba(239,68,68,0.05)",
+  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
 };
 const mono = "'JetBrains Mono', 'Space Mono', monospace";
 const sans = "'DM Sans', sans-serif";

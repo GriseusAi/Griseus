@@ -1,11 +1,11 @@
 import { useLocation } from "wouter";
 
 const C = {
-  bg: "rgba(8,8,12,0.95)",
-  border: "rgba(255,255,255,0.06)",
+  bg: "rgba(5,5,5,0.6)",
+  border: "rgba(255,255,255,0.04)",
   accent: "#818cf8",
-  accentDim: "rgba(99,102,241,0.15)",
-  borderActive: "rgba(99,102,241,0.4)",
+  accentDim: "rgba(99,102,241,0.08)",
+  borderActive: "rgba(255,255,255,0.12)",
   white: "#f0f0f5",
   mid: "#8888a0",
   dim: "#4a4a60",
@@ -33,7 +33,7 @@ export default function TopNav({ connected }: { connected?: boolean }) {
     <nav style={{
       padding: "0 16px", height: 48, display: "flex", alignItems: "center",
       justifyContent: "space-between", borderBottom: `1px solid ${C.border}`,
-      background: C.bg, backdropFilter: "blur(12px)",
+      background: C.bg, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
       position: "sticky", top: 0, zIndex: 50,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
