@@ -643,7 +643,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       {
         type: "web_search_20250305",
         name: "web_search",
-        max_uses: 5,
+        max_uses: 3,
       },
     ];
 
@@ -655,25 +655,36 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       messages,
     });
 
-    // Tool-use loop (max 10 iterations)
+    // Helper: extract best text from response content
+    const extractText = (content: any[]) => {
+      const texts = content.filter((b: any) => b.type === "text").map((b: any) => b.text);
+      return texts.join("\n") || null;
+    };
+
+    // Tool-use loop (max 5 iterations, with rate limit protection)
     let iterations = 0;
-    while (response.stop_reason === "tool_use" && iterations < 10) {
+    let lastGoodText = extractText(response.content);
+
+    while (response.stop_reason === "tool_use" && iterations < 5) {
       iterations++;
       const assistantContent = response.content;
+
+      // Collect custom tool calls (not web_search — that's server-side)
       const toolUseBlocks = assistantContent.filter(
-        (b: any) => b.type === "tool_use"
+        (b: any) => b.type === "tool_use" && b.name !== "web_search"
       );
 
-      // Web search results come back as server_tool_use blocks — they are handled
-      // automatically by Anthropic. We only need to execute our custom tools.
+      // Track all tool names used
+      for (const b of assistantContent.filter((b: any) => b.type === "tool_use" || b.type === "server_tool_use")) {
+        toolsUsed.push((b as any).name);
+      }
+
+      // If only web_search was called (no custom tools), no need to loop — server handled it
+      if (toolUseBlocks.length === 0) break;
+
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const toolBlock of toolUseBlocks) {
         const block = toolBlock as any;
-        toolsUsed.push(block.name);
-
-        // Skip web_search — Anthropic handles it server-side, results come in content
-        if (block.name === "web_search") continue;
-
         try {
           const result = await callTool(block.name, block.input as Record<string, any>);
           toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
@@ -684,28 +695,35 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       }
 
       messages.push({ role: "assistant", content: assistantContent });
-      if (toolResults.length > 0) {
-        messages.push({ role: "user", content: toolResults });
-      }
+      messages.push({ role: "user", content: toolResults });
 
-      response = await client.messages.create({
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 8192,
-        system: SYSTEM_PROMPT,
-        tools: allTools,
-        messages,
-      });
+      try {
+        response = await client.messages.create({
+          model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+          max_tokens: 8192,
+          system: SYSTEM_PROMPT,
+          tools: allTools,
+          messages,
+        });
+        const newText = extractText(response.content);
+        if (newText) lastGoodText = newText;
+      } catch (loopErr: any) {
+        // Rate limit in loop — return whatever text we have so far
+        console.error("[agent/chat] Loop error:", loopErr.status, loopErr.message);
+        if (lastGoodText) {
+          return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı (rate limit)*", tools_used: toolsUsed });
+        }
+        throw loopErr; // re-throw if we have nothing
+      }
     }
 
-    const textBlock = response.content.find((b) => b.type === "text");
-    const responseText = textBlock && "text" in textBlock ? textBlock.text : "Cevap üretilemedi.";
-
+    const responseText = extractText(response.content) || lastGoodText || "Cevap üretilemedi.";
     res.json({ response: responseText, tools_used: toolsUsed });
   } catch (err: any) {
     console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);
     if (err.status === 429) {
-      return res.status(429).json({
-        response: "⏳ **Rate limit aşıldı** — Çok fazla istek gönderildi. Lütfen 30-60 saniye bekleyip tekrar deneyin.",
+      return res.json({
+        response: "⏳ **Yoğunluk** — API limiti aşıldı. 30 saniye bekleyip tekrar deneyin.",
         tools_used: [],
       });
     }
