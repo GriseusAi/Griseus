@@ -1,7 +1,5 @@
-import { usePageMeta } from "@/hooks/use-page-meta";
-import { AdminSidebar } from "@/components/admin-sidebar";
-import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { useState } from "react";
+import { useLocation } from "wouter";
 
 /* ───────────────────────────────────────────────────────
    Palantir-style Isometric Platform View for Griseus
@@ -443,56 +441,52 @@ function PlatformIsometric() {
 }
 
 export default function AdminPage() {
-  usePageMeta("Griseus Admin", "Platform architecture and administration");
+  const [, navigate] = useLocation();
 
   return (
-    <SidebarProvider>
-      <div className="flex min-h-screen w-full" style={{ background: "#08080c" }}>
-        <AdminSidebar />
-        <SidebarInset className="flex-1" style={{ background: "#08080c" }}>
-          <div className="flex flex-col min-h-screen">
-            {/* Header bar */}
-            <header className="flex items-center justify-between px-6 py-4 border-b border-white/5">
-              <div className="flex items-center gap-3">
-                <div className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center">
-                  <span className="text-white text-xs font-bold">G</span>
-                </div>
-                <div>
-                  <h1 className="text-sm font-semibold text-white">Griseus Admin</h1>
-                  <p className="text-[10px] text-white/40">Çukurova Isı Sistemleri</p>
-                </div>
-              </div>
-              <div className="flex items-center gap-4">
-                <span className="text-[10px] text-white/30 uppercase tracking-widest">Ontology Engine v1</span>
-                <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
-              </div>
-            </header>
-
-            {/* Main isometric view */}
-            <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
-              <PlatformIsometric />
-            </div>
-
-            {/* Bottom legend */}
-            <footer className="px-6 py-3 border-t border-white/5 flex items-center gap-6 flex-wrap">
-              {[
-                { color: "bg-blue-500", label: "Application" },
-                { color: "bg-amber-500", label: "Automation" },
-                { color: "bg-emerald-500", label: "Agent" },
-                { color: "bg-purple-500", label: "IDE / Engine" },
-              ].map(item => (
-                <div key={item.label} className="flex items-center gap-2">
-                  <div className={`h-2 w-2 rounded-full ${item.color}`} />
-                  <span className="text-[10px] text-white/50">{item.label}</span>
-                </div>
-              ))}
-              <div className="ml-auto text-[10px] text-white/20">
-                Hover nodes to explore connections
-              </div>
-            </footer>
+    <div className="flex flex-col min-h-screen w-full" style={{ background: "#08080c" }}>
+      {/* Header bar */}
+      <header className="flex items-center justify-between px-6 py-4 border-b border-white/5">
+        <div className="flex items-center gap-3">
+          <div
+            className="h-8 w-8 rounded-lg bg-gradient-to-br from-blue-600 to-purple-600 flex items-center justify-center cursor-pointer"
+            onClick={() => navigate("/")}
+          >
+            <span className="text-white text-xs font-bold">G</span>
           </div>
-        </SidebarInset>
+          <div>
+            <h1 className="text-sm font-semibold text-white">Griseus Admin</h1>
+            <p className="text-[10px] text-white/40">Çukurova Isı Sistemleri</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-4">
+          <span className="text-[10px] text-white/30 uppercase tracking-widest">Ontology Engine v1</span>
+          <div className="h-2 w-2 rounded-full bg-emerald-500 animate-pulse" />
+        </div>
+      </header>
+
+      {/* Main isometric view */}
+      <div className="flex-1 flex items-center justify-center p-4 overflow-auto">
+        <PlatformIsometric />
       </div>
-    </SidebarProvider>
+
+      {/* Bottom legend */}
+      <footer className="px-6 py-3 border-t border-white/5 flex items-center gap-6 flex-wrap">
+        {[
+          { color: "bg-blue-500", label: "Application" },
+          { color: "bg-amber-500", label: "Automation" },
+          { color: "bg-emerald-500", label: "Agent" },
+          { color: "bg-purple-500", label: "IDE / Engine" },
+        ].map(item => (
+          <div key={item.label} className="flex items-center gap-2">
+            <div className={`h-2 w-2 rounded-full ${item.color}`} />
+            <span className="text-[10px] text-white/50">{item.label}</span>
+          </div>
+        ))}
+        <div className="ml-auto text-[10px] text-white/20">
+          Hover nodes to explore connections
+        </div>
+      </footer>
+    </div>
   );
 }
