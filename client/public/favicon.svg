@@ -1,15 +1,10 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
-  <defs>
-    <linearGradient id="g-grad" x1="0%" y1="0%" x2="100%" y2="100%">
-      <stop offset="0%" stop-color="#3B82F6"/>
-      <stop offset="100%" stop-color="#10B981"/>
-    </linearGradient>
-    <filter id="glow">
-      <feGaussianBlur stdDeviation="1.2" result="blur"/>
-      <feComposite in="SourceGraphic" in2="blur" operator="over"/>
-    </filter>
-  </defs>
-  <rect width="32" height="32" rx="7" fill="#0F172A"/>
-  <rect x="0.5" y="0.5" width="31" height="31" rx="6.5" fill="none" stroke="url(#g-grad)" stroke-width="0.6" opacity="0.3"/>
-  <text x="16" y="23.5" font-family="Inter, system-ui, sans-serif" font-size="21" font-weight="800" fill="url(#g-grad)" text-anchor="middle" filter="url(#glow)">G</text>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100">
+  <rect width="100" height="100" rx="12" fill="#1a1a1a"/>
+  <g fill="none" stroke="white" stroke-width="3" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="30,15 75,10 85,50 65,88 20,70 15,40"/>
+    <line x1="30" y1="15" x2="45" y2="55"/>
+    <line x1="15" y1="40" x2="45" y2="55"/>
+    <line x1="20" y1="70" x2="45" y2="55"/>
+    <line x1="45" y1="55" x2="75" y2="10"/>
+  </g>
 </svg>
