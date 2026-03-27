@@ -123,12 +123,26 @@ Kullanıcı "ya şöyle olursa?" sorduğunda:
 - Her cevabı "📋 Önerilen Aksiyonlar:" ile bitir (Acil / Bu Hafta / Tedarik)
 - CEO'ya rapor veriyorsun — kısa, somut, veri odaklı
 
+═══ WEB ARAŞTIRMA YETENEĞİN ═══
+
+web_search tool'un var — internetten gerçek zamanlı araştırma yapabilirsin:
+- Rakip analizi: Türkiye HVAC sektörü, rakip firmalar, pazar payları
+- Sektör trendleri: Hammadde fiyatları, döviz kurları, enerji maliyetleri
+- Tedarikçi araştırması: Alternatif tedarikçiler, fiyat karşılaştırmaları
+- Regülasyon: Yeni standartlar, CE/TSE gereklilikleri
+- Pazar istihbaratı: İhracat fırsatları, yeni pazarlar, talep trendleri
+
+Kullanıcı dış dünya hakkında soru sorduğunda (rakipler, pazar, sektör, fiyatlar, haberler) web_search kullan.
+İç veri soruları (stok, BOM, kapasite) için ontology tool'larını kullan.
+İkisini birleştirerek en güçlü analizi sun — iç veri + dış istihbarat = tam resim.
+
 ═══ SANA SORU SORULDUĞUNDA ═══
 
 "Sen neyi biliyorsun?" tarzı sorulara cevabın:
 - Ben Griseus Operasyonel İstihbarat Platformuyum
 - Ontology-driven çalışırım: Ürünler, BOM, bileşenler, stok, üretim kapasitesi, tüketim trendleri — hepsini bağlantılı takip ederim
-- 12 farklı tool ile canlı veri sorgular, simülasyon yapar, what-if analizi çalıştırır, ve gerçek aksiyonlar alabilirim
+- 12+ tool ile canlı veri sorgular, simülasyon yapar, what-if analizi çalıştırır, ve gerçek aksiyonlar alabilirim
+- Web araştırma yapabilirim: Rakipler, sektör trendleri, pazar istihbaratı, tedarikçi analizi
 - Sadece "veri gösterici" değilim — problemi tespit eder, çözüm önerir, ve istersen aksiyonu kendim uygularım
 - Palantir Foundry'nin OODA döngüsü mantığıyla çalışırım: Gözlem → Değerlendirme → Karar → Aksiyon`;
 
@@ -729,11 +743,21 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     const toolsUsed: string[] = [];
 
+    // All tools: custom ontology tools + Anthropic built-in web search
+    const allTools: any[] = [
+      ...TOOLS,
+      {
+        type: "web_search_20250305",
+        name: "web_search",
+        max_uses: 5,
+      },
+    ];
+
     let response = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: SYSTEM_PROMPT,
-      tools: TOOLS,
+      tools: allTools,
       messages,
     });
 
@@ -743,29 +767,38 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       iterations++;
       const assistantContent = response.content;
       const toolUseBlocks = assistantContent.filter(
-        (b): b is Anthropic.ContentBlock & { type: "tool_use" } => b.type === "tool_use"
+        (b: any) => b.type === "tool_use"
       );
 
+      // Web search results come back as server_tool_use blocks — they are handled
+      // automatically by Anthropic. We only need to execute our custom tools.
       const toolResults: Anthropic.ToolResultBlockParam[] = [];
       for (const toolBlock of toolUseBlocks) {
-        toolsUsed.push(toolBlock.name);
+        const block = toolBlock as any;
+        toolsUsed.push(block.name);
+
+        // Skip web_search — Anthropic handles it server-side, results come in content
+        if (block.name === "web_search") continue;
+
         try {
-          const result = await callTool(toolBlock.name, toolBlock.input as Record<string, any>);
-          toolResults.push({ type: "tool_result", tool_use_id: toolBlock.id, content: JSON.stringify(result) });
+          const result = await callTool(block.name, block.input as Record<string, any>);
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
         } catch (err: any) {
-          toolResults.push({ type: "tool_result", tool_use_id: toolBlock.id,
+          toolResults.push({ type: "tool_result", tool_use_id: block.id,
             content: JSON.stringify({ error: err.message || "Tool execution failed" }), is_error: true });
         }
       }
 
       messages.push({ role: "assistant", content: assistantContent });
-      messages.push({ role: "user", content: toolResults });
+      if (toolResults.length > 0) {
+        messages.push({ role: "user", content: toolResults });
+      }
 
       response = await client.messages.create({
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
         max_tokens: 4096,
         system: SYSTEM_PROMPT,
-        tools: TOOLS,
+        tools: allTools,
         messages,
       });
     }
