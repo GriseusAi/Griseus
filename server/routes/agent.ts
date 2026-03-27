@@ -755,7 +755,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     let response = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 16000,
       system: SYSTEM_PROMPT,
       tools: allTools,
       messages,
@@ -796,7 +796,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
       response = await client.messages.create({
         model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 4096,
+        max_tokens: 16000,
         system: SYSTEM_PROMPT,
         tools: allTools,
         messages,
