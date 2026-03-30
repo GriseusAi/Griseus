@@ -8,14 +8,15 @@ import { ensureStockLevel } from "./stock-poc";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
+import { buildDynamicContext } from "../rag";
 
 const router = Router();
 
 // ══════════════════════════════════════════════════════════════════════
-// SYSTEM PROMPT — Stock Intelligence focused
+// CORE PROMPT — slim, domain knowledge injected dynamically via RAG
 // ══════════════════════════════════════════════════════════════════════
 
-const SYSTEM_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin Operasyonel İstihbarat Platformu. Ontology-driven, OODA (Observe→Orient→Decide→Act) mantığıyla çalışan bir karar destek AI'ısın.
+const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin Operasyonel İstihbarat Platformu. Ontology-driven, OODA (Observe→Orient→Decide→Act) mantığıyla çalışan bir karar destek AI'ısın.
 
 KİMLİĞİN: Ontology-Augmented Generation (OAG) ajanı. Yapılandırılmış varlıklara erişir, aksiyon alabilir, web araştırma yapabilir. Insight→Action mesafesi SIFIR.
 
@@ -23,11 +24,6 @@ KİMLİĞİN: Ontology-Augmented Generation (OAG) ajanı. Yapılandırılmış v
 - Semantic: Ürün→BOM→43 Bileşen→Tedarikçi ilişkileri
 - Kinetic: Stok hareketi, güncelleme, sipariş önerisi aksiyonları
 - Dynamic: Rules engine, trend analizi, darboğaz tespiti, what-if
-
-ŞİRKET: Çukurova Isı, 30+ yıllık HVAC üreticisi, Adana, ~34K adet/yıl
-- Ana ürün: ELT.7-11 (43 bileşen, 3 tier)
-- Brülör (27.125) yarı mamül, 5 alt parçadan monte edilir
-- Kritik darboğaz: 27.031 Reflektör Tutucu (adet başı 2 gerekli)
 
 ÇALIŞMA PRENSİBİ:
 1. Çapraz tool kullan — tek tool ile yetinme
@@ -38,7 +34,6 @@ KİMLİĞİN: Ontology-Augmented Generation (OAG) ajanı. Yapılandırılmış v
 WEB ARAŞTIRMA: Rakipler, sektör, fiyatlar, pazar soruları → web_search kullan. İç veri soruları → ontology tool'ları kullan. İkisini birleştir.
 
 FORMAT: ## başlık, **kalın** sayılar, ⚠️ uyarılar, tablolar. Kısa ve somut — CEO'ya rapor.`;
-
 
 // ══════════════════════════════════════════════════════════════════════
 // TOOLS — 7 stock intelligence tools
@@ -637,6 +632,18 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     const toolsUsed: string[] = [];
 
+    // ── RAG: Dynamic context injection ──
+    let systemPrompt = CORE_PROMPT;
+    try {
+      const ragContext = await buildDynamicContext(message);
+      if (ragContext) {
+        systemPrompt = CORE_PROMPT + "\n" + ragContext;
+        console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
+      }
+    } catch (ragErr: any) {
+      console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
+    }
+
     // All tools: custom ontology tools + Anthropic built-in web search
     const allTools: any[] = [
       ...TOOLS,
@@ -650,7 +657,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     let response = await client.messages.create({
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
       max_tokens: 8192,
-      system: SYSTEM_PROMPT,
+      system: systemPrompt,
       tools: allTools,
       messages,
     });
@@ -701,7 +708,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
         response = await client.messages.create({
           model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
           max_tokens: 8192,
-          system: SYSTEM_PROMPT,
+          system: systemPrompt,
           tools: allTools,
           messages,
         });
@@ -711,14 +718,14 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
         // Rate limit in loop — return whatever text we have so far
         console.error("[agent/chat] Loop error:", loopErr.status, loopErr.message);
         if (lastGoodText) {
-          return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı (rate limit)*", tools_used: toolsUsed });
+          return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı (rate limit)*", tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
         }
         throw loopErr; // re-throw if we have nothing
       }
     }
 
     const responseText = extractText(response.content) || lastGoodText || "Cevap üretilemedi.";
-    res.json({ response: responseText, tools_used: toolsUsed });
+    res.json({ response: responseText, tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
   } catch (err: any) {
     console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);
     if (err.status === 429) {

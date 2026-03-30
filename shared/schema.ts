@@ -1,7 +1,23 @@
 import { sql } from "drizzle-orm";
-import { pgTable, text, varchar, integer, timestamp, boolean, serial, numeric, jsonb } from "drizzle-orm/pg-core";
+import { pgTable, text, varchar, integer, timestamp, boolean, serial, numeric, jsonb, index, customType } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// ═══════════════════════════════════════════════════════════
+// Custom pgvector type for Drizzle
+// ═══════════════════════════════════════════════════════════
+
+const vector = customType<{ data: number[]; driverData: string }>({
+  dataType() {
+    return "vector(1024)";
+  },
+  toDriver(value: number[]): string {
+    return `[${value.join(",")}]`;
+  },
+  fromDriver(value: string): number[] {
+    return value.replace(/[\[\]]/g, "").split(",").map(Number);
+  },
+});
 
 // ═══════════════════════════════════════════════════════════
 // GRISEUS — Minimal Schema (8 tables)
@@ -141,3 +157,17 @@ export const purchaseSuggestions = pgTable("purchase_suggestions", {
 });
 
 export type PurchaseSuggestion = typeof purchaseSuggestions.$inferSelect;
+
+// --- Knowledge Base (RAG — pgvector) ---
+
+export const knowledgeChunks = pgTable("knowledge_chunks", {
+  id: serial("id").primaryKey(),
+  content: text("content").notNull(),
+  category: text("category").notNull(), // bom, production_rules, supplier, competitor, operator_notes, sales
+  metadata: jsonb("metadata"),
+  embedding: vector("embedding"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type KnowledgeChunk = typeof knowledgeChunks.$inferSelect;
