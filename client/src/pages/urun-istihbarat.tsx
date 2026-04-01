@@ -163,9 +163,9 @@ export default function UrunIstihbarat() {
     queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
   });
 
-  const MONTHLY_DEMAND = [0, 340, 278, 222, 131, 22, 162, 234, 108, 98, 169, 269, 325];
+  const MONTHLY_DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325]; // PDF kaynak
   const MONTH_NAMES_SHORT = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
-  const SEASONAL_INDICES_FE = [1.73, 1.41, 1.13, 0.67, 0.11, 0.82, 1.19, 0.55, 0.50, 0.86, 1.37, 1.65]; // Oca-Ara
+  const SEASONAL_INDICES_FE = [1.73, 1.41, 0.67, 1.13, 0.82, 1.19, 0.55, 1.37, 0.50, 0.86, 0.11, 1.65]; // Oca-Ara (PDF kaynak)
   const currentMonth = new Date().getMonth() + 1;
   const thisMonthDemand = MONTHLY_DEMAND[currentMonth];
 

@@ -42,7 +42,7 @@ export interface ComponentIntelligence {
 // ═══════════════════════════════════════════════════════════
 // PALANTIR ONTOLOGY — Seasonal Forward-Walk Engine
 // ═══════════════════════════════════════════════════════════
-const MONTHLY_DEMAND = [340, 278, 222, 131, 22, 162, 234, 108, 98, 169, 269, 325]; // Oca-Ara
+const MONTHLY_DEMAND = [340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325]; // Oca-Ara (PDF kaynak)
 const YEARLY_TOTAL = 2358;
 const MONTHLY_AVG = YEARLY_TOTAL / 12; // 196.5
 const SEASONAL_INDICES = MONTHLY_DEMAND.map(m => m / MONTHLY_AVG);
