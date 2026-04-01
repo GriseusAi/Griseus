@@ -26,6 +26,7 @@ import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin/index";
 import PlanlamaPage from "@/pages/planlama";
+import PalantirPage from "@/pages/palantir";
 
 function App() {
   return (
@@ -36,6 +37,7 @@ function App() {
         <Route path="/stok/hareket" component={StokHareket} />
         <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
         <Route path="/planlama" component={PlanlamaPage} />
+        <Route path="/sihir" component={PalantirPage} />
         <Route path="/engine" component={EnginePage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/admin" component={AdminPage} />
