@@ -18,279 +18,339 @@ const glass = {
   backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
   boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
 } as const;
-const mono = "'Outfit', sans-serif";
 
 /* ═══════════════════════════════════════════════════════════
-   SIHIR — 6 Aylik Strateji Penceresi
+   PALANTIR INTELLIGENCE DASHBOARD
+   "Competition is for losers." — Peter Thiel
    ═══════════════════════════════════════════════════════════ */
 
 export default function PalantirPage() {
+  const [activeTab, setActiveTab] = useState<"plan6" | "siparis">("plan6");
   const queryClient = useQueryClient();
-  const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
 
+  // WebSocket — kalp atisi: stok degisince tum sihir yeniden hesaplanir
   const onStockUpdate = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/6-ay-plan"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/acil-siparis"] });
   }, [queryClient]);
   const { connected } = useStockWebSocket(onStockUpdate);
 
-  const plan = useQuery<any>({
+  // Queries
+  const plan6 = useQuery<any>({
     queryKey: ["/api/palantir/demo/6-ay-plan"],
     queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
   });
 
-  const d = plan.data;
+  const siparis = useQuery<any>({
+    queryKey: ["/api/palantir/demo/acil-siparis"],
+    queryFn: () => fetch("/api/palantir/demo/acil-siparis?ay=3").then(r => r.json()),
+  });
+
+  const tabs = [
+    { key: "plan6" as const, label: "6 Ay Strateji", icon: "📊" },
+    { key: "siparis" as const, label: "Acil Siparis", icon: "🚨" },
+  ];
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: mono }}>
-      <TopNav connected={connected} />
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: "'Outfit', sans-serif" }}>
+      <TopNav />
+      <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
 
-      <div style={{ maxWidth: 1100, margin: "0 auto", padding: "24px 16px" }}>
-
-        {plan.isLoading && <LoadingPulse />}
-
-        {d && (
-          <>
-            {/* ═══ HERO: Üretim Hazırlık Skoru ═══ */}
-            <div style={{
-              ...glass, background: C.surface, border: `1px solid ${C.border}`,
-              borderRadius: 16, padding: "32px 40px", marginBottom: 20, position: "relative", overflow: "hidden",
-            }}>
+        {/* Header */}
+        <div style={{ marginBottom: 24, display: "flex", alignItems: "center", gap: 12 }}>
+          <div style={{
+            width: 40, height: 40, borderRadius: 10,
+            background: `linear-gradient(135deg, ${C.accent}, ${C.purple})`,
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 20,
+          }}>⬡</div>
+          <div>
+            <h1 style={{ fontSize: 22, fontWeight: 600, color: C.white, margin: 0, letterSpacing: "-0.5px" }}>
+              Intelligence Engine
+            </h1>
+            <p style={{ fontSize: 12, color: C.mid, margin: "2px 0 0" }}>
+              6 Aylik Strateji + Acil Siparis Listesi
+            </p>
+          </div>
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            {connected && (
               <div style={{
-                position: "absolute", top: 0, left: 0, right: 0, height: 3,
-                background: `linear-gradient(90deg, ${C.err}, ${C.warn}, ${C.ok})`,
-                opacity: 0.6,
-              }} />
-
-              <div style={{ display: "grid", gridTemplateColumns: "1fr 1px 1fr 1px 1fr", gap: 32, alignItems: "center" }}>
-                {/* Score */}
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.dim, letterSpacing: 2, marginBottom: 8 }}>URETIM HAZIRLIK SKORU</div>
-                  <div style={{ position: "relative", width: 120, height: 120, margin: "0 auto" }}>
-                    <svg viewBox="0 0 120 120" width="120" height="120">
-                      <circle cx="60" cy="60" r="52" fill="none" stroke={C.dimmer} strokeWidth="8" />
-                      <circle cx="60" cy="60" r="52" fill="none"
-                        stroke={d.skor <= 30 ? C.err : d.skor <= 60 ? C.warn : C.ok}
-                        strokeWidth="8" strokeLinecap="round"
-                        strokeDasharray={`${(d.skor / 100) * 327} 327`}
-                        transform="rotate(-90 60 60)"
-                        style={{ transition: "stroke-dasharray 1s ease" }}
-                      />
-                    </svg>
-                    <div style={{
-                      position: "absolute", top: "50%", left: "50%", transform: "translate(-50%, -50%)",
-                      textAlign: "center",
-                    }}>
-                      <div style={{
-                        fontSize: 36, fontWeight: 800, letterSpacing: -2,
-                        color: d.skor <= 30 ? C.err : d.skor <= 60 ? C.warn : C.ok,
-                      }}>{d.skor}</div>
-                      <div style={{ fontSize: 9, color: C.dim }}>/100</div>
-                    </div>
-                  </div>
-                  <div style={{ fontSize: 11, color: C.mid, marginTop: 8 }}>{d.skorYorum}</div>
-                </div>
-
-                <div style={{ background: C.border, width: 1, height: 80 }} />
-
-                {/* Next Peak */}
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.dim, letterSpacing: 2, marginBottom: 8 }}>SONRAKI PIK SEZON</div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: C.err }}>{d.sonrakiPik?.ay}</div>
-                  <div style={{ fontSize: 13, color: C.mid }}>{d.sonrakiPik?.indeks}x talep</div>
-                  <div style={{
-                    marginTop: 8, display: "inline-flex", alignItems: "center", gap: 6,
-                    padding: "4px 12px", borderRadius: 20, background: C.errDim, border: `1px solid ${C.errBorder}`,
-                  }}>
-                    <div style={{ fontSize: 11, color: C.err, fontWeight: 600 }}>{d.sonrakiPik?.kalanGun} gun kaldi</div>
-                  </div>
-                </div>
-
-                <div style={{ background: C.border, width: 1, height: 80 }} />
-
-                {/* 6-Month Need */}
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 10, color: C.dim, letterSpacing: 2, marginBottom: 8 }}>6 AY TOPLAM TALEP</div>
-                  <div style={{ fontSize: 28, fontWeight: 700, color: C.accent }}>
-                    {d.ozet?.onumuzdeki6AyToplamTalep?.toLocaleString()}
-                  </div>
-                  <div style={{ fontSize: 13, color: C.mid }}>adet ELT.7-11</div>
-                  <div style={{ marginTop: 8, fontSize: 11, color: C.dim }}>
-                    Uretilebilir: <span style={{ color: d.ozet?.mevcutMamulStok > 0 ? C.ok : C.err, fontWeight: 600 }}>
-                      {d.ozet?.mevcutMamulStok}
-                    </span>
-                  </div>
-                </div>
-              </div>
-            </div>
-
-            {/* ═══ Kritik Karar Kutusu ═══ */}
-            {d.kritikAksiyonlar?.length > 0 && (
-              <div style={{
-                ...glass, background: C.errDim, border: `1px solid ${C.errBorder}`,
-                borderRadius: 12, padding: 20, marginBottom: 20,
+                display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
+                borderRadius: 20, background: C.okDim, border: `1px solid ${C.okBorder}`,
               }}>
-                <div style={{ fontSize: 12, fontWeight: 600, color: C.err, marginBottom: 12, letterSpacing: 1 }}>
-                  HEMEN AKSIYON AL
-                </div>
-                {d.kritikAksiyonlar.map((a: any, i: number) => (
-                  <div key={i} style={{
-                    display: "flex", alignItems: "center", justifyContent: "space-between",
-                    padding: "10px 16px", borderRadius: 8, marginBottom: 8,
-                    background: "rgba(0,0,0,0.3)", border: `1px solid ${C.errBorder}`,
-                  }}>
-                    <div>
-                      <div style={{ fontSize: 13, color: C.white, fontWeight: 500 }}>{a.aksiyon}</div>
-                      <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>{a.neden}</div>
-                    </div>
-                    <div style={{
-                      fontSize: 11, padding: "6px 14px", borderRadius: 6,
-                      background: C.err, color: "#fff", fontWeight: 600, cursor: "pointer",
-                      whiteSpace: "nowrap",
-                    }}>
-                      {a.buton}
-                    </div>
-                  </div>
-                ))}
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.ok, animation: "pulse 2s infinite" }} />
+                <span style={{ fontSize: 10, color: C.ok, fontWeight: 600 }}>CANLI</span>
               </div>
             )}
+            <span style={{ fontSize: 11, color: C.dim }}>
+              {plan6.data?._hesapSuresi && `Son hesap: ${plan6.data._hesapSuresi}`}
+            </span>
+          </div>
+        </div>
 
-            {/* ═══ 6 Aylık Strateji Takvimi ═══ */}
-            <div style={{
-              ...glass, background: C.surface, border: `1px solid ${C.border}`,
-              borderRadius: 12, padding: 20, marginBottom: 20,
+        {/* Tabs */}
+        <div style={{ display: "flex", gap: 4, marginBottom: 20 }}>
+          {tabs.map(tab => (
+            <button key={tab.key} onClick={() => setActiveTab(tab.key)} style={{
+              padding: "8px 16px", borderRadius: 8, fontSize: 12, fontWeight: 400,
+              background: activeTab === tab.key ? C.accentDim : "transparent",
+              border: `1px solid ${activeTab === tab.key ? C.borderActive : "transparent"}`,
+              color: activeTab === tab.key ? C.accent : C.dim,
+              cursor: "pointer", fontFamily: "'Outfit', sans-serif", transition: "all 0.15s",
             }}>
-              <div style={{ fontSize: 12, color: C.dim, letterSpacing: 1, marginBottom: 16 }}>
-                6 AYLIK STRATEJİ TAKVİMİ
-              </div>
+              {tab.icon} {tab.label}
+            </button>
+          ))}
+        </div>
 
-              <div style={{ display: "grid", gridTemplateColumns: "repeat(6, 1fr)", gap: 8 }}>
-                {d.aylikPlan?.map((m: any, i: number) => {
-                  const isExpanded = expandedMonth === i;
-                  const maxTalep = Math.max(...(d.aylikPlan?.map((x: any) => x.tapinenTalep) || [1]));
-                  const barH = (m.tapinenTalep / maxTalep) * 100;
-                  const borderColor = m.aksiyonTipi === "KRITIK" ? C.err
-                    : m.aksiyonTipi === "FIRSAT" ? C.ok
-                    : m.aksiyonTipi === "HAZIRLIK" ? C.warn
-                    : C.border;
+        {/* ═══ TAB 1: 6 AY PLAN ═══ */}
+        {activeTab === "plan6" && (
+          <div>
+            {plan6.isLoading && <LoadingPulse />}
+            {plan6.data && (
+              <div>
+                {/* Summary cards */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <StatCard label="Mamul Stok" value={plan6.data.ozet?.mevcutMamulStok ?? 0} sub="adet ELT.7-11" color={C.blue} />
+                  <StatCard label="6 Ay Talep" value={plan6.data.ozet?.onumuzdeki6AyToplamTalep ?? 0} sub="adet toplam" color={C.purple} />
+                  <StatCard label="En Yogun" value={plan6.data.ozet?.enYogunAy?.ay || "-"} sub={`${plan6.data.ozet?.enYogunAy?.tapinenTalep || 0} adet`} color={C.err} />
+                  <StatCard label="En Dusuk" value={plan6.data.ozet?.enDusukAy?.ay || "-"} sub={`${plan6.data.ozet?.enDusukAy?.tapinenTalep || 0} adet`} color={C.ok} />
+                </div>
 
-                  return (
-                    <div key={i}
-                      onClick={() => setExpandedMonth(isExpanded ? null : i)}
-                      style={{
-                        borderRadius: 10, padding: 12, cursor: "pointer",
-                        background: isExpanded ? `${borderColor}15` : C.surface,
-                        border: `1px solid ${isExpanded ? borderColor : C.border}`,
-                        transition: "all 0.2s",
-                      }}
-                    >
-                      {/* Month header */}
-                      <div style={{ fontSize: 12, fontWeight: 600, color: C.white, marginBottom: 4 }}>{m.ay}</div>
-                      <div style={{ fontSize: 9, color: borderColor, fontWeight: 500, marginBottom: 8 }}>{m.aksiyonEtiketi}</div>
+                {/* Kritik uyarılar */}
+                {plan6.data.kritikUyarilar?.length > 0 && (
+                  <div style={{
+                    ...glass, background: C.errDim, border: `1px solid ${C.errBorder}`,
+                    borderRadius: 12, padding: 16, marginBottom: 12,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.err, marginBottom: 8 }}>Kritik Uyarilar</div>
+                    {plan6.data.kritikUyarilar.map((u: string, i: number) => (
+                      <div key={i} style={{ padding: "4px 0", fontSize: 12, color: C.white }}>{u}</div>
+                    ))}
+                  </div>
+                )}
 
-                      {/* Bar */}
-                      <div style={{ height: 80, display: "flex", alignItems: "flex-end", justifyContent: "center", marginBottom: 8 }}>
+                {/* Sezonsel fırsatlar */}
+                {plan6.data.sezonselFirsatlar?.length > 0 && (
+                  <div style={{
+                    ...glass, background: C.okDim, border: `1px solid ${C.okBorder}`,
+                    borderRadius: 12, padding: 16, marginBottom: 12,
+                  }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.ok, marginBottom: 8 }}>Sezonsel Firsatlar</div>
+                    {plan6.data.sezonselFirsatlar.map((f: string, i: number) => (
+                      <div key={i} style={{ padding: "4px 0", fontSize: 12, color: C.white }}>{f}</div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Monthly bars */}
+                <div style={{
+                  ...glass, background: C.surface, border: `1px solid ${C.border}`,
+                  borderRadius: 12, padding: 20,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.mid, marginBottom: 16 }}>Aylik Talep Projeksiyonu</div>
+                  <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 200 }}>
+                    {plan6.data.aylikPlan?.map((m: any) => {
+                      const maxTalep = Math.max(...(plan6.data.aylikPlan?.map((x: any) => x.tapinenTalep) || [1]));
+                      const h = (m.tapinenTalep / maxTalep) * 160;
+                      const barColor = m.mevsimsellik?.includes("YOGUN") ? C.err
+                        : m.mevsimsellik?.includes("DUSUK") ? C.blue : C.accent;
+                      return (
+                        <div key={m.ayNo} style={{ flex: 1, textAlign: "center" }}>
+                          <div style={{ fontSize: 11, color: C.white, fontWeight: 600, marginBottom: 4 }}>{m.tapinenTalep}</div>
+                          <div style={{
+                            height: h, borderRadius: "6px 6px 0 0",
+                            background: `linear-gradient(180deg, ${barColor}, ${barColor}33)`,
+                            transition: "height 0.5s ease",
+                          }} />
+                          <div style={{ fontSize: 10, color: C.dim, marginTop: 4 }}>{m.ay}</div>
+                          <div style={{ fontSize: 9, color: C.dim }}>{m.mevsimsellik}</div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                {/* Tükenen bilesen timeline */}
+                <div style={{
+                  ...glass, background: C.surface, border: `1px solid ${C.border}`,
+                  borderRadius: 12, padding: 16, marginTop: 12,
+                }}>
+                  <div style={{ fontSize: 13, fontWeight: 500, color: C.mid, marginBottom: 12 }}>
+                    Bilesen Tukenme Haritasi
+                  </div>
+                  {plan6.data.aylikPlan?.map((m: any) => (
+                    <div key={m.ayNo} style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 60, fontSize: 12, fontWeight: 500, color: C.white }}>{m.ay}</div>
                         <div style={{
-                          width: "60%", height: barH, borderRadius: "4px 4px 0 0",
-                          background: `linear-gradient(180deg, ${borderColor}, ${borderColor}33)`,
-                          transition: "height 0.5s",
-                        }} />
-                      </div>
-
-                      <div style={{ textAlign: "center" }}>
-                        <div style={{ fontSize: 16, fontWeight: 700, color: C.white }}>{m.tapinenTalep}</div>
-                        <div style={{ fontSize: 9, color: C.dim }}>adet talep</div>
-                      </div>
-
-                      {/* Risk indicator */}
-                      {m.tukenenBilesenSayisi > 0 && (
-                        <div style={{
-                          marginTop: 8, textAlign: "center", fontSize: 10, padding: "3px 0",
-                          borderRadius: 4, background: C.errDim, color: C.err,
+                          flex: 1, height: 24, borderRadius: 6, position: "relative", overflow: "hidden",
+                          background: C.dimmer,
                         }}>
-                          {m.tukenenBilesenSayisi} parca tukenir
+                          <div style={{
+                            position: "absolute", left: 0, top: 0, bottom: 0,
+                            width: `${Math.min(100, (m.tukenenBilesenSayisi / 43) * 100)}%`,
+                            background: m.tukenenBilesenSayisi > 10 ? C.err : m.tukenenBilesenSayisi > 0 ? C.warn : C.ok,
+                            borderRadius: 6, transition: "width 0.5s ease",
+                          }} />
+                        </div>
+                        <div style={{ width: 80, textAlign: "right", fontSize: 11, color: m.tukenenBilesenSayisi > 0 ? C.err : C.ok }}>
+                          {m.tukenenBilesenSayisi}/43 tukenir
+                        </div>
+                      </div>
+                      {m.tukenenler?.length > 0 && (
+                        <div style={{ marginLeft: 72, marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {m.tukenenler.map((t: string, i: number) => (
+                            <span key={i} style={{
+                              fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                              background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,
+                            }}>{t}</span>
+                          ))}
+                          {m.tukenenBilesenSayisi > 3 && (
+                            <span style={{ fontSize: 10, color: C.dim }}>+{m.tukenenBilesenSayisi - 3} daha</span>
+                          )}
                         </div>
                       )}
                     </div>
-                  );
-                })}
-              </div>
-
-              {/* Expanded month detail */}
-              {expandedMonth !== null && d.aylikPlan?.[expandedMonth] && (
-                <div style={{
-                  marginTop: 12, padding: 16, borderRadius: 10,
-                  background: C.dimmer, border: `1px solid ${C.border}`,
-                }}>
-                  {(() => {
-                    const m = d.aylikPlan[expandedMonth];
-                    return (
-                      <>
-                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-                          <div style={{ fontSize: 14, fontWeight: 600, color: C.white }}>{m.ay} — Detay</div>
-                          <div style={{ fontSize: 11, color: C.mid }}>
-                            Mevsim indeksi: <span style={{ color: C.accent }}>{m.mevsimIndex}x</span>
-                          </div>
-                        </div>
-
-                        {/* Strategy recommendation */}
-                        <div style={{
-                          padding: 12, borderRadius: 8, marginBottom: 12,
-                          background: C.accentDim, border: `1px solid ${C.borderActive}`,
-                        }}>
-                          <div style={{ fontSize: 11, color: C.accent, fontWeight: 600, marginBottom: 4 }}>STRATEJİ</div>
-                          <div style={{ fontSize: 12, color: C.white }}>{m.strateji}</div>
-                        </div>
-
-                        {/* Depleting parts */}
-                        {m.tukenenler?.length > 0 && (
-                          <div>
-                            <div style={{ fontSize: 10, color: C.err, fontWeight: 500, marginBottom: 6 }}>
-                              TUKENEN PARCALAR ({m.tukenenBilesenSayisi})
-                            </div>
-                            <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-                              {m.tukenenler.map((t: string, j: number) => (
-                                <span key={j} style={{
-                                  fontSize: 10, padding: "3px 8px", borderRadius: 4,
-                                  background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,
-                                }}>{t}</span>
-                              ))}
-                            </div>
-                          </div>
-                        )}
-
-                        {m.tukenenBilesenSayisi === 0 && (
-                          <div style={{ fontSize: 11, color: C.ok }}>
-                            Bu ayda tukenen parca yok.
-                          </div>
-                        )}
-                      </>
-                    );
-                  })()}
+                  ))}
                 </div>
-              )}
-            </div>
-
-            {/* ═══ Sezonsel İçgörü ═══ */}
-            {d.sezonselIcgoru && (
-              <div style={{
-                ...glass, background: C.accentDim, border: `1px solid ${C.borderActive}`,
-                borderRadius: 12, padding: 16,
-              }}>
-                <div style={{ fontSize: 12, color: C.accent, fontWeight: 600, marginBottom: 6 }}>ICERIK</div>
-                <div style={{ fontSize: 12, color: C.white, lineHeight: 1.6 }}>{d.sezonselIcgoru}</div>
               </div>
             )}
-          </>
+          </div>
         )}
+
+        {/* ═══ TAB 3: ACİL SİPARİŞ ═══ */}
+        {activeTab === "siparis" && (
+          <div>
+            {siparis.isLoading && <LoadingPulse />}
+            {siparis.data && (
+              <div>
+                {/* Summary */}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
+                  <StatCard label="Planlama Ufku" value={siparis.data.parametreler?.planlamaUfku || "3 ay"} sub={siparis.data.parametreler?.aylar || ""} color={C.accent} />
+                  <StatCard label="Toplam Talep" value={siparis.data.parametreler?.toplamTapinenTalep || "-"} sub="" color={C.purple} />
+                  <StatCard label="Acil" value={siparis.data.ozet?.acil || "0"} sub="BUGUN siparis ver!" color={C.err} />
+                  <StatCard label="Yakin" value={siparis.data.ozet?.yakin || "0"} sub="Bu hafta siparis ver" color={C.warn} />
+                </div>
+
+                {/* Acil liste */}
+                {siparis.data.acilSiparisler?.length > 0 && (
+                  <div style={{
+                    ...glass, background: C.errDim, border: `1px solid ${C.errBorder}`,
+                    borderRadius: 12, padding: 16, marginBottom: 12,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.err, marginBottom: 12 }}>
+                      🔴 ACIL — Bugun Siparis Ver
+                    </div>
+                    {siparis.data.acilSiparisler.map((s: any) => (
+                      <div key={s.kod} style={{
+                        background: C.surface, borderRadius: 8, padding: 12, marginBottom: 8,
+                        border: `1px solid ${C.errBorder}`,
+                      }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                          <div>
+                            <span style={{ color: C.err, fontWeight: 600, fontSize: 15 }}>{s.kod}</span>
+                            <span style={{ color: C.mid, fontSize: 12, marginLeft: 8 }}>{s.parca}</span>
+                          </div>
+                          <div style={{ color: C.err, fontWeight: 700, fontSize: 18 }}>{s.siparisMiktari}</div>
+                        </div>
+                        <div style={{ color: C.dim, fontSize: 11, marginTop: 4 }}>{s.neden}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Yakın */}
+                {siparis.data.yakinSiparisler?.length > 0 && (
+                  <div style={{
+                    ...glass, background: C.warnDim, border: `1px solid ${C.warnBorder}`,
+                    borderRadius: 12, padding: 16, marginBottom: 12,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 600, color: C.warn, marginBottom: 12 }}>
+                      🟡 YAKIN — Bu Hafta Siparis Ver
+                    </div>
+                    {siparis.data.yakinSiparisler.map((s: any) => (
+                      <div key={s.kod} style={{
+                        display: "flex", justifyContent: "space-between", alignItems: "center",
+                        padding: "8px 0", borderBottom: `1px solid ${C.warnBorder}`,
+                      }}>
+                        <div>
+                          <span style={{ color: C.warn, fontWeight: 600, fontSize: 13 }}>{s.kod}</span>
+                          <span style={{ color: C.mid, fontSize: 11, marginLeft: 8 }}>{s.parca}</span>
+                        </div>
+                        <div style={{ textAlign: "right" }}>
+                          <span style={{ color: C.warn, fontWeight: 600 }}>{s.siparisMiktari} {s.birim}</span>
+                          <div style={{ color: C.dim, fontSize: 10 }}>Son tarih: {s.sonSiparisTarihi}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+
+                {/* Planlı */}
+                {siparis.data.planliSiparisler?.length > 0 && (
+                  <div style={{
+                    ...glass, background: C.surface, border: `1px solid ${C.border}`,
+                    borderRadius: 12, padding: 16,
+                  }}>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: C.ok, marginBottom: 12 }}>
+                      🟢 PLANLI — 2 Hafta Icinde
+                    </div>
+                    <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                      <thead>
+                        <tr style={{ borderBottom: `1px solid ${C.border}` }}>
+                          {["Kod", "Parca", "Stok", "Gerekli", "Siparis", "Gun"].map(h => (
+                            <th key={h} style={{ padding: "6px", textAlign: "left", color: C.dim, fontWeight: 400, fontSize: 11 }}>{h}</th>
+                          ))}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {siparis.data.planliSiparisler.map((s: any) => (
+                          <tr key={s.kod} style={{ borderBottom: `1px solid ${C.border}` }}>
+                            <td style={{ padding: "6px", color: C.accent }}>{s.kod}</td>
+                            <td style={{ padding: "6px", color: C.mid }}>{s.parca}</td>
+                            <td style={{ padding: "6px", color: C.white }}>{s.mevcutStok?.toLocaleString()}</td>
+                            <td style={{ padding: "6px", color: C.white }}>{s.gerekli?.toLocaleString()}</td>
+                            <td style={{ padding: "6px", color: C.ok, fontWeight: 600 }}>{s.siparisMiktari} {s.birim}</td>
+                            <td style={{ padding: "6px", color: C.mid }}>{s.gundeStokYeter}g</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
+          </div>
+        )}
+
       </div>
+    </div>
+  );
+}
+
+/* ── Helper Components ── */
+function StatCard({ label, value, sub, color }: { label: string; value: any; sub: string; color: string }) {
+  return (
+    <div style={{
+      ...glass, background: `${color}08`, border: `1px solid ${color}25`,
+      borderRadius: 12, padding: 16,
+    }}>
+      <div style={{ fontSize: 11, color: C.dim, marginBottom: 4 }}>{label}</div>
+      <div style={{ fontSize: 22, fontWeight: 700, color, letterSpacing: "-0.5px" }}>
+        {typeof value === "number" ? value.toLocaleString() : value}
+      </div>
+      <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>{sub}</div>
     </div>
   );
 }
 
 function LoadingPulse() {
   return (
-    <div style={{ textAlign: "center", padding: 80 }}>
-      <div style={{ fontSize: 14, color: C.accent, animation: "pulse 1.5s infinite" }}>Hesapliyor...</div>
+    <div style={{ textAlign: "center", padding: 60 }}>
+      <div style={{ fontSize: 14, color: C.accent, animation: "pulse 1.5s infinite" }}>
+        Hesapliyor...
+      </div>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
     </div>
   );

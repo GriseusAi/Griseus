@@ -130,102 +130,18 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
         firsatlar.push(`${MONTH_NAMES[ay]} (talep: ${MONTHLY_DEMAND[ay]}) dusuk — ${MONTH_NAMES[sonrakiAy]} (talep: ${MONTHLY_DEMAND[sonrakiAy]}) yogun geliyor. ${MONTH_NAMES[ay]}'de fazla uretip stokla!`);
       }
     }
-    // ═══ Production Readiness Score ═══
-    // Score = weighted average of parts readiness
-    // A part scores 100 if it has >6 months stock, 0 if zero stock
-    const monthlyAvg = ANNUAL_DEMAND / 12;
-    const partScores = tier1and2.map(comp => {
-      const monthsOfStock = comp.currentStock / Math.max(comp.requiredQty * monthlyAvg, 0.01);
-      if (monthsOfStock <= 0) return 0;
-      if (monthsOfStock >= 6) return 100;
-      return Math.round((monthsOfStock / 6) * 100);
-    });
-    const skor = partScores.length > 0 ? Math.round(partScores.reduce((a, b) => a + b, 0) / partScores.length) : 0;
-    const skorYorum = skor >= 80 ? "Uretime hazir" : skor >= 50 ? "Eksikler var" : skor >= 20 ? "Kritik eksikler" : "Uretim durmus";
-
-    // ═══ Next Peak Season ═══
-    let sonrakiPikAy = currentMonth;
-    let sonrakiPikIndeks = 0;
-    for (let i = 1; i <= 12; i++) {
-      const m = ((currentMonth - 1 + i) % 12) + 1;
-      const idx = MONTHLY_DEMAND[m] / (ANNUAL_DEMAND / 12);
-      if (idx > 1.3 && idx > sonrakiPikIndeks) {
-        sonrakiPikAy = m;
-        sonrakiPikIndeks = idx;
-        break;
-      }
-    }
-    // Days until next peak
-    const now = new Date();
-    const pikDate = new Date(now.getFullYear(), sonrakiPikAy - 1, 1);
-    if (pikDate <= now) pikDate.setFullYear(pikDate.getFullYear() + 1);
-    const kalanGun = Math.ceil((pikDate.getTime() - now.getTime()) / (1000 * 60 * 60 * 24));
-
-    // ═══ Critical Actions ═══
-    const kritikAksiyonlar: Array<{aksiyon: string; neden: string; buton: string}> = [];
-    const zeroStockParts = tier1and2.filter(c => c.currentStock <= 0);
-    if (zeroStockParts.length > 0) {
-      for (const p of zeroStockParts.slice(0, 3)) {
-        kritikAksiyonlar.push({
-          aksiyon: `${p.code} ${p.name} — STOK SIFIR`,
-          neden: `Bu parca olmadan uretim yapilamaz. ${LEAD_TIME_DAYS} gun tedarik suresi var.`,
-          buton: "Siparis Ver",
-        });
-      }
-    }
-    // Check parts running out within 3 months
-    const threeMonthDemand = plan.slice(0, 3).reduce((s, p) => s + p.tapinenTalep, 0);
-    const criticalParts = tier1and2
-      .filter(c => c.currentStock > 0 && c.currentStock < threeMonthDemand * c.requiredQty)
-      .sort((a, b) => (a.currentStock / a.requiredQty) - (b.currentStock / b.requiredQty));
-    for (const p of criticalParts.slice(0, 2)) {
-      const monthsLeft = p.currentStock / Math.max(p.requiredQty * monthlyAvg, 0.01);
-      kritikAksiyonlar.push({
-        aksiyon: `${p.code} ${p.name} — ${Math.round(monthsLeft)} aylik stok kaldi`,
-        neden: `3 ay icinde tukenecek. Simdi siparis verirsen tedarik suresi icinde gelir.`,
-        buton: "Planla",
-      });
-    }
-
-    // ═══ Action labels for each month ═══
-    const enrichedPlan = plan.map((m, i) => {
-      let aksiyonTipi = "NORMAL";
-      let aksiyonEtiketi = "Normal tempo";
-      if (m.tukenenBilesenSayisi > 5) {
-        aksiyonTipi = "KRITIK"; aksiyonEtiketi = "Kritik eksik!";
-      } else if (m.mevsimIndex > 1.2) {
-        aksiyonTipi = "HAZIRLIK"; aksiyonEtiketi = "Yogun sezon";
-      } else if (m.mevsimIndex < 0.5) {
-        aksiyonTipi = "FIRSAT"; aksiyonEtiketi = "Stok biriktir";
-      } else if (i > 0 && plan[i - 1].mevsimIndex < 0.8 && m.mevsimIndex > 1.0) {
-        aksiyonTipi = "HAZIRLIK"; aksiyonEtiketi = "Hazirlan";
-      }
-      return { ...m, aksiyonTipi, aksiyonEtiketi };
-    });
-
-    // ═══ Seasonal Insight ═══
-    const totalDemand6 = plan.reduce((s, p) => s + p.tapinenTalep, 0);
-    const sezonselIcgoru = `Onumuzdeki 6 ayda ${totalDemand6.toLocaleString()} adet talep bekleniyor. `
-      + (sonrakiPikIndeks > 1.3
-        ? `${MONTH_NAMES[sonrakiPikAy]} ayi ${Math.round(sonrakiPikIndeks * 100)}% ortalamanin uzerinde — en gec ${kalanGun - 30} gun icinde tum parcalar hazir olmali.`
-        : `Onumuzdeki donem goreceli sakin. Stok optimizasyonu icin uygun zaman.`);
-
     res.json({
+      _test: "CUKUROVA ISI — 6 AYLIK STRATEJIK PLAN",
       _hesapSuresi: `${calcTime}ms`,
-      skor,
-      skorYorum,
-      sonrakiPik: {
-        ay: MONTH_NAMES[sonrakiPikAy],
-        indeks: Math.round(sonrakiPikIndeks * 100) / 100,
-        kalanGun,
-      },
       ozet: {
         mevcutMamulStok: mamulStok,
-        onumuzdeki6AyToplamTalep: totalDemand6,
+        onumuzdeki6AyToplamTalep: plan.reduce((s, p) => s + p.tapinenTalep, 0),
+        enYogunAy: plan.reduce((max, p) => p.tapinenTalep > max.tapinenTalep ? p : max),
+        enDusukAy: plan.reduce((min, p) => p.tapinenTalep < min.tapinenTalep ? p : min),
       },
-      kritikAksiyonlar,
-      sezonselIcgoru,
-      aylikPlan: enrichedPlan,
+      kritikUyarilar: kritikUyarilar.length > 0 ? kritikUyarilar : ["Ilk 3 ay kritik parca tukenmesi yok"],
+      sezonselFirsatlar: firsatlar.length > 0 ? firsatlar : ["Bu donemde belirgin firsat penceresi yok"],
+      aylikPlan: plan,
     });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
