@@ -790,7 +790,7 @@ export default function UrunIstihbarat() {
               opacity: 0.6,
             }} />
             <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 20 }}>
-              PALANTİR ONTOLOJİ — BAĞLAMSAL ZEKA
+              ONTOLOJİ DİYAGRAMI
             </div>
 
             {/* Ontology Graph SVG */}
