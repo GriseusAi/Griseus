@@ -88,7 +88,7 @@ export default function PalantirPage() {
           }}>⬡</div>
           <div>
             <h1 style={{ fontSize: 22, fontWeight: 600, color: C.white, margin: 0, letterSpacing: "-0.5px" }}>
-              Palantir Intelligence Engine
+              Intelligence Engine
             </h1>
             <p style={{ fontSize: 12, color: C.mid, margin: "2px 0 0" }}>
               ELT.7-11 — Holt-Winters + MRP + ABC-XYZ + Safety Stock
@@ -584,7 +584,7 @@ function LoadingPulse() {
   return (
     <div style={{ textAlign: "center", padding: 60 }}>
       <div style={{ fontSize: 14, color: C.accent, animation: "pulse 1.5s infinite" }}>
-        Palantir hesapliyor...
+        Hesapliyor...
       </div>
       <style>{`@keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }`}</style>
     </div>
