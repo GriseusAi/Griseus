@@ -158,6 +158,43 @@ export const purchaseSuggestions = pgTable("purchase_suggestions", {
 
 export type PurchaseSuggestion = typeof purchaseSuggestions.$inferSelect;
 
+// --- Satış Geçmişi (Tarihsel Veri — Excel/Netsis import) ---
+
+export const salesHistory = pgTable("sales_history", {
+  id: serial("id").primaryKey(),
+  productSku: text("product_sku").notNull(),
+  year: integer("year").notNull(),
+  month: integer("month").notNull(), // 1-12
+  quantitySold: integer("quantity_sold").notNull(),
+  revenue: numeric("revenue"), // optional — TL cinsinden
+  source: text("source").notNull().default("excel"), // excel | netsis
+  importedAt: timestamp("imported_at").defaultNow(),
+  notes: text("notes"),
+});
+
+export const insertSalesHistorySchema = createInsertSchema(salesHistory).omit({ id: true, importedAt: true });
+export type InsertSalesHistory = z.infer<typeof insertSalesHistorySchema>;
+export type SalesHistory = typeof salesHistory.$inferSelect;
+
+// --- Üretim Planları (Prediktif Planlama) ---
+
+export const productionPlans = pgTable("production_plans", {
+  id: serial("id").primaryKey(),
+  productSku: text("product_sku").notNull(),
+  targetYear: integer("target_year").notNull(),
+  targetMonth: integer("target_month").notNull(), // 1-12
+  forecastedDemand: integer("forecasted_demand").notNull(), // aylık ortalamadan hesaplanan tahmin
+  plannedProduction: integer("planned_production").notNull(), // üretilecek miktar
+  status: text("status").notNull().default("draft"), // draft | approved | in_progress | completed
+  componentGaps: jsonb("component_gaps"), // eksik komponentler JSON
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertProductionPlanSchema = createInsertSchema(productionPlans).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProductionPlan = z.infer<typeof insertProductionPlanSchema>;
+export type ProductionPlan = typeof productionPlans.$inferSelect;
+
 // --- Knowledge Base (RAG — pgvector) ---
 
 export const knowledgeChunks = pgTable("knowledge_chunks", {

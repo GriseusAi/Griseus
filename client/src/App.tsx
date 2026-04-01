@@ -11,6 +11,7 @@ import { Toaster } from "@/components/ui/toaster";
    │  /              → Stok Komuta Merkezi               │
    │  /stok/hareket  → Hızlı Giriş (üretim şefi)       │
    │  /stok/urun/:sku → Ürün İstihbaratı (BOM/kapasite) │
+   │  /planlama      → Prediktif Planlama (Forecast+BOM)  │
    │  /engine        → CEO Agent                         │
    │  /admin         → Platform Architecture (Admin)     │
    │  /login         → Giriş                             │
@@ -24,6 +25,7 @@ import EnginePage from "@/pages/engine";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin/index";
+import PlanlamaPage from "@/pages/planlama";
 
 function App() {
   return (
@@ -33,6 +35,7 @@ function App() {
         <Route path="/stok/durum" component={StokDurum} />
         <Route path="/stok/hareket" component={StokHareket} />
         <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
+        <Route path="/planlama" component={PlanlamaPage} />
         <Route path="/engine" component={EnginePage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/admin" component={AdminPage} />
