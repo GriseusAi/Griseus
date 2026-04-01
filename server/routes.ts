@@ -10,6 +10,7 @@ import bomRouter from "./routes/bom";
 import intelligenceRouter from "./routes/intelligence";
 import planningRouter from "./routes/planning";
 import palantirRouter from "./routes/palantir";
+import palantirDemoRouter from "./routes/palantir-demo";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -22,6 +23,7 @@ export async function registerRoutes(
   app.use("/api/stock", stockPocRouter);
   app.use("/api/planning", planningRouter);
   app.use("/api/palantir", palantirRouter);
+  app.use("/api/palantir/demo", palantirDemoRouter);
 
   // ── Auth ──
   app.post("/api/login", (req, res, next) => {
