@@ -185,7 +185,7 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         : "DÜŞÜK" as const;
 
       const winterMonths = [10, 11, 0, 1];
-      const winterStress = item.currentStock > 0 && winterMonths.includes(seasonal.depletionMonth);
+      const winterStress = item.currentStock > 0 && winterMonths.includes(seasonal.depletionMonth) && seasonal.days <= 365;
 
       return {
         code: item.code, name: item.name, tier: item.tier, unit: item.unit,
