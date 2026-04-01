@@ -699,33 +699,26 @@ export default function UrunIstihbarat() {
 
           {/* Intelligence Table Header */}
           <div style={{
-            display: "grid", gridTemplateColumns: "70px 1fr 80px 70px 80px 50px 80px 70px 80px",
+            display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
             gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
           }}>
-            {["KOD", "BİLEŞEN", "TÜKETİM/GÜN", "ESKİ GÜN", "YENİ GÜN", "FARK", "BİTİŞ AYI", "TREND", "ACİLİYET"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: h === "YENİ GÜN" ? C.accent : C.dim, fontWeight: 400, letterSpacing: 1 }}>
+            {["KOD", "BİLEŞEN", "TÜKETİM/GÜN", "KAÇ GÜN", "SİP.NOKTASI", "BİTİŞ AYI", "ACİLİYET"].map(h => (
+              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
                 {h}
               </div>
             ))}
           </div>
 
-          {/* Intelligence Rows — Palantir Ontology Enhanced */}
+          {/* Intelligence Rows — Seasonal Only */}
           {intel?.components.map((c: any) => {
             const urgencyColor = c.urgency === "critical" ? C.err : c.urgency === "warning" ? C.warn : c.urgency === "ok" ? C.ok : C.blue;
             const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.okDim : C.blueDim;
             const urgencyLabel = c.urgency === "critical" ? "KRİTİK" : c.urgency === "warning" ? "DİKKAT" : c.urgency === "ok" ? "NORMAL" : "BOL";
-            const trendArrow = c.trend === "accelerating" ? "▲" : c.trend === "decelerating" ? "▼" : "—";
-            const trendColor = c.trend === "accelerating" ? C.err : c.trend === "decelerating" ? C.ok : C.mid;
-
-            // Seasonal coloring
-            const diffVal = c.seasonalDifference ?? 0;
-            const diffSign = diffVal > 0 ? "+" : "";
-            const diffColor = diffVal > 0 ? C.ok : diffVal < 0 ? C.err : C.mid;
             const riskColor = c.depletionRisk === "KRİTİK" ? C.err : c.depletionRisk === "YÜKSEK" ? C.warn : c.depletionRisk === "ORTA" ? C.blue : C.ok;
 
             return (
               <div key={c.code} style={{
-                display: "grid", gridTemplateColumns: "70px 1fr 80px 70px 80px 50px 80px 70px 80px",
+                display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
                 gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
                 background: c.urgency === "critical" ? C.errDim : c.winterStress ? "rgba(249,115,22,0.03)" : "transparent",
                 transition: "background 0.15s",
@@ -742,32 +735,26 @@ export default function UrunIstihbarat() {
                 <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
                   {c.dailyBurnRate}
                 </div>
-                {/* Eski Gün (flat) - strikethrough */}
-                <div style={{
-                  fontFamily: mono, fontSize: 11, fontWeight: 400,
-                  color: C.dim, textDecoration: "line-through", opacity: 0.5,
-                }}>
-                  {c.daysToStockout !== null ? `${c.daysToStockout}g` : "—"}
-                </div>
-                {/* Yeni Gün (seasonal) - highlighted */}
+                {/* Kaç Gün (seasonal) */}
                 <div style={{
                   fontFamily: mono, fontSize: 13, fontWeight: 600,
                   color: c.seasonalDays === 0 ? C.err
                     : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
-                    : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.accent,
+                    : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.ok,
                 }}>
                   {c.seasonalDays !== null ? `${c.seasonalDays}g` : "—"}
                 </div>
-                {/* Fark */}
-                <div style={{ fontFamily: mono, fontSize: 10, color: diffColor, fontWeight: 400 }}>
-                  {c.seasonalDifference !== null ? `${diffSign}${diffVal}` : "—"}
+                {/* Sipariş Noktası (seasonal) */}
+                <div style={{
+                  fontFamily: mono, fontSize: 11,
+                  color: c.currentStock > c.seasonalReorderPoint ? C.ok : C.err,
+                }}>
+                  {c.seasonalReorderPoint}
+                  {c.currentStock <= c.seasonalReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
                 </div>
-                {/* Bitis Ayi */}
+                {/* Bitiş Ayı */}
                 <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
                   {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
-                </div>
-                <div style={{ fontFamily: mono, fontSize: 12, color: trendColor, fontWeight: 400 }}>
-                  {trendArrow}
                 </div>
                 <div>
                   <span style={{
