@@ -20,6 +20,15 @@ const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin Operasyonel �
 
 KİMLİĞİN: Ontology-Augmented Generation (OAG) ajanı. Yapılandırılmış varlıklara erişir, aksiyon alabilir, web araştırma yapabilir. Insight→Action mesafesi SIFIR.
 
+MEVSİMSEL ZEKA (3 yıl ortalaması 2023-2025):
+Ocak:340 Şubat:278 Mart:131 Nisan:222 Mayıs:162 Haziran:234 Temmuz:108 Ağustos:269 Eylül:98 Ekim:169 Kasım:22 Aralık:325
+YILLIK TOPLAM: 2358 adet ELT.7-11
+PİK AYLAR: Ocak(1.73x), Ağustos(1.37x), Aralık(1.65x)
+DİP AYLAR: Kasım(0.11x), Eylül(0.50x), Temmuz(0.55x)
+STRATEJİ: Düşük dönemde fazla üret + stokla → yoğun dönemde hazır ol. Temmuz'da stokla→Ağustos'a hazırlan. Kasım'da stokla→Aralık-Ocak'a hazırlan.
+
+Intelligence Engine tool'unu MUTLAKA kullan — mevsimsellik, MRP patlatma, güvenlik stoku, ABC sınıflandırma, 6 aylık plan hepsi orada. Her kararda bu veriyi referans al.
+
 3 KATMAN:
 - Semantic: Ürün→BOM→43 Bileşen→Tedarikçi ilişkileri
 - Kinetic: Stok hareketi, güncelleme, sipariş önerisi aksiyonları
@@ -190,6 +199,23 @@ const TOOLS: Anthropic.Tool[] = [
       properties: {
         sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
         component_code: { type: "string", description: "Belirli bir bileşen kodu ile filtrele" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_intelligence_engine",
+    description: "Intelligence Engine — Tam ontoloji paketi. Holt-Winters mevsimsel tahmin, güvenlik stoku, MRP BOM patlatma, ABC-XYZ sınıflandırma, 6 aylık üretim planı, acil sipariş listesi ve 10X optimizasyon skoru. Bu tool'u MUTLAKA kullan — en kapsamlı analiz burada.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        report_type: {
+          type: "string",
+          enum: ["oracle", "uretim_plani", "alti_ay_plan", "acil_siparis", "tenx"],
+          description: "Rapor tipi: oracle=tam paket, uretim_plani=üretim fizibilite, alti_ay_plan=6 aylık strateji, acil_siparis=acil sipariş listesi, tenx=10X optimizasyon",
+        },
+        adet: { type: "number", description: "Üretim planı için adet (varsayılan: 222)" },
+        ay: { type: "number", description: "Acil sipariş için kaç ay ileri (varsayılan: 3)" },
       },
       required: [],
     },
@@ -589,6 +615,36 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         result.components = result.components.filter(c => c.code === input.component_code);
       }
       return result;
+    }
+
+    case "get_intelligence_engine": {
+      const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
+      const reportType = input.report_type || "oracle";
+
+      try {
+        let url: string;
+        switch (reportType) {
+          case "uretim_plani":
+            url = `${baseUrl}/api/palantir/demo/uretim-plani?adet=${input.adet || 222}`;
+            break;
+          case "alti_ay_plan":
+            url = `${baseUrl}/api/palantir/demo/6-ay-plan`;
+            break;
+          case "acil_siparis":
+            url = `${baseUrl}/api/palantir/demo/acil-siparis?ay=${input.ay || 3}`;
+            break;
+          case "tenx":
+            url = `${baseUrl}/api/palantir/demo/10x`;
+            break;
+          default:
+            url = `${baseUrl}/api/palantir/oracle`;
+        }
+        const resp = await fetch(url);
+        const data = await resp.json();
+        return data;
+      } catch (err: any) {
+        return { error: `Intelligence Engine erişim hatası: ${err.message}` };
+      }
     }
 
     default:
