@@ -158,6 +158,16 @@ export default function UrunIstihbarat() {
     queryFn: () => fetch(`/api/bom/${sku}/intelligence`).then(r => r.json()),
   });
 
+  const seasonQuery = useQuery<any>({
+    queryKey: ["/api/palantir/demo/6-ay-plan"],
+    queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
+  });
+
+  const MONTHLY_DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
+  const MONTH_NAMES_SHORT = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
+  const currentMonth = new Date().getMonth() + 1;
+  const thisMonthDemand = MONTHLY_DEMAND[currentMonth];
+
   const capacity = capacityQuery.data;
   const stock = stockQuery.data;
   const sim = simQuery.data;
@@ -306,6 +316,80 @@ export default function UrunIstihbarat() {
           </motion.div>
         ))}
 
+        {/* ═══ Seasonal Demand Pattern ═══ */}
+        <motion.div
+          initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.12 }}
+          style={{
+            background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+            padding: "24px", marginBottom: 24,
+            backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+            boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
+          }}
+        >
+          <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 20 }}>
+            MEVSIMSEL TALEP PATERNI — 3 YIL ORTALAMASI (2023-2025)
+          </div>
+
+          {/* Bar chart */}
+          <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 220, marginBottom: 20 }}>
+            {MONTHLY_DEMAND.slice(1).map((demand, i) => {
+              const monthIndex = i + 1;
+              const maxDemand = 340;
+              const barHeight = (demand / maxDemand) * 170;
+              const isCurrent = monthIndex === currentMonth;
+              const barColor = isCurrent ? C.accent
+                : demand > 250 ? C.err
+                : demand < 120 ? C.blue
+                : C.ok;
+              return (
+                <div key={monthIndex} style={{ flex: 1, textAlign: "center", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "flex-end" }}>
+                  <div style={{ fontSize: 10, fontFamily: mono, color: C.white, fontWeight: 400, marginBottom: 4 }}>
+                    {demand}
+                  </div>
+                  <div style={{
+                    width: "70%", height: barHeight, borderRadius: "4px 4px 0 0",
+                    background: `linear-gradient(180deg, ${barColor}, ${barColor}33)`,
+                    transition: "height 0.5s ease",
+                    ...(isCurrent ? {
+                      boxShadow: `0 0 12px ${C.accentGlow}, inset 0 0 8px ${C.accentDim}`,
+                      border: `1px solid ${C.accent}`,
+                    } : {}),
+                  }} />
+                  <div style={{
+                    fontSize: 10, fontFamily: mono, marginTop: 6,
+                    color: isCurrent ? C.accent : C.dim,
+                    fontWeight: isCurrent ? 600 : 400,
+                  }}>
+                    {MONTH_NAMES_SHORT[monthIndex]}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+
+          {/* Summary stats */}
+          <div style={{ display: "flex", gap: 24, justifyContent: "center", flexWrap: "wrap" }}>
+            <div style={{
+              padding: "8px 16px", borderRadius: 8, background: C.accentDim, border: `1px solid ${C.borderActive}`,
+              fontSize: 12, fontFamily: mono, color: C.accent, fontWeight: 400,
+            }}>
+              Bu Ay: {MONTH_NAMES_SHORT[currentMonth]} — {thisMonthDemand} adet
+            </div>
+            <div style={{
+              padding: "8px 16px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`,
+              fontSize: 12, fontFamily: mono, color: C.mid, fontWeight: 400,
+            }}>
+              Yillik: 2,358 adet
+            </div>
+            <div style={{
+              padding: "8px 16px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`,
+              fontSize: 12, fontFamily: mono, color: C.mid, fontWeight: 400,
+            }}>
+              Mevsim Endeksi: {(thisMonthDemand / 196.5).toFixed(2)}x
+            </div>
+          </div>
+        </motion.div>
+
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
           {/* ═══ Section 2: Simulation Card ═══ */}
           <motion.div
@@ -346,7 +430,7 @@ export default function UrunIstihbarat() {
             </div>
             {/* Quick presets */}
             <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-              {[50, 100, 200, 500].map(n => (
+              {[50, thisMonthDemand, 200, 500].map(n => (
                 <button key={n} onClick={() => { setSimQty(n); setRunSim(true); }} style={{
                   padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`,
                   background: simQty === n ? C.accentDim : "transparent", color: simQty === n ? C.accent : C.mid,
