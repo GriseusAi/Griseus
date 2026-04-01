@@ -15,9 +15,7 @@ const mono = "'Outfit', sans-serif";
 
 const NAV_ITEMS = [
   { path: "/", label: "Stok Durumu", icon: "🏭" },
-  { path: "/stok/hareket", label: "Hızlı Giriş", icon: "⚡" },
   { path: "/stok/urun/ELT.7-11", label: "Ürün İstihbaratı", icon: "📊" },
-  { path: "/planlama", label: "Planlama", icon: "📈" },
   { path: "/sihir", label: "Sihir", icon: "⬡" },
   { path: "/engine", label: "CEO Agent", icon: "🤖" },
 ];

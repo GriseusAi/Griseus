@@ -19,13 +19,11 @@ import { Toaster } from "@/components/ui/toaster";
    ═══════════════════════════════════════════════════════════ */
 
 import StokDurum from "@/pages/stok-durum";
-import StokHareket from "@/pages/stok-hareket";
 import UrunIstihbarat from "@/pages/urun-istihbarat";
 import EnginePage from "@/pages/engine";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin/index";
-import PlanlamaPage from "@/pages/planlama";
 import PalantirPage from "@/pages/palantir";
 
 function App() {
@@ -34,9 +32,7 @@ function App() {
       <Switch>
         <Route path="/" component={StokDurum} />
         <Route path="/stok/durum" component={StokDurum} />
-        <Route path="/stok/hareket" component={StokHareket} />
         <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
-        <Route path="/planlama" component={PlanlamaPage} />
         <Route path="/sihir" component={PalantirPage} />
         <Route path="/engine" component={EnginePage} />
         <Route path="/login" component={LoginPage} />
