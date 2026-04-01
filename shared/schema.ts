@@ -208,3 +208,17 @@ export const knowledgeChunks = pgTable("knowledge_chunks", {
 });
 
 export type KnowledgeChunk = typeof knowledgeChunks.$inferSelect;
+
+// --- Demand Forecast (Aylık Satış Ortalamaları) ---
+
+export const demandForecast = pgTable("demand_forecast", {
+  id: serial("id").primaryKey(),
+  productSku: text("product_sku").notNull(),
+  month: integer("month").notNull(),           // 1-12
+  avgMonthlySales: numeric("avg_monthly_sales").notNull(),
+  yearsAveraged: integer("years_averaged").default(3),
+  source: text("source").default("historical"), // historical | adjusted | ml_forecast
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type DemandForecast = typeof demandForecast.$inferSelect;
