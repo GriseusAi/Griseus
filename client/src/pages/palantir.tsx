@@ -1,7 +1,8 @@
-import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useState, useCallback } from "react";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { motion, AnimatePresence } from "framer-motion";
 import TopNav from "@/components/top-nav";
+import { useStockWebSocket } from "@/lib/useStockWebSocket";
 
 const C = {
   bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
@@ -28,6 +29,16 @@ export default function PalantirPage() {
   const [adet, setAdet] = useState(222);
   const [inputVal, setInputVal] = useState("222");
   const [activeTab, setActiveTab] = useState<"uretim" | "plan6" | "siparis" | "tenx">("uretim");
+  const queryClient = useQueryClient();
+
+  // WebSocket — kalp atisi: stok degisince tum sihir yeniden hesaplanir
+  const onStockUpdate = useCallback(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/uretim-plani"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/6-ay-plan"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/acil-siparis"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/10x"] });
+  }, [queryClient]);
+  const { connected } = useStockWebSocket(onStockUpdate);
 
   // Queries
   const uretim = useQuery<any>({
@@ -83,8 +94,19 @@ export default function PalantirPage() {
               ELT.7-11 — Holt-Winters + MRP + ABC-XYZ + Safety Stock
             </p>
           </div>
-          <div style={{ marginLeft: "auto", fontSize: 11, color: C.dim }}>
-            {uretim.data?._hesapSuresi && `Son hesap: ${uretim.data._hesapSuresi}`}
+          <div style={{ marginLeft: "auto", display: "flex", alignItems: "center", gap: 8 }}>
+            {connected && (
+              <div style={{
+                display: "flex", alignItems: "center", gap: 4, padding: "4px 10px",
+                borderRadius: 20, background: C.okDim, border: `1px solid ${C.okBorder}`,
+              }}>
+                <div style={{ width: 6, height: 6, borderRadius: "50%", background: C.ok, animation: "pulse 2s infinite" }} />
+                <span style={{ fontSize: 10, color: C.ok, fontWeight: 600 }}>CANLI</span>
+              </div>
+            )}
+            <span style={{ fontSize: 11, color: C.dim }}>
+              {uretim.data?._hesapSuresi && `Son hesap: ${uretim.data._hesapSuresi}`}
+            </span>
           </div>
         </div>
 
@@ -323,25 +345,37 @@ export default function PalantirPage() {
                     Bilesen Tukenme Haritasi
                   </div>
                   {plan6.data.aylikPlan?.map((m: any) => (
-                    <div key={m.ayNo} style={{
-                      display: "flex", alignItems: "center", gap: 12, padding: "8px 0",
-                      borderBottom: `1px solid ${C.border}`,
-                    }}>
-                      <div style={{ width: 60, fontSize: 12, fontWeight: 500, color: C.white }}>{m.ay}</div>
-                      <div style={{
-                        flex: 1, height: 24, borderRadius: 6, position: "relative", overflow: "hidden",
-                        background: C.dimmer,
-                      }}>
+                    <div key={m.ayNo} style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+                        <div style={{ width: 60, fontSize: 12, fontWeight: 500, color: C.white }}>{m.ay}</div>
                         <div style={{
-                          position: "absolute", left: 0, top: 0, bottom: 0,
-                          width: `${Math.min(100, (m.tukenenBilesenSayisi / 43) * 100)}%`,
-                          background: m.tukenenBilesenSayisi > 10 ? C.err : m.tukenenBilesenSayisi > 0 ? C.warn : C.ok,
-                          borderRadius: 6, transition: "width 0.5s ease",
-                        }} />
+                          flex: 1, height: 24, borderRadius: 6, position: "relative", overflow: "hidden",
+                          background: C.dimmer,
+                        }}>
+                          <div style={{
+                            position: "absolute", left: 0, top: 0, bottom: 0,
+                            width: `${Math.min(100, (m.tukenenBilesenSayisi / 43) * 100)}%`,
+                            background: m.tukenenBilesenSayisi > 10 ? C.err : m.tukenenBilesenSayisi > 0 ? C.warn : C.ok,
+                            borderRadius: 6, transition: "width 0.5s ease",
+                          }} />
+                        </div>
+                        <div style={{ width: 80, textAlign: "right", fontSize: 11, color: m.tukenenBilesenSayisi > 0 ? C.err : C.ok }}>
+                          {m.tukenenBilesenSayisi}/43 tukenir
+                        </div>
                       </div>
-                      <div style={{ width: 80, textAlign: "right", fontSize: 11, color: m.tukenenBilesenSayisi > 0 ? C.err : C.ok }}>
-                        {m.tukenenBilesenSayisi}/43 tukenir
-                      </div>
+                      {m.tukenenler?.length > 0 && (
+                        <div style={{ marginLeft: 72, marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                          {m.tukenenler.map((t: string, i: number) => (
+                            <span key={i} style={{
+                              fontSize: 10, padding: "2px 6px", borderRadius: 4,
+                              background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,
+                            }}>{t}</span>
+                          ))}
+                          {m.tukenenBilesenSayisi > 3 && (
+                            <span style={{ fontSize: 10, color: C.dim }}>+{m.tukenenBilesenSayisi - 3} daha</span>
+                          )}
+                        </div>
+                      )}
                     </div>
                   ))}
                 </div>

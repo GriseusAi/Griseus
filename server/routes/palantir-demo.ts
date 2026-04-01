@@ -116,7 +116,7 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
         ay: MONTH_NAMES[ay], ayNo: ay, tapinenTalep: talep, mevsimsellik: donemTipi, mevsimIndex,
         mamulStokProjeksiyonu: Math.round(kumStok),
         tukenenBilesenSayisi: tukenenler.length,
-        tukenenler: tukenenler.slice(0, 3).map(t => `${t.kod} (${t.kalanStok})`),
+        tukenenler: tukenenler.slice(0, 6).map(t => `${t.kod} ${t.ad} (${t.kalanStok})`),
         enKritikBilesen: enKritik ? `${enKritik.kod} — kalan: ${enKritik.kalanStok}` : "-",
         strateji: mevsimIndex > 1.2 ? "Onceki ayda stok biriktirmis olmasin" : mevsimIndex < 0.5 ? "Fazla uret, gelecek yogun aya hazirlan" : "Normal uretim temposu",
       });
