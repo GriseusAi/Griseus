@@ -163,8 +163,9 @@ export default function UrunIstihbarat() {
     queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
   });
 
-  const MONTHLY_DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
+  const MONTHLY_DEMAND = [0, 340, 278, 222, 131, 22, 162, 234, 108, 98, 169, 269, 325];
   const MONTH_NAMES_SHORT = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
+  const SEASONAL_INDICES_FE = [1.73, 1.41, 1.13, 0.67, 0.11, 0.82, 1.19, 0.55, 0.50, 0.86, 1.37, 1.65]; // Oca-Ara
   const currentMonth = new Date().getMonth() + 1;
   const thisMonthDemand = MONTHLY_DEMAND[currentMonth];
 
@@ -698,56 +699,72 @@ export default function UrunIstihbarat() {
 
           {/* Intelligence Table Header */}
           <div style={{
-            display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 60px 80px",
+            display: "grid", gridTemplateColumns: "70px 1fr 80px 70px 80px 50px 80px 70px 80px",
             gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
           }}>
-            {["KOD", "BİLEŞEN", "TÜKETİM/GÜN", "KAÇ GÜN", "SİP.NOKTASI", "TREND", "ACİLİYET"].map(h => (
-              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1 }}>
+            {["KOD", "BİLEŞEN", "TÜKETİM/GÜN", "ESKİ GÜN", "YENİ GÜN", "FARK", "BİTİŞ AYI", "TREND", "ACİLİYET"].map(h => (
+              <div key={h} style={{ fontSize: 9, fontFamily: mono, color: h === "YENİ GÜN" ? C.accent : C.dim, fontWeight: 400, letterSpacing: 1 }}>
                 {h}
               </div>
             ))}
           </div>
 
-          {/* Intelligence Rows */}
-          {intel?.components.map((c) => {
+          {/* Intelligence Rows — Palantir Ontology Enhanced */}
+          {intel?.components.map((c: any) => {
             const urgencyColor = c.urgency === "critical" ? C.err : c.urgency === "warning" ? C.warn : c.urgency === "ok" ? C.ok : C.blue;
             const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.okDim : C.blueDim;
             const urgencyLabel = c.urgency === "critical" ? "KRİTİK" : c.urgency === "warning" ? "DİKKAT" : c.urgency === "ok" ? "NORMAL" : "BOL";
             const trendArrow = c.trend === "accelerating" ? "▲" : c.trend === "decelerating" ? "▼" : "—";
             const trendColor = c.trend === "accelerating" ? C.err : c.trend === "decelerating" ? C.ok : C.mid;
 
+            // Seasonal coloring
+            const diffVal = c.seasonalDifference ?? 0;
+            const diffSign = diffVal > 0 ? "+" : "";
+            const diffColor = diffVal > 0 ? C.ok : diffVal < 0 ? C.err : C.mid;
+            const riskColor = c.depletionRisk === "KRİTİK" ? C.err : c.depletionRisk === "YÜKSEK" ? C.warn : c.depletionRisk === "ORTA" ? C.blue : C.ok;
+
             return (
               <div key={c.code} style={{
-                display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 60px 80px",
+                display: "grid", gridTemplateColumns: "70px 1fr 80px 70px 80px 50px 80px 70px 80px",
                 gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
-                background: c.urgency === "critical" ? C.errDim : "transparent",
+                background: c.urgency === "critical" ? C.errDim : c.winterStress ? "rgba(249,115,22,0.03)" : "transparent",
                 transition: "background 0.15s",
               }}
                 onMouseEnter={e => { if (c.urgency !== "critical") e.currentTarget.style.background = C.surfaceHover; }}
-                onMouseLeave={e => { if (c.urgency !== "critical") e.currentTarget.style.background = "transparent"; }}
+                onMouseLeave={e => { if (c.urgency !== "critical") e.currentTarget.style.background = c.winterStress ? "rgba(249,115,22,0.03)" : "transparent"; }}
               >
                 <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>{c.code}</div>
                 <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
                   {c.name}
                   {c.tier === 2 && <span style={{ fontSize: 8, color: C.accent, fontFamily: mono }}>YARI MAMÜL</span>}
+                  {c.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
                 </div>
                 <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
                   {c.dailyBurnRate}
                 </div>
+                {/* Eski Gün (flat) - strikethrough */}
                 <div style={{
-                  fontFamily: mono, fontSize: 13, fontWeight: 400,
-                  color: c.daysToStockout === null ? C.blue
-                    : c.daysToStockout < 7 ? C.err
-                    : c.daysToStockout < 21 ? C.warn : C.ok,
+                  fontFamily: mono, fontSize: 11, fontWeight: 400,
+                  color: C.dim, textDecoration: "line-through", opacity: 0.5,
                 }}>
-                  {c.daysToStockout !== null ? `${c.daysToStockout}g` : "∞"}
+                  {c.daysToStockout !== null ? `${c.daysToStockout}g` : "—"}
                 </div>
+                {/* Yeni Gün (seasonal) - highlighted */}
                 <div style={{
-                  fontFamily: mono, fontSize: 11,
-                  color: c.isAboveReorderPoint ? C.ok : C.err,
+                  fontFamily: mono, fontSize: 13, fontWeight: 600,
+                  color: c.seasonalDays === 0 ? C.err
+                    : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
+                    : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.accent,
                 }}>
-                  {c.reorderPoint}
-                  {!c.isAboveReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
+                  {c.seasonalDays !== null ? `${c.seasonalDays}g` : "—"}
+                </div>
+                {/* Fark */}
+                <div style={{ fontFamily: mono, fontSize: 10, color: diffColor, fontWeight: 400 }}>
+                  {c.seasonalDifference !== null ? `${diffSign}${diffVal}` : "—"}
+                </div>
+                {/* Bitis Ayi */}
+                <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
+                  {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
                 </div>
                 <div style={{ fontFamily: mono, fontSize: 12, color: trendColor, fontWeight: 400 }}>
                   {trendArrow}
@@ -771,9 +788,117 @@ export default function UrunIstihbarat() {
           )}
         </motion.div>
 
+        {/* ═══ Section 6: Palantir Ontology Summary ═══ */}
+        {intel && (intel as any).ontology && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.35 }}
+            style={{
+              background: C.surface, border: `1px solid ${C.accentGlow}`, borderRadius: 12,
+              padding: "24px", marginBottom: 24, position: "relative", overflow: "hidden",
+            }}
+          >
+            <div style={{
+              position: "absolute", top: 0, left: 0, right: 0, height: 3,
+              background: `linear-gradient(90deg, ${C.accent}, ${C.ok}, ${C.blue})`,
+              opacity: 0.6,
+            }} />
+            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 20 }}>
+              PALANTİR ONTOLOJİ — BAĞLAMSAL ZEKA
+            </div>
+
+            {/* Ontology Graph SVG */}
+            <div style={{ maxWidth: 600, margin: "0 auto 24px", opacity: 0.9 }}>
+              <svg viewBox="0 0 600 180" width="100%" xmlns="http://www.w3.org/2000/svg">
+                <rect x="230" y="5" width="140" height="45" rx="8" fill="#1e1b4b" stroke="#6366f1" strokeWidth="2" />
+                <text x="300" y="24" textAnchor="middle" fill="#a5b4fc" fontSize="10" fontWeight="600">ELT 7-11</text>
+                <text x="300" y="40" textAnchor="middle" fill="#6b7280" fontSize="9">{capacity?.maxProducible ?? "—"} adet üretilebilir</text>
+
+                <rect x="450" y="70" width="130" height="45" rx="8" fill="#1a1a2e" stroke="#06b6d4" strokeWidth="2" />
+                <text x="515" y="89" textAnchor="middle" fill="#67e8f9" fontSize="10" fontWeight="600">MEVSİM</text>
+                <text x="515" y="105" textAnchor="middle" fill="#6b7280" fontSize="9">{(intel as any).ontology.currentMonth}: {(intel as any).ontology.currentSeasonalIndex}x</text>
+
+                <rect x="20" y="70" width="130" height="45" rx="8" fill="#1a1a2e" stroke="#22c55e" strokeWidth="2" />
+                <text x="85" y="89" textAnchor="middle" fill="#86efac" fontSize="10" fontWeight="600">{intel.components.length} PARÇA</text>
+                <text x="85" y="105" textAnchor="middle" fill="#6b7280" fontSize="9">{intel.criticalCount} kritik</text>
+
+                <rect x="230" y="135" width="140" height="35" rx="8" fill="#1a1a2e" stroke="#f97316" strokeWidth="2" />
+                <text x="300" y="157" textAnchor="middle" fill="#fdba74" fontSize="10" fontWeight="600">TEDARİKÇİ: Çukurova Isı</text>
+
+                <line x1="150" y1="92" x2="230" y2="35" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
+                <line x1="370" y1="35" x2="450" y2="85" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
+                <line x1="85" y1="115" x2="230" y2="148" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
+                <line x1="300" y1="50" x2="300" y2="135" stroke="#4b5563" strokeWidth="1" strokeDasharray="4" />
+
+                <text x="175" y="58" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(-25, 175, 58)">BOM/Reçete</text>
+                <text x="425" y="53" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(25, 425, 53)">talep_paterni</text>
+                <text x="145" y="138" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(15, 145, 138)">supplied_by</text>
+              </svg>
+            </div>
+
+            {/* Stats Grid */}
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
+              {[
+                { label: "Toplam Parça", value: intel.components.length, color: C.white },
+                { label: "Kritik Parça", value: intel.criticalCount, color: C.err },
+                { label: "Kış Riski", value: (intel as any).ontology.winterRiskCount, color: "#f97316" },
+                { label: "Ort. Gün Farkı", value: `+${(intel as any).ontology.avgDaysDifference}g`, color: C.ok },
+              ].map(s => (
+                <div key={s.label} style={{
+                  background: C.bg, borderRadius: 8, padding: 12, textAlign: "center",
+                  border: `1px solid ${C.border}`,
+                }}>
+                  <div style={{ fontSize: 20, fontWeight: 700, color: s.color, fontFamily: mono }}>{s.value}</div>
+                  <div style={{ fontSize: 9, color: C.dim, marginTop: 4, fontFamily: mono }}>{s.label}</div>
+                </div>
+              ))}
+            </div>
+
+            {/* 12-Month Seasonal Runway */}
+            <div style={{ marginBottom: 16 }}>
+              <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>
+                12-AY MEVSİMSEL PİST
+              </div>
+              <div style={{ display: "flex", gap: 4 }}>
+                {((intel as any).ontology.seasonalIndices as Array<{month: string; index: number}>).map((s, i) => {
+                  const height = Math.max(12, s.index * 36);
+                  const monthIdx = ["Oca","Sub","Mar","Nis","May","Haz","Tem","Agu","Eyl","Eki","Kas","Ara"].indexOf(s.month);
+                  const isCurrent = monthIdx === currentMonth - 1;
+                  const barColor = s.index >= 1.3 ? "rgba(239,68,68,0.6)" : s.index >= 0.8 ? "rgba(249,115,22,0.4)" : "rgba(34,197,94,0.3)";
+                  return (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", gap: 2 }}>
+                      <div style={{
+                        width: "100%", borderRadius: "3px 3px 0 0", background: barColor,
+                        height, transition: "height 0.3s",
+                        ...(isCurrent ? { border: `1px solid ${C.accent}`, boxShadow: `0 0 8px ${C.accentGlow}` } : {}),
+                      }} />
+                      <span style={{ fontSize: 8, color: isCurrent ? C.accent : C.dim, fontFamily: mono, fontWeight: isCurrent ? 700 : 400 }}>
+                        {s.month}
+                      </span>
+                      <span style={{ fontSize: 7, color: C.dim, fontFamily: mono }}>{s.index}x</span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* Ontology Insight */}
+            <div style={{
+              padding: 12, borderRadius: 8, background: C.accentDim, border: `1px solid ${C.borderActive}`,
+            }}>
+              <div style={{ fontSize: 11, color: C.white, lineHeight: 1.6 }}>
+                <span style={{ color: C.accent, fontWeight: 600 }}>Ontoloji İçgörüsü: </span>
+                Düz model "rahat" diyor, ontoloji "şimdi rahat ama kışa hazırlan" diyor.
+                Ortalama <span style={{ color: C.ok, fontWeight: 600 }}>+{(intel as any).ontology.avgDaysDifference} gün</span> fark var
+                çünkü düşük sezondayız. Ama bu <span style={{ color: C.err, fontWeight: 600 }}>sahte güvenlik</span> —
+                kış geldiğinde tüketim {(SEASONAL_INDICES_FE[0] / SEASONAL_INDICES_FE[currentMonth - 1]).toFixed(1)}x artacak.
+              </div>
+            </div>
+          </motion.div>
+        )}
+
         {/* ── Footer ── */}
         <div style={{ textAlign: "center", padding: "24px 0", fontSize: 10, fontFamily: mono, color: C.dim }}>
-          GRISEUS ÜRÜN İSTİHBARATI — {sku} — Veriler Çukurova Netsis'ten içe aktarıldı
+          GRISEUS ÜRÜN İSTİHBARATI — {sku} — Palantir Ontoloji Motoru v1.0 — Veriler Çukurova Netsis'ten içe aktarıldı
         </div>
       </div>
     </div>
