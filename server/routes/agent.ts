@@ -658,6 +658,75 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
 }
 
 // ══════════════════════════════════════════════════════════════════════
+// LIVE SNAPSHOT — Pre-compute system state so agent already knows
+// ══════════════════════════════════════════════════════════════════════
+
+async function buildLiveSnapshot(): Promise<string> {
+  try {
+    const SKU = "ELT.7-11";
+    const bomItems = await getBomWithStock(SKU);
+    const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
+
+    // Stock levels
+    const stockRows = await db
+      .select({ sku: products.sku, inProd: stockLevels.inProduction, inWh: stockLevels.inWarehouse, sold: stockLevels.totalSold })
+      .from(stockLevels).innerJoin(products, eq(stockLevels.productId, products.id));
+    const elt = stockRows.find(r => r.sku === SKU);
+
+    // Capacity
+    const capacity = computeProductionCapacity(bomItems);
+
+    // Critical parts (stock < 3 months need)
+    const MONTHLY_AVG = 196.5;
+    const criticals = tier1and2
+      .filter(c => c.currentStock <= c.requiredQty * MONTHLY_AVG * 3)
+      .sort((a, b) => (a.currentStock / Math.max(a.requiredQty, 0.01)) - (b.currentStock / Math.max(b.requiredQty, 0.01)))
+      .slice(0, 8);
+
+    // Top overstocked (>24 months)
+    const overstocked = tier1and2
+      .filter(c => c.currentStock > c.requiredQty * MONTHLY_AVG * 24)
+      .sort((a, b) => (b.currentStock / Math.max(b.requiredQty * MONTHLY_AVG, 0.01)) - (a.currentStock / Math.max(a.requiredQty * MONTHLY_AVG, 0.01)))
+      .slice(0, 5);
+
+    const today = new Date();
+    const ayNo = today.getMonth() + 1;
+    const DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
+    const NAMES = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
+
+    let snapshot = `\n═══ CANLI DURUM (${today.toLocaleDateString("tr-TR")}) ═══\n`;
+    snapshot += `Mamul stok: ${elt ? elt.inProd + elt.inWh : 0} adet (üretimde:${elt?.inProd ?? 0} depoda:${elt?.inWh ?? 0} satılan:${elt?.sold ?? 0})\n`;
+    snapshot += `Max üretilebilir: ${capacity.maxProducible} adet (darboğaz: ${capacity.bottlenecks[0]?.name || "-"})\n`;
+    snapshot += `Bu ay: ${NAMES[ayNo]} — talep ${DEMAND[ayNo]} adet (${(DEMAND[ayNo] / 196.5).toFixed(2)}x)\n`;
+
+    if (criticals.length > 0) {
+      snapshot += `\nKRİTİK/AZ STOK:\n`;
+      for (const c of criticals) {
+        const months = c.currentStock / Math.max(c.requiredQty * MONTHLY_AVG, 0.01);
+        snapshot += `  ${c.code} ${c.name}: stok=${Math.round(c.currentStock)} (${months.toFixed(1)} aylık)\n`;
+      }
+    }
+
+    if (overstocked.length > 0) {
+      snapshot += `\nAŞIRI STOK (>2 yıl):\n`;
+      for (const c of overstocked) {
+        const months = c.currentStock / Math.max(c.requiredQty * MONTHLY_AVG, 0.01);
+        snapshot += `  ${c.code} ${c.name}: stok=${Math.round(c.currentStock)} (${months.toFixed(1)} aylık)\n`;
+      }
+    }
+
+    snapshot += `\nÖnümüzdeki 3 ay: ${NAMES[ayNo]}(${DEMAND[ayNo]}) → ${NAMES[ayNo % 12 + 1]}(${DEMAND[ayNo % 12 + 1]}) → ${NAMES[(ayNo + 1) % 12 + 1]}(${DEMAND[(ayNo + 1) % 12 + 1]})\n`;
+    snapshot += `Toplam bileşen: ${tier1and2.length} | Sıfır stoklu: ${tier1and2.filter(c => c.currentStock <= 0).length}\n`;
+    snapshot += `═══════════════════════════════════\n`;
+
+    return snapshot;
+  } catch (err) {
+    console.warn("[agent/snapshot] Failed:", err);
+    return "";
+  }
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // CHAT ENDPOINT
 // ══════════════════════════════════════════════════════════════════════
 
@@ -693,12 +762,18 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     const toolsUsed: string[] = [];
 
-    // ── RAG: Dynamic context injection ──
+    // ── Live snapshot + RAG: Dynamic context injection ──
     let systemPrompt = CORE_PROMPT;
+
+    // 1. Live snapshot (fast DB queries — agent knows current state without tool calls)
+    const snapshot = await buildLiveSnapshot();
+    if (snapshot) systemPrompt += snapshot;
+
+    // 2. RAG (semantic search for domain knowledge)
     try {
       const ragContext = await buildDynamicContext(message);
       if (ragContext) {
-        systemPrompt = CORE_PROMPT + "\n" + ragContext;
+        systemPrompt += "\n" + ragContext;
         console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
       }
     } catch (ragErr: any) {
