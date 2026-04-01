@@ -176,12 +176,11 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const peakSeasonalRate = effectiveDailyRate * Math.max(...SEASONAL_INDICES);
       const seasonalReorderPt = Math.ceil(reorderPoint * SEASONAL_INDICES[currentMonthIdx]);
 
-      // Depletion risk based on which month stock runs out
-      const depIdx = SEASONAL_INDICES[seasonal.depletionMonth];
+      // Depletion risk based on HOW SOON stock runs out (not which month)
       const depRisk = item.currentStock <= 0 ? "KRİTİK" as const
-        : depIdx >= 1.5 ? "KRİTİK" as const
-        : depIdx >= 1.1 ? "YÜKSEK" as const
-        : depIdx >= 0.7 ? "ORTA" as const
+        : seasonal.days <= 180 ? "KRİTİK" as const
+        : seasonal.days <= 365 ? "YÜKSEK" as const
+        : seasonal.days <= 730 ? "ORTA" as const
         : "DÜŞÜK" as const;
 
       const winterMonths = [10, 11, 0, 1];
@@ -207,7 +206,7 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         peakSeasonalRate: Math.round(peakSeasonalRate * 100) / 100,
       };
     })
-    .sort((a, b) => (a.daysToStockout ?? 9999) - (b.daysToStockout ?? 9999));
+    .sort((a, b) => (a.seasonalDays ?? 9999) - (b.seasonalDays ?? 9999));
 
   // Ontology summary
   const winterRiskCount = components.filter(c => c.winterStress).length;
