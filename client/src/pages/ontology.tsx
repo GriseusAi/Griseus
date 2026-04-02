@@ -1,8 +1,8 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TopNav from "@/components/top-nav";
-import { useStockWebSocket } from "@/lib/useStockWebSocket";
+import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocket";
 
 /* ═══════════════════════════════════════════════════════════
    GRISEUS — ONTOLOGY DIAGRAM & SIMULATION ENGINE
@@ -428,22 +428,33 @@ export default function OntologyPage() {
   const [simQty, setSimQty] = useState(0);
   const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [graphReady, setGraphReady] = useState(false);
+  const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const qc = useQueryClient();
 
-  // WebSocket
-  const onStockUpdate = useCallback(() => {}, []);
-  const { connected } = useStockWebSocket(onStockUpdate);
+  // WebSocket — live blood flow: stock changes pump to all organs instantly
+  const handleStockUpdate = useCallback((data: StockUpdateEvent) => {
+    // Invalidate all shared queries — Stok Durumu, Ürün İstihbaratı, and this page all refresh
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/stock"] });
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/production-capacity"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/intelligence"] });
+    setLastUpdate(`${data.productSku} ${data.movementType} ×${data.quantity}`);
+    setTimeout(() => setLastUpdate(null), 3000);
+  }, [qc]);
+  const { connected } = useStockWebSocket(handleStockUpdate);
 
-  // Data
+  // Data — shared query keys with other pages = automatic cross-page sync
   const { data: stockData } = useQuery<StockData>({
     queryKey: ["/api/bom/ELT.7-11/stock"],
     queryFn: () => apiRequest("GET", "/api/bom/ELT.7-11/stock").then(r => r.json()),
-    staleTime: 30000,
+    staleTime: 5000, // 5s — faster refresh for live feel
   });
 
   const { data: capacityData } = useQuery<CapacityData>({
     queryKey: ["/api/bom/ELT.7-11/production-capacity"],
     queryFn: () => apiRequest("GET", "/api/bom/ELT.7-11/production-capacity").then(r => r.json()),
-    staleTime: 30000,
+    staleTime: 5000,
   });
 
   // Resize canvas to container with DPR (Retina support)
@@ -766,6 +777,18 @@ export default function OntologyPage() {
               animation: "pulse 2s infinite",
             }}>
               SİMÜLASYON: {fmt(simQty)} adet üretim
+            </div>
+          )}
+
+          {/* Live update flash */}
+          {lastUpdate && (
+            <div style={{
+              position: "absolute", bottom: 16, right: 16, padding: "8px 16px",
+              borderRadius: 8, background: C.okDim, border: `1px solid ${C.okBorder}`,
+              fontSize: 10, color: C.ok, fontFamily: mono,
+              animation: "pulse 1s infinite",
+            }}>
+              ⚡ CANLI GÜNCELLEME: {lastUpdate}
             </div>
           )}
         </div>

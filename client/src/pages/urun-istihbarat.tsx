@@ -1,5 +1,5 @@
 import { useState, useMemo } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
@@ -127,34 +127,36 @@ export default function UrunIstihbarat() {
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
   const [showAllComponents, setShowAllComponents] = useState(false);
 
-  // WebSocket for live updates
-  const { connected } = useStockWebSocket((event) => {
-    // Refetch on component stock updates
-    if (event.movementType === "component_stock_update") {
-      capacityQuery.refetch();
-      stockQuery.refetch();
-      if (runSim) simQuery.refetch();
-    }
+  // WebSocket — cross-page live sync (shared query keys with Stok Durumu & Ontology)
+  const qc = useQueryClient();
+  const { connected } = useStockWebSocket(() => {
+    // Invalidate ALL shared keys — any stock change pumps to all pages
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
+    if (runSim) qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/simulate`] });
   });
 
   const capacityQuery = useQuery<CapacityData>({
-    queryKey: ["/api/bom", sku, "production-capacity"],
+    queryKey: [`/api/bom/${sku}/production-capacity`],
     queryFn: () => fetch(`/api/bom/${sku}/production-capacity`).then(r => r.json()),
   });
 
   const stockQuery = useQuery<StockData>({
-    queryKey: ["/api/bom", sku, "stock"],
+    queryKey: [`/api/bom/${sku}/stock`],
     queryFn: () => fetch(`/api/bom/${sku}/stock`).then(r => r.json()),
   });
 
   const simQuery = useQuery<SimulationData>({
-    queryKey: ["/api/bom", sku, "simulate", simQty],
+    queryKey: [`/api/bom/${sku}/simulate`, simQty],
     queryFn: () => fetch(`/api/bom/${sku}/simulate?quantity=${simQty}`).then(r => r.json()),
     enabled: runSim,
   });
 
   const intelQuery = useQuery<IntelData>({
-    queryKey: ["/api/bom", sku, "intelligence"],
+    queryKey: [`/api/bom/${sku}/intelligence`],
     queryFn: () => fetch(`/api/bom/${sku}/intelligence`).then(r => r.json()),
   });
 
