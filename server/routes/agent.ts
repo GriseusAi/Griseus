@@ -50,7 +50,18 @@ STRATEJİ: Düşük dönemde üret+stokla → yoğun dönemde hazır ol. Tem'de 
 - Sayıları **kalın** yaz, ⚠️ ile uyar
 - Cevap sonunda "Önerilen Aksiyonlar:" sun
 - Tool çağrılarını paralel yap, hızlı ol
-- Türkçe cevap ver`;
+- Türkçe cevap ver
+
+WHAT-IF ANALİZ KURALLARI (KRİTİK — MUTLAKA UYGULANACAK):
+- what_if_analysis tool'undan dönen verileri OLDUĞU GİBİ kullan. SAYI UYDURMA, YUVARLAMA veya YORUMLAMA.
+- "afterStock" değeri bileşenin simülasyon sonrası stokudur — bunu direkt yaz.
+- "afterSeasonalDays" değeri mevsimsel kaç gün yeteceğidir — bunu direkt yaz.
+- "currentStock → afterStock" formatında yaz: ör. "27.031: 482 → 982 adet"
+- Sadece "urgencyChanged: true" olan bileşenleri raporla, değişmeyen bileşenleri atlayabilirsin.
+- "stockDelta: 0" olan bileşenleri "stoku değişmedi" olarak belirt, ASLA saydırma yaparak farklı sayı türetme.
+- restock_component senaryosunda SADECE belirtilen bileşenin stoku değişir. Diğer bileşenlerin stockDelta'sı 0'dır — bunları "stoku sıfıra düştü" gibi yanlış gösterme.
+- "feasible: false" ise "KARŞILANAMAZ" yaz, sebebini "criticalComponents" listesinden al.
+- Tool'dan gelen "summary" alanını referans al ama sayıları her zaman "topImpacts" dizisinden doğrula.`;
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -714,9 +725,14 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
           actions: result.actions.slice(0, 8),
           topImpacts: result.componentImpacts.slice(0, 10).map(c => ({
             code: c.code, name: c.name,
-            stock: `${c.currentStock} → ${c.afterStock}`,
-            days: `${c.currentSeasonalDays ?? "—"} → ${c.afterSeasonalDays ?? 0}g`,
+            currentStock: c.currentStock,
+            afterStock: c.afterStock,
+            stockDelta: c.stockDelta,
+            stockChanged: c.stockDelta !== 0,
+            currentDays: c.currentSeasonalDays,
+            afterDays: c.afterSeasonalDays,
             urgency: c.urgencyChanged ? `${c.currentUrgency} → ${c.afterUrgency}` : c.afterUrgency,
+            urgencyChanged: c.urgencyChanged,
             winterStress: c.winterStress,
             action: c.actionNeeded,
           })),
