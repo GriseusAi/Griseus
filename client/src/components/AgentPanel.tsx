@@ -142,7 +142,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
               fontSize: 8, fontFamily: mono, padding: "2px 8px", borderRadius: 10,
               background: C.accentDim, color: C.accent, fontWeight: 400,
             }}>
-              12 TOOL
+              13 TOOL
             </span>
             <button
               onClick={onClose}

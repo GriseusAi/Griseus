@@ -136,7 +136,7 @@ export default function EnginePage() {
             fontSize: 9, fontFamily: mono, padding: "3px 10px", borderRadius: 12,
             background: C.accentDim, color: C.accent, fontWeight: 400,
           }}>
-            12 TOOL AKTİF
+            13 TOOL AKTİF
           </span>
         </div>
       </div>

@@ -12,6 +12,7 @@ import planningRouter from "./routes/planning";
 import palantirRouter from "./routes/palantir";
 import palantirDemoRouter from "./routes/palantir-demo";
 import { getRecentImpacts } from "./lib/impact-engine";
+import { simulateWhatIf, type WhatIfScenario } from "./lib/whatif-engine";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -30,6 +31,33 @@ export async function registerRoutes(
   app.get("/api/impact/latest", (_req, res) => {
     const limit = Number(_req.query.limit) || 10;
     res.json({ impacts: getRecentImpacts(limit) });
+  });
+
+  // ── What-If Simulation API ──
+  app.get("/api/whatif/simulate", async (req, res) => {
+    try {
+      const type = req.query.type as string;
+      const quantity = Number(req.query.quantity) || 100;
+      const componentCode = req.query.component as string | undefined;
+
+      let scenario: WhatIfScenario;
+      switch (type) {
+        case "produce": scenario = { type: "produce", quantity }; break;
+        case "order": scenario = { type: "order_received", quantity }; break;
+        case "restock": {
+          if (!componentCode) return res.status(400).json({ error: "component parametresi gerekli" });
+          scenario = { type: "restock_component", componentCode, quantity };
+          break;
+        }
+        case "forward": scenario = { type: "months_forward", months: quantity }; break;
+        default: return res.status(400).json({ error: "type: produce|order|restock|forward" });
+      }
+
+      const result = await simulateWhatIf(scenario);
+      res.json(result);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
   });
 
   // ── Auth ──

@@ -5,6 +5,7 @@ import { stockLevels, stockMovementsV2, products, componentStock, bomItems, purc
 import { eq, desc, and, sql } from "drizzle-orm";
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "./bom";
 import { ensureStockLevel } from "./stock-poc";
+import { simulateWhatIf, type WhatIfScenario } from "../lib/whatif-engine";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
@@ -226,6 +227,23 @@ const TOOLS: Anthropic.Tool[] = [
         ay: { type: "number", description: "Acil sipariş için kaç ay ileri (varsayılan: 3)" },
       },
       required: [],
+    },
+  },
+  {
+    name: "what_if_analysis",
+    description: "What-If Analizi — Cascading impact simülasyonu. Veri DEĞİŞTİRMEDEN senaryoları simüle eder ve tüm zincirleme etkileri gösterir: üretim kapasitesi, bileşen tükenme tarihleri, darboğaz değişimi, sipariş önerileri. Kullanıcı 'ne olur?' diye sorduğunda MUTLAKA bu tool'u kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        scenario_type: {
+          type: "string",
+          enum: ["produce", "order_received", "restock_component", "months_forward"],
+          description: "Senaryo tipi: produce=üretim yapsak, order_received=sipariş alsak, restock_component=bileşen stoklasak, months_forward=N ay ileri simülasyon",
+        },
+        quantity: { type: "number", description: "Miktar (adet veya ay sayısı)" },
+        component_code: { type: "string", description: "Bileşen kodu (sadece restock_component için, ör: '27.031')" },
+      },
+      required: ["scenario_type", "quantity"],
     },
   },
 ];
@@ -652,6 +670,59 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         return data;
       } catch (err: any) {
         return { error: `Intelligence Engine erişim hatası: ${err.message}` };
+      }
+    }
+
+    case "what_if_analysis": {
+      try {
+        const scenarioType = input.scenario_type as string;
+        const quantity = input.quantity as number;
+        const componentCode = input.component_code as string | undefined;
+
+        let scenario: WhatIfScenario;
+        switch (scenarioType) {
+          case "produce":
+            scenario = { type: "produce", quantity };
+            break;
+          case "order_received":
+            scenario = { type: "order_received", quantity };
+            break;
+          case "restock_component":
+            if (!componentCode) return { error: "restock_component için component_code gerekli" };
+            scenario = { type: "restock_component", componentCode, quantity };
+            break;
+          case "months_forward":
+            scenario = { type: "months_forward", months: quantity };
+            break;
+          default:
+            return { error: `Bilinmeyen senaryo tipi: ${scenarioType}` };
+        }
+
+        const result = await simulateWhatIf(scenario);
+        return {
+          scenario: result.scenario,
+          feasible: result.feasible,
+          summary: result.summary,
+          currentCapacity: result.currentCapacity,
+          afterCapacity: result.afterCapacity,
+          capacityDelta: result.capacityDelta,
+          bottleneckChanged: result.bottleneckChanged,
+          currentBottleneck: result.currentBottleneck,
+          afterBottleneck: result.afterBottleneck,
+          criticalCount: result.criticalComponents.length,
+          warningCount: result.warningComponents.length,
+          actions: result.actions.slice(0, 8),
+          topImpacts: result.componentImpacts.slice(0, 10).map(c => ({
+            code: c.code, name: c.name,
+            stock: `${c.currentStock} → ${c.afterStock}`,
+            days: `${c.currentSeasonalDays ?? "—"} → ${c.afterSeasonalDays ?? 0}g`,
+            urgency: c.urgencyChanged ? `${c.currentUrgency} → ${c.afterUrgency}` : c.afterUrgency,
+            winterStress: c.winterStress,
+            action: c.actionNeeded,
+          })),
+        };
+      } catch (err: any) {
+        return { error: `What-If analiz hatası: ${err.message}` };
       }
     }
 
