@@ -204,8 +204,8 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
           maxProducts === null ? "N/A" :
           maxProducts === 0 ? "critical" :
           maxProducts < 50 ? "critical" :
-          maxProducts < 200 ? "warning" :
-          maxProducts < 500 ? "ok" : "abundant",
+          maxProducts < 150 ? "warning" :
+          maxProducts < 400 ? "ok" : "abundant",
       };
     }),
   });

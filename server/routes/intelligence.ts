@@ -168,15 +168,29 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const trend: "accelerating" | "stable" | "decelerating" =
         trendRatio > 1.2 ? "accelerating" : trendRatio < 0.8 ? "decelerating" : "stable";
 
-      const urgency: "critical" | "warning" | "ok" | "abundant" =
+      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2)
+      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
+      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate);
+
+      // Urgency: prefer seasonal forward-walk over simple daysToStockout
+      const urgencyFromSeasonal: "critical" | "warning" | "ok" | "abundant" =
+        effectiveStock <= 0 ? "critical"
+        : seasonal.days <= 180 ? "critical"
+        : seasonal.days <= 365 ? "warning"
+        : seasonal.days <= 730 ? "ok"
+        : "abundant";
+
+      // If we have actual sales data, also check linear burn rate
+      const urgencyFromLinear: "critical" | "warning" | "ok" | "abundant" =
         daysToStockout === null ? "abundant"
         : daysToStockout < 7 ? "critical"
         : daysToStockout < 21 ? "warning"
         : daysToStockout < 60 ? "ok" : "abundant";
 
-      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2)
-      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
-      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate);
+      // Take the worse of the two signals
+      const urgencyRank = { critical: 0, warning: 1, ok: 2, abundant: 3 } as const;
+      const urgency = urgencyRank[urgencyFromSeasonal] <= urgencyRank[urgencyFromLinear]
+        ? urgencyFromSeasonal : urgencyFromLinear;
       const currentMonthIdx = new Date().getMonth();
       const currentSeasonalRate = effectiveDailyRate * SEASONAL_INDICES[currentMonthIdx];
       const peakSeasonalRate = effectiveDailyRate * Math.max(...SEASONAL_INDICES);
