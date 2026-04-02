@@ -8,6 +8,7 @@ import { ensureStockLevel } from "./stock-poc";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
+import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS } from "../lib/seasonal-constants";
 import { buildDynamicContext } from "../rag";
 
 const router = Router();
@@ -679,7 +680,7 @@ async function buildLiveSnapshot(): Promise<string> {
     const capacity = computeProductionCapacity(bomItems);
 
     // Critical parts (stock < 3 months need)
-    const MONTHLY_AVG = 196.5;
+    const MONTHLY_AVG = SHARED_MONTHLY_AVG;
     const criticals = tier1and2
       .filter(c => c.currentStock <= c.requiredQty * MONTHLY_AVG * 3)
       .sort((a, b) => (a.currentStock / Math.max(a.requiredQty, 0.01)) - (b.currentStock / Math.max(b.requiredQty, 0.01)))
@@ -692,14 +693,12 @@ async function buildLiveSnapshot(): Promise<string> {
       .slice(0, 5);
 
     const today = new Date();
-    const ayNo = today.getMonth() + 1;
-    const DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
-    const NAMES = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
+    const ayIdx = today.getMonth(); // 0-indexed
 
     let snapshot = `\n═══ CANLI DURUM (${today.toLocaleDateString("tr-TR")}) ═══\n`;
     snapshot += `Mamul stok: ${elt ? elt.inProd + elt.inWh : 0} adet (üretimde:${elt?.inProd ?? 0} depoda:${elt?.inWh ?? 0} satılan:${elt?.sold ?? 0})\n`;
     snapshot += `Max üretilebilir: ${capacity.maxProducible} adet (darboğaz: ${capacity.bottlenecks[0]?.name || "-"})\n`;
-    snapshot += `Bu ay: ${NAMES[ayNo]} — talep ${DEMAND[ayNo]} adet (${(DEMAND[ayNo] / 196.5).toFixed(2)}x)\n`;
+    snapshot += `Bu ay: ${MONTH_LABELS[ayIdx]} — talep ${DEMAND_0[ayIdx]} adet (${(DEMAND_0[ayIdx] / MONTHLY_AVG).toFixed(2)}x)\n`;
 
     if (criticals.length > 0) {
       snapshot += `\nKRİTİK/AZ STOK:\n`;
@@ -717,7 +716,7 @@ async function buildLiveSnapshot(): Promise<string> {
       }
     }
 
-    snapshot += `\nÖnümüzdeki 3 ay: ${NAMES[ayNo]}(${DEMAND[ayNo]}) → ${NAMES[ayNo % 12 + 1]}(${DEMAND[ayNo % 12 + 1]}) → ${NAMES[(ayNo + 1) % 12 + 1]}(${DEMAND[(ayNo + 1) % 12 + 1]})\n`;
+    snapshot += `\nÖnümüzdeki 3 ay: ${MONTH_LABELS[ayIdx]}(${DEMAND_0[ayIdx]}) → ${MONTH_LABELS[(ayIdx + 1) % 12]}(${DEMAND_0[(ayIdx + 1) % 12]}) → ${MONTH_LABELS[(ayIdx + 2) % 12]}(${DEMAND_0[(ayIdx + 2) % 12]})\n`;
     snapshot += `Toplam bileşen: ${tier1and2.length} | Sıfır stoklu: ${tier1and2.filter(c => c.currentStock <= 0).length}\n`;
     snapshot += `═══════════════════════════════════\n`;
 
