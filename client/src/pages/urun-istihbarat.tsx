@@ -709,8 +709,8 @@ export default function UrunIstihbarat() {
 
           {/* Intelligence Rows — Seasonal Only */}
           {intel?.components.map((c: any) => {
-            const urgencyColor = c.urgency === "critical" ? C.err : c.urgency === "warning" ? C.warn : c.urgency === "ok" ? C.ok : C.blue;
-            const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.okDim : C.blueDim;
+            const urgencyColor = c.urgency === "critical" ? C.err : c.urgency === "warning" ? C.warn : c.urgency === "ok" ? C.blue : C.ok;
+            const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.blueDim : C.okDim;
             const urgencyLabel = c.urgency === "critical" ? "KRİTİK" : c.urgency === "warning" ? "DİKKAT" : c.urgency === "ok" ? "YETERLİ" : "BOL";
             const riskColor = c.depletionRisk === "KRİTİK" ? C.err : c.depletionRisk === "YÜKSEK" ? C.warn : c.depletionRisk === "ORTA" ? C.blue : C.ok;
 
