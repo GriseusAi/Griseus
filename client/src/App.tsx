@@ -25,6 +25,7 @@ import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin/index";
 import PalantirPage from "@/pages/palantir";
+import OntologyPage from "@/pages/ontology";
 
 function App() {
   return (
@@ -34,6 +35,7 @@ function App() {
         <Route path="/stok/durum" component={StokDurum} />
         <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
         <Route path="/sihir" component={PalantirPage} />
+        <Route path="/ontology" component={OntologyPage} />
         <Route path="/engine" component={EnginePage} />
         <Route path="/login" component={LoginPage} />
         <Route path="/admin" component={AdminPage} />
