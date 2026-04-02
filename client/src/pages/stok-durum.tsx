@@ -269,6 +269,9 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
   if (!capacity) return null;
   const brulor = capacity.subAssemblyStatus["27.125"];
   if (!brulor) return null;
+  const brulorCapacity = brulor.currentStock + brulor.producibleFromParts;
+  // Brülör is only a real bottleneck if its capacity < product max producible
+  const isBrulorRealBottleneck = brulorCapacity < capacity.maxProducible;
 
   return (
     <div style={{
@@ -297,26 +300,28 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
       {/* Sub-parts */}
       <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
         {brulor.parts.map(p => {
-          const isBottleneck = p.maxProducts === Math.min(...brulor.parts.map(x => x.maxProducts));
+          const isMinPart = p.maxProducts === Math.min(...brulor.parts.map(x => x.maxProducts));
+          // Only show red if this part actually limits product output
+          const isRealBottleneck = isMinPart && isBrulorRealBottleneck;
           return (
             <div key={p.code} style={{
               flex: "1 1 calc(50% - 3px)", padding: "8px 10px", borderRadius: 8,
-              background: isBottleneck ? C.errDim : "rgba(0,0,0,0.2)",
-              border: `1px solid ${isBottleneck ? C.errBorder : C.border}`,
+              background: isRealBottleneck ? C.errDim : "rgba(0,0,0,0.2)",
+              border: `1px solid ${isRealBottleneck ? C.errBorder : C.border}`,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <div>
                   <div style={{ fontFamily: mono, fontSize: 9, color: C.mid, fontWeight: 400 }}>{p.code}</div>
-                  <div style={{ fontSize: 10, color: isBottleneck ? C.err : C.mid, marginTop: 1 }}>{p.name}</div>
+                  <div style={{ fontSize: 10, color: isRealBottleneck ? C.err : C.mid, marginTop: 1 }}>{p.name}</div>
                 </div>
                 <div style={{ textAlign: "right" }}>
-                  <div style={{ fontSize: 14, fontWeight: 400, fontFamily: mono, color: isBottleneck ? C.err : C.white }}>{fmt(p.stock)}</div>
+                  <div style={{ fontSize: 14, fontWeight: 400, fontFamily: mono, color: isRealBottleneck ? C.err : C.white }}>{fmt(p.stock)}</div>
                   <div style={{ fontSize: 8, fontFamily: mono, color: C.dim }}>→ {fmt(p.maxProducts)} brülör</div>
                 </div>
               </div>
-              {isBottleneck && (
-                <div style={{ fontSize: 8, fontFamily: mono, color: C.err, fontWeight: 400, marginTop: 4, letterSpacing: 0.5 }}>
-                  ▲ DARBOĞAZ
+              {isMinPart && (
+                <div style={{ fontSize: 8, fontFamily: mono, color: isBrulorRealBottleneck ? C.err : C.dim, fontWeight: 400, marginTop: 4, letterSpacing: 0.5 }}>
+                  {isBrulorRealBottleneck ? "▲ DARBOĞAZ" : "▽ İÇ LİMİT (ürünü etkilemiyor)"}
                 </div>
               )}
             </div>
