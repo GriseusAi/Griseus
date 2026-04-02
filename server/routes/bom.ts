@@ -4,16 +4,8 @@ import { bomItems, componentStock } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { evaluateRules } from "../rules-engine";
-import { asyncHandler, NotFoundError, ValidationError } from "../errors";
-import { requireAuth, requirePermission } from "../middleware/auth";
-import { validate, componentStockUpdateSchema } from "../middleware/validate";
-import { createLogger } from "../logger";
 
-const log = createLogger("bom");
 const router = Router();
-
-// All BOM routes require auth
-router.use(requireAuth);
 
 // ── Helpers ──
 
@@ -133,7 +125,7 @@ function computeProductionCapacity(allItems: BomRow[]) {
 
 // ── GET /api/bom/:sku — BOM ağacını getir ──
 
-router.get("/:sku", requirePermission("bom:read"), asyncHandler(async (req: Request, res: Response) => {
+router.get("/:sku", async (req: Request, res: Response) => {
   const sku = req.params.sku as string;
   const items = await db
     .select()
@@ -141,7 +133,7 @@ router.get("/:sku", requirePermission("bom:read"), asyncHandler(async (req: Requ
     .where(eq(bomItems.parentProductSku, sku));
 
   if (items.length === 0) {
-    throw new NotFoundError("BOM", sku);
+    return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
   // Build tree structure
@@ -176,16 +168,16 @@ router.get("/:sku", requirePermission("bom:read"), asyncHandler(async (req: Requ
       })),
     },
   });
-}));
+});
 
 // ── GET /api/bom/:sku/stock — BOM + stok birleşik görünüm ──
 
-router.get("/:sku/stock", requirePermission("bom:read"), asyncHandler(async (req: Request, res: Response) => {
+router.get("/:sku/stock", async (req: Request, res: Response) => {
   const sku = req.params.sku as string;
   const items = await getBomWithStock(sku);
 
   if (items.length === 0) {
-    throw new NotFoundError("BOM", sku);
+    return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
   res.json({
@@ -211,16 +203,16 @@ router.get("/:sku/stock", requirePermission("bom:read"), asyncHandler(async (req
       };
     }),
   });
-}));
+});
 
-// ── GET /api/bom/:sku/production-capacity ──
+// ── GET /api/bom/:sku/production-capacity — kaç ürün üretilebilir + darboğazlar ──
 
-router.get("/:sku/production-capacity", requirePermission("bom:read"), asyncHandler(async (req: Request, res: Response) => {
+router.get("/:sku/production-capacity", async (req: Request, res: Response) => {
   const sku = req.params.sku as string;
   const items = await getBomWithStock(sku);
 
   if (items.length === 0) {
-    throw new NotFoundError("BOM", sku);
+    return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
   const capacity = computeProductionCapacity(items);
@@ -231,63 +223,64 @@ router.get("/:sku/production-capacity", requirePermission("bom:read"), asyncHand
     bottlenecks: capacity.bottlenecks,
     subAssemblyStatus: capacity.subAssemblyStatus,
   });
-}));
+});
 
-// ── POST /api/component-stock/update ──
+// ── POST /api/component-stock/update — bileşen stok güncelleme ──
 
-router.post("/component-stock/update",
-  requirePermission("component:write"),
-  validate(componentStockUpdateSchema),
-  asyncHandler(async (req: Request, res: Response) => {
-    const { componentCode: code, currentStock: stock, countedBy } = req.body;
+router.post("/component-stock/update", async (req: Request, res: Response) => {
+  const { componentCode: code, currentStock: stock, countedBy } = req.body;
 
-    const existing = await db
-      .select()
-      .from(componentStock)
-      .where(eq(componentStock.componentCode, code))
-      .limit(1);
+  if (!code || stock === undefined) {
+    return res.status(400).json({ error: "componentCode ve currentStock gerekli" });
+  }
 
-    if (existing.length === 0) {
-      throw new NotFoundError("Bileşen", code);
-    }
+  const existing = await db
+    .select()
+    .from(componentStock)
+    .where(eq(componentStock.componentCode, code))
+    .limit(1);
 
-    await db
-      .update(componentStock)
-      .set({
-        currentStock: String(stock),
-        lastCountedAt: new Date(),
-        lastCountedBy: countedBy || "manual_entry",
-        updatedAt: new Date(),
-      })
-      .where(eq(componentStock.componentCode, code));
+  if (existing.length === 0) {
+    return res.status(404).json({ error: `Bileşen bulunamadı: ${code}` });
+  }
 
-    broadcastStockUpdate({
-      event: "stock_update",
-      productId: 0,
-      productSku: code,
-      movementType: "component_stock_update",
-      quantity: stock,
-      stockLevel: { inProduction: 0, inWarehouse: stock, totalSold: 0 },
-    });
+  await db
+    .update(componentStock)
+    .set({
+      currentStock: String(stock),
+      lastCountedAt: new Date(),
+      lastCountedBy: countedBy || "manual_entry",
+      updatedAt: new Date(),
+    })
+    .where(eq(componentStock.componentCode, code));
 
-    evaluateRules({ type: "component_stock_update", componentCode: code })
-      .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
-      .catch(err => log.error("Rules engine error", { error: err.message }));
+  // Broadcast update via WebSocket
+  broadcastStockUpdate({
+    event: "stock_update",
+    productId: 0,
+    productSku: code,
+    movementType: "component_stock_update",
+    quantity: stock,
+    stockLevel: { inProduction: 0, inWarehouse: stock, totalSold: 0 },
+  });
 
-    log.info(`Component stock updated: ${code} → ${stock}`);
-    res.json({ success: true, componentCode: code, newStock: stock });
-  })
-);
+  // Proactive rules evaluation (fire-and-forget)
+  evaluateRules({ type: "component_stock_update", componentCode: code })
+    .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
+    .catch(err => console.error("[rules-engine]", err));
 
-// ── GET /api/bom/:sku/simulate?quantity=100 ──
+  res.json({ success: true, componentCode: code, newStock: stock });
+});
 
-router.get("/:sku/simulate", requirePermission("bom:read"), asyncHandler(async (req: Request, res: Response) => {
+// ── GET /api/bom/:sku/simulate?quantity=100 — üretim simülasyonu ──
+
+router.get("/:sku/simulate", async (req: Request, res: Response) => {
   const sku = req.params.sku as string;
   const quantity = parseInt(req.query.quantity as string) || 100;
   const items = await getBomWithStock(sku);
 
   if (items.length === 0) {
-    throw new NotFoundError("BOM", sku);
+    return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
   const capacity = computeProductionCapacity(items);
@@ -349,7 +342,7 @@ router.get("/:sku/simulate", requirePermission("bom:read"), asyncHandler(async (
     materialsNeeded: materialsNeeded.slice(0, 15),
     subAssemblyStatus: capacity.subAssemblyStatus,
   });
-}));
+});
 
 export default router;
 

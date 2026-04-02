@@ -3,12 +3,8 @@ import { db } from "../db";
 import { stockMovementsV2, products, componentStock } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { getBomWithStock } from "./bom";
-import { asyncHandler, NotFoundError } from "../errors";
-import { requireAuth, requirePermission } from "../middleware/auth";
 
 const router = Router();
-
-router.use(requireAuth);
 
 // ═══════════════════════════════════════════════════════════
 // COMPONENT INTELLIGENCE — Consumption rate, days-to-stockout,
@@ -241,10 +237,14 @@ export async function computeComponentIntelligence(sku: string): Promise<{
 
 // ── GET /api/bom/:sku/intelligence ──
 
-router.get("/:sku/intelligence", requirePermission("component:read"), asyncHandler(async (req: Request, res: Response) => {
-  const sku = req.params.sku as string;
-  const result = await computeComponentIntelligence(sku);
-  res.json(result);
-}));
+router.get("/:sku/intelligence", async (req: Request, res: Response) => {
+  try {
+    const sku = req.params.sku as string;
+    const result = await computeComponentIntelligence(sku);
+    res.json(result);
+  } catch (err: any) {
+    res.status(err.message?.includes("bulunamadı") ? 404 : 500).json({ error: err.message });
+  }
+});
 
 export default router;

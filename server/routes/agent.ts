@@ -9,17 +9,8 @@ import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
 import { buildDynamicContext } from "../rag";
-import { asyncHandler, ExternalServiceError } from "../errors";
-import { requireAuth, requirePermission } from "../middleware/auth";
-import { validate, agentChatSchema } from "../middleware/validate";
-import { agentChatRateLimit } from "../middleware/rate-limit";
-import { createLogger } from "../logger";
 
 const router = Router();
-const log = createLogger("agent");
-
-// All agent routes require authentication
-router.use(requireAuth);
 
 // ══════════════════════════════════════════════════════════════════════
 // CORE PROMPT — slim, domain knowledge injected dynamically via RAG
@@ -739,20 +730,21 @@ async function buildLiveSnapshot(): Promise<string> {
 // CHAT ENDPOINT
 // ══════════════════════════════════════════════════════════════════════
 
-router.post("/agent/chat",
-  requirePermission("agent:chat"),
-  agentChatRateLimit,
-  validate(agentChatSchema),
-  asyncHandler(async (req: Request, res: Response) => {
+router.post("/agent/chat", async (req: Request, res: Response) => {
+  try {
     const apiKey = process.env.ANTHROPIC_API_KEY;
     if (!apiKey) {
-      throw new ExternalServiceError("Anthropic", "API key eksik. ANTHROPIC_API_KEY ortam değişkenini yapılandırın.");
+      return res.status(503).json({ error: "API key eksik. ANTHROPIC_API_KEY ortam değişkenini yapılandırın." });
     }
 
     const { message, history } = req.body as {
       message: string;
       history?: { role: string; content: string }[];
     };
+
+    if (!message || typeof message !== "string") {
+      return res.status(400).json({ error: "message alanı gereklidir." });
+    }
 
     const client = new Anthropic({ apiKey });
 
@@ -782,10 +774,10 @@ router.post("/agent/chat",
       const ragContext = await buildDynamicContext(message);
       if (ragContext) {
         systemPrompt += "\n" + ragContext;
-        log.info(`RAG context injected (${ragContext.length} chars)`);
+        console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
       }
     } catch (ragErr: any) {
-      log.warn("RAG failed, using core prompt only", { error: ragErr.message });
+      console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
     }
 
     // All tools: custom ontology tools + Anthropic built-in web search
@@ -859,21 +851,28 @@ router.post("/agent/chat",
         const newText = extractText(response.content);
         if (newText) lastGoodText = newText;
       } catch (loopErr: any) {
-        log.warn("Agent loop error", { status: loopErr.status, error: loopErr.message });
-        if (loopErr.status === 429 && lastGoodText) {
+        // Rate limit in loop — return whatever text we have so far
+        console.error("[agent/chat] Loop error:", loopErr.status, loopErr.message);
+        if (lastGoodText) {
           return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı (rate limit)*", tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
         }
-        if (loopErr.status === 429) {
-          return res.json({ response: "⏳ **Yoğunluk** — API limiti aşıldı. 30 saniye bekleyip tekrar deneyin.", tools_used: [] });
-        }
-        throw loopErr;
+        throw loopErr; // re-throw if we have nothing
       }
     }
 
     const responseText = extractText(response.content) || lastGoodText || "Cevap üretilemedi.";
-    log.info(`Chat completed: ${toolsUsed.length} tools used`, { toolsUsed, ragInjected: systemPrompt.length > CORE_PROMPT.length });
     res.json({ response: responseText, tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
-  })
-);
+  } catch (err: any) {
+    console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);
+    if (err.status === 429) {
+      return res.json({
+        response: "⏳ **Yoğunluk** — API limiti aşıldı. 30 saniye bekleyip tekrar deneyin.",
+        tools_used: [],
+      });
+    }
+    const msg = err.error?.message || err.message || "AI Agent hatası";
+    res.status(err.status || 500).json({ error: msg });
+  }
+});
 
 export default router;
