@@ -5,7 +5,7 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
-import { getBomWithStock } from "./bom";
+import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
 
 const router = Router();
 const SKU = "ELT.7-11";
@@ -24,7 +24,12 @@ router.get("/uretim-plani", async (req: Request, res: Response) => {
 
     const analiz = tier1and2.map(comp => {
       const gerekli = comp.requiredQty * adet;
-      const stok = comp.currentStock;
+      // Yarı mamül (tier 2): efektif stok = mevcut + alt bileşenlerden üretilebilir
+      let stok = comp.currentStock;
+      if (comp.tier === 2) {
+        const sub = computeSubAssemblyCapacity(comp.code, bomItems);
+        stok = comp.currentStock + sub.producible;
+      }
       const fark = stok - gerekli;
       const maxUretim = comp.requiredQty > 0 ? Math.floor(stok / comp.requiredQty) : 999999;
       return {
@@ -102,7 +107,13 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
           const m = ((currentMonth - 1 + i) % 12) + 1;
           toplamTuketim += MONTHLY_DEMAND[m] * comp.requiredQty;
         }
-        return { kod: comp.code, ad: comp.name, kalanStok: Math.round(comp.currentStock - toplamTuketim), tukenir: comp.currentStock - toplamTuketim <= 0 };
+        // Yarı mamül: efektif stok = mevcut + alt bileşenlerden üretilebilir
+        let efektifStok = comp.currentStock;
+        if (comp.tier === 2) {
+          const sub = computeSubAssemblyCapacity(comp.code, bomItems);
+          efektifStok = comp.currentStock + sub.producible;
+        }
+        return { kod: comp.code, ad: comp.name, kalanStok: Math.round(efektifStok - toplamTuketim), tukenir: efektifStok - toplamTuketim <= 0 };
       });
       const tukenenler = bilesenDurum.filter(b => b.tukenir);
       const enKritik = bilesenDurum.sort((a, b) => a.kalanStok - b.kalanStok)[0];
@@ -163,7 +174,12 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
     }
     const siparisListesi = tier1and2.map(comp => {
       const gerekli = toplamTalep * comp.requiredQty;
-      const stok = comp.currentStock;
+      // Yarı mamül: efektif stok
+      let stok = comp.currentStock;
+      if (comp.tier === 2) {
+        const sub = computeSubAssemblyCapacity(comp.code, bomItems);
+        stok = comp.currentStock + sub.producible;
+      }
       const gunlukTuketim = (ANNUAL_DEMAND / 365) * comp.requiredQty;
       const guvenlikStoku = Math.ceil(gunlukTuketim * LEAD_TIME_DAYS);
       const siparisMiktari = Math.max(0, Math.ceil(gerekli - stok + guvenlikStoku));
@@ -217,8 +233,13 @@ router.get("/10x", async (_req: Request, res: Response) => {
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
     const minComp = tier1and2.reduce((min, c) => {
-      const m = c.requiredQty > 0 ? Math.floor(c.currentStock / c.requiredQty) : Infinity;
-      const mMin = min.requiredQty > 0 ? Math.floor(min.currentStock / min.requiredQty) : Infinity;
+      // Yarı mamül: efektif stok
+      let cStock = c.currentStock;
+      let minStock = min.currentStock;
+      if (c.tier === 2) { const sub = computeSubAssemblyCapacity(c.code, bomItems); cStock = c.currentStock + sub.producible; }
+      if (min.tier === 2) { const sub = computeSubAssemblyCapacity(min.code, bomItems); minStock = min.currentStock + sub.producible; }
+      const m = c.requiredQty > 0 ? Math.floor(cStock / c.requiredQty) : Infinity;
+      const mMin = min.requiredQty > 0 ? Math.floor(minStock / min.requiredQty) : Infinity;
       return m < mMin ? c : min;
     });
     const calcTime = Date.now() - startTime;

@@ -2,7 +2,7 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { stockMovementsV2, products, componentStock } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
-import { getBomWithStock } from "./bom";
+import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
 
 const router = Router();
 
@@ -148,11 +148,17 @@ export async function computeComponentIntelligence(sku: string): Promise<{
   const components: ComponentIntelligence[] = items
     .filter(i => i.tier === 1 || i.tier === 2)
     .map(item => {
+      // Yarı mamül (tier 2): efektif stok = mevcut + alt bileşenlerden monte edilebilir
+      let effectiveStock = item.currentStock;
+      if (item.tier === 2) {
+        const sub = computeSubAssemblyCapacity(item.code, items);
+        effectiveStock = item.currentStock + sub.producible;
+      }
       const dailyBurn = dailySalesRate * item.requiredQty;
       const weeklyBurn = dailyBurn * 7;
-      const daysToStockout = dailyBurn > 0 ? Math.floor(item.currentStock / dailyBurn) : null;
+      const daysToStockout = dailyBurn > 0 ? Math.floor(effectiveStock / dailyBurn) : null;
       const reorderPoint = Math.ceil(dailyBurn * LEAD_TIME_DAYS);
-      const suggestedOrderQty = Math.max(0, Math.ceil(dailyBurn * 30) - Math.floor(item.currentStock));
+      const suggestedOrderQty = Math.max(0, Math.ceil(dailyBurn * 30) - Math.floor(effectiveStock));
 
       // Trend: compare last 14 days vs previous 14 days burn rate
       const burnLast14 = (salesLast14 / 14) * item.requiredQty;
@@ -168,38 +174,38 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         : daysToStockout < 21 ? "warning"
         : daysToStockout < 60 ? "ok" : "abundant";
 
-      // Palantir Ontology — Seasonal calculations
-      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (item.currentStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
-      const seasonal = seasonalForwardWalk(item.currentStock, effectiveDailyRate);
+      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2)
+      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
+      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate);
       const currentMonthIdx = new Date().getMonth();
       const currentSeasonalRate = effectiveDailyRate * SEASONAL_INDICES[currentMonthIdx];
       const peakSeasonalRate = effectiveDailyRate * Math.max(...SEASONAL_INDICES);
       const seasonalReorderPt = Math.ceil(reorderPoint * SEASONAL_INDICES[currentMonthIdx]);
 
       // Depletion risk based on HOW SOON stock runs out (not which month)
-      const depRisk = item.currentStock <= 0 ? "KRİTİK" as const
+      const depRisk = effectiveStock <= 0 ? "KRİTİK" as const
         : seasonal.days <= 180 ? "KRİTİK" as const
         : seasonal.days <= 365 ? "YÜKSEK" as const
         : seasonal.days <= 730 ? "ORTA" as const
         : "DÜŞÜK" as const;
 
       const winterMonths = [10, 11, 0, 1];
-      const winterStress = item.currentStock > 0 && winterMonths.includes(seasonal.depletionMonth) && seasonal.days <= 365;
+      const winterStress = effectiveStock > 0 && winterMonths.includes(seasonal.depletionMonth) && seasonal.days <= 365;
 
       return {
         code: item.code, name: item.name, tier: item.tier, unit: item.unit,
-        currentStock: item.currentStock, requiredPerUnit: item.requiredQty,
+        currentStock: effectiveStock, requiredPerUnit: item.requiredQty,
         dailyBurnRate: Math.round(dailyBurn * 100) / 100,
         weeklyBurnRate: Math.round(weeklyBurn * 100) / 100,
         daysToStockout, reorderPoint,
-        isAboveReorderPoint: item.currentStock > reorderPoint,
+        isAboveReorderPoint: effectiveStock > reorderPoint,
         trend, trendRatio, suggestedOrderQty, urgency,
         // Seasonal fields
-        seasonalDays: item.currentStock > 0 ? seasonal.days : 0,
-        seasonalDifference: daysToStockout !== null && item.currentStock > 0 ? seasonal.days - daysToStockout : null,
-        depletionMonth: item.currentStock > 0 ? MONTH_LABELS[seasonal.depletionMonth] : null,
-        depletionYear: item.currentStock > 0 ? seasonal.depletionYear : null,
-        depletionRisk: item.currentStock > 0 ? depRisk : "KRİTİK",
+        seasonalDays: effectiveStock > 0 ? seasonal.days : 0,
+        seasonalDifference: daysToStockout !== null && effectiveStock > 0 ? seasonal.days - daysToStockout : null,
+        depletionMonth: effectiveStock > 0 ? MONTH_LABELS[seasonal.depletionMonth] : null,
+        depletionYear: effectiveStock > 0 ? seasonal.depletionYear : null,
+        depletionRisk: effectiveStock > 0 ? depRisk : "KRİTİK",
         winterStress,
         seasonalReorderPoint: seasonalReorderPt,
         currentSeasonalRate: Math.round(currentSeasonalRate * 100) / 100,

@@ -249,7 +249,7 @@ export default function UrunIstihbarat() {
           <motion.div key={code}
             initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.1 }}
             style={{
-              background: C.surface, border: `1px solid ${sub.currentStock === 0 ? C.errBorder : C.border}`,
+              background: C.surface, border: `1px solid ${(sub.currentStock + sub.producibleFromParts) === 0 ? C.errBorder : sub.producibleFromParts > 0 ? C.okBorder : C.warnBorder}`,
               borderRadius: 12, padding: "16px 24px", marginBottom: 24,
             }}
           >
@@ -260,24 +260,20 @@ export default function UrunIstihbarat() {
                   <div style={{ fontSize: 13, fontWeight: 400, color: C.white }}>
                     {sub.name} <span style={{ color: C.dim, fontFamily: mono, fontSize: 11 }}>({code})</span>
                   </div>
-                  <div style={{ fontSize: 11, color: C.mid, fontFamily: mono }}>YARI MAMÜL</div>
+                  <div style={{ fontSize: 11, color: C.mid, fontFamily: mono }}>YARI MAMÜL — stok 0 normaldir, alt bileşenler önemli</div>
                 </div>
               </div>
               <div style={{ display: "flex", gap: 24, alignItems: "center" }}>
                 <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1 }}>STOKTA</div>
+                  <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1 }}>EFEKTİF STOK</div>
                   <div style={{
                     fontSize: 24, fontWeight: 400, fontFamily: mono,
-                    color: sub.currentStock > 0 ? C.ok : C.err,
+                    color: (sub.currentStock + sub.producibleFromParts) > 0 ? C.ok : C.err,
                   }}>
-                    {sub.currentStock}
+                    {sub.currentStock + sub.producibleFromParts}
                   </div>
-                </div>
-                <div style={{ width: 1, height: 32, background: C.border }} />
-                <div style={{ textAlign: "center" }}>
-                  <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1 }}>ÜRETİLEBİLİR</div>
-                  <div style={{ fontSize: 24, fontWeight: 400, fontFamily: mono, color: C.accent }}>
-                    {sub.producibleFromParts}
+                  <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginTop: 2 }}>
+                    {sub.currentStock} hazır + {sub.producibleFromParts} monte
                   </div>
                 </div>
               </div>

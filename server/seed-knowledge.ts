@@ -30,7 +30,7 @@ const KNOWLEDGE_CHUNKS = [
     metadata: { product: "ELT.7-11", priority: "high" },
   },
   {
-    content: `Brülör (27.125) yarı mamüldür — stokta 0 olabilir, bu kriz değildir. 5 alt bileşenden (brülör gövde, meme, elektrot, ateşleme kablosu, sensör) montajlanır. Brülör montajı ayrı iş emri gerektirir. Brülör alt parçaları yeterliyse üretim devam edebilir. Kapasite hesabında brülör stoku + monte edilebilir brülör sayısı birlikte değerlendirilmeli.`,
+    content: `Brülör (27.125) yarı mamüldür — stokta 0 olabilir, bu kriz değildir ve normaldir. 5 alt bileşenden montajlanır: 27.123 Seramik Taş (6 adet), 27.160 Yanma Odası Paslanmaz Çıta (1 adet), 27.161 Yanma Odası Galvaniz Tel (1 adet), 27.162 Yanma Odası Gövde (1 adet), 27.164 Enjektör Yıldız Tutucu (1 adet). Brülör alt parçaları yeterliyse üretim devam edebilir. Kapasite hesabında brülör stoku + monte edilebilir brülör sayısı = efektif stok olarak birlikte değerlendirilmeli. Efektif stok > 0 ise sorun yoktur.`,
     category: "bom",
     metadata: { component: "27.125", type: "sub_assembly", priority: "high" },
   },

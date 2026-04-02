@@ -272,24 +272,24 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
 
   return (
     <div style={{
-      background: C.surface, border: `1px solid ${C.warnBorder}`, borderRadius: 16,
+      background: C.surface, border: `1px solid ${(brulor.currentStock + brulor.producibleFromParts) > 0 ? C.okBorder : C.errBorder}`, borderRadius: 16,
       padding: "16px 20px",
     }}>
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 12, fontWeight: 400, color: C.warn, fontFamily: sans }}>
+          <div style={{ fontSize: 12, fontWeight: 400, color: (brulor.currentStock + brulor.producibleFromParts) > 0 ? C.ok : C.err, fontFamily: sans }}>
             ⚙ Brülör (Yerli Malzeme) <span style={{ color: C.dim, fontWeight: 400, fontSize: 11 }}>27.125</span>
           </div>
-          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>YARI MAMÜL — montaj gerektirir</div>
+          <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>YARI MAMÜL — stok 0 normaldir, alt bileşenlerden montajlanır</div>
         </div>
         <div style={{ display: "flex", gap: 16, textAlign: "center" }}>
           <div>
-            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>HAZIR</div>
-            <div style={{ fontSize: 22, fontWeight: 400, fontFamily: mono, color: brulor.currentStock === 0 ? C.err : C.ok }}>{brulor.currentStock}</div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>EFEKTİF STOK</div>
+            <div style={{ fontSize: 22, fontWeight: 400, fontFamily: mono, color: (brulor.currentStock + brulor.producibleFromParts) > 0 ? C.ok : C.err }}>{fmt(brulor.currentStock + brulor.producibleFromParts)}</div>
           </div>
           <div>
-            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>MONTELENEBİLİR</div>
-            <div style={{ fontSize: 22, fontWeight: 400, fontFamily: mono, color: C.warn }}>{fmt(brulor.producibleFromParts)}</div>
+            <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, fontWeight: 400 }}>HAZIR / MONTELENEBİLİR</div>
+            <div style={{ fontSize: 14, fontWeight: 400, fontFamily: mono, color: C.mid }}>{brulor.currentStock} + {fmt(brulor.producibleFromParts)}</div>
           </div>
         </div>
       </div>
