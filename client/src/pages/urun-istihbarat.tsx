@@ -787,39 +787,6 @@ export default function UrunIstihbarat() {
               background: `linear-gradient(90deg, ${C.accent}, ${C.ok}, ${C.blue})`,
               opacity: 0.6,
             }} />
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 20 }}>
-              ONTOLOJİ DİYAGRAMI
-            </div>
-
-            {/* Ontology Graph SVG */}
-            <div style={{ maxWidth: 600, margin: "0 auto 24px", opacity: 0.9 }}>
-              <svg viewBox="0 0 600 180" width="100%" xmlns="http://www.w3.org/2000/svg">
-                <rect x="230" y="5" width="140" height="45" rx="8" fill="#1e1b4b" stroke="#6366f1" strokeWidth="2" />
-                <text x="300" y="24" textAnchor="middle" fill="#a5b4fc" fontSize="10" fontWeight="600">ELT 7-11</text>
-                <text x="300" y="40" textAnchor="middle" fill="#6b7280" fontSize="9">{capacity?.maxProducible ?? "—"} adet üretilebilir</text>
-
-                <rect x="450" y="70" width="130" height="45" rx="8" fill="#1a1a2e" stroke="#06b6d4" strokeWidth="2" />
-                <text x="515" y="89" textAnchor="middle" fill="#67e8f9" fontSize="10" fontWeight="600">MEVSİM</text>
-                <text x="515" y="105" textAnchor="middle" fill="#6b7280" fontSize="9">{(intel as any).ontology.currentMonth}: {(intel as any).ontology.currentSeasonalIndex}x</text>
-
-                <rect x="20" y="70" width="130" height="45" rx="8" fill="#1a1a2e" stroke="#22c55e" strokeWidth="2" />
-                <text x="85" y="89" textAnchor="middle" fill="#86efac" fontSize="10" fontWeight="600">{intel.components.length} PARÇA</text>
-                <text x="85" y="105" textAnchor="middle" fill="#6b7280" fontSize="9">{intel.criticalCount} kritik</text>
-
-                <rect x="230" y="135" width="140" height="35" rx="8" fill="#1a1a2e" stroke="#f97316" strokeWidth="2" />
-                <text x="300" y="157" textAnchor="middle" fill="#fdba74" fontSize="10" fontWeight="600">TEDARİKÇİ: Çukurova Isı</text>
-
-                <line x1="150" y1="92" x2="230" y2="35" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
-                <line x1="370" y1="35" x2="450" y2="85" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
-                <line x1="85" y1="115" x2="230" y2="148" stroke="#4b5563" strokeWidth="1.5" strokeDasharray="4" />
-                <line x1="300" y1="50" x2="300" y2="135" stroke="#4b5563" strokeWidth="1" strokeDasharray="4" />
-
-                <text x="175" y="58" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(-25, 175, 58)">BOM/Reçete</text>
-                <text x="425" y="53" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(25, 425, 53)">talep_paterni</text>
-                <text x="145" y="138" textAnchor="middle" fill="#4b5563" fontSize="8" transform="rotate(15, 145, 138)">supplied_by</text>
-              </svg>
-            </div>
-
             {/* Stats Grid */}
             <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 12, marginBottom: 20 }}>
               {[
