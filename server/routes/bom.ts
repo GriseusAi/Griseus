@@ -2,8 +2,9 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { bomItems, componentStock } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
-import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
+import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
 import { evaluateRules } from "../rules-engine";
+import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
 
 const router = Router();
 
@@ -240,6 +241,9 @@ router.post("/component-stock/update", async (req: Request, res: Response) => {
     return res.status(400).json({ error: "componentCode ve currentStock gerekli" });
   }
 
+  // Impact Engine: snapshot BEFORE mutation
+  const preSnapshot = await takePreSnapshot().catch(() => undefined);
+
   const existing = await db
     .select()
     .from(componentStock)
@@ -274,6 +278,15 @@ router.post("/component-stock/update", async (req: Request, res: Response) => {
   evaluateRules({ type: "component_stock_update", componentCode: code })
     .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
     .catch(err => console.error("[rules-engine]", err));
+
+  // Impact Propagation (fire-and-forget)
+  computeImpactPropagation({
+    type: "component_stock_update", actor: "manuel_güncelleme",
+    detail: `${code} bileşen stoku: ${stock} adet olarak güncellendi`,
+    componentCodes: [code],
+  }, preSnapshot)
+    .then(impacts => { if (impacts.length > 0) broadcastImpactPropagation({ event: "impact_propagation", impacts }); })
+    .catch(err => console.error("[impact-engine]", err));
 
   res.json({ success: true, componentCode: code, newStock: stock });
 });

@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
-import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, type ProactiveAlertData } from "@/lib/useStockWebSocket";
+import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, type ProactiveAlertData, type ImpactPropagationEvent, type ImpactEventData } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 
 /* ═══════════════════════════════════════════════════════════
@@ -390,6 +390,77 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
   );
 }
 
+/* ── Impact Insight Panel ── */
+function ImpactInsightPanel({ impact, onDismiss }: { impact: ImpactEventData | null; onDismiss: () => void }) {
+  const [expanded, setExpanded] = useState(false);
+  if (!impact) return null;
+  const severityColor = impact.severity === "critical" ? C.err : impact.severity === "warning" ? C.warn : C.blue;
+  const severityBg = impact.severity === "critical" ? "rgba(239,68,68,0.08)" : impact.severity === "warning" ? "rgba(251,191,36,0.06)" : "rgba(96,165,250,0.06)";
+  const severityBorder = impact.severity === "critical" ? C.errBorder : impact.severity === "warning" ? C.warnBorder : C.blueBorder;
+  return (
+    <motion.div
+      initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}
+      style={{
+        position: "fixed", bottom: 16, right: 16, zIndex: 200, width: 380,
+        borderRadius: 14, background: severityBg, border: `1px solid ${severityBorder}`,
+        backdropFilter: "blur(16px)", overflow: "hidden",
+      }}
+    >
+      <div style={{ padding: "12px 14px" }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
+          <div style={{ fontSize: 9, fontFamily: mono, color: severityColor, fontWeight: 400, letterSpacing: 1 }}>
+            🧠 IMPACT PROPAGATION
+          </div>
+          <button onClick={onDismiss} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 11, padding: 0 }}>✕</button>
+        </div>
+        <div style={{ fontSize: 12, fontWeight: 400, color: C.white, lineHeight: 1.5, marginBottom: 8 }}>
+          {impact.headline}
+        </div>
+
+        {/* Reasoning chain (expandable) */}
+        <button
+          onClick={() => setExpanded(p => !p)}
+          style={{
+            background: "none", border: "none", color: C.accent, cursor: "pointer",
+            fontSize: 10, fontFamily: mono, padding: 0, marginBottom: expanded ? 8 : 0,
+          }}
+        >
+          {expanded ? "▾ Sebep zincirini gizle" : "▸ Sebep zincirini göster"} ({impact.reasoning.length} adım)
+        </button>
+
+        {expanded && (
+          <div style={{ display: "flex", flexDirection: "column", gap: 4, marginBottom: 8 }}>
+            {impact.reasoning.map(r => (
+              <div key={r.order} style={{
+                fontSize: 10, color: C.mid, lineHeight: 1.5, paddingLeft: 8,
+                borderLeft: `2px solid ${severityColor}20`,
+              }}>
+                <span style={{ color: C.dim, fontFamily: mono }}>{r.order}.</span> {r.cause}
+              </div>
+            ))}
+          </div>
+        )}
+
+        {/* Actions */}
+        {impact.actions.length > 0 && (
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
+            {impact.actions.slice(0, 3).map((a, i) => (
+              <div key={i} style={{
+                fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "3px 8px", borderRadius: 6,
+                background: a.priority === "immediate" ? "rgba(239,68,68,0.15)" : "rgba(99,102,241,0.1)",
+                color: a.priority === "immediate" ? C.err : C.accent,
+                border: `1px solid ${a.priority === "immediate" ? "rgba(239,68,68,0.25)" : "rgba(99,102,241,0.2)"}`,
+              }}>
+                → {a.description}
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </motion.div>
+  );
+}
+
 /* ── Toast ── */
 function ToastStack({ toasts }: { toasts: Toast[] }) {
   if (toasts.length === 0) return null;
@@ -518,7 +589,21 @@ export default function StokDurum() {
     }
   }, []);
 
-  const { connected } = useStockWebSocket(handleStockUpdate, handleProactiveAlert);
+  // Impact Propagation
+  const [latestImpact, setLatestImpact] = useState<ImpactEventData | null>(null);
+  const handleImpactPropagation = useCallback((data: ImpactPropagationEvent) => {
+    if (data.impacts.length > 0) {
+      const impact = data.impacts[0];
+      setLatestImpact(impact);
+      // Auto-dismiss info after 10s, warning 20s, critical stays
+      if (impact.severity !== "critical") {
+        setTimeout(() => setLatestImpact(prev => prev?.id === impact.id ? null : prev),
+          impact.severity === "warning" ? 20000 : 10000);
+      }
+    }
+  }, []);
+
+  const { connected } = useStockWebSocket(handleStockUpdate, handleProactiveAlert, handleImpactPropagation);
 
   // Mutations
   const undoMutation = useMutation({
@@ -566,6 +651,10 @@ export default function StokDurum() {
       <ProactiveAlertPanel
         alerts={proactiveAlerts}
         onDismiss={(id) => setProactiveAlerts(prev => prev.filter(a => a.id !== id))}
+      />
+      <ImpactInsightPanel
+        impact={latestImpact}
+        onDismiss={() => setLatestImpact(null)}
       />
       <TopNav connected={connected} />
 

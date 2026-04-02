@@ -26,9 +26,26 @@ export interface ProactiveAlertEvent {
   alerts: ProactiveAlertData[];
 }
 
+export interface ImpactEventData {
+  id: string;
+  timestamp: string;
+  trigger: { type: string; actor: string; detail: string };
+  severity: "critical" | "warning" | "info";
+  headline: string;
+  reasoning: Array<{ order: number; cause: string; data?: Record<string, any> }>;
+  affectedNodes: Array<{ entity: string; code: string; name: string; field: string; previousValue: any; newValue: any }>;
+  actions: Array<{ type: string; priority: string; description: string; componentCode?: string; quantity?: number; deadline?: string }>;
+}
+
+export interface ImpactPropagationEvent {
+  event: "impact_propagation";
+  impacts: ImpactEventData[];
+}
+
 export function useStockWebSocket(
   onStockUpdate: (data: StockUpdateEvent) => void,
   onProactiveAlert?: (data: ProactiveAlertEvent) => void,
+  onImpactPropagation?: (data: ImpactPropagationEvent) => void,
 ) {
   const [connected, setConnected] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
@@ -36,6 +53,8 @@ export function useStockWebSocket(
   onStockUpdateRef.current = onStockUpdate;
   const onProactiveAlertRef = useRef(onProactiveAlert);
   onProactiveAlertRef.current = onProactiveAlert;
+  const onImpactRef = useRef(onImpactPropagation);
+  onImpactRef.current = onImpactPropagation;
 
   const connect = useCallback(() => {
     const proto = window.location.protocol === "https:" ? "wss:" : "ws:";
@@ -50,6 +69,8 @@ export function useStockWebSocket(
           onStockUpdateRef.current(data as StockUpdateEvent);
         } else if (data.event === "proactive_alert") {
           onProactiveAlertRef.current?.(data as ProactiveAlertEvent);
+        } else if (data.event === "impact_propagation") {
+          onImpactRef.current?.(data as ImpactPropagationEvent);
         }
       } catch { /* ignore malformed */ }
     };

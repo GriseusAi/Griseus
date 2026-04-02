@@ -11,6 +11,7 @@ import intelligenceRouter from "./routes/intelligence";
 import planningRouter from "./routes/planning";
 import palantirRouter from "./routes/palantir";
 import palantirDemoRouter from "./routes/palantir-demo";
+import { getRecentImpacts } from "./lib/impact-engine";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -24,6 +25,12 @@ export async function registerRoutes(
   app.use("/api/planning", planningRouter);
   app.use("/api/palantir", palantirRouter);
   app.use("/api/palantir/demo", palantirDemoRouter);
+
+  // ── Impact Propagation API ──
+  app.get("/api/impact/latest", (_req, res) => {
+    const limit = Number(_req.query.limit) || 10;
+    res.json({ impacts: getRecentImpacts(limit) });
+  });
 
   // ── Auth ──
   app.post("/api/login", (req, res, next) => {

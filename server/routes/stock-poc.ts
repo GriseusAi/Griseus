@@ -2,8 +2,9 @@ import { Router } from "express";
 import { db } from "../db";
 import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
 import { products, stockLevels, stockMovementsV2, bomItems, componentStock } from "@shared/schema";
-import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
+import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
 import { evaluateRules } from "../rules-engine";
+import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
 
 const stockPocRouter = Router();
 
@@ -182,6 +183,9 @@ stockPocRouter.post("/movements", async (req, res) => {
     // Ensure stock_levels row exists (lazy creation)
     const currentLevel = await ensureStockLevel(product_id);
 
+    // Impact Engine: snapshot BEFORE mutation
+    const preSnapshot = await takePreSnapshot().catch(() => undefined);
+
     // ── INVENTORY COUNT — directly set stock values ──────────────
     if (movement_type === "inventory_count") {
       const countTarget = target || "warehouse"; // 'warehouse' | 'production'
@@ -226,6 +230,14 @@ stockPocRouter.post("/movements", async (req, res) => {
       evaluateRules({ type: "stock_movement", productId: product_id })
         .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
         .catch(err => console.error("[rules-engine]", err));
+
+      // Impact Propagation (fire-and-forget)
+      computeImpactPropagation({
+        type: "stock_movement", actor: "sayım",
+        detail: `${product.sku} envanter sayımı: ${quantity} adet`,
+      }, preSnapshot)
+        .then(impacts => { if (impacts.length > 0) broadcastImpactPropagation({ event: "impact_propagation", impacts }); })
+        .catch(err => console.error("[impact-engine]", err));
 
       return res.json({
         success: true,
@@ -344,6 +356,14 @@ stockPocRouter.post("/movements", async (req, res) => {
     evaluateRules({ type: "stock_movement", productId: product_id })
       .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
       .catch(err => console.error("[rules-engine]", err));
+
+    // Impact Propagation (fire-and-forget)
+    computeImpactPropagation({
+      type: "stock_movement", actor: "üretim_şefi",
+      detail: `${product.sku} ${movement_type}: ${quantity} adet`,
+    }, preSnapshot)
+      .then(impacts => { if (impacts.length > 0) broadcastImpactPropagation({ event: "impact_propagation", impacts }); })
+      .catch(err => console.error("[impact-engine]", err));
 
     const negativeComponents = bomDeductions.filter((d: any) => d.negative);
 

@@ -33,6 +33,19 @@ export function broadcastStockUpdate(payload: {
   });
 }
 
+export function broadcastImpactPropagation(payload: {
+  event: "impact_propagation";
+  impacts: Array<any>;
+}) {
+  if (!wss) return;
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msg);
+    }
+  });
+}
+
 export function broadcastProactiveAlert(payload: {
   event: "proactive_alert";
   alerts: Array<{
