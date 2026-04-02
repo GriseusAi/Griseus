@@ -490,6 +490,7 @@ export default function StokDurum() {
     qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
     qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/stock"] });
     qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/production-capacity"] });
+    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/intelligence"] });
     if (productId) {
       qc.invalidateQueries({ queryKey: [`/api/stock/movements?product_id=${productId}&limit=30`] });
     }

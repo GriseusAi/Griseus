@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import { motion, AnimatePresence } from "framer-motion";
 
@@ -77,6 +78,12 @@ export default function PlanlamaPage() {
   const [monthsAhead, setMonthsAhead] = useState(3);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"forecast" | "predict" | "import">("predict");
+
+  // WebSocket — cross-page live sync (stock changes refresh planning forecasts)
+  const { connected } = useStockWebSocket(() => {
+    queryClient.invalidateQueries({ queryKey: ["/api/planning/forecast"] });
+    queryClient.invalidateQueries({ queryKey: ["/api/planning/predict"] });
+  });
 
   // Queries
   const forecast = useQuery<ForecastData>({

@@ -3,6 +3,7 @@ import { db } from "../db";
 import { stockMovementsV2, products, componentStock } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
+import { MONTHLY_DEMAND, YEARLY_TOTAL, MONTHLY_AVG, SEASONAL_INDICES, DAYS_IN_MONTH, MONTH_LABELS } from "../lib/seasonal-constants";
 
 const router = Router();
 
@@ -41,13 +42,8 @@ export interface ComponentIntelligence {
 
 // ═══════════════════════════════════════════════════════════
 // PALANTIR ONTOLOGY — Seasonal Forward-Walk Engine
+// (constants imported from ../lib/seasonal-constants)
 // ═══════════════════════════════════════════════════════════
-const MONTHLY_DEMAND = [340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325]; // Oca-Ara (PDF kaynak)
-const YEARLY_TOTAL = 2358;
-const MONTHLY_AVG = YEARLY_TOTAL / 12; // 196.5
-const SEASONAL_INDICES = MONTHLY_DEMAND.map(m => m / MONTHLY_AVG);
-const DAYS_IN_MONTH = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
-const MONTH_LABELS = ["Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
 
 function seasonalForwardWalk(stock: number, dailyRate: number): {
   days: number;

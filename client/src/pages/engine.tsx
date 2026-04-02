@@ -2,6 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useLocation } from "wouter";
 import IsometricLayers from "../components/IsometricLayers";
 import { useQueryClient } from "@tanstack/react-query";
+import { useStockWebSocket } from "../lib/useStockWebSocket";
 
 /* ── Palette ── */
 const C = {
@@ -43,6 +44,14 @@ export default function EnginePage() {
   const [error, setError] = useState("");
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
+
+  // WebSocket — live sync for external stock changes
+  useStockWebSocket(() => {
+    qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
+    qc.invalidateQueries({ queryKey: ["/api/stock/movements"] });
+    qc.invalidateQueries({ queryKey: ["/api/bom"] });
+  });
 
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });

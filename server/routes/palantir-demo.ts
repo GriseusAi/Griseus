@@ -6,13 +6,11 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
+import { MONTHLY_DEMAND, ANNUAL_DEMAND, MONTH_NAMES } from "../lib/seasonal-constants";
 
 const router = Router();
 const SKU = "ELT.7-11";
 const LEAD_TIME_DAYS = 14;
-const MONTH_NAMES = ["", "Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
-const MONTHLY_DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
-const ANNUAL_DEMAND = 2358;
 
 // DEMO 1: GET /api/palantir/demo/uretim-plani?adet=100
 router.get("/uretim-plani", async (req: Request, res: Response) => {
@@ -84,7 +82,7 @@ router.get("/uretim-plani", async (req: Request, res: Response) => {
 router.get("/6-ay-plan", async (_req: Request, res: Response) => {
   try {
     const startTime = Date.now();
-    const currentMonth = new Date().getMonth() + 1;
+    const currentMonth = new Date().getMonth(); // 0-indexed
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
 
@@ -99,12 +97,12 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
     const kritikUyarilar: string[] = [];
 
     for (let offset = 0; offset < 6; offset++) {
-      const ay = ((currentMonth - 1 + offset) % 12) + 1;
+      const ay = (currentMonth + offset) % 12;
       const talep = MONTHLY_DEMAND[ay];
       const bilesenDurum = tier1and2.map(comp => {
         let toplamTuketim = 0;
         for (let i = 0; i <= offset; i++) {
-          const m = ((currentMonth - 1 + i) % 12) + 1;
+          const m = (currentMonth + i) % 12;
           toplamTuketim += MONTHLY_DEMAND[m] * comp.requiredQty;
         }
         // Yarı mamül: efektif stok = mevcut + alt bileşenlerden üretilebilir
@@ -124,7 +122,7 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
         kritikUyarilar.push(`${MONTH_NAMES[ay]}: ${tukenenler.length} parca tukenecek! En kritik: ${enKritik.kod} (${enKritik.kalanStok} adet)`);
       }
       plan.push({
-        ay: MONTH_NAMES[ay], ayNo: ay, tapinenTalep: talep, mevsimsellik: donemTipi, mevsimIndex,
+        ay: MONTH_NAMES[ay], ayNo: ay + 1, tapinenTalep: talep, mevsimsellik: donemTipi, mevsimIndex,
         mamulStokProjeksiyonu: Math.round(kumStok),
         tukenenBilesenSayisi: tukenenler.length,
         tukenenler: tukenenler.slice(0, 6).map(t => `${t.kod} ${t.ad} (${t.kalanStok})`),
@@ -135,8 +133,8 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
     const calcTime = Date.now() - startTime;
     const firsatlar: string[] = [];
     for (let offset = 0; offset < 6; offset++) {
-      const ay = ((currentMonth - 1 + offset) % 12) + 1;
-      const sonrakiAy = ((currentMonth + offset) % 12) + 1;
+      const ay = (currentMonth + offset) % 12;
+      const sonrakiAy = (currentMonth + offset + 1) % 12;
       if (MONTHLY_DEMAND[ay] < 150 && MONTHLY_DEMAND[sonrakiAy] > 200) {
         firsatlar.push(`${MONTH_NAMES[ay]} (talep: ${MONTHLY_DEMAND[ay]}) dusuk — ${MONTH_NAMES[sonrakiAy]} (talep: ${MONTHLY_DEMAND[sonrakiAy]}) yogun geliyor. ${MONTH_NAMES[ay]}'de fazla uretip stokla!`);
       }
@@ -162,13 +160,13 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
   try {
     const ayIleri = parseInt(req.query.ay as string) || 3;
     const startTime = Date.now();
-    const currentMonth = new Date().getMonth() + 1;
+    const currentMonth = new Date().getMonth(); // 0-indexed
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
     let toplamTalep = 0;
     const aylar: string[] = [];
     for (let i = 0; i < ayIleri; i++) {
-      const ay = ((currentMonth - 1 + i) % 12) + 1;
+      const ay = (currentMonth + i) % 12;
       toplamTalep += MONTHLY_DEMAND[ay];
       aylar.push(`${MONTH_NAMES[ay]}(${MONTHLY_DEMAND[ay]})`);
     }
