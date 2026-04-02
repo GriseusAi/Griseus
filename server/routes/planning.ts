@@ -3,11 +3,22 @@ import { db } from "../db";
 import { salesHistory, productionPlans, bomItems, componentStock } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import multer from "multer";
-import XLSX from "xlsx";
+import ExcelJS from "exceljs";
 import { getBomWithStock, computeProductionCapacity } from "./bom";
+import { asyncHandler, NotFoundError, ValidationError } from "../errors";
+import { requireAuth, requirePermission } from "../middleware/auth";
+import { validate, productionPlanSchema } from "../middleware/validate";
+import { createLogger } from "../logger";
 
+const log = createLogger("planning");
 const router = Router();
-const upload = multer({ storage: multer.memoryStorage() });
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+});
+
+// All planning routes require auth
+router.use(requireAuth);
 
 // ═══════════════════════════════════════════════════════════
 // FORECASTING ENGINE — Aylık Ortalama + Trend + Tahmin
@@ -47,29 +58,41 @@ function calculateForecast(avg: number, trend: "increasing" | "stable" | "decrea
 // ═══════════════════════════════════════════════════════════
 
 // POST /api/planning/import — Excel dosyası yükle
-router.post("/import", upload.single("file"), async (req: Request, res: Response) => {
-  try {
+router.post("/import", requirePermission("planning:import"), upload.single("file"), asyncHandler(async (req: Request, res: Response) => {
     if (!req.file) {
-      return res.status(400).json({ error: "Dosya yüklenmedi" });
+      throw new ValidationError("Dosya yüklenmedi");
     }
 
     const productSku = (req.body.product_sku as string) || "ELT.7-11";
     const source = (req.body.source as string) || "excel";
 
-    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const workbook = new ExcelJS.Workbook();
+    await workbook.xlsx.load(req.file.buffer);
     const results: Array<{ year: number; month: number; quantity: number; status: string }> = [];
     let totalImported = 0;
     let totalSkipped = 0;
 
-    for (const sheetName of workbook.SheetNames) {
-      const sheet = workbook.Sheets[sheetName];
-      const data = XLSX.utils.sheet_to_json<Record<string, any>>(sheet);
+    for (const worksheet of workbook.worksheets) {
+      // Get header row to map column names
+      const headerRow = worksheet.getRow(1);
+      const headers: Record<number, string> = {};
+      headerRow.eachCell((cell, colNumber) => {
+        headers[colNumber] = String(cell.value || "").toLowerCase().trim();
+      });
 
-      for (const row of data) {
+      // Iterate data rows (skip header)
+      for (let rowNum = 2; rowNum <= worksheet.rowCount; rowNum++) {
+        const wsRow = worksheet.getRow(rowNum);
+        const row: Record<string, any> = {};
+        wsRow.eachCell((cell, colNumber) => {
+          const header = headers[colNumber];
+          if (header) row[header] = cell.value;
+        });
+
         // Esnek kolon isimleri — yıl/ay/adet veya year/month/quantity
-        const year = row.yil || row.yıl || row.year || row.Year || row.YIL;
+        const year = row.yil || row["yıl"] || row.year || row.Year || row.YIL;
         const month = row.ay || row.month || row.Month || row.AY;
-        const quantity = row.adet || row.miktar || row.quantity || row.Quantity || row.ADET || row.satış || row.satis;
+        const quantity = row.adet || row.miktar || row.quantity || row.Quantity || row.ADET || row["satış"] || row.satis;
         const revenue = row.ciro || row.gelir || row.revenue || row.Revenue;
         const notes = row.not || row.notes || row.Notes;
 
@@ -132,6 +155,7 @@ router.post("/import", upload.single("file"), async (req: Request, res: Response
       }
     }
 
+    log.info(`Excel import: ${totalImported} imported, ${totalSkipped} skipped`);
     res.json({
       success: true,
       totalImported,
@@ -139,19 +163,14 @@ router.post("/import", upload.single("file"), async (req: Request, res: Response
       details: results,
       message: `${totalImported} kayıt import edildi, ${totalSkipped} satır atlandı`,
     });
-  } catch (error: any) {
-    console.error("[planning/import]", error);
-    res.status(500).json({ error: error.message });
-  }
-});
+  }));
 
 // ═══════════════════════════════════════════════════════════
 // FORECASTING — Aylık ortalamalar + tahminler
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/planning/forecast/:sku — tüm ayların ortalaması + tahmin
-router.get("/forecast/:sku", async (req: Request, res: Response) => {
-  try {
+router.get("/forecast/:sku", requirePermission("planning:read"), asyncHandler(async (req: Request, res: Response) => {
     const sku = req.params.sku as string;
 
     const rows = await db
@@ -161,7 +180,7 @@ router.get("/forecast/:sku", async (req: Request, res: Response) => {
       .orderBy(salesHistory.year, salesHistory.month);
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: `${sku} için satış verisi bulunamadı` });
+      throw new NotFoundError("Satış verisi", sku);
     }
 
     // Aylara göre grupla
@@ -206,18 +225,14 @@ router.get("/forecast/:sku", async (req: Request, res: Response) => {
       monthlyAverages,
       yearlyTotals,
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  }));
 
 // ═══════════════════════════════════════════════════════════
 // PREDIKTIF PLANLAMA — 2-3 ay ileri bakış + BOM gap analizi
 // ═══════════════════════════════════════════════════════════
 
 // GET /api/planning/predict/:sku?months_ahead=2 — ileri tahmin + stok eksik analizi
-router.get("/predict/:sku", async (req: Request, res: Response) => {
-  try {
+router.get("/predict/:sku", requirePermission("planning:read"), asyncHandler(async (req: Request, res: Response) => {
     const sku = req.params.sku as string;
     const monthsAheadParam = Array.isArray(req.query.months_ahead) ? req.query.months_ahead[0] : req.query.months_ahead;
     const monthsAhead = parseInt(monthsAheadParam as string) || 2;
@@ -232,7 +247,7 @@ router.get("/predict/:sku", async (req: Request, res: Response) => {
       .where(eq(salesHistory.productSku, sku));
 
     if (rows.length === 0) {
-      return res.status(404).json({ error: `${sku} için satış verisi bulunamadı. Önce Excel import yapın.` });
+      throw new NotFoundError("Satış verisi (önce Excel import yapın)", sku);
     }
 
     // BOM verilerini çek
@@ -380,84 +395,63 @@ router.get("/predict/:sku", async (req: Request, res: Response) => {
         topBottlenecks: capacity.bottlenecks.slice(0, 5),
       },
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  }));
 
 // ═══════════════════════════════════════════════════════════
 // SALES HISTORY CRUD
 // ═══════════════════════════════════════════════════════════
 
-// GET /api/planning/history/:sku — tüm satış geçmişi
-router.get("/history/:sku", async (req: Request, res: Response) => {
-  try {
-    const sku = req.params.sku as string;
-    const rows = await db
-      .select()
-      .from(salesHistory)
-      .where(eq(salesHistory.productSku, sku))
-      .orderBy(desc(salesHistory.year), desc(salesHistory.month));
+// GET /api/planning/history/:sku
+router.get("/history/:sku", requirePermission("planning:read"), asyncHandler(async (req: Request, res: Response) => {
+  const sku = req.params.sku as string;
+  const rows = await db
+    .select()
+    .from(salesHistory)
+    .where(eq(salesHistory.productSku, sku))
+    .orderBy(desc(salesHistory.year), desc(salesHistory.month));
 
-    res.json({ product: sku, totalRecords: rows.length, data: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  res.json({ product: sku, totalRecords: rows.length, data: rows });
+}));
 
-// DELETE /api/planning/history/:sku — satış geçmişini temizle (re-import için)
-router.delete("/history/:sku", async (req: Request, res: Response) => {
-  try {
-    const sku = req.params.sku as string;
-    const deleted = await db
-      .delete(salesHistory)
-      .where(eq(salesHistory.productSku, sku))
-      .returning();
+// DELETE /api/planning/history/:sku
+router.delete("/history/:sku", requirePermission("planning:write"), asyncHandler(async (req: Request, res: Response) => {
+  const sku = req.params.sku as string;
+  const deleted = await db
+    .delete(salesHistory)
+    .where(eq(salesHistory.productSku, sku))
+    .returning();
 
-    res.json({ success: true, deleted: deleted.length, message: `${sku} için ${deleted.length} kayıt silindi` });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  log.info(`Sales history deleted for ${sku}: ${deleted.length} records`);
+  res.json({ success: true, deleted: deleted.length, message: `${sku} için ${deleted.length} kayıt silindi` });
+}));
 
-// GET /api/planning/plans/:sku — üretim planları
-router.get("/plans/:sku", async (req: Request, res: Response) => {
-  try {
-    const sku = req.params.sku as string;
-    const rows = await db
-      .select()
-      .from(productionPlans)
-      .where(eq(productionPlans.productSku, sku))
-      .orderBy(desc(productionPlans.targetYear), desc(productionPlans.targetMonth));
+// GET /api/planning/plans/:sku
+router.get("/plans/:sku", requirePermission("planning:read"), asyncHandler(async (req: Request, res: Response) => {
+  const sku = req.params.sku as string;
+  const rows = await db
+    .select()
+    .from(productionPlans)
+    .where(eq(productionPlans.productSku, sku))
+    .orderBy(desc(productionPlans.targetYear), desc(productionPlans.targetMonth));
 
-    res.json({ product: sku, plans: rows });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  res.json({ product: sku, plans: rows });
+}));
 
-// POST /api/planning/plans — yeni üretim planı oluştur
-router.post("/plans", async (req: Request, res: Response) => {
-  try {
-    const { product_sku, target_year, target_month, forecasted_demand, planned_production, component_gaps } = req.body;
+// POST /api/planning/plans
+router.post("/plans", requirePermission("planning:write"), validate(productionPlanSchema), asyncHandler(async (req: Request, res: Response) => {
+  const { product_sku, target_year, target_month, forecasted_demand, planned_production, component_gaps } = req.body;
 
-    if (!product_sku || !target_year || !target_month || !forecasted_demand || !planned_production) {
-      return res.status(400).json({ error: "product_sku, target_year, target_month, forecasted_demand, planned_production zorunlu" });
-    }
+  const [plan] = await db.insert(productionPlans).values({
+    productSku: product_sku,
+    targetYear: target_year,
+    targetMonth: target_month,
+    forecastedDemand: forecasted_demand,
+    plannedProduction: planned_production,
+    componentGaps: component_gaps || null,
+  }).returning();
 
-    const [plan] = await db.insert(productionPlans).values({
-      productSku: product_sku,
-      targetYear: target_year,
-      targetMonth: target_month,
-      forecastedDemand: forecasted_demand,
-      plannedProduction: planned_production,
-      componentGaps: component_gaps || null,
-    }).returning();
-
-    res.json({ success: true, plan });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  log.info(`Production plan created for ${product_sku} ${target_year}-${target_month}`);
+  res.json({ success: true, plan });
+}));
 
 export default router;

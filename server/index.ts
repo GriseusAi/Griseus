@@ -9,7 +9,12 @@ import { Strategy as LocalStrategy } from "passport-local";
 import { storage } from "./storage";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { initWebSocket } from "./ws";
+import { errorHandler } from "./errors";
+import { requestLogger, createLogger } from "./logger";
+import { apiRateLimit } from "./middleware/rate-limit";
+import type { User } from "@shared/schema";
 
+const log = createLogger("express");
 const app = express();
 const httpServer = createServer(app);
 
@@ -19,18 +24,65 @@ declare module "http" {
   }
 }
 
+// ═══════════════════════════════════════════════════════════
+// Security Headers & CORS
+// ═══════════════════════════════════════════════════════════
+
+const isProduction = process.env.NODE_ENV === "production";
+
+// Security headers
+app.use((_req, res, next) => {
+  res.setHeader("X-Content-Type-Options", "nosniff");
+  res.setHeader("X-Frame-Options", "DENY");
+  res.setHeader("X-XSS-Protection", "1; mode=block");
+  if (isProduction) {
+    res.setHeader("Strict-Transport-Security", "max-age=31536000; includeSubDomains");
+  }
+  next();
+});
+
+// CORS — explicit origin whitelist
+const ALLOWED_ORIGINS = new Set(
+  (process.env.CORS_ORIGINS || "").split(",").filter(Boolean)
+);
+
+app.use((req, res, next) => {
+  const origin = req.headers.origin;
+  if (origin && (ALLOWED_ORIGINS.has(origin) || !isProduction)) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Methods", "GET, POST, PUT, PATCH, DELETE, OPTIONS");
+    res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+    res.setHeader("Access-Control-Max-Age", "86400");
+  }
+  if (req.method === "OPTIONS") return res.sendStatus(204);
+  next();
+});
+
+// ═══════════════════════════════════════════════════════════
+// Body Parsing
+// ═══════════════════════════════════════════════════════════
+
 app.use(
   express.json({
+    limit: "1mb",
     verify: (req, _res, buf) => {
       req.rawBody = buf;
     },
   }),
 );
 
-app.use(express.urlencoded({ extended: false }));
+app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 
-// Session setup
-const isProduction = process.env.NODE_ENV === "production";
+// ═══════════════════════════════════════════════════════════
+// Session — enforced secret in production
+// ═══════════════════════════════════════════════════════════
+
+if (isProduction && !process.env.SESSION_SECRET) {
+  log.error("SESSION_SECRET ortam değişkeni production'da zorunludur!");
+  process.exit(1);
+}
+
 const MemoryStore = createMemoryStore(session);
 
 if (isProduction) {
@@ -39,7 +91,7 @@ if (isProduction) {
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "griseus-dev-secret-change-in-prod",
+    secret: process.env.SESSION_SECRET || "griseus-dev-secret-local-only",
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 86400000 }),
@@ -52,7 +104,10 @@ app.use(
   }),
 );
 
-// Passport setup
+// ═══════════════════════════════════════════════════════════
+// Passport Authentication
+// ═══════════════════════════════════════════════════════════
+
 export async function hashPassword(password: string): Promise<string> {
   const salt = randomBytes(16).toString("hex");
   return new Promise((resolve, reject) => {
@@ -87,7 +142,7 @@ passport.use(
   }),
 );
 
-passport.serializeUser((user: any, done) => done(null, user.id));
+passport.serializeUser((user: Express.User, done) => done(null, (user as User).id));
 passport.deserializeUser(async (id: string, done) => {
   try {
     const user = await storage.getUser(id);
@@ -100,42 +155,16 @@ passport.deserializeUser(async (id: string, done) => {
 app.use(passport.initialize());
 app.use(passport.session());
 
-export function log(message: string, source = "express") {
-  const formattedTime = new Date().toLocaleTimeString("en-US", {
-    hour: "numeric",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: true,
-  });
+// ═══════════════════════════════════════════════════════════
+// Logging & Rate Limiting
+// ═══════════════════════════════════════════════════════════
 
-  console.log(`${formattedTime} [${source}] ${message}`);
-}
+app.use(requestLogger);
+app.use("/api", apiRateLimit);
 
-app.use((req, res, next) => {
-  const start = Date.now();
-  const path = req.path;
-  let capturedJsonResponse: Record<string, any> | undefined = undefined;
-
-  const originalResJson = res.json;
-  res.json = function (bodyJson, ...args) {
-    capturedJsonResponse = bodyJson;
-    return originalResJson.apply(res, [bodyJson, ...args]);
-  };
-
-  res.on("finish", () => {
-    const duration = Date.now() - start;
-    if (path.startsWith("/api")) {
-      let logLine = `${req.method} ${path} ${res.statusCode} in ${duration}ms`;
-      if (capturedJsonResponse) {
-        logLine += ` :: ${JSON.stringify(capturedJsonResponse)}`;
-      }
-
-      log(logLine);
-    }
-  });
-
-  next();
-});
+// ═══════════════════════════════════════════════════════════
+// Routes & Error Handler
+// ═══════════════════════════════════════════════════════════
 
 (async () => {
   const { seedDatabase } = await import("./seed");
@@ -143,35 +172,23 @@ app.use((req, res, next) => {
   initWebSocket(httpServer);
   await registerRoutes(httpServer, app);
 
-  app.use((err: any, _req: Request, res: Response, next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+  // Unified error handler — must be AFTER routes
+  app.use(errorHandler);
 
-    console.error("Internal Server Error:", err);
-
-    if (res.headersSent) {
-      return next(err);
-    }
-
-    return res.status(status).json({ message });
-  });
-
-  // importantly only setup vite in development and after
-  // setting up all the other routes so the catch-all route
-  // doesn't interfere with the other routes
-  if (process.env.NODE_ENV === "production") {
+  if (isProduction) {
     serveStatic(app);
   } else {
     const { setupVite } = await import("./vite");
     await setupVite(httpServer, app);
   }
 
-  // ALWAYS serve the app on the port specified in the environment variable PORT
-  // Other ports are firewalled. Default to 5000 if not specified.
-  // this serves both the API and the client.
-  // It is the only port that is not firewalled.
   const port = parseInt(process.env.PORT || "3000", 10);
   httpServer.listen(port, "0.0.0.0", () => {
-    log(`serving on port ${port}`);
+    log.info(`serving on port ${port}`);
   });
 })();
+
+// Backward compat export for routes.ts
+export function log_compat(message: string, source = "express") {
+  createLogger(source).info(message);
+}

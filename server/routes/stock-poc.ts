@@ -1,11 +1,20 @@
 import { Router } from "express";
 import { db } from "../db";
-import { eq, desc, and, gte, lte, sql } from "drizzle-orm";
+import { eq, desc, and, gte, sql } from "drizzle-orm";
 import { products, stockLevels, stockMovementsV2, bomItems, componentStock } from "@shared/schema";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { evaluateRules } from "../rules-engine";
+import { asyncHandler, NotFoundError, InsufficientStockError, ValidationError } from "../errors";
+import { requireAuth, requirePermission } from "../middleware/auth";
+import { validate, stockMovementSchema } from "../middleware/validate";
+import { stockWriteRateLimit } from "../middleware/rate-limit";
+import { createLogger } from "../logger";
 
+const log = createLogger("stock");
 const stockPocRouter = Router();
+
+// All stock routes require authentication
+stockPocRouter.use(requireAuth);
 
 // ── Lazy stock_levels creation — row created on first movement ──────
 export async function ensureStockLevel(productId: number, tx?: any): Promise<{
@@ -19,172 +28,153 @@ export async function ensureStockLevel(productId: number, tx?: any): Promise<{
   return { inProduction: created.inProduction, inWarehouse: created.inWarehouse, totalSold: created.totalSold };
 }
 
-// ── GET /api/stock/levels — sadece ELT.7-11 stok durumu ───────────────
-stockPocRouter.get("/levels", async (_req, res) => {
-  try {
-    const rows = await db
-      .select({
-        id: stockLevels.id,
-        productId: stockLevels.productId,
-        productSku: products.sku,
-        productName: products.name,
-        productCategory: products.category,
-        inProduction: stockLevels.inProduction,
-        inWarehouse: stockLevels.inWarehouse,
-        totalSold: stockLevels.totalSold,
-        updatedAt: stockLevels.updatedAt,
-      })
-      .from(stockLevels)
-      .innerJoin(products, eq(stockLevels.productId, products.id))
-      .where(eq(products.sku, "ELT.7-11"));
+// Helper: safely evaluate rules and broadcast alerts
+function evaluateAndBroadcast(trigger: Parameters<typeof evaluateRules>[0]) {
+  evaluateRules(trigger)
+    .then(alerts => {
+      if (alerts.length > 0) {
+        broadcastProactiveAlert({ event: "proactive_alert", alerts });
+        log.info(`${alerts.length} proactive alert(s) fired`, { alertCount: alerts.length });
+      }
+    })
+    .catch(err => log.error("Rules engine error", { error: err.message }));
+}
 
-    res.json(rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
+// ── GET /api/stock/levels ───────────────────────────────
+stockPocRouter.get("/levels", requirePermission("stock:read"), asyncHandler(async (_req, res) => {
+  const rows = await db
+    .select({
+      id: stockLevels.id,
+      productId: stockLevels.productId,
+      productSku: products.sku,
+      productName: products.name,
+      productCategory: products.category,
+      inProduction: stockLevels.inProduction,
+      inWarehouse: stockLevels.inWarehouse,
+      totalSold: stockLevels.totalSold,
+      updatedAt: stockLevels.updatedAt,
+    })
+    .from(stockLevels)
+    .innerJoin(products, eq(stockLevels.productId, products.id))
+    .where(eq(products.sku, "ELT.7-11"));
+
+  res.json(rows);
+}));
+
+// ── GET /api/stock/levels/:id ──────────────────────────
+stockPocRouter.get("/levels/:id", requirePermission("stock:read"), asyncHandler(async (req, res) => {
+  const productId = Number(req.params.id);
+  const [row] = await db
+    .select({
+      id: stockLevels.id,
+      productId: stockLevels.productId,
+      productSku: products.sku,
+      productName: products.name,
+      inProduction: stockLevels.inProduction,
+      inWarehouse: stockLevels.inWarehouse,
+      totalSold: stockLevels.totalSold,
+      updatedAt: stockLevels.updatedAt,
+    })
+    .from(stockLevels)
+    .innerJoin(products, eq(stockLevels.productId, products.id))
+    .where(eq(stockLevels.productId, productId));
+
+  if (!row) throw new NotFoundError("Ürün stok kaydı", String(productId));
+  res.json(row);
+}));
+
+// ── GET /api/stock/summary ───────────────────────────
+stockPocRouter.get("/summary", requirePermission("stock:read"), asyncHandler(async (_req, res) => {
+  const [agg] = await db
+    .select({
+      totalInProduction: sql<number>`COALESCE(SUM(${stockLevels.inProduction}), 0)`,
+      totalInWarehouse: sql<number>`COALESCE(SUM(${stockLevels.inWarehouse}), 0)`,
+    })
+    .from(stockLevels);
+
+  const todayStart = new Date();
+  todayStart.setHours(0, 0, 0, 0);
+
+  const [todaySales] = await db
+    .select({
+      total: sql<number>`COALESCE(SUM(${stockMovementsV2.quantity}), 0)`,
+    })
+    .from(stockMovementsV2)
+    .where(
+      and(
+        eq(stockMovementsV2.movementType, "to_sales"),
+        gte(stockMovementsV2.createdAt, todayStart),
+      ),
+    );
+
+  const [lastMove] = await db
+    .select({ createdAt: stockMovementsV2.createdAt })
+    .from(stockMovementsV2)
+    .orderBy(desc(stockMovementsV2.createdAt))
+    .limit(1);
+
+  res.json({
+    totalInProduction: Number(agg?.totalInProduction || 0),
+    totalInWarehouse: Number(agg?.totalInWarehouse || 0),
+    todaySold: Number(todaySales?.total || 0),
+    lastMovementAt: lastMove?.createdAt || null,
+  });
+}));
+
+// ── GET /api/stock/movements ─────────────────────────
+stockPocRouter.get("/movements", requirePermission("stock:read"), asyncHandler(async (req, res) => {
+  const productId = req.query.product_id ? Number(req.query.product_id) : null;
+  const type = req.query.type as string | undefined;
+  const limit = Math.min(Number(req.query.limit) || 50, 200);
+
+  let query = db
+    .select({
+      id: stockMovementsV2.id,
+      productId: stockMovementsV2.productId,
+      productSku: products.sku,
+      productName: products.name,
+      movementType: stockMovementsV2.movementType,
+      quantity: stockMovementsV2.quantity,
+      previousState: stockMovementsV2.previousState,
+      note: stockMovementsV2.note,
+      createdBy: stockMovementsV2.createdBy,
+      createdAt: stockMovementsV2.createdAt,
+    })
+    .from(stockMovementsV2)
+    .innerJoin(products, eq(stockMovementsV2.productId, products.id))
+    .orderBy(desc(stockMovementsV2.createdAt))
+    .limit(limit);
+
+  const conditions = [];
+  if (productId) conditions.push(eq(stockMovementsV2.productId, productId));
+  if (type) conditions.push(eq(stockMovementsV2.movementType, type));
+
+  if (conditions.length > 0) {
+    query = query.where(and(...conditions)) as any;
   }
-});
 
-// ── GET /api/stock/levels/:id — tek ürünün stok durumu ──────────────
-stockPocRouter.get("/levels/:id", async (req, res) => {
-  try {
-    const productId = Number(req.params.id);
-    const [row] = await db
-      .select({
-        id: stockLevels.id,
-        productId: stockLevels.productId,
-        productSku: products.sku,
-        productName: products.name,
-        inProduction: stockLevels.inProduction,
-        inWarehouse: stockLevels.inWarehouse,
-        totalSold: stockLevels.totalSold,
-        updatedAt: stockLevels.updatedAt,
-      })
-      .from(stockLevels)
-      .innerJoin(products, eq(stockLevels.productId, products.id))
-      .where(eq(stockLevels.productId, productId));
+  const rows = await query;
+  res.json(rows);
+}));
 
-    if (!row) return res.status(404).json({ error: "Ürün stok kaydı bulunamadı" });
-    res.json(row);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ── GET /api/stock/summary — özet kartlar ───────────────────────────
-stockPocRouter.get("/summary", async (_req, res) => {
-  try {
-    const [agg] = await db
-      .select({
-        totalInProduction: sql<number>`COALESCE(SUM(${stockLevels.inProduction}), 0)`,
-        totalInWarehouse: sql<number>`COALESCE(SUM(${stockLevels.inWarehouse}), 0)`,
-      })
-      .from(stockLevels);
-
-    // Today's sales: sum quantity for to_sales movements created today
-    const todayStart = new Date();
-    todayStart.setHours(0, 0, 0, 0);
-
-    const [todaySales] = await db
-      .select({
-        total: sql<number>`COALESCE(SUM(${stockMovementsV2.quantity}), 0)`,
-      })
-      .from(stockMovementsV2)
-      .where(
-        and(
-          eq(stockMovementsV2.movementType, "to_sales"),
-          gte(stockMovementsV2.createdAt, todayStart),
-        ),
-      );
-
-    // Last movement time
-    const [lastMove] = await db
-      .select({ createdAt: stockMovementsV2.createdAt })
-      .from(stockMovementsV2)
-      .orderBy(desc(stockMovementsV2.createdAt))
-      .limit(1);
-
-    res.json({
-      totalInProduction: Number(agg?.totalInProduction || 0),
-      totalInWarehouse: Number(agg?.totalInWarehouse || 0),
-      todaySold: Number(todaySales?.total || 0),
-      lastMovementAt: lastMove?.createdAt || null,
-    });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ── GET /api/stock/movements — hareket geçmişi ─────────────────────
-stockPocRouter.get("/movements", async (req, res) => {
-  try {
-    const productId = req.query.product_id ? Number(req.query.product_id) : null;
-    const type = req.query.type as string | undefined;
-    const limit = Math.min(Number(req.query.limit) || 50, 200);
-
-    let query = db
-      .select({
-        id: stockMovementsV2.id,
-        productId: stockMovementsV2.productId,
-        productSku: products.sku,
-        productName: products.name,
-        movementType: stockMovementsV2.movementType,
-        quantity: stockMovementsV2.quantity,
-        previousState: stockMovementsV2.previousState,
-        note: stockMovementsV2.note,
-        createdBy: stockMovementsV2.createdBy,
-        createdAt: stockMovementsV2.createdAt,
-      })
-      .from(stockMovementsV2)
-      .innerJoin(products, eq(stockMovementsV2.productId, products.id))
-      .orderBy(desc(stockMovementsV2.createdAt))
-      .limit(limit);
-
-    // Apply filters
-    const conditions = [];
-    if (productId) conditions.push(eq(stockMovementsV2.productId, productId));
-    if (type) conditions.push(eq(stockMovementsV2.movementType, type));
-
-    if (conditions.length > 0) {
-      query = query.where(and(...conditions)) as any;
-    }
-
-    const rows = await query;
-    res.json(rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ── POST /api/stock/movements — yeni hareket kaydet ─────────────────
-stockPocRouter.post("/movements", async (req, res) => {
-  try {
+// ── POST /api/stock/movements ─────────────────────────
+stockPocRouter.post("/movements",
+  requirePermission("stock:write"),
+  stockWriteRateLimit,
+  validate(stockMovementSchema),
+  asyncHandler(async (req, res) => {
     const { product_id, movement_type, quantity, note, created_by, target } = req.body;
-
-    if (!product_id || !movement_type) {
-      return res.status(400).json({ error: "product_id ve movement_type zorunlu" });
-    }
-
-    const validTypes = ["produced", "to_warehouse", "to_sales", "raw_material_in", "inventory_count"];
-    if (!validTypes.includes(movement_type)) {
-      return res.status(400).json({ error: `Geçersiz hareket tipi. Geçerli: ${validTypes.join(", ")}` });
-    }
-
-    if (!quantity || quantity < 0 || (movement_type !== "inventory_count" && quantity <= 0)) {
-      return res.status(400).json({ error: "quantity zorunlu ve >= 0 olmalı" });
-    }
 
     // Verify product exists
     const [product] = await db.select().from(products).where(eq(products.id, product_id));
-    if (!product) {
-      return res.status(404).json({ error: "Ürün bulunamadı" });
-    }
+    if (!product) throw new NotFoundError("Ürün", String(product_id));
 
     // Ensure stock_levels row exists (lazy creation)
     const currentLevel = await ensureStockLevel(product_id);
 
-    // ── INVENTORY COUNT — directly set stock values ──────────────
+    // ── INVENTORY COUNT ──
     if (movement_type === "inventory_count") {
-      const countTarget = target || "warehouse"; // 'warehouse' | 'production'
+      const countTarget = target || "warehouse";
       const previousState = { ...currentLevel };
 
       let newInProduction = currentLevel.inProduction;
@@ -222,10 +212,7 @@ stockPocRouter.post("/movements", async (req, res) => {
         stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
       });
 
-      // Proactive rules evaluation (fire-and-forget)
-      evaluateRules({ type: "stock_movement", productId: product_id })
-        .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
-        .catch(err => console.error("[rules-engine]", err));
+      evaluateAndBroadcast({ type: "stock_movement", productId: product_id });
 
       return res.json({
         success: true,
@@ -233,18 +220,12 @@ stockPocRouter.post("/movements", async (req, res) => {
       });
     }
 
-    // ── STANDARD MOVEMENTS ───────────────────────────────────────
-
-    // Validate — can't go negative
+    // ── STANDARD MOVEMENTS ──
     if (movement_type === "to_warehouse" && currentLevel.inProduction < quantity) {
-      return res.status(400).json({
-        error: `Üretimde yeterli stok yok. Üretimde: ${currentLevel.inProduction}, İstenen: ${quantity}`,
-      });
+      throw new InsufficientStockError("Üretimde", currentLevel.inProduction, quantity);
     }
     if (movement_type === "to_sales" && currentLevel.inWarehouse < quantity) {
-      return res.status(400).json({
-        error: `Depoda yeterli stok yok. Depoda: ${currentLevel.inWarehouse}, İstenen: ${quantity}`,
-      });
+      throw new InsufficientStockError("Depoda", currentLevel.inWarehouse, quantity);
     }
 
     const previousState = { ...currentLevel };
@@ -270,8 +251,7 @@ stockPocRouter.post("/movements", async (req, res) => {
         break;
     }
 
-    // BOM bileşenlerini düş (sadece "produced" harekette)
-    let bomDeductions: Array<{ code: string; name: string; deducted: number; remaining: number }> = [];
+    let bomDeductions: Array<{ code: string; name: string; deducted: number; remaining: number; negative?: boolean }> = [];
 
     await db.transaction(async (tx) => {
       await tx.insert(stockMovementsV2).values({
@@ -288,7 +268,7 @@ stockPocRouter.post("/movements", async (req, res) => {
         .set({ inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold, updatedAt: new Date() })
         .where(eq(stockLevels.productId, product_id));
 
-      // ── REÇETE DÜŞÜMÜ — üretim yapıldığında bileşen stokları otomatik düşer ──
+      // BOM deduction on production
       if (movement_type === "produced" && product.sku) {
         const bom = await tx
           .select({
@@ -304,7 +284,6 @@ stockPocRouter.post("/movements", async (req, res) => {
           const reqQty = parseFloat(item.requiredQty as string);
           const totalDeduct = reqQty * quantity;
 
-          // Stoku düş (negatife düşebilir — gerçek durumu yansıtır)
           await tx.execute(sql`
             UPDATE component_stock
             SET current_stock = CAST(current_stock AS numeric) - ${totalDeduct},
@@ -312,7 +291,6 @@ stockPocRouter.post("/movements", async (req, res) => {
             WHERE component_code = ${item.code}
           `);
 
-          // Güncel stoku al
           const [updated] = await tx
             .select({ currentStock: componentStock.currentStock })
             .from(componentStock)
@@ -331,6 +309,12 @@ stockPocRouter.post("/movements", async (req, res) => {
       }
     });
 
+    log.info(`Stock movement: ${movement_type} x${quantity} for ${product.sku}`, {
+      productId: product_id,
+      movementType: movement_type,
+      quantity,
+    });
+
     broadcastStockUpdate({
       event: "stock_update",
       productId: product_id,
@@ -340,12 +324,9 @@ stockPocRouter.post("/movements", async (req, res) => {
       stockLevel: { inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold },
     });
 
-    // Proactive rules evaluation (fire-and-forget)
-    evaluateRules({ type: "stock_movement", productId: product_id })
-      .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
-      .catch(err => console.error("[rules-engine]", err));
+    evaluateAndBroadcast({ type: "stock_movement", productId: product_id });
 
-    const negativeComponents = bomDeductions.filter((d: any) => d.negative);
+    const negativeComponents = bomDeductions.filter(d => d.negative);
 
     res.json({
       success: true,
@@ -357,8 +338,8 @@ stockPocRouter.post("/movements", async (req, res) => {
       ...(negativeComponents.length > 0 && {
         stockWarning: {
           type: "negative_stock",
-          message: `⚠️ ${negativeComponents.length} bileşen negatif stokta! Acil tedarik gerekli.`,
-          components: negativeComponents.map((c: any) => ({
+          message: `${negativeComponents.length} bileşen negatif stokta! Acil tedarik gerekli.`,
+          components: negativeComponents.map(c => ({
             code: c.code,
             name: c.name,
             stock: c.remaining,
@@ -366,14 +347,13 @@ stockPocRouter.post("/movements", async (req, res) => {
         },
       }),
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+  })
+);
 
-// ── POST /api/stock/movements/:id/undo — hareketi geri al ──────────
-stockPocRouter.post("/movements/:id/undo", async (req, res) => {
-  try {
+// ── POST /api/stock/movements/:id/undo ──────────
+stockPocRouter.post("/movements/:id/undo",
+  requirePermission("stock:write"),
+  asyncHandler(async (req, res) => {
     const movementId = Number(req.params.id);
 
     const [movement] = await db
@@ -381,27 +361,21 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       .from(stockMovementsV2)
       .where(eq(stockMovementsV2.id, movementId));
 
-    if (!movement) {
-      return res.status(404).json({ error: "Hareket bulunamadı" });
-    }
+    if (!movement) throw new NotFoundError("Hareket", String(movementId));
 
     if (movement.movementType === "undo") {
-      return res.status(400).json({ error: "Geri alınmış hareket tekrar geri alınamaz" });
+      throw new ValidationError("Geri alınmış hareket tekrar geri alınamaz");
     }
 
     const prev = movement.previousState as { inProduction: number; inWarehouse: number; totalSold: number } | null;
     if (!prev) {
-      return res.status(400).json({ error: "Bu hareketin önceki durumu kaydedilmemiş" });
+      throw new ValidationError("Bu hareketin önceki durumu kaydedilmemiş");
     }
 
-    // Get current state for the undo movement's previousState
     const currentState = await ensureStockLevel(movement.productId);
-
-    // Get product SKU (needed for BOM restore)
     const [prod] = await db.select({ sku: products.sku }).from(products).where(eq(products.id, movement.productId));
 
     await db.transaction(async (tx) => {
-      // Record undo movement
       await tx.insert(stockMovementsV2).values({
         productId: movement.productId,
         movementType: "undo",
@@ -411,7 +385,6 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
         createdBy: "sistem",
       });
 
-      // Restore to previous state
       await tx
         .update(stockLevels)
         .set({
@@ -422,7 +395,6 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
         })
         .where(eq(stockLevels.productId, movement.productId));
 
-      // ── BOM GERİ YÜKLEME — üretim geri alındığında bileşen stokları geri eklenir ──
       if (movement.movementType === "produced" && prod?.sku) {
         const bom = await tx
           .select({
@@ -445,6 +417,8 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       }
     });
 
+    log.info(`Undo movement #${movementId}`, { movementId, productSku: prod?.sku });
+
     broadcastStockUpdate({
       event: "stock_update",
       productId: movement.productId,
@@ -454,53 +428,36 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       stockLevel: { inProduction: prev.inProduction, inWarehouse: prev.inWarehouse, totalSold: prev.totalSold },
     });
 
-    res.json({
-      success: true,
-      restored: prev,
+    res.json({ success: true, restored: prev });
+  })
+);
+
+// ── POST /api/stock/reset ──
+stockPocRouter.post("/reset", requirePermission("stock:reset"), asyncHandler(async (_req, res) => {
+  await db.delete(stockMovementsV2);
+  await db.execute(sql`UPDATE stock_levels SET in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()`);
+
+  const [existing] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
+  if (!existing) {
+    await db.insert(products).values({
+      tenantId: "cukurova",
+      sku: "ELT.7-11",
+      name: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
+      category: "Radyant Isıtıcı",
     });
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
   }
-});
 
-// ── POST /api/stock/reset — stok verilerini sıfırla ──
-stockPocRouter.post("/reset", async (_req, res) => {
-  try {
-    // 1. Tüm hareketleri sil
-    await db.delete(stockMovementsV2);
+  log.warn("Stock data reset");
+  res.json({ success: true, message: "Stok sıfırlandı. Tüm hareketler silindi, stoklar 0/0/0." });
+}));
 
-    // 2. Tüm stok seviyelerini sıfırla (silmek yerine güncelle)
-    await db.execute(sql`UPDATE stock_levels SET in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()`);
-
-    // 3. ELT.7-11 ürünü yoksa ekle
-    const [existing] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
-    if (!existing) {
-      await db.insert(products).values({
-        tenantId: "cukurova",
-        sku: "ELT.7-11",
-        name: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
-        category: "Radyant Isıtıcı",
-      });
-    }
-
-    res.json({ success: true, message: "Stok sıfırlandı. Tüm hareketler silindi, stoklar 0/0/0." });
-  } catch (error: any) {
-    console.error("Reset error:", error);
-    res.status(500).json({ error: error.message });
-  }
-});
-
-// ── GET /api/stock/products — sadece ELT.7-11 ────────────
-stockPocRouter.get("/products", async (_req, res) => {
-  try {
-    const rows = await db
-      .select({ id: products.id, sku: products.sku, name: products.name, category: products.category })
-      .from(products)
-      .where(eq(products.sku, "ELT.7-11"));
-    res.json(rows);
-  } catch (error: any) {
-    res.status(500).json({ error: error.message });
-  }
-});
+// ── GET /api/stock/products ────────────
+stockPocRouter.get("/products", requirePermission("stock:read"), asyncHandler(async (_req, res) => {
+  const rows = await db
+    .select({ id: products.id, sku: products.sku, name: products.name, category: products.category })
+    .from(products)
+    .where(eq(products.sku, "ELT.7-11"));
+  res.json(rows);
+}));
 
 export default stockPocRouter;
