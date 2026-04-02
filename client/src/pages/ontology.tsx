@@ -417,9 +417,11 @@ function drawGraph(
 
 export default function OntologyPage() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const containerRef = useRef<HTMLDivElement>(null);
   const nodesRef = useRef<GNode[]>([]);
   const edgesRef = useRef<GEdge[]>([]);
   const animRef = useRef<number>(0);
+  const sizeRef = useRef({ w: 1200, h: 800 });
 
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -444,6 +446,31 @@ export default function OntologyPage() {
     staleTime: 30000,
   });
 
+  // Resize canvas to container with DPR (Retina support)
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    const container = containerRef.current;
+    if (!canvas || !container) return;
+
+    const resize = () => {
+      const dpr = window.devicePixelRatio || 1;
+      const rect = container.getBoundingClientRect();
+      const w = rect.width;
+      const h = rect.height;
+      canvas.width = w * dpr;
+      canvas.height = h * dpr;
+      canvas.style.width = `${w}px`;
+      canvas.style.height = `${h}px`;
+      const ctx = canvas.getContext("2d");
+      if (ctx) ctx.scale(dpr, dpr);
+      sizeRef.current = { w, h };
+    };
+
+    resize();
+    window.addEventListener("resize", resize);
+    return () => window.removeEventListener("resize", resize);
+  }, []);
+
   // Build graph when data arrives
   useEffect(() => {
     if (!stockData?.components) return;
@@ -452,9 +479,7 @@ export default function OntologyPage() {
     edgesRef.current = edges;
 
     // Run initial layout iterations
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const w = canvas.width, h = canvas.height;
+    const { w, h } = sizeRef.current;
     for (let i = 0; i < 150; i++) simulateForces(nodes, edges, w, h);
     setGraphReady(true);
   }, [stockData]);
@@ -479,8 +504,13 @@ export default function OntologyPage() {
     let running = true;
     const tick = () => {
       if (!running) return;
-      simulateForces(nodesRef.current, edgesRef.current, canvas.width, canvas.height);
-      drawGraph(ctx, nodesRef.current, edgesRef.current, canvas.width, canvas.height, hoveredNode, selectedNode, simResult, simQty);
+      const { w, h } = sizeRef.current;
+      const dpr = window.devicePixelRatio || 1;
+      ctx.save();
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      simulateForces(nodesRef.current, edgesRef.current, w, h);
+      drawGraph(ctx, nodesRef.current, edgesRef.current, w, h, hoveredNode, selectedNode, simResult, simQty);
+      ctx.restore();
       animRef.current = requestAnimationFrame(tick);
     };
     tick();
@@ -497,20 +527,23 @@ export default function OntologyPage() {
     return null;
   }, []);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+  const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const rect = e.currentTarget.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    return { mx: e.clientX - rect.left, my: e.clientY - rect.top };
+  }, []);
+
+  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
+    const { mx, my } = getMousePos(e);
     const node = findNodeAt(mx, my);
     setHoveredNode(node?.id || null);
     e.currentTarget.style.cursor = node ? "pointer" : "default";
-  }, [findNodeAt]);
+  }, [findNodeAt, getMousePos]);
 
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    const mx = e.clientX - rect.left, my = e.clientY - rect.top;
+    const { mx, my } = getMousePos(e);
     const node = findNodeAt(mx, my);
     setSelectedNode(prev => node?.id === prev ? null : (node?.id || null));
-  }, [findNodeAt]);
+  }, [findNodeAt, getMousePos]);
 
   // Selected node details
   const selectedComp = useMemo(() => {
@@ -706,11 +739,10 @@ export default function OntologyPage() {
         </div>
 
         {/* ═══ RIGHT: Canvas ═══ */}
-        <div style={{ flex: 1, position: "relative" }}>
+        <div ref={containerRef} style={{ flex: 1, position: "relative" }}>
           <canvas
             ref={canvasRef}
-            width={1200} height={800}
-            style={{ width: "100%", height: "100%", display: "block" }}
+            style={{ display: "block" }}
             onMouseMove={handleMouseMove}
             onClick={handleClick}
           />
