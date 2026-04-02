@@ -183,7 +183,13 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
   res.json({
     product: sku,
     components: items.map((i) => {
-      const maxProducts = i.requiredQty > 0 ? Math.floor(i.currentStock / i.requiredQty) : null;
+      // Yarı mamül (tier 2): efektif stok = mevcut + alt bileşenlerden monte edilebilir
+      let effectiveStock = i.currentStock;
+      if (i.tier === 2) {
+        const sub = computeSubAssemblyCapacity(i.code, items);
+        effectiveStock = i.currentStock + sub.producible;
+      }
+      const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
       return {
         code: i.code,
         name: i.name,
@@ -191,10 +197,10 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
         unit: i.unit,
         tier: i.tier,
         parentComponentCode: i.parentComponentCode,
-        currentStock: i.currentStock,
+        currentStock: effectiveStock,
         maxProducts,
         status:
-          i.currentStock < 0 ? "critical" :
+          effectiveStock < 0 ? "critical" :
           maxProducts === null ? "N/A" :
           maxProducts === 0 ? "critical" :
           maxProducts < 50 ? "critical" :
