@@ -241,8 +241,8 @@ function getNodeColor(node: GNode, sim: SimResult | null): string {
   }
   const sc = sim.components.find(c => c.code === node.id);
   if (!sc) return C.dim;
-  if (sc.isBottleneck) return C.err;
-  if (sc.surplus < 0) return C.warn;
+  if (sc.surplus < 0) return C.err;  // Stok yetersiz = kırmızı
+  if (sc.isBottleneck) return C.warn; // En zayıf halka ama yeterli = turuncu
   if (sc.utilizationPct > 80) return C.blue;
   return C.ok;
 }
@@ -278,7 +278,7 @@ function drawGraph(
     const isHighlighted = selectedNode === e.source || selectedNode === e.target;
     const sc = sim?.components.find(c => c.code === e.target);
     const edgeColor = sim && sc
-      ? (sc.isBottleneck ? C.err : sc.surplus < 0 ? C.warn : "rgba(255,255,255,0.08)")
+      ? (sc.surplus < 0 ? C.err : sc.isBottleneck ? C.warn : "rgba(255,255,255,0.08)")
       : isHighlighted ? "rgba(129,140,248,0.4)" : "rgba(255,255,255,0.06)";
 
     ctx.beginPath();
@@ -327,14 +327,14 @@ function drawGraph(
       ctx.fill();
     }
 
-    // Pulse ring for bottlenecks in sim
+    // Pulse ring: red only if surplus < 0, orange if bottleneck but sufficient
     if (sim) {
       const sc = sim.components.find(c => c.code === n.id);
-      if (sc?.isBottleneck) {
+      if (sc && (sc.surplus < 0 || sc.isBottleneck)) {
         const pulse = Math.sin(Date.now() / 300) * 0.3 + 0.5;
         ctx.beginPath();
         ctx.arc(n.x, n.y, r + 4, 0, Math.PI * 2);
-        ctx.strokeStyle = C.err;
+        ctx.strokeStyle = sc.surplus < 0 ? C.err : C.warn;
         ctx.lineWidth = 2;
         ctx.globalAlpha = pulse;
         ctx.stroke();
@@ -683,7 +683,7 @@ export default function OntologyPage() {
               {simResult.components.slice(0, 6).map(c => (
                 <div key={c.code} style={{ marginBottom: 6 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
-                    <span style={{ color: c.isBottleneck ? C.err : C.mid }}>{c.code} {c.name.slice(0, 20)}</span>
+                    <span style={{ color: c.surplus < 0 ? C.err : c.isBottleneck ? C.warn : C.mid }}>{c.code} {c.name.slice(0, 20)}</span>
                     <span style={{ color: c.utilizationPct > 90 ? C.err : c.utilizationPct > 70 ? C.warn : C.ok }}>
                       {c.utilizationPct.toFixed(0)}%
                     </span>
