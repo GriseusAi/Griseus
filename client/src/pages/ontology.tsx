@@ -157,24 +157,11 @@ interface SimResult {
 
 function runSimulation(components: BomComponent[], targetQty: number): SimResult {
   const tier1and2 = components.filter(c => c.tier === 1 || c.tier === 2);
-  const tier3 = components.filter(c => c.tier === 3);
 
-  // Sub-assembly effective stock
-  const effectiveStocks = new Map<string, number>();
-  for (const c of components) {
-    if (c.tier === 2) {
-      const children = tier3.filter(t => t.parentComponentCode === c.code);
-      const producible = children.length > 0
-        ? Math.min(...children.map(ch => ch.requiredPerUnit > 0 ? Math.floor(ch.currentStock / ch.requiredPerUnit) : Infinity))
-        : 0;
-      effectiveStocks.set(c.code, c.currentStock + producible);
-    } else {
-      effectiveStocks.set(c.code, c.currentStock);
-    }
-  }
-
+  // API already returns effective stock for tier 2 (currentStock includes producible from parts)
+  // No need to recalculate — just use currentStock directly
   const results = tier1and2.map(c => {
-    const available = effectiveStocks.get(c.code) || c.currentStock;
+    const available = c.currentStock;
     const required = c.requiredPerUnit * targetQty;
     const maxProducts = c.requiredPerUnit > 0 ? Math.floor(available / c.requiredPerUnit) : Infinity;
     const surplus = available - required;
