@@ -1,4 +1,5 @@
 import { useLocation } from "wouter";
+import { useAgentPanel } from "../App";
 
 const C = {
   bg: "rgba(5,5,5,0.4)",
@@ -18,11 +19,11 @@ const NAV_ITEMS = [
   { path: "/stok/urun/ELT.7-11", label: "Ürün İstihbaratı", icon: "📊" },
   { path: "/sihir", label: "Sihir", icon: "⬡" },
   { path: "/ontology", label: "Ontology", icon: "◈" },
-  { path: "/engine", label: "CEO Agent", icon: "🤖" },
 ];
 
 export default function TopNav({ connected }: { connected?: boolean }) {
   const [location, navigate] = useLocation();
+  const { agentOpen, toggleAgent } = useAgentPanel();
 
   const isActive = (path: string) => {
     if (path === "/") return location === "/" || location === "/stok/durum";
@@ -59,22 +60,42 @@ export default function TopNav({ connected }: { connected?: boolean }) {
             </button>
           );
         })}
+
+        {/* CEO Agent — toggle panel */}
+        <button
+          onClick={toggleAgent}
+          style={{
+            padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 400,
+            background: agentOpen ? C.accentDim : "transparent",
+            border: `1px solid ${agentOpen ? C.accent : "transparent"}`,
+            color: agentOpen ? C.accent : C.dim,
+            cursor: "pointer", fontFamily: "'Outfit', sans-serif",
+            transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
+          }}
+        >
+          <span style={{ fontSize: 14 }}>🤖</span>
+          <span className="nav-label">CEO Agent</span>
+        </button>
       </div>
-      {connected !== undefined && (
-        <div style={{
-          display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
-          borderRadius: 16, background: connected ? "rgba(52,211,153,0.1)" : "rgba(239,68,68,0.1)",
-          border: `1px solid ${connected ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.2)"}`,
-        }}>
+
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {connected !== undefined && (
           <div style={{
-            width: 6, height: 6, borderRadius: "50%",
-            background: connected ? C.ok : "#ef4444",
-          }} />
-          <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : "#ef4444", fontWeight: 400 }}>
-            {connected ? "CANLI" : "KOPUK"}
-          </span>
-        </div>
-      )}
+            display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
+            borderRadius: 16, background: connected ? "rgba(52,211,153,0.1)" : "rgba(239,68,68,0.1)",
+            border: `1px solid ${connected ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.2)"}`,
+          }}>
+            <div style={{
+              width: 6, height: 6, borderRadius: "50%",
+              background: connected ? C.ok : "#ef4444",
+            }} />
+            <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : "#ef4444", fontWeight: 400 }}>
+              {connected ? "CANLI" : "KOPUK"}
+            </span>
+          </div>
+        )}
+      </div>
+
       <style>{`
         @media (max-width: 640px) {
           .nav-label { display: none; }
