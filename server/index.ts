@@ -79,9 +79,13 @@ app.use(express.urlencoded({ extended: false, limit: "1mb" }));
 // ═══════════════════════════════════════════════════════════
 
 if (isProduction && !process.env.SESSION_SECRET) {
-  log.error("SESSION_SECRET ortam değişkeni production'da zorunludur!");
-  process.exit(1);
+  log.warn("SESSION_SECRET ayarlanmamış — rastgele secret üretiliyor. Kalıcılık için env var ekleyin.");
 }
+
+// Production'da env var yoksa rastgele üret (restart'larda session'lar düşer ama crash etmez)
+const sessionSecret = process.env.SESSION_SECRET || (isProduction
+  ? require("crypto").randomBytes(32).toString("hex")
+  : "griseus-dev-secret-local-only");
 
 const MemoryStore = createMemoryStore(session);
 
@@ -91,7 +95,7 @@ if (isProduction) {
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "griseus-dev-secret-local-only",
+    secret: sessionSecret,
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 86400000 }),
