@@ -1,4 +1,5 @@
-import { useState, createContext, useContext, useCallback } from "react";
+import { useState, createContext, useContext, useCallback, useRef } from "react";
+import type { ProactiveAlertData } from "./lib/useStockWebSocket";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
@@ -38,12 +39,35 @@ export function useAgentPanel() {
   return useContext(AgentPanelContext);
 }
 
+// Global alert context — tüm sayfalardan erişilebilir bildirim havuzu
+const AlertContext = createContext<{
+  alerts: ProactiveAlertData[];
+  pushAlerts: (newAlerts: ProactiveAlertData[]) => void;
+}>({ alerts: [], pushAlerts: () => {} });
+
+export function useGlobalAlerts() {
+  return useContext(AlertContext);
+}
+
 function App() {
   const [agentOpen, setAgentOpen] = useState(false);
   const toggleAgent = useCallback(() => setAgentOpen(prev => !prev), []);
 
+  const [alerts, setAlerts] = useState<ProactiveAlertData[]>([]);
+  const alertIdsRef = useRef(new Set<string>());
+  const pushAlerts = useCallback((newAlerts: ProactiveAlertData[]) => {
+    setAlerts(prev => {
+      const unique = newAlerts.filter(a => !alertIdsRef.current.has(a.id));
+      if (unique.length === 0) return prev;
+      for (const a of unique) alertIdsRef.current.add(a.id);
+      const merged = [...unique, ...prev];
+      return merged.slice(0, 100); // max 100 bildirim tut
+    });
+  }, []);
+
   return (
     <QueryClientProvider client={queryClient}>
+      <AlertContext.Provider value={{ alerts, pushAlerts }}>
       <AgentPanelContext.Provider value={{ agentOpen, toggleAgent }}>
         <Switch>
           <Route path="/" component={StokDurum} />
@@ -58,6 +82,7 @@ function App() {
         <AgentPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
         <Toaster />
       </AgentPanelContext.Provider>
+      </AlertContext.Provider>
     </QueryClientProvider>
   );
 }

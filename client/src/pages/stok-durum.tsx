@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, type ProactiveAlertData, type ImpactPropagationEvent, type ImpactEventData } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import { useGlobalAlerts } from "../App";
 
 /* ═══════════════════════════════════════════════════════════
    PALETTE — Palantir Foundry dark operational UI
@@ -586,11 +587,16 @@ export default function StokDurum() {
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
   }, [qc, productId]);
 
+  const { alerts: globalAlerts, pushAlerts } = useGlobalAlerts();
+
   const handleProactiveAlert = useCallback((data: ProactiveAlertEvent) => {
+    // Lokal toast-tarzı gösterim (geçici)
     setProactiveAlerts(prev => {
       const newAlerts = data.alerts.filter(a => !prev.some(p => p.id === a.id));
-      return [...newAlerts, ...prev].slice(0, 5); // Keep max 5 alerts
+      return [...newAlerts, ...prev].slice(0, 5);
     });
+    // Global bildirim havuzuna ekle (kalıcı)
+    pushAlerts(data.alerts);
     // Auto-dismiss non-critical after 15s
     for (const alert of data.alerts) {
       if (alert.severity !== "critical") {
@@ -599,7 +605,7 @@ export default function StokDurum() {
         }, 15000);
       }
     }
-  }, []);
+  }, [pushAlerts]);
 
   // Impact Propagation
   const [latestImpact, setLatestImpact] = useState<ImpactEventData | null>(null);
