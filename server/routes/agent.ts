@@ -4,6 +4,7 @@ import { db } from "../db";
 import { stockLevels, stockMovementsV2, products, componentStock, bomItems, purchaseSuggestions } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "./bom";
+import { logAudit } from "../lib/audit";
 import { ensureStockLevel } from "./stock-poc";
 import { simulateWhatIf, type WhatIfScenario } from "../lib/whatif-engine";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
@@ -311,6 +312,18 @@ const TOOLS: Anthropic.Tool[] = [
         action: { type: "string", enum: ["activate", "deactivate", "delete"], description: "Yapılacak işlem" },
       },
       required: ["rule_id", "action"],
+    },
+  },
+  {
+    name: "get_audit_trail",
+    description: "Veri değişiklik geçmişi (Data Lineage). Bir bileşenin veya ürünün tüm değişiklik izini gösterir: kim, ne zaman, neden, eski→yeni değer. Kullanıcı 'bu stok nasıl değişti?', 'geçmiş', 'audit', 'iz' sorduğunda kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        entity_id: { type: "string", description: "Bileşen kodu (ör. 27.031) veya ürün ID'si" },
+        limit: { type: "number", description: "Son kaç kayıt (varsayılan: 20)" },
+      },
+      required: ["entity_id"],
     },
   },
   {
@@ -642,6 +655,14 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         updatedAt: new Date(),
       }).where(eq(componentStock.componentCode, code));
 
+      // Data Lineage
+      logAudit({
+        entity: "component_stock", entityId: code, action: "update",
+        field: "currentStock", previousValue: oldStock, newValue: newStock,
+        reason: input.reason || "CEO Agent tarafından güncellendi",
+        actor: "ceo_agent",
+      });
+
       broadcastStockUpdate({
         event: "stock_update", productId: 0, productSku: code,
         movementType: "component_stock_update", quantity: newStock,
@@ -830,6 +851,34 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         };
       } catch (err: any) {
         return { error: `Validasyon panosu hatası: ${err.message}` };
+      }
+    }
+
+    case "get_audit_trail": {
+      try {
+        const { auditLog } = await import("@shared/schema");
+        const { eq, desc } = await import("drizzle-orm");
+        const entityId = String(input.entity_id);
+        const limit = input.limit || 20;
+        const logs = await db.select().from(auditLog)
+          .where(eq(auditLog.entityId, entityId))
+          .orderBy(desc(auditLog.createdAt))
+          .limit(limit);
+        return {
+          entityId,
+          entries: logs.map(l => ({
+            action: l.action,
+            field: l.field,
+            previousValue: l.previousValue,
+            newValue: l.newValue,
+            reason: l.reason,
+            actor: l.actor,
+            timestamp: l.createdAt,
+          })),
+          total: logs.length,
+        };
+      } catch (err: any) {
+        return { error: `Audit trail hatası: ${err.message}` };
       }
     }
 

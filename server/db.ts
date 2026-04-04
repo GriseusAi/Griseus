@@ -45,7 +45,22 @@ export async function ensureTables() {
         updated_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log("[db] validation_alerts + custom_rules tabloları hazır");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS audit_log (
+        id SERIAL PRIMARY KEY,
+        entity TEXT NOT NULL,
+        entity_id TEXT NOT NULL,
+        action TEXT NOT NULL,
+        field TEXT,
+        previous_value TEXT,
+        new_value TEXT,
+        reason TEXT,
+        actor TEXT NOT NULL DEFAULT 'system',
+        metadata JSONB,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    console.log("[db] validation_alerts + custom_rules + audit_log tabloları hazır");
   } catch (err) {
     console.error("[db] Tablo oluşturma hatası:", err);
   }

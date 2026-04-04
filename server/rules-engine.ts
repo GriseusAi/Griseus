@@ -12,6 +12,7 @@ import { type ReasoningStep } from "./lib/impact-types";
 import { SEASONAL_INDICES, MONTH_LABELS, MONTHLY_DEMAND } from "./lib/seasonal-constants";
 import { persistAlerts } from "./lib/alert-persistence";
 import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
+import { adjustSeverity, refreshSuppression } from "./lib/feedback-loop";
 
 export interface ProactiveAlert {
   id: string;
@@ -393,6 +394,12 @@ export async function evaluateRules(trigger: {
     alerts.push(...customAlerts);
   } catch (err) {
     console.error("[rules-engine] Custom rules error:", err);
+  }
+
+  // Feedback Loop — false positive oranı yüksek kuralların severity'sini düşür
+  await refreshSuppression().catch(() => {});
+  for (const alert of alerts) {
+    alert.severity = adjustSeverity(alert.severity, alert.type);
   }
 
   // Alert'leri DB'ye kaydet (fire-and-forget)

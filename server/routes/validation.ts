@@ -4,6 +4,7 @@
  */
 import { Router, type Request, type Response } from "express";
 import { getValidationAlerts, updateAlertValidation, getValidationMetrics } from "../lib/alert-persistence";
+import { analyzeRulePrecision } from "../lib/feedback-loop";
 
 const router = Router();
 
@@ -42,11 +43,17 @@ router.patch("/alerts/:id", async (req: Request, res: Response) => {
   }
 });
 
-// GET /api/validation/metrics — doğrulama metrikleri
+// GET /api/validation/metrics — doğrulama metrikleri + feedback loop
 router.get("/metrics", async (_req: Request, res: Response) => {
   try {
-    const metrics = await getValidationMetrics();
-    res.json(metrics);
+    const [metrics, ruleFeedback] = await Promise.all([
+      getValidationMetrics(),
+      analyzeRulePrecision().catch(() => []),
+    ]);
+    res.json({
+      ...metrics,
+      ruleFeedback, // kural bazlı precision + suppress durumu
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

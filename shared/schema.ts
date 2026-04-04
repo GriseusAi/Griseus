@@ -262,3 +262,21 @@ export const customRules = pgTable("custom_rules", {
 });
 
 export type CustomRule = typeof customRules.$inferSelect;
+
+// --- Audit Log (Data Lineage — her değişikliğin izi) ---
+
+export const auditLog = pgTable("audit_log", {
+  id: serial("id").primaryKey(),
+  entity: text("entity").notNull(), // component_stock | stock_level | bom_item | purchase_suggestion | custom_rule
+  entityId: text("entity_id").notNull(), // ilgili kaydın ID'si veya kodu
+  action: text("action").notNull(), // create | update | delete | import | undo
+  field: text("field"), // değişen alan (ör. "currentStock", "status")
+  previousValue: text("previous_value"), // eski değer
+  newValue: text("new_value"), // yeni değer
+  reason: text("reason"), // neden değişti
+  actor: text("actor").notNull().default("system"), // kim yaptı (üretim_şefi, ceo_agent, rules_engine, import)
+  metadata: jsonb("metadata"), // ek bağlam (ör. movement_id, rule_id)
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AuditLogEntry = typeof auditLog.$inferSelect;

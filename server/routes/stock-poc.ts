@@ -5,6 +5,7 @@ import { products, stockLevels, stockMovementsV2, bomItems, componentStock } fro
 import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
 import { evaluateRules } from "../rules-engine";
 import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
+import { logAudit, logAuditBatch } from "../lib/audit";
 
 const stockPocRouter = Router();
 
@@ -343,6 +344,28 @@ stockPocRouter.post("/movements", async (req, res) => {
         }
       }
     });
+
+    // Data Lineage — stok hareketi audit
+    logAudit({
+      entity: "stock_level", entityId: String(product_id), action: "update",
+      field: movement_type, previousValue: JSON.stringify(previousState),
+      newValue: JSON.stringify({ inProduction: newInProduction, inWarehouse: newInWarehouse, totalSold: newTotalSold }),
+      reason: `${movement_type}: ${quantity} adet${note ? ` — ${note}` : ""}`,
+      actor: created_by || "üretim_şefi",
+      metadata: { movementType: movement_type, quantity, productSku: product.sku },
+    });
+
+    // BOM düşümleri audit
+    if (bomDeductions.length > 0) {
+      logAuditBatch(bomDeductions.map(d => ({
+        entity: "component_stock", entityId: d.code, action: "update",
+        field: "currentStock", previousValue: d.remaining + d.deducted,
+        newValue: d.remaining,
+        reason: `BOM düşümü: ${product.sku} ${movement_type} ${quantity} adet → ${d.code} -${d.deducted}`,
+        actor: created_by || "üretim_şefi",
+        metadata: { productSku: product.sku, deducted: d.deducted },
+      })));
+    }
 
     broadcastStockUpdate({
       event: "stock_update",
