@@ -7,10 +7,10 @@ import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
 import { MONTHLY_DEMAND, ANNUAL_DEMAND, MONTH_NAMES } from "../lib/seasonal-constants";
+import { MAIN_SKU, LEAD_TIME_DAYS } from "../lib/constants";
 
 const router = Router();
-const SKU = "ELT.7-11";
-const LEAD_TIME_DAYS = 14;
+const SKU = MAIN_SKU;
 
 // DEMO 1: GET /api/palantir/demo/uretim-plani?adet=100
 router.get("/uretim-plani", async (req: Request, res: Response) => {

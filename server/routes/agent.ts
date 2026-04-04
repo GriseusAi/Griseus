@@ -12,6 +12,7 @@ import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
 import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS } from "../lib/seasonal-constants";
+import { MAIN_SKU } from "../lib/constants";
 import { buildDynamicContext } from "../rag";
 
 const router = Router();
@@ -501,7 +502,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_production_capacity": {
-      const sku = input.sku || "ELT.7-11";
+      const sku = input.sku || MAIN_SKU;
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
       const capacity = computeProductionCapacity(items);
@@ -513,7 +514,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "simulate_production": {
-      const sku = input.sku || "ELT.7-11";
+      const sku = input.sku || MAIN_SKU;
       const quantity = input.quantity || 100;
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
@@ -541,7 +542,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_bom_tree": {
-      const sku = input.sku || "ELT.7-11";
+      const sku = input.sku || MAIN_SKU;
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
       return {
@@ -736,7 +737,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_component_intelligence": {
-      const sku = input.sku || "ELT.7-11";
+      const sku = input.sku || MAIN_SKU;
       const result = await computeComponentIntelligence(sku);
       if (input.component_code) {
         result.components = result.components.filter(c => c.code === input.component_code);
@@ -1025,7 +1026,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
 
 async function buildLiveSnapshot(): Promise<string> {
   try {
-    const SKU = "ELT.7-11";
+    const SKU = MAIN_SKU;
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
 

@@ -91,3 +91,19 @@ export const FEEDBACK_ANALYSIS_INTERVAL = 5 * 60 * 1000; // 5 dakika
 
 /** Global alert havuzu max boyutu (frontend) */
 export const MAX_ALERTS_IN_MEMORY = 100;
+
+// ══════════════════════════════════════════════════════════
+// MALİYET PARAMETRELERİ (Palantir Engine)
+// ══════════════════════════════════════════════════════════
+
+/** Aylık çalışma günü */
+export const WORKING_DAYS_PER_MONTH = 22;
+
+/** Yıllık stok tutma maliyeti oranı (%20) */
+export const HOLDING_COST_RATE = 0.20;
+
+/** Sipariş başına sabit maliyet (TL) */
+export const ORDER_COST_PER_ORDER = 500;
+
+/** Stok tükenme maliyet çarpanı (tutma maliyetinin 3x'i) */
+export const STOCKOUT_COST_MULTIPLIER = 3;

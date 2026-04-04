@@ -10,9 +10,9 @@
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "../routes/bom";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL, DAYS_IN_MONTH } from "./seasonal-constants";
+import { MAIN_SKU, LEAD_TIME_DAYS } from "./constants";
 
-const SKU = "ELT.7-11";
-const LEAD_TIME_DAYS = 14;
+const SKU = MAIN_SKU;
 
 // Forward-walk (same as intelligence.ts but standalone for virtual stock)
 function virtualForwardWalk(stock: number, dailyRate: number): {

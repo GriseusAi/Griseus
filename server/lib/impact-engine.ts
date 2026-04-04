@@ -10,13 +10,13 @@ import type { ImpactEvent, ImpactNode, ReasoningStep, ImpactAction } from "./imp
 import { computeComponentIntelligence, type ComponentIntelligence } from "../routes/intelligence";
 import { getBomWithStock, computeProductionCapacity } from "../routes/bom";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL } from "./seasonal-constants";
+import { MAIN_SKU, LEAD_TIME_DAYS, IMPACT_BUFFER_SIZE } from "./constants";
 
-const LEAD_TIME_DAYS = 14;
-const SKU = "ELT.7-11";
+const SKU = MAIN_SKU;
 
 // In-memory ring buffer for recent impacts
 const impactBuffer: ImpactEvent[] = [];
-const MAX_BUFFER = 30;
+const MAX_BUFFER = IMPACT_BUFFER_SIZE;
 
 export function getRecentImpacts(limit = 10): ImpactEvent[] {
   return impactBuffer.slice(-limit);

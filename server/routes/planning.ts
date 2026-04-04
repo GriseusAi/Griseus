@@ -5,6 +5,7 @@ import { eq, and, sql, desc } from "drizzle-orm";
 import multer from "multer";
 import XLSX from "xlsx";
 import { getBomWithStock, computeProductionCapacity } from "./bom";
+import { MAIN_SKU } from "../lib/constants";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -53,7 +54,7 @@ router.post("/import", upload.single("file"), async (req: Request, res: Response
       return res.status(400).json({ error: "Dosya yüklenmedi" });
     }
 
-    const productSku = (req.body.product_sku as string) || "ELT.7-11";
+    const productSku = (req.body.product_sku as string) || MAIN_SKU;
     const source = (req.body.source as string) || "excel";
 
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });

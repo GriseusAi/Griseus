@@ -11,6 +11,7 @@ import * as XLSX from "xlsx";
 import { db } from "../db";
 import { salesHistory, componentStock, bomItems } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
+import { MAIN_SKU } from "./constants";
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -179,7 +180,7 @@ export async function smartImport(
   options?: { type?: ImportType; productSku?: string; dryRun?: boolean }
 ): Promise<ImportResult> {
   const type = options?.type || "auto";
-  const productSku = options?.productSku || "ELT.7-11";
+  const productSku = options?.productSku || MAIN_SKU;
   const dryRun = options?.dryRun ?? false;
 
   const workbook = XLSX.read(buffer, { type: "buffer" });

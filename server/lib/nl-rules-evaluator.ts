@@ -8,6 +8,7 @@ import { customRules } from "@shared/schema";
 import { eq } from "drizzle-orm";
 import type { ProactiveAlert } from "../rules-engine";
 import type { ComponentIntelligence } from "../routes/intelligence";
+import { MAIN_SKU } from "./constants";
 import type { ParsedRule } from "./nl-rules-parser";
 import type { ReasoningStep } from "./impact-types";
 
@@ -42,7 +43,7 @@ export async function evaluateCustomRules(context: {
         severity: parsed.action.severity || (rule.severity as "critical" | "warning" | "info"),
         title: `Özel Kural: ${rule.nlDescription.slice(0, 40)}${rule.nlDescription.length > 40 ? "..." : ""}`,
         message: parsed.action.message,
-        productSku: "ELT.7-11",
+        productSku: MAIN_SKU,
         componentCode: parsed.condition.componentCode || undefined,
         suggestedAction: getSuggestedAction(parsed),
         rootCause: [

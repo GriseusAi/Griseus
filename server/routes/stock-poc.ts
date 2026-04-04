@@ -6,6 +6,7 @@ import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagati
 import { evaluateRules } from "../rules-engine";
 import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
 import { logAudit, logAuditBatch } from "../lib/audit";
+import { MAIN_SKU } from "../lib/constants";
 import { z } from "zod";
 
 const stockPocRouter = Router();
@@ -49,7 +50,7 @@ stockPocRouter.get("/levels", async (_req, res) => {
       })
       .from(stockLevels)
       .innerJoin(products, eq(stockLevels.productId, products.id))
-      .where(eq(products.sku, "ELT.7-11"));
+      .where(eq(products.sku, MAIN_SKU));
 
     res.json(rows);
   } catch (error: any) {
@@ -523,11 +524,11 @@ stockPocRouter.post("/reset", async (_req, res) => {
     await db.execute(sql`UPDATE stock_levels SET in_production = 0, in_warehouse = 0, total_sold = 0, updated_at = NOW()`);
 
     // 3. ELT.7-11 ürünü yoksa ekle
-    const [existing] = await db.select().from(products).where(eq(products.sku, "ELT.7-11"));
+    const [existing] = await db.select().from(products).where(eq(products.sku, MAIN_SKU));
     if (!existing) {
       await db.insert(products).values({
         tenantId: "cukurova",
-        sku: "ELT.7-11",
+        sku: MAIN_SKU,
         name: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
         category: "Radyant Isıtıcı",
       });
@@ -546,7 +547,7 @@ stockPocRouter.get("/products", async (_req, res) => {
     const rows = await db
       .select({ id: products.id, sku: products.sku, name: products.name, category: products.category })
       .from(products)
-      .where(eq(products.sku, "ELT.7-11"));
+      .where(eq(products.sku, MAIN_SKU));
     res.json(rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });

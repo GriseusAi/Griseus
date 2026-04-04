@@ -25,20 +25,19 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getBomWithStock } from "./bom";
+import {
+  MAIN_SKU, LEAD_TIME_DAYS, SERVICE_LEVEL_Z,
+  WORKING_DAYS_PER_MONTH, HOLDING_COST_RATE,
+  ORDER_COST_PER_ORDER, STOCKOUT_COST_MULTIPLIER,
+} from "../lib/constants";
 
 const router = Router();
 
 // ═══════════════════════════════════════════════════════════
-// CONSTANTS & CONFIG — The Ontology Properties
+// CONSTANTS & CONFIG — The Ontology Properties (from constants.ts)
 // ═══════════════════════════════════════════════════════════
 
-const SKU = "ELT.7-11";
-const LEAD_TIME_DAYS = 14;
-const WORKING_DAYS_PER_MONTH = 22;
-const SERVICE_LEVEL_Z = 1.65;        // 95% service level
-const HOLDING_COST_RATE = 0.20;      // 20% annual holding cost
-const ORDER_COST_PER_ORDER = 500;    // TL per purchase order
-const STOCKOUT_COST_MULTIPLIER = 3;  // Cost of stockout = 3x holding cost
+const SKU = MAIN_SKU;
 
 // ═══════════════════════════════════════════════════════════
 // DATA LAYER — Ontology Object Retrieval
