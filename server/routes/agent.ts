@@ -313,6 +313,15 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["rule_id", "action"],
     },
   },
+  {
+    name: "get_import_guide",
+    description: "Veri import rehberi. Kullanıcı Excel/CSV yüklemek istediğinde hangi formatların desteklendiğini, kolon isimlerini ve endpoint'leri açıklar. Import durumunu da gösterir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -822,6 +831,48 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
       } catch (err: any) {
         return { error: `Validasyon panosu hatası: ${err.message}` };
       }
+    }
+
+    case "get_import_guide": {
+      return {
+        title: "Smart Data Import Rehberi",
+        description: "Excel veya CSV dosyalarını otomatik ayrıştırır, kolon eşler, anomali tespit eder ve veriyi güvenli şekilde import eder.",
+        supportedTypes: [
+          {
+            type: "sales_history",
+            description: "Aylık satış verileri",
+            requiredColumns: ["yil/year", "ay/month", "adet/miktar/quantity"],
+            optionalColumns: ["ciro/revenue"],
+            example: "Yil | Ay | Adet | Ciro\n2025 | 1 | 340 | 150000",
+          },
+          {
+            type: "component_stock",
+            description: "Bileşen stok güncellemesi",
+            requiredColumns: ["kod/code/bileşen", "stok/stock/miktar"],
+            example: "Kod | Stok\n27.031 | 500\n27.061 | 250",
+          },
+          {
+            type: "bom_update",
+            description: "BOM reçete güncellemesi",
+            requiredColumns: ["kod/code", "ad/name"],
+            optionalColumns: ["gerekli/required", "birim/unit", "tier"],
+            example: "Kod | Ad | Gerekli\n27.031 | Reflektör Tutucu | 2",
+          },
+        ],
+        endpoints: {
+          analyze: "POST /api/import/analyze — dosyayı analiz et (veri değiştirmez)",
+          execute: "POST /api/import/execute — dosyayı import et",
+          legacy: "POST /api/planning/import — eski satış import'u",
+        },
+        features: [
+          "Otomatik kolon eşleme (Türkçe/İngilizce)",
+          "Veri tipi otomatik tespiti",
+          "Anomali tespiti (beklenen değerlerle karşılaştırma)",
+          "Dry-run modu (önce analiz, sonra import)",
+          "Satır bazlı hata raporlama",
+        ],
+        howToUse: "Planlama sayfasındaki 'Veri Import' sekmesinden Excel/CSV yükleyin, veya /api/import/analyze endpoint'ine POST yapın.",
+      };
     }
 
     case "create_custom_rule": {
