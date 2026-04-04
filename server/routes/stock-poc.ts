@@ -283,7 +283,7 @@ stockPocRouter.post("/movements", async (req, res) => {
     }
 
     // BOM bileşenlerini düş (sadece "produced" harekette)
-    let bomDeductions: Array<{ code: string; name: string; deducted: number; remaining: number }> = [];
+    let bomDeductions: Array<{ code: string; name: string; deducted: number; remaining: number; tier?: number | null; negative?: boolean }> = [];
 
     await db.transaction(async (tx) => {
       await tx.insert(stockMovementsV2).values({
@@ -337,7 +337,8 @@ stockPocRouter.post("/movements", async (req, res) => {
             name: item.name,
             deducted: totalDeduct,
             remaining,
-            negative: remaining < 0,
+            tier: item.tier,
+            negative: remaining < 0 && item.tier !== 2, // Tier 2 (YARI MAMÜL) için negatif stok normaldir
           });
         }
       }

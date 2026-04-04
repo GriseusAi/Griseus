@@ -4,8 +4,8 @@
  * Implements the DECIDE phase of the OODA loop.
  */
 import { db } from "./db";
-import { stockLevels, products, purchaseSuggestions, componentStock } from "@shared/schema";
-import { eq, and, lt } from "drizzle-orm";
+import { stockLevels, products, purchaseSuggestions, componentStock, bomItems } from "@shared/schema";
+import { eq, and, lt, sql } from "drizzle-orm";
 import { computeComponentIntelligence } from "./routes/intelligence";
 import { computeProductionCapacity, getBomWithStock } from "./routes/bom";
 
@@ -64,14 +64,20 @@ export async function evaluateRules(trigger: {
 
     // ── Rule 1b: Negative Component Stock ──
     // After production, some components may have gone negative — critical alert
+    // Tier 2 (YARI MAMÜL) bileşenler hariç — onlar alt bileşenlerden monte edilir, stok 0 normaldir
     if (trigger.type === "stock_movement") {
       try {
         const negatives = await db.select({
           code: componentStock.componentCode,
           stock: componentStock.currentStock,
+          tier: bomItems.tier,
         })
           .from(componentStock)
-          .where(lt(componentStock.currentStock, "0"));
+          .innerJoin(bomItems, eq(bomItems.componentCode, componentStock.componentCode))
+          .where(and(
+            lt(componentStock.currentStock, "0"),
+            sql`${bomItems.tier} != 2`
+          ));
 
         for (const comp of negatives) {
           alerts.push({
