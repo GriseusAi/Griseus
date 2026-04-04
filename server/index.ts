@@ -140,6 +140,8 @@ app.use((req, res, next) => {
 (async () => {
   const { seedDatabase } = await import("./seed");
   await seedDatabase();
+  const { ensureTables } = await import("./db");
+  await ensureTables();
   initWebSocket(httpServer);
   await registerRoutes(httpServer, app);
 
