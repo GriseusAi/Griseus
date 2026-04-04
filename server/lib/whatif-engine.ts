@@ -7,7 +7,7 @@
 // "Kış sezonunda darboğaz nerede?"
 // ═══════════════════════════════════════════════════════════
 
-import { getBomWithStock, computeProductionCapacity } from "../routes/bom";
+import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "../routes/bom";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL, DAYS_IN_MONTH } from "./seasonal-constants";
 
@@ -107,11 +107,17 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
   const currentMonthIdx = now.getMonth();
 
   // Build virtual stock map
+  // Tier 2 (YARI MAMÜL) bileşenler için efektif stok kullan (current + alt bileşenlerden üretilebilir)
   const virtualStocks = new Map<string, number>();
   const bomMap = new Map<string, { requiredQty: number; name: string; tier: number }>();
 
   for (const item of bomItems) {
-    virtualStocks.set(item.code, item.currentStock);
+    let effectiveStock = item.currentStock;
+    if (item.tier === 2) {
+      const sub = computeSubAssemblyCapacity(item.code, bomItems);
+      effectiveStock = item.currentStock + sub.producible;
+    }
+    virtualStocks.set(item.code, effectiveStock);
     bomMap.set(item.code, { requiredQty: item.requiredQty, name: item.name, tier: item.tier });
   }
 
