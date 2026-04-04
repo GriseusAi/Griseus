@@ -106,6 +106,33 @@ export async function getValidationMetrics() {
     last30d: sql<number>`COUNT(*) FILTER (WHERE ${validationAlerts.createdAt} > NOW() - INTERVAL '30 days')`,
   }).from(validationAlerts);
 
+  // Haftalık precision trendi (son 8 hafta)
+  const weeklyTrend = await db.select({
+    week: sql<string>`TO_CHAR(DATE_TRUNC('week', ${validationAlerts.createdAt}), 'YYYY-MM-DD')`,
+    total: count(),
+    tp: sql<number>`COUNT(*) FILTER (WHERE ${validationAlerts.outcome} = 'true_positive')`,
+    fp: sql<number>`COUNT(*) FILTER (WHERE ${validationAlerts.outcome} = 'false_positive')`,
+    validated: sql<number>`COUNT(*) FILTER (WHERE ${validationAlerts.validated} = true)`,
+  })
+    .from(validationAlerts)
+    .where(sql`${validationAlerts.createdAt} > NOW() - INTERVAL '8 weeks'`)
+    .groupBy(sql`DATE_TRUNC('week', ${validationAlerts.createdAt})`)
+    .orderBy(sql`DATE_TRUNC('week', ${validationAlerts.createdAt})`);
+
+  const precisionTrend = weeklyTrend.map(w => {
+    const tp = Number(w.tp);
+    const fp = Number(w.fp);
+    const v = Number(w.validated);
+    return {
+      week: w.week,
+      total: Number(w.total),
+      validated: v,
+      precision: (tp + fp) > 0 ? tp / (tp + fp) : null,
+      truePositives: tp,
+      falsePositives: fp,
+    };
+  });
+
   return {
     total: Number(totals.total),
     validated: Number(totals.validated),
@@ -118,5 +145,6 @@ export async function getValidationMetrics() {
     last24h: Number(recent.last24h),
     last7d: Number(recent.last7d),
     last30d: Number(recent.last30d),
+    precisionTrend, // haftalık precision iyileşme eğrisi
   };
 }
