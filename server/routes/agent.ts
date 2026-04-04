@@ -278,6 +278,41 @@ const TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  {
+    name: "create_custom_rule",
+    description: "Doğal dilde (Türkçe) iş kuralı oluştur. Kullanıcının sözlü tarifini yapılandırılmış kurala çevirir ve sisteme kaydeder. Örnek: 'Kış aylarında güvenlik stoku %50 artır', '27.031 stoku 200'ün altına düşerse kritik uyarı ver', 'Kapasite 50'nin altına düşünce sipariş oluştur'.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        rule_description: {
+          type: "string",
+          description: "Türkçe kural tanımı (doğal dil)",
+        },
+      },
+      required: ["rule_description"],
+    },
+  },
+  {
+    name: "list_custom_rules",
+    description: "Sistemde tanımlı tüm özel kuralları listele. Aktif/pasif durumları, tetiklenme sayıları ve açıklamalarıyla birlikte gösterir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "toggle_custom_rule",
+    description: "Bir özel kuralı aktif/pasif yap veya sil. Kural ID'si ile çalışır.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        rule_id: { type: "number", description: "Kural ID'si" },
+        action: { type: "string", enum: ["activate", "deactivate", "delete"], description: "Yapılacak işlem" },
+      },
+      required: ["rule_id", "action"],
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -786,6 +821,92 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         };
       } catch (err: any) {
         return { error: `Validasyon panosu hatası: ${err.message}` };
+      }
+    }
+
+    case "create_custom_rule": {
+      try {
+        const { parseNaturalLanguageRule } = await import("../lib/nl-rules-parser");
+        const nlText = input.rule_description as string;
+        const result = await parseNaturalLanguageRule(nlText);
+        if (!result.success || !result.parsed) {
+          return { error: result.error || "Kural ayrıştırılamadı" };
+        }
+        const { customRules } = await import("@shared/schema");
+        const [saved] = await db.insert(customRules).values({
+          nlDescription: nlText,
+          parsedRule: result.parsed,
+          ruleType: result.parsed.type,
+          severity: result.parsed.action.severity,
+          createdBy: "ceo_agent",
+        }).returning();
+        return {
+          success: true,
+          rule: {
+            id: saved.id,
+            description: nlText,
+            type: result.parsed.type,
+            severity: result.parsed.action.severity,
+            explanation: result.parsed.explanation,
+            condition: result.parsed.condition,
+            action: result.parsed.action,
+          },
+          message: `Kural #${saved.id} oluşturuldu ve aktif edildi.`,
+        };
+      } catch (err: any) {
+        return { error: `Kural oluşturma hatası: ${err.message}` };
+      }
+    }
+
+    case "list_custom_rules": {
+      try {
+        const { customRules } = await import("@shared/schema");
+        const rules = await db.select().from(customRules).orderBy(customRules.createdAt);
+        return {
+          rules: rules.map(r => ({
+            id: r.id,
+            description: r.nlDescription,
+            type: r.ruleType,
+            severity: r.severity,
+            isActive: r.isActive,
+            triggerCount: r.triggerCount,
+            lastTriggered: r.lastTriggered,
+            explanation: (r.parsedRule as any)?.explanation,
+            createdAt: r.createdAt,
+          })),
+          total: rules.length,
+          active: rules.filter(r => r.isActive).length,
+        };
+      } catch (err: any) {
+        return { error: `Kural listeleme hatası: ${err.message}` };
+      }
+    }
+
+    case "toggle_custom_rule": {
+      try {
+        const { customRules } = await import("@shared/schema");
+        const { eq } = await import("drizzle-orm");
+        const ruleId = input.rule_id as number;
+        const action = input.action as string;
+
+        if (action === "delete") {
+          await db.delete(customRules).where(eq(customRules.id, ruleId));
+          return { success: true, message: `Kural #${ruleId} silindi.` };
+        }
+
+        const [updated] = await db.update(customRules)
+          .set({ isActive: action === "activate", updatedAt: new Date() })
+          .where(eq(customRules.id, ruleId))
+          .returning();
+
+        if (!updated) return { error: `Kural #${ruleId} bulunamadı` };
+        return {
+          success: true,
+          message: `Kural #${ruleId} ${action === "activate" ? "aktif edildi" : "pasif edildi"}.`,
+          rule: { id: updated.id, description: updated.nlDescription, isActive: updated.isActive },
+        };
+      } catch (err: any) {
+        return { error: `Kural güncelleme hatası: ${err.message}` };
       }
     }
 

@@ -244,3 +244,21 @@ export const validationAlerts = pgTable("validation_alerts", {
 });
 
 export type ValidationAlert = typeof validationAlerts.$inferSelect;
+
+// --- Custom Rules (Natural Language Rules Engine) ---
+
+export const customRules = pgTable("custom_rules", {
+  id: serial("id").primaryKey(),
+  nlDescription: text("nl_description").notNull(), // "Kış aylarında güvenlik stoku %50 artır"
+  parsedRule: jsonb("parsed_rule").notNull(), // Structured rule from NL parsing
+  ruleType: text("rule_type").notNull(), // threshold | seasonal_modifier | trigger_action | monitor
+  severity: text("severity").notNull().default("warning"), // critical | warning | info
+  isActive: boolean("is_active").notNull().default(true),
+  lastTriggered: timestamp("last_triggered"),
+  triggerCount: integer("trigger_count").notNull().default(0),
+  createdBy: text("created_by").notNull().default("ceo_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type CustomRule = typeof customRules.$inferSelect;

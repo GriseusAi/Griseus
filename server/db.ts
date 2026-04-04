@@ -30,7 +30,22 @@ export async function ensureTables() {
         resolved_at TIMESTAMP
       );
     `);
-    console.log("[db] validation_alerts tablosu hazır");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS custom_rules (
+        id SERIAL PRIMARY KEY,
+        nl_description TEXT NOT NULL,
+        parsed_rule JSONB NOT NULL,
+        rule_type TEXT NOT NULL,
+        severity TEXT NOT NULL DEFAULT 'warning',
+        is_active BOOLEAN NOT NULL DEFAULT true,
+        last_triggered TIMESTAMP,
+        trigger_count INTEGER NOT NULL DEFAULT 0,
+        created_by TEXT NOT NULL DEFAULT 'ceo_agent',
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    console.log("[db] validation_alerts + custom_rules tabloları hazır");
   } catch (err) {
     console.error("[db] Tablo oluşturma hatası:", err);
   }

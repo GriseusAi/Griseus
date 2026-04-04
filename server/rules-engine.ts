@@ -11,6 +11,7 @@ import { computeProductionCapacity, getBomWithStock } from "./routes/bom";
 import { type ReasoningStep } from "./lib/impact-types";
 import { SEASONAL_INDICES, MONTH_LABELS, MONTHLY_DEMAND } from "./lib/seasonal-constants";
 import { persistAlerts } from "./lib/alert-persistence";
+import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
 
 export interface ProactiveAlert {
   id: string;
@@ -378,6 +379,20 @@ export async function evaluateRules(trigger: {
 
   } catch (err) {
     console.error("[rules-engine] Error evaluating rules:", err);
+  }
+
+  // ══════════════════════════════════════════════════════════
+  // ÖZEL KURALLAR (Natural Language Rules)
+  // ══════════════════════════════════════════════════════════
+  try {
+    const customAlerts = await evaluateCustomRules({
+      intel,
+      capacity,
+      currentMonth: currentMonthIdx,
+    });
+    alerts.push(...customAlerts);
+  } catch (err) {
+    console.error("[rules-engine] Custom rules error:", err);
   }
 
   // Alert'leri DB'ye kaydet (fire-and-forget)
