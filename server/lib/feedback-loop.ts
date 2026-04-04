@@ -12,6 +12,7 @@ import { db } from "../db";
 import { validationAlerts } from "@shared/schema";
 import { sql, eq } from "drizzle-orm";
 import { logAudit } from "./audit";
+import { FEEDBACK_SUPPRESS_THRESHOLD, FEEDBACK_MIN_VALIDATED, FEEDBACK_ANALYSIS_INTERVAL } from "./constants";
 
 export interface RuleFeedback {
   ruleType: string;
@@ -44,10 +45,10 @@ export async function analyzeRulePrecision(): Promise<RuleFeedback[]> {
     const unvalidated = total - validated;
 
     // Precision = TP / (TP + FP), sadece yeterli veri varsa (min 5 validated)
-    const precision = validated >= 5 ? tp / (tp + fp) : null;
+    const precision = validated >= FEEDBACK_MIN_VALIDATED ? tp / (tp + fp) : null;
 
-    // Suppress: precision < 0.4 ve en az 5 validated örnek varsa
-    const shouldSuppress = precision !== null && precision < 0.4;
+    // Suppress: precision < threshold ve en az N validated örnek varsa
+    const shouldSuppress = precision !== null && precision < FEEDBACK_SUPPRESS_THRESHOLD;
     const reason = shouldSuppress
       ? `Precision ${(precision! * 100).toFixed(0)}% (${tp}/${tp + fp}) — eşik altında, severity düşürüldü`
       : precision !== null
@@ -61,7 +62,7 @@ export async function analyzeRulePrecision(): Promise<RuleFeedback[]> {
 // Suppress edilen kural tiplerini cache'le (server restart'ta sıfırlanır, analiz tekrar çalışır)
 let suppressedRuleTypes = new Set<string>();
 let lastAnalysisTime = 0;
-const ANALYSIS_INTERVAL = 5 * 60 * 1000; // 5 dakikada bir analiz
+const ANALYSIS_INTERVAL = FEEDBACK_ANALYSIS_INTERVAL;
 
 /** Bir kural tipi suppress edilmeli mi? */
 export async function isRuleSuppressed(ruleType: string): Promise<boolean> {

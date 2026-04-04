@@ -62,7 +62,7 @@ export async function evaluateCustomRules(context: {
           updatedAt: new Date(),
         })
         .where(eq(customRules.id, rule.id))
-        .catch(() => {}); // fire-and-forget
+        .catch(err => console.error("[nl-rules-evaluator] Trigger count update error:", err));
     }
   } catch (err) {
     console.error("[nl-rules-evaluator] Error:", err);

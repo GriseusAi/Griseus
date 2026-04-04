@@ -13,6 +13,11 @@ import { SEASONAL_INDICES, MONTH_LABELS, MONTHLY_DEMAND } from "./lib/seasonal-c
 import { persistAlerts } from "./lib/alert-persistence";
 import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
 import { adjustSeverity, refreshSuppression } from "./lib/feedback-loop";
+import {
+  MAIN_SKU, LEAD_TIME_DAYS, CAPACITY_CRITICAL_THRESHOLD,
+  SEASONAL_SPIKE_RATIO, CASCADE_FAILURE_THRESHOLD, DEMAND_ANOMALY_RATIO,
+  SEASONAL_RISK_DAYS, CAPACITY_HISTORY_SIZE, WINTER_MONTHS,
+} from "./lib/constants";
 
 export interface ProactiveAlert {
   id: string;
@@ -26,8 +31,6 @@ export interface ProactiveAlert {
   suggestedAction?: string;
   timestamp: string;
 }
-
-const LEAD_TIME_DAYS = 14;
 
 let alertCounter = 0;
 function makeAlertId(): string {
@@ -54,13 +57,13 @@ export async function evaluateRules(trigger: {
 
   try {
     [intel, bomItems_data] = await Promise.all([
-      computeComponentIntelligence("ELT.7-11").catch(() => null),
-      getBomWithStock("ELT.7-11").catch(() => null),
+      computeComponentIntelligence(MAIN_SKU).catch(() => null),
+      getBomWithStock(MAIN_SKU).catch(() => null),
     ]);
     if (bomItems_data && bomItems_data.length > 0) {
       capacity = computeProductionCapacity(bomItems_data);
     }
-  } catch { /* skip */ }
+  } catch (err) { console.error("[rules-engine] Rule evaluation error:", err); }
 
   try {
     // ══════════════════════════════════════════════════════════
@@ -130,11 +133,11 @@ export async function evaluateRules(trigger: {
             timestamp: now,
           });
         }
-      } catch { /* skip */ }
+      } catch (err) { console.error("[rules-engine] Rule evaluation error:", err); }
     }
 
     // ── Rule 2: Production Capacity Critical ──
-    if (capacity && capacity.maxProducible < 10) {
+    if (capacity && capacity.maxProducible < CAPACITY_CRITICAL_THRESHOLD) {
       const topBottleneck = capacity.bottlenecks[0];
       alerts.push({
         id: makeAlertId(),
@@ -142,7 +145,7 @@ export async function evaluateRules(trigger: {
         severity: "critical",
         title: "Üretim Durma Riski",
         message: `ELT.7-11 üretim kapasitesi ${capacity.maxProducible} adete düştü! Darboğaz: ${topBottleneck?.name || "?"} (${topBottleneck?.stock || 0} adet stok)`,
-        productSku: "ELT.7-11",
+        productSku: MAIN_SKU,
         componentCode: topBottleneck?.code,
         suggestedAction: `${topBottleneck?.code} için acil tedarik başlat`,
         rootCause: [
@@ -165,7 +168,7 @@ export async function evaluateRules(trigger: {
             title: "Stok Tükenme Uyarısı",
             message: `${comp.code} ${comp.name} — Mevcut tüketim hızıyla ${comp.daysToStockout} gün içinde tükenecek! Stok: ${comp.currentStock}, Günlük tüketim: ${comp.dailyBurnRate}`,
             componentCode: comp.code,
-            productSku: "ELT.7-11",
+            productSku: MAIN_SKU,
             suggestedAction: `${comp.suggestedOrderQty} ${comp.unit} sipariş ver`,
             rootCause: [
               { order: 1, cause: `${comp.code} ${comp.name} bileşeni analiz edildi`, data: { code: comp.code, tier: comp.tier } },
@@ -209,7 +212,7 @@ export async function evaluateRules(trigger: {
                 timestamp: now,
               });
             }
-          } catch { /* skip */ }
+          } catch (err) { console.error("[rules-engine] Rule evaluation error:", err); }
         }
       }
     }
@@ -222,10 +225,10 @@ export async function evaluateRules(trigger: {
       // ── Rule 5: Mevsimsel Talep Spike Tahmini ──
       const currentIdx = SEASONAL_INDICES[currentMonthIdx];
       const nextIdx = SEASONAL_INDICES[nextMonthIdx];
-      if (nextIdx > currentIdx * 1.3) {
+      if (nextIdx > currentIdx * SEASONAL_SPIKE_RATIO) {
         const spikeRatio = (nextIdx / currentIdx).toFixed(2);
         const criticalForSpike = intel.components.filter(c =>
-          c.seasonalDays !== null && c.seasonalDays < 60
+          c.seasonalDays !== null && c.seasonalDays < SEASONAL_RISK_DAYS
         );
         if (criticalForSpike.length > 0) {
           alerts.push({
@@ -234,7 +237,7 @@ export async function evaluateRules(trigger: {
             severity: "warning",
             title: "Mevsimsel Talep Artışı Yaklaşıyor",
             message: `${MONTH_LABELS[nextMonthIdx]} ayında talep ${spikeRatio}x artacak (${MONTHLY_DEMAND[currentMonthIdx]} → ${MONTHLY_DEMAND[nextMonthIdx]} adet). ${criticalForSpike.length} bileşen risk altında.`,
-            productSku: "ELT.7-11",
+            productSku: MAIN_SKU,
             suggestedAction: `Risk altındaki ${criticalForSpike.length} bileşen için stok takviyesi planla`,
             rootCause: [
               { order: 1, cause: `Mevsimsel indeks karşılaştırması: ${MONTH_LABELS[currentMonthIdx]} (${currentIdx.toFixed(2)}) → ${MONTH_LABELS[nextMonthIdx]} (${nextIdx.toFixed(2)})`, data: { currentIndex: currentIdx, nextIndex: nextIdx } },
@@ -253,14 +256,14 @@ export async function evaluateRules(trigger: {
 
       // ── Rule 6: BOM Cascade Failure ──
       const criticalComps = intel.components.filter(c => c.urgency === "critical");
-      if (criticalComps.length >= 3) {
+      if (criticalComps.length >= CASCADE_FAILURE_THRESHOLD) {
         alerts.push({
           id: makeAlertId(),
           type: "bom_cascade_failure",
           severity: "critical",
           title: "Çoklu Bileşen Krizi",
           message: `${criticalComps.length} bileşen aynı anda kritik seviyede! Üretim durma riski yüksek — kurtarma süresi uzar.`,
-          productSku: "ELT.7-11",
+          productSku: MAIN_SKU,
           suggestedAction: "Acil tedarik toplantısı — tüm kritik bileşenler için koordineli sipariş",
           rootCause: [
             { order: 1, cause: `${criticalComps.length} bileşen aynı anda KRİTİK durumda (eşik: 3)` },
@@ -290,7 +293,7 @@ export async function evaluateRules(trigger: {
             title: "Tedarik Süresi Riski",
             message: `${comp.code} ${comp.name} — ${comp.daysToStockout} gün sonra tükenecek ama tedarik süresi ${LEAD_TIME_DAYS} gün. Bugün sipariş verse bile yetişmez!`,
             componentCode: comp.code,
-            productSku: "ELT.7-11",
+            productSku: MAIN_SKU,
             suggestedAction: `${comp.code} için ACİL sipariş + alternatif tedarikçi ara`,
             rootCause: [
               { order: 1, cause: `${comp.code} stok ömrü hesaplandı: ${comp.daysToStockout} gün`, data: { daysToStockout: comp.daysToStockout } },
@@ -303,7 +306,7 @@ export async function evaluateRules(trigger: {
       }
 
       // ── Rule 8: Talep Anomalisi ──
-      const anomalies = intel.components.filter(c => c.trend === "accelerating" && c.trendRatio > 1.5);
+      const anomalies = intel.components.filter(c => c.trend === "accelerating" && c.trendRatio > DEMAND_ANOMALY_RATIO);
       for (const comp of anomalies) {
         alerts.push({
           id: makeAlertId(),
@@ -312,7 +315,7 @@ export async function evaluateRules(trigger: {
           title: "Anormal Tüketim Hızı",
           message: `${comp.code} ${comp.name} — Tüketim hızı normalin ${comp.trendRatio.toFixed(1)}x üstünde! Beklenmedik talep artışı veya veri hatası olabilir.`,
           componentCode: comp.code,
-          productSku: "ELT.7-11",
+          productSku: MAIN_SKU,
           suggestedAction: `${comp.code} tüketim kaydını kontrol et + stok takviyesi değerlendir`,
           rootCause: [
             { order: 1, cause: `${comp.code} tüketim trendi: ${comp.trend}`, data: { trend: comp.trend } },
@@ -336,7 +339,7 @@ export async function evaluateRules(trigger: {
           title: "Kış Stresi Tahmini",
           message: `${comp.code} ${comp.name} — Stok kış aylarında (${comp.depletionMonth} ${comp.depletionYear}) tükenecek. Kış talebi yüksek olduğundan erken tedarik önerilir.`,
           componentCode: comp.code,
-          productSku: "ELT.7-11",
+          productSku: MAIN_SKU,
           suggestedAction: `${comp.code} için kış öncesi stok takviyesi planla`,
           rootCause: [
             { order: 1, cause: `${comp.code} mevsimsel forward-walk analizi yapıldı` },
@@ -352,19 +355,19 @@ export async function evaluateRules(trigger: {
     // ── Rule 10: Kapasite Erozyon Trendi ──
     if (capacity) {
       capacityHistory.push({ ts: Date.now(), capacity: capacity.maxProducible });
-      if (capacityHistory.length > 10) capacityHistory.shift();
+      if (capacityHistory.length > CAPACITY_HISTORY_SIZE) capacityHistory.shift();
 
       if (capacityHistory.length >= 3) {
         const last3 = capacityHistory.slice(-3);
         const isDecreasing = last3[0].capacity > last3[1].capacity && last3[1].capacity > last3[2].capacity;
-        if (isDecreasing && capacity.maxProducible > 10) { // <10 zaten Rule 2'de
+        if (isDecreasing && capacity.maxProducible > CAPACITY_CRITICAL_THRESHOLD) { // <10 zaten Rule 2'de
           alerts.push({
             id: makeAlertId(),
             type: "capacity_degradation_trend",
             severity: "warning",
             title: "Kapasite Erozyon Trendi",
             message: `Üretim kapasitesi sürekli düşüyor: ${last3.map(h => h.capacity).join(" → ")}. Mevcut darboğaz: ${capacity.bottlenecks[0]?.name || "?"}`,
-            productSku: "ELT.7-11",
+            productSku: MAIN_SKU,
             suggestedAction: "Darboğaz bileşenlerin tedarik planını gözden geçir",
             rootCause: [
               { order: 1, cause: `Son 3 ölçümde kapasite monoton düşüyor`, data: { readings: last3.map(h => h.capacity).join(", ") } },
@@ -397,7 +400,7 @@ export async function evaluateRules(trigger: {
   }
 
   // Feedback Loop — false positive oranı yüksek kuralların severity'sini düşür
-  await refreshSuppression().catch(() => {});
+  await refreshSuppression().catch(err => console.error("[rules-engine] Feedback refresh error:", err));
   for (const alert of alerts) {
     alert.severity = adjustSeverity(alert.severity, alert.type);
   }

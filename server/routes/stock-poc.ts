@@ -6,8 +6,19 @@ import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagati
 import { evaluateRules } from "../rules-engine";
 import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
 import { logAudit, logAuditBatch } from "../lib/audit";
+import { z } from "zod";
 
 const stockPocRouter = Router();
+
+// ── Zod Schemas — input validation ──────
+const stockMovementSchema = z.object({
+  product_id: z.number({ coerce: true }).int().positive("product_id pozitif tam sayı olmalı"),
+  movement_type: z.enum(["produced", "to_warehouse", "to_sales", "raw_material_in", "inventory_count"]),
+  quantity: z.number({ coerce: true }).min(0, "quantity >= 0 olmalı"),
+  note: z.string().optional(),
+  created_by: z.string().optional(),
+  target: z.enum(["warehouse", "production"]).optional(),
+});
 
 // ── Lazy stock_levels creation — row created on first movement ──────
 export async function ensureStockLevel(productId: number, tx?: any): Promise<{
@@ -160,19 +171,14 @@ stockPocRouter.get("/movements", async (req, res) => {
 // ── POST /api/stock/movements — yeni hareket kaydet ─────────────────
 stockPocRouter.post("/movements", async (req, res) => {
   try {
-    const { product_id, movement_type, quantity, note, created_by, target } = req.body;
-
-    if (!product_id || !movement_type) {
-      return res.status(400).json({ error: "product_id ve movement_type zorunlu" });
+    const parsed = stockMovementSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
     }
+    const { product_id, movement_type, quantity, note, created_by, target } = parsed.data;
 
-    const validTypes = ["produced", "to_warehouse", "to_sales", "raw_material_in", "inventory_count"];
-    if (!validTypes.includes(movement_type)) {
-      return res.status(400).json({ error: `Geçersiz hareket tipi. Geçerli: ${validTypes.join(", ")}` });
-    }
-
-    if (!quantity || quantity < 0 || (movement_type !== "inventory_count" && quantity <= 0)) {
-      return res.status(400).json({ error: "quantity zorunlu ve >= 0 olmalı" });
+    if (movement_type !== "inventory_count" && quantity <= 0) {
+      return res.status(400).json({ error: "quantity > 0 olmalı (inventory_count hariç)" });
     }
 
     // Verify product exists

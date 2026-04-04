@@ -44,7 +44,7 @@ export async function propagateCorrection(event: CorrectionEvent): Promise<Propa
 
   try {
     // 1. Feedback Loop güncelle (suppress listesi yenile)
-    await refreshSuppression().catch(() => {});
+    await refreshSuppression().catch(err => console.error("[correction-propagation]", err));
     feedbackUpdated = true;
 
     // 2. Pre-snapshot al (impact engine için)
