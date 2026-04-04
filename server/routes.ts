@@ -13,6 +13,7 @@ import palantirRouter from "./routes/palantir";
 import palantirDemoRouter from "./routes/palantir-demo";
 import { getRecentImpacts } from "./lib/impact-engine";
 import { simulateWhatIf, type WhatIfScenario } from "./lib/whatif-engine";
+import validationRouter from "./routes/validation";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -26,6 +27,7 @@ export async function registerRoutes(
   app.use("/api/planning", planningRouter);
   app.use("/api/palantir", palantirRouter);
   app.use("/api/palantir/demo", palantirDemoRouter);
+  app.use("/api/validation", validationRouter);
 
   // ── Impact Propagation API ──
   app.get("/api/impact/latest", (_req, res) => {

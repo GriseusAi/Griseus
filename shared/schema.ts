@@ -222,3 +222,25 @@ export const demandForecast = pgTable("demand_forecast", {
 });
 
 export type DemandForecast = typeof demandForecast.$inferSelect;
+
+// --- Validation Alerts (Continuous Validation Pipeline) ---
+
+export const validationAlerts = pgTable("validation_alerts", {
+  id: serial("id").primaryKey(),
+  alertId: varchar("alert_id", { length: 64 }).notNull(),
+  type: text("type").notNull(),
+  severity: text("severity").notNull(), // critical | warning | info
+  title: text("title").notNull(),
+  message: text("message").notNull(),
+  rootCause: jsonb("root_cause"), // ReasoningStep[] as JSON
+  componentCode: text("component_code"),
+  productSku: text("product_sku"),
+  suggestedAction: text("suggested_action"),
+  validated: boolean("validated").default(false),
+  validationNote: text("validation_note"),
+  outcome: text("outcome"), // true_positive | false_positive | unresolved
+  createdAt: timestamp("created_at").defaultNow(),
+  resolvedAt: timestamp("resolved_at"),
+});
+
+export type ValidationAlert = typeof validationAlerts.$inferSelect;

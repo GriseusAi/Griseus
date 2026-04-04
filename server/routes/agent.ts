@@ -257,6 +257,20 @@ const TOOLS: Anthropic.Tool[] = [
       required: ["scenario_type", "quantity"],
     },
   },
+  {
+    name: "get_validation_dashboard",
+    description: "Validasyon panosu — Continuous Validation Pipeline metrikleri. Tüm proaktif uyarıların doğruluk oranı (precision), tip/severity dağılımı, son uyarılar ve çözüm süreleri. Kullanıcı 'uyarı doğruluğu', 'alert metrikleri', 'validasyon' diye sorduğunda kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        include_recent_alerts: {
+          type: "boolean",
+          description: "Son 10 uyarıyı da dahil et (varsayılan: true)",
+        },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -739,6 +753,32 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         };
       } catch (err: any) {
         return { error: `What-If analiz hatası: ${err.message}` };
+      }
+    }
+
+    case "get_validation_dashboard": {
+      try {
+        const { getValidationMetrics, getValidationAlerts } = await import("../lib/alert-persistence");
+        const metrics = await getValidationMetrics();
+        const recentAlerts = input.include_recent_alerts !== false
+          ? await getValidationAlerts({ limit: 10 })
+          : [];
+        return {
+          metrics,
+          recentAlerts: recentAlerts.map(a => ({
+            id: a.id,
+            type: a.type,
+            severity: a.severity,
+            title: a.title,
+            message: a.message,
+            rootCause: a.rootCause,
+            validated: a.validated,
+            outcome: a.outcome,
+            createdAt: a.createdAt,
+          })),
+        };
+      } catch (err: any) {
+        return { error: `Validasyon panosu hatası: ${err.message}` };
       }
     }
 

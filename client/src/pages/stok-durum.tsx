@@ -384,6 +384,18 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
               → {a.suggestedAction}
             </div>
           )}
+          {a.rootCause && a.rootCause.length > 0 && (
+            <div style={{ marginTop: 8, padding: "6px 10px", borderRadius: 6, background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.06)" }}>
+              <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 4, letterSpacing: 0.5 }}>
+                SEBEP ZİNCİRİ
+              </div>
+              {a.rootCause.map((step: any, i: number) => (
+                <div key={i} style={{ fontSize: 10, color: C.mid, lineHeight: 1.6, paddingLeft: 8 }}>
+                  {step.order}. {step.cause}
+                </div>
+              ))}
+            </div>
+          )}
         </motion.div>
       ))}
     </motion.div>

@@ -15,6 +15,7 @@ export interface ProactiveAlertData {
   severity: "critical" | "warning" | "info";
   title: string;
   message: string;
+  rootCause?: Array<{ order: number; cause: string; data?: Record<string, any> }>;
   componentCode?: string;
   productSku?: string;
   suggestedAction?: string;
