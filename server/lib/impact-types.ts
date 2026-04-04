@@ -31,7 +31,7 @@ export interface ImpactEvent {
   id: string;
   timestamp: string;
   trigger: {
-    type: "stock_movement" | "component_stock_update" | "sales_data_import";
+    type: "stock_movement" | "component_stock_update" | "sales_data_import" | "correction";
     actor: string;
     detail: string;
   };

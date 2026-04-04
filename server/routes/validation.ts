@@ -5,6 +5,7 @@
 import { Router, type Request, type Response } from "express";
 import { getValidationAlerts, updateAlertValidation, getValidationMetrics } from "../lib/alert-persistence";
 import { analyzeRulePrecision } from "../lib/feedback-loop";
+import { propagateCorrection } from "../lib/correction-propagation";
 
 const router = Router();
 
@@ -37,6 +38,15 @@ router.patch("/alerts/:id", async (req: Request, res: Response) => {
     }
     const updated = await updateAlertValidation(id, { validated, validationNote, outcome });
     if (!updated) return res.status(404).json({ error: "Alert bulunamadı" });
+
+    // Correction Propagation — doğrulama yapıldığında tüm kolları re-evaluate et (fire-and-forget)
+    propagateCorrection({
+      type: "alert_validated",
+      entityId: String(id),
+      detail: `Alert #${id} → ${outcome || "validated"}: ${validationNote || ""}`,
+      actor: "validator",
+    }).catch(err => console.error("[correction-propagation]", err));
+
     res.json({ alert: updated });
   } catch (err: any) {
     res.status(500).json({ error: err.message });

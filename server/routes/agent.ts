@@ -5,6 +5,7 @@ import { stockLevels, stockMovementsV2, products, componentStock, bomItems, purc
 import { eq, desc, and, sql } from "drizzle-orm";
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "./bom";
 import { logAudit } from "../lib/audit";
+import { propagateCorrection } from "../lib/correction-propagation";
 import { ensureStockLevel } from "./stock-poc";
 import { simulateWhatIf, type WhatIfScenario } from "../lib/whatif-engine";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
@@ -669,10 +670,13 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         stockLevel: { inProduction: 0, inWarehouse: newStock, totalSold: 0 },
       });
 
-      // Proactive rules (fire-and-forget)
-      evaluateRules({ type: "component_stock_update", componentCode: code })
-        .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
-        .catch(err => console.error("[rules-engine]", err));
+      // Correction Propagation — stok düzeltmesi tüm kolları re-evaluate eder
+      propagateCorrection({
+        type: "stock_corrected",
+        entityId: code,
+        detail: `${code} stok düzeltme: ${oldStock} → ${newStock}`,
+        actor: "ceo_agent",
+      }).catch(err => console.error("[correction-propagation]", err));
 
       return {
         success: true, componentCode: code, oldStock, newStock,

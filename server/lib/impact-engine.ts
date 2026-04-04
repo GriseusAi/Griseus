@@ -82,7 +82,7 @@ async function takeSnapshot(): Promise<SystemSnapshot> {
 
 // ── Main: compute impact propagation ──
 export interface ImpactTrigger {
-  type: "stock_movement" | "component_stock_update" | "sales_data_import";
+  type: "stock_movement" | "component_stock_update" | "sales_data_import" | "correction";
   actor: string;
   detail: string;
   componentCodes?: string[];  // specific components affected
