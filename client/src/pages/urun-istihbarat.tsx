@@ -194,6 +194,7 @@ export default function UrunIstihbarat() {
   }, [stock]);
 
   const topBottleneck = capacity?.bottlenecks?.[0];
+  const [expandedReasoning, setExpandedReasoning] = useState<string | null>(null);
 
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans, position: "relative", overflow: "hidden" }}>
@@ -714,58 +715,78 @@ export default function UrunIstihbarat() {
             const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.blueDim : C.okDim;
             const urgencyLabel = c.urgency === "critical" ? "KRİTİK" : c.urgency === "warning" ? "DİKKAT" : c.urgency === "ok" ? "YETERLİ" : "BOL";
             const riskColor = c.depletionRisk === "KRİTİK" ? C.err : c.depletionRisk === "YÜKSEK" ? C.warn : c.depletionRisk === "ORTA" ? C.blue : C.ok;
+            const isExpanded = expandedReasoning === c.code;
 
             return (
-              <div key={c.code} style={{
-                display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
-                gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
-                background: c.urgency === "critical" ? C.errDim : c.winterStress ? "rgba(249,115,22,0.03)" : "transparent",
-                transition: "background 0.15s",
-              }}
-                onMouseEnter={e => { if (c.urgency !== "critical") e.currentTarget.style.background = C.surfaceHover; }}
-                onMouseLeave={e => { if (c.urgency !== "critical") e.currentTarget.style.background = c.winterStress ? "rgba(249,115,22,0.03)" : "transparent"; }}
-              >
-                <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>{c.code}</div>
-                <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
-                  {c.name}
-                  {c.tier === 2 && <span style={{ fontSize: 8, color: C.accent, fontFamily: mono }}>YARI MAMÜL</span>}
-                  {c.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
-                </div>
-                <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
-                  {c.dailyBurnRate}
-                </div>
-                {/* Kaç Gün (seasonal) */}
+              <div key={c.code}>
                 <div style={{
-                  fontFamily: mono, fontSize: 13, fontWeight: 600,
-                  color: c.seasonalDays === 0 ? C.err
-                    : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
-                    : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.ok,
-                }}>
-                  {c.seasonalDays !== null ? `${c.seasonalDays}g` : "—"}
+                  display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
+                  gap: 8, padding: "8px 12px", borderBottom: isExpanded ? "none" : `1px solid ${C.border}`,
+                  background: c.urgency === "critical" ? C.errDim : c.winterStress ? "rgba(249,115,22,0.03)" : "transparent",
+                  transition: "background 0.15s",
+                }}
+                  onMouseEnter={e => { if (c.urgency !== "critical") e.currentTarget.style.background = C.surfaceHover; }}
+                  onMouseLeave={e => { if (c.urgency !== "critical") e.currentTarget.style.background = c.winterStress ? "rgba(249,115,22,0.03)" : "transparent"; }}
+                >
+                  <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>{c.code}</div>
+                  <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
+                    {c.name}
+                    {c.tier === 2 && <span style={{ fontSize: 8, color: C.accent, fontFamily: mono }}>YARI MAMÜL</span>}
+                    {c.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
+                  </div>
+                  <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
+                    {c.dailyBurnRate}
+                  </div>
+                  {/* Kaç Gün (seasonal) */}
+                  <div style={{
+                    fontFamily: mono, fontSize: 13, fontWeight: 600,
+                    color: c.seasonalDays === 0 ? C.err
+                      : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
+                      : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.ok,
+                  }}>
+                    {c.seasonalDays !== null ? `${c.seasonalDays}g` : "—"}
+                  </div>
+                  {/* Sipariş Noktası (seasonal) */}
+                  <div style={{
+                    fontFamily: mono, fontSize: 11,
+                    color: c.currentStock > c.seasonalReorderPoint ? C.ok : C.err,
+                  }}>
+                    {c.seasonalReorderPoint}
+                    {c.currentStock <= c.seasonalReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
+                  </div>
+                  {/* Bitiş Ayı */}
+                  <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
+                    {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
+                  </div>
+                  <div>
+                    <span
+                      onClick={() => c.urgencyReasoning && setExpandedReasoning(prev => prev === c.code ? null : c.code)}
+                      style={{
+                        fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
+                        borderRadius: 4, background: isExpanded ? urgencyColor : urgencyBg,
+                        color: isExpanded ? "#000" : urgencyColor,
+                        cursor: c.urgencyReasoning ? "pointer" : "default",
+                        transition: "all 0.15s",
+                      }}>
+                      {urgencyLabel} {c.urgencyReasoning ? (isExpanded ? "▾" : "▸") : ""}
+                    </span>
+                  </div>
                 </div>
-                {/* Sipariş Noktası (seasonal) */}
-                <div style={{
-                  fontFamily: mono, fontSize: 11,
-                  color: c.currentStock > c.seasonalReorderPoint ? C.ok : C.err,
-                }}>
-                  {c.seasonalReorderPoint}
-                  {c.currentStock <= c.seasonalReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
-                </div>
-                {/* Bitiş Ayı */}
-                <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
-                  {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
-                </div>
-                <div style={{ position: "relative" }}>
-                  <span
-                    title={c.urgencyReasoning ? c.urgencyReasoning.map((r: any) => `${r.order}. ${r.cause}`).join("\n") : undefined}
-                    style={{
-                      fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
-                      borderRadius: 4, background: urgencyBg, color: urgencyColor,
-                      cursor: c.urgencyReasoning ? "help" : "default",
-                    }}>
-                    {urgencyLabel}
-                  </span>
-                </div>
+                {isExpanded && c.urgencyReasoning && (
+                  <div style={{
+                    padding: "8px 16px 12px", background: "rgba(255,255,255,0.02)",
+                    borderBottom: `1px solid ${C.border}`, borderLeft: `2px solid ${urgencyColor}`,
+                  }}>
+                    <div style={{ fontSize: 8, fontFamily: mono, color: C.accent, letterSpacing: 0.5, marginBottom: 4 }}>
+                      SEBEP ZİNCİRİ — {c.code} {c.name}
+                    </div>
+                    {c.urgencyReasoning.map((step: any, i: number) => (
+                      <div key={i} style={{ fontSize: 10, color: C.mid, lineHeight: 1.7, paddingLeft: 8 }}>
+                        {step.order}. {step.cause}
+                      </div>
+                    ))}
+                  </div>
+                )}
               </div>
             );
           })}
