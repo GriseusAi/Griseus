@@ -71,6 +71,7 @@ function computeProductionCapacity(allItems: BomRow[]) {
   const bottlenecks: Array<{
     code: string; name: string; tier: number; stock: number;
     required: number; maxProducts: number; note?: string;
+    reasoning?: Array<{ order: number; cause: string; data?: Record<string, number | string> }>;
   }> = [];
 
   const subAssemblyStatus: Record<string, any> = {};
@@ -98,6 +99,13 @@ function computeProductionCapacity(allItems: BomRow[]) {
       ? Math.floor(effectiveStock / item.requiredQty)
       : Infinity;
 
+    const reasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
+      { order: 1, cause: `${item.code} ${item.name} analiz edildi`, data: { tier: item.tier } },
+      { order: 2, cause: `Efektif stok: ${effectiveStock} adet${item.tier === 2 ? ` (DB: ${item.currentStock} + alt bileşenlerden monte: ${effectiveStock - item.currentStock})` : ""}`, data: { effectiveStock, rawStock: item.currentStock } },
+      { order: 3, cause: `Birim başına gerekli: ${item.requiredQty} adet`, data: { required: item.requiredQty } },
+      { order: 4, cause: `Maksimum üretilebilir: ${maxProducts} = ⌊${effectiveStock} / ${item.requiredQty}⌋`, data: { maxProducts } },
+    ];
+
     bottlenecks.push({
       code: item.code,
       name: item.name,
@@ -106,6 +114,7 @@ function computeProductionCapacity(allItems: BomRow[]) {
       required: item.requiredQty,
       maxProducts,
       note,
+      reasoning,
     });
 
     if (maxProducts < maxProducible) {

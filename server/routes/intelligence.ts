@@ -28,6 +28,7 @@ export interface ComponentIntelligence {
   trendRatio: number;
   suggestedOrderQty: number;
   urgency: "critical" | "warning" | "ok" | "abundant";
+  urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }>;
   // Palantir Ontology — Seasonal Fields
   seasonalDays: number | null;
   seasonalDifference: number | null;
@@ -202,6 +203,19 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const winterMonths = [10, 11, 0, 1];
       const winterStress = effectiveStock > 0 && winterMonths.includes(seasonal.depletionMonth) && seasonal.days <= 365;
 
+      // Reasoning chain: neden bu urgency seviyesinde?
+      const urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
+        { order: 1, cause: `Efektif stok: ${effectiveStock} ${item.unit}${item.tier === 2 ? " (yarı mamül — alt bileşenlerden monte edilebilir)" : ""}`, data: { effectiveStock, tier: item.tier } },
+        { order: 2, cause: `Mevsimsel forward-walk: ${effectiveStock > 0 ? seasonal.days : 0} gün → ${urgencyFromSeasonal}`, data: { seasonalDays: effectiveStock > 0 ? seasonal.days : 0, seasonalUrgency: urgencyFromSeasonal } },
+      ];
+      if (daysToStockout !== null) {
+        urgencyReasoning.push({ order: 3, cause: `Lineer tüketim hızı: ${daysToStockout} gün → ${urgencyFromLinear}`, data: { daysToStockout, linearUrgency: urgencyFromLinear } });
+      }
+      urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `İki sinyalin kötüsü alındı → ${urgency.toUpperCase()}`, data: { finalUrgency: urgency } });
+      if (winterStress) {
+        urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `Kış stresi: stok ${MONTH_LABELS[seasonal.depletionMonth]} ${seasonal.depletionYear}'de tükenecek — kış talebi yüksek`, data: { depletionMonth: MONTH_LABELS[seasonal.depletionMonth] } });
+      }
+
       return {
         code: item.code, name: item.name, tier: item.tier, unit: item.unit,
         currentStock: effectiveStock, requiredPerUnit: item.requiredQty,
@@ -209,7 +223,7 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         weeklyBurnRate: Math.round(weeklyBurn * 100) / 100,
         daysToStockout, reorderPoint,
         isAboveReorderPoint: effectiveStock > reorderPoint,
-        trend, trendRatio, suggestedOrderQty, urgency,
+        trend, trendRatio, suggestedOrderQty, urgency, urgencyReasoning,
         // Seasonal fields
         seasonalDays: effectiveStock > 0 ? seasonal.days : 0,
         seasonalDifference: daysToStockout !== null && effectiveStock > 0 ? seasonal.days - daysToStockout : null,

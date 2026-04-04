@@ -66,6 +66,7 @@ interface IntelComponent {
   trend: "accelerating" | "stable" | "decelerating";
   trendRatio: number; suggestedOrderQty: number;
   urgency: "critical" | "warning" | "ok" | "abundant";
+  urgencyReasoning?: Array<{ order: number; cause: string; data?: Record<string, any> }>;
 }
 
 interface IntelData {
@@ -754,11 +755,14 @@ export default function UrunIstihbarat() {
                 <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
                   {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
                 </div>
-                <div>
-                  <span style={{
-                    fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
-                    borderRadius: 4, background: urgencyBg, color: urgencyColor,
-                  }}>
+                <div style={{ position: "relative" }}>
+                  <span
+                    title={c.urgencyReasoning ? c.urgencyReasoning.map((r: any) => `${r.order}. ${r.cause}`).join("\n") : undefined}
+                    style={{
+                      fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
+                      borderRadius: 4, background: urgencyBg, color: urgencyColor,
+                      cursor: c.urgencyReasoning ? "help" : "default",
+                    }}>
                     {urgencyLabel}
                   </span>
                 </div>
