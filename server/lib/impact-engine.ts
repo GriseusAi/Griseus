@@ -192,7 +192,7 @@ export async function computeImpactPropagation(
 
         // Generate order action for critical/warning
         if (shift.newUrgency === "critical" || shift.newUrgency === "warning") {
-          const dailyRate = shift.dailyBurnRate > 0 ? shift.dailyBurnRate : YEARLY_TOTAL / 365;
+          const dailyRate = shift.dailyBurnRate > 0 ? shift.dailyBurnRate : YEARLY_TOTAL / 365; // fallback: gerçek burn rate yoksa yıllık ortalamadan
           const orderQty = Math.ceil(dailyRate * 90); // 3 months buffer
           const deadlineDays = Math.max(0, (shift.newDays ?? 180) - LEAD_TIME_DAYS - 30);
           const deadlineDate = new Date(now.getTime() + deadlineDays * 86400000);

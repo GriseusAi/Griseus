@@ -165,44 +165,63 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
 });
 
 // DEMO 3: GET /api/palantir/demo/acil-siparis?ay=3
+// TEK KAYNAK: computeComponentIntelligence — tüm sayfalarla tutarlı
 router.get("/acil-siparis", async (req: Request, res: Response) => {
   try {
     const ayIleri = parseInt(req.query.ay as string) || 3;
     const startTime = Date.now();
-    const currentMonth = new Date().getMonth(); // 0-indexed
-    const bomItems = await getBomWithStock(SKU);
-    const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
-    let toplamTalep = 0;
+    const currentMonth = new Date().getMonth();
+    const { getThresholds } = await import("../lib/adaptive-thresholds");
+    const T = await getThresholds();
+
+    // Talep özeti (sadece bilgi amaçlı)
     const aylar: string[] = [];
+    let toplamTalep = 0;
     for (let i = 0; i < ayIleri; i++) {
       const ay = (currentMonth + i) % 12;
       toplamTalep += MONTHLY_DEMAND[ay];
       aylar.push(`${MONTH_NAMES[ay]}(${MONTHLY_DEMAND[ay]})`);
     }
-    // Sadece tier 1 (doğrudan malzeme) — tier 2 yarı mamüller sipariş edilmez, montajlanır
-    const tier1Only = tier1and2.filter(comp => comp.tier === 1);
-    const siparisListesi = tier1Only.map(comp => {
-      const gerekli = toplamTalep * comp.requiredQty;
+
+    // TEK KAYNAK: Intelligence motorundan tüm bileşen verisi
+    const { computeComponentIntelligence } = await import("./intelligence");
+    const intel = await computeComponentIntelligence(SKU);
+
+    // Sadece tier 1 — tier 2 yarı mamüller sipariş edilmez
+    const tier1Comps = intel.components.filter(c => c.tier === 1);
+
+    const siparisListesi = tier1Comps.map(comp => {
+      const seasonalDays = comp.seasonalDays ?? 9999;
       const stok = comp.currentStock;
-      const gunlukTuketim = (ANNUAL_DEMAND / 365) * comp.requiredQty;
-      const guvenlikStoku = Math.ceil(gunlukTuketim * LEAD_TIME_DAYS);
-      const siparisMiktari = Math.max(0, Math.ceil(gerekli - stok + guvenlikStoku));
-      const gundeStokYeter = gunlukTuketim > 0 ? Math.floor(stok / gunlukTuketim) : null;
+      const gunlukTuketim = comp.dailyBurnRate;
+      const guvenlikStoku = Math.ceil(gunlukTuketim * T.leadTimeDays);
+      // Sipariş miktarı: planlama ufku boyunca tüketilecek miktar + güvenlik stoku - mevcut stok
+      const planlamaGunSayisi = ayIleri * 30;
+      const planlamaTuketim = Math.ceil(gunlukTuketim * planlamaGunSayisi);
+      const siparisMiktari = Math.max(0, planlamaTuketim + guvenlikStoku - stok);
+
       let sonSiparisTarihi: string | null = null;
-      if (gundeStokYeter !== null && gundeStokYeter < ayIleri * 30) {
+      if (seasonalDays < planlamaGunSayisi) {
         const tarih = new Date();
-        tarih.setDate(tarih.getDate() + Math.max(0, gundeStokYeter - LEAD_TIME_DAYS));
+        tarih.setDate(tarih.getDate() + Math.max(0, seasonalDays - T.leadTimeDays));
         sonSiparisTarihi = tarih.toISOString().split("T")[0];
       }
+
+      // ATE adaptif eşikler kullan
       const oncelik = siparisMiktari > 0
-        ? (gundeStokYeter !== null && gundeStokYeter < 14 ? "ACIL" : gundeStokYeter !== null && gundeStokYeter < 45 ? "YAKIN" : "PLANLI")
+        ? (seasonalDays <= T.leadTimeDays ? "ACIL"
+          : seasonalDays <= T.leadTimeDays * 3 ? "YAKIN"
+          : "PLANLI")
         : "YOK";
+
       return {
         kod: comp.code, parca: comp.name, birim: comp.unit, mevcutStok: Math.round(stok),
-        gerekli: Math.round(gerekli), guvenlikStoku, siparisMiktari, gundeStokYeter,
+        gerekli: planlamaTuketim, guvenlikStoku, siparisMiktari,
+        gundeStokYeter: seasonalDays,
+        bitisAy: comp.depletionMonth, bitisYil: comp.depletionYear,
         sonSiparisTarihi, oncelik, siparisGerekli: siparisMiktari > 0,
       };
-    }).filter(s => s.siparisGerekli).sort((a, b) => (a.gundeStokYeter ?? 999) - (b.gundeStokYeter ?? 999));
+    }).filter(s => s.siparisGerekli).sort((a, b) => (a.gundeStokYeter ?? 9999) - (b.gundeStokYeter ?? 9999));
 
     const calcTime = Date.now() - startTime;
     const aciller = siparisListesi.filter(s => s.oncelik === "ACIL");
@@ -212,7 +231,8 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
     res.json({
       _test: "CUKUROVA ISI — ACIL SIPARIS LISTESI",
       _hesapSuresi: `${calcTime}ms`,
-      parametreler: { planlamaUfku: `${ayIleri} ay`, aylar: aylar.join(" + "), toplamTapinenTalep: `${toplamTalep} adet ELT.7-11`, tedarikSuresi: `${LEAD_TIME_DAYS} gun` },
+      _kaynak: "computeComponentIntelligence + ATE adaptif eşikler (tek kaynak)",
+      parametreler: { planlamaUfku: `${ayIleri} ay`, aylar: aylar.join(" + "), toplamTapinenTalep: `${toplamTalep} adet ELT.7-11`, tedarikSuresi: `${T.leadTimeDays} gun (adaptif)` },
       ozet: {
         toplamSiparisKalemi: siparisListesi.length,
         acil: `${aciller.length} parca — BUGUN siparis ver!`,
@@ -222,7 +242,8 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
       acilSiparisler: aciller.map(s => ({
         kod: s.kod, parca: s.parca, siparisMiktari: `${s.siparisMiktari} ${s.birim}`,
         stokYeterliGun: s.gundeStokYeter, sonSiparisTarihi: s.sonSiparisTarihi,
-        neden: `Stok ${s.gundeStokYeter} gun sonra biter, tedarik ${LEAD_TIME_DAYS} gun surer — GEC KALIYORSUN`,
+        bitisAy: s.bitisAy, bitisYil: s.bitisYil,
+        neden: `Stok ${s.gundeStokYeter} gün sonra biter (${s.bitisAy} ${s.bitisYil}), tedarik ${T.leadTimeDays} gün — GEÇ KALIYORSUN`,
       })),
       yakinSiparisler: yakinlar,
       planliSiparisler: planlilar,
