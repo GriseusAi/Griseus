@@ -4,11 +4,8 @@ import { stockMovementsV2, products, componentStock } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
 import { MONTHLY_DEMAND, YEARLY_TOTAL, MONTHLY_AVG, SEASONAL_INDICES, DAYS_IN_MONTH, MONTH_LABELS } from "../lib/seasonal-constants";
-import {
-  URGENCY_CRITICAL_DAYS, URGENCY_WARNING_DAYS, URGENCY_OK_DAYS,
-  LINEAR_CRITICAL_DAYS, LINEAR_WARNING_DAYS, LINEAR_OK_DAYS,
-  WINTER_MONTHS, LEAD_TIME_DAYS,
-} from "../lib/constants";
+import { WINTER_MONTHS } from "../lib/constants";
+import { getThresholds, type AdaptiveThresholds } from "../lib/adaptive-thresholds";
 
 const router = Router();
 
@@ -106,6 +103,9 @@ export async function computeComponentIntelligence(sku: string): Promise<{
   warningCount: number;
   topRisks: ComponentIntelligence[];
 }> {
+  // ATE — Adaptif eşikleri çek
+  const T = await getThresholds();
+
   const items = await getBomWithStock(sku);
   if (items.length === 0) throw new Error(`BOM bulunamadı: ${sku}`);
 
@@ -159,7 +159,7 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const dailyBurn = dailySalesRate * item.requiredQty;
       const weeklyBurn = dailyBurn * 7;
       const daysToStockout = dailyBurn > 0 ? Math.floor(effectiveStock / dailyBurn) : null;
-      const reorderPoint = Math.ceil(dailyBurn * LEAD_TIME_DAYS);
+      const reorderPoint = Math.ceil(dailyBurn * T.leadTimeDays);
       const suggestedOrderQty = Math.max(0, Math.ceil(dailyBurn * 30) - Math.floor(effectiveStock));
 
       // Trend: compare last 14 days vs previous 14 days burn rate
@@ -174,20 +174,20 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
       const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate);
 
-      // Urgency: prefer seasonal forward-walk over simple daysToStockout
+      // Urgency: prefer seasonal forward-walk over simple daysToStockout (ATE adaptif eşikler)
       const urgencyFromSeasonal: "critical" | "warning" | "ok" | "abundant" =
         effectiveStock <= 0 ? "critical"
-        : seasonal.days <= URGENCY_CRITICAL_DAYS ? "critical"
-        : seasonal.days <= URGENCY_WARNING_DAYS ? "warning"
-        : seasonal.days <= URGENCY_OK_DAYS ? "ok"
+        : seasonal.days <= T.urgencyCriticalDays ? "critical"
+        : seasonal.days <= T.urgencyWarningDays ? "warning"
+        : seasonal.days <= T.urgencyOkDays ? "ok"
         : "abundant";
 
-      // If we have actual sales data, also check linear burn rate
+      // If we have actual sales data, also check linear burn rate (ATE adaptif)
       const urgencyFromLinear: "critical" | "warning" | "ok" | "abundant" =
         daysToStockout === null ? "abundant"
-        : daysToStockout < LINEAR_CRITICAL_DAYS ? "critical"
-        : daysToStockout < LINEAR_WARNING_DAYS ? "warning"
-        : daysToStockout < LINEAR_OK_DAYS ? "ok" : "abundant";
+        : daysToStockout < T.linearCriticalDays ? "critical"
+        : daysToStockout < T.linearWarningDays ? "warning"
+        : daysToStockout < T.linearOkDays ? "ok" : "abundant";
 
       // Take the worse of the two signals
       const urgencyRank = { critical: 0, warning: 1, ok: 2, abundant: 3 } as const;
@@ -198,14 +198,14 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const peakSeasonalRate = effectiveDailyRate * Math.max(...SEASONAL_INDICES);
       const seasonalReorderPt = Math.ceil(reorderPoint * SEASONAL_INDICES[currentMonthIdx]);
 
-      // Depletion risk based on HOW SOON stock runs out (not which month)
+      // Depletion risk based on HOW SOON stock runs out (ATE adaptif eşikler)
       const depRisk = effectiveStock <= 0 ? "KRİTİK" as const
-        : seasonal.days <= URGENCY_CRITICAL_DAYS ? "KRİTİK" as const
-        : seasonal.days <= URGENCY_WARNING_DAYS ? "YÜKSEK" as const
-        : seasonal.days <= URGENCY_OK_DAYS ? "ORTA" as const
+        : seasonal.days <= T.urgencyCriticalDays ? "KRİTİK" as const
+        : seasonal.days <= T.urgencyWarningDays ? "YÜKSEK" as const
+        : seasonal.days <= T.urgencyOkDays ? "ORTA" as const
         : "DÜŞÜK" as const;
 
-      const winterStress = effectiveStock > 0 && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= URGENCY_WARNING_DAYS;
+      const winterStress = effectiveStock > 0 && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= T.urgencyWarningDays;
 
       // Reasoning chain: neden bu urgency seviyesinde?
       const urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
@@ -252,7 +252,7 @@ export async function computeComponentIntelligence(sku: string): Promise<{
     product: sku,
     salesLast30Days: salesLast30,
     dailySalesRate: Math.round(dailySalesRate * 100) / 100,
-    leadTimeDays: LEAD_TIME_DAYS,
+    leadTimeDays: T.leadTimeDays,
     components,
     criticalCount: components.filter(c => c.urgency === "critical").length,
     warningCount: components.filter(c => c.urgency === "warning").length,

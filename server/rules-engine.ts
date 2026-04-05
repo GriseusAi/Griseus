@@ -14,11 +14,8 @@ import { persistAlerts } from "./lib/alert-persistence";
 import { trackAlertsAsOutcomes } from "./lib/outcome-engine";
 import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
 import { adjustSeverity, refreshSuppression } from "./lib/feedback-loop";
-import {
-  MAIN_SKU, LEAD_TIME_DAYS, CAPACITY_CRITICAL_THRESHOLD,
-  SEASONAL_SPIKE_RATIO, CASCADE_FAILURE_THRESHOLD, DEMAND_ANOMALY_RATIO,
-  SEASONAL_RISK_DAYS, CAPACITY_HISTORY_SIZE, WINTER_MONTHS,
-} from "./lib/constants";
+import { MAIN_SKU, CAPACITY_HISTORY_SIZE, WINTER_MONTHS } from "./lib/constants";
+import { getThresholds } from "./lib/adaptive-thresholds";
 
 export interface ProactiveAlert {
   id: string;
@@ -50,6 +47,9 @@ export async function evaluateRules(trigger: {
   const now = new Date().toISOString();
   const currentMonthIdx = new Date().getMonth();
   const nextMonthIdx = (currentMonthIdx + 1) % 12;
+
+  // ATE — Adaptif eşikleri çek
+  const T = await getThresholds();
 
   // Ortak veriyi bir kez hesapla
   let intel: { components: ComponentIntelligence[]; criticalCount: number } | null = null;
@@ -138,7 +138,7 @@ export async function evaluateRules(trigger: {
     }
 
     // ── Rule 2: Production Capacity Critical ──
-    if (capacity && capacity.maxProducible < CAPACITY_CRITICAL_THRESHOLD) {
+    if (capacity && capacity.maxProducible < T.capacityCriticalThreshold) {
       const topBottleneck = capacity.bottlenecks[0];
       alerts.push({
         id: makeAlertId(),
@@ -152,7 +152,7 @@ export async function evaluateRules(trigger: {
         rootCause: [
           { order: 1, cause: "Üretim kapasitesi hesaplandı", data: { maxProducible: capacity.maxProducible } },
           { order: 2, cause: `Darboğaz: ${topBottleneck?.code} ${topBottleneck?.name}`, data: { bottleneckStock: topBottleneck?.stock ?? 0, required: topBottleneck?.required ?? 0 } },
-          { order: 3, cause: `Kapasite ${capacity.maxProducible} < 10 eşik değeri — üretim durma riski` },
+          { order: 3, cause: `Kapasite ${capacity.maxProducible} < ${T.capacityCriticalThreshold} eşik değeri — üretim durma riski` },
         ],
         timestamp: now,
       });
@@ -226,10 +226,10 @@ export async function evaluateRules(trigger: {
       // ── Rule 5: Mevsimsel Talep Spike Tahmini ──
       const currentIdx = SEASONAL_INDICES[currentMonthIdx];
       const nextIdx = SEASONAL_INDICES[nextMonthIdx];
-      if (nextIdx > currentIdx * SEASONAL_SPIKE_RATIO) {
+      if (nextIdx > currentIdx * T.seasonalSpikeRatio) {
         const spikeRatio = (nextIdx / currentIdx).toFixed(2);
         const criticalForSpike = intel.components.filter(c =>
-          c.seasonalDays !== null && c.seasonalDays < SEASONAL_RISK_DAYS
+          c.seasonalDays !== null && c.seasonalDays < T.seasonalRiskDays
         );
         if (criticalForSpike.length > 0) {
           alerts.push({
@@ -257,7 +257,7 @@ export async function evaluateRules(trigger: {
 
       // ── Rule 6: BOM Cascade Failure ──
       const criticalComps = intel.components.filter(c => c.urgency === "critical");
-      if (criticalComps.length >= CASCADE_FAILURE_THRESHOLD) {
+      if (criticalComps.length >= T.cascadeFailureThreshold) {
         alerts.push({
           id: makeAlertId(),
           type: "bom_cascade_failure",
@@ -284,7 +284,7 @@ export async function evaluateRules(trigger: {
         if (
           comp.daysToStockout !== null &&
           comp.daysToStockout > 0 &&
-          comp.daysToStockout <= LEAD_TIME_DAYS &&
+          comp.daysToStockout <= T.leadTimeDays &&
           comp.urgency !== "critical" // critical zaten Rule 3'te yakalanıyor
         ) {
           alerts.push({
@@ -292,14 +292,14 @@ export async function evaluateRules(trigger: {
             type: "lead_time_risk",
             severity: "warning",
             title: "Tedarik Süresi Riski",
-            message: `${comp.code} ${comp.name} — ${comp.daysToStockout} gün sonra tükenecek ama tedarik süresi ${LEAD_TIME_DAYS} gün. Bugün sipariş verse bile yetişmez!`,
+            message: `${comp.code} ${comp.name} — ${comp.daysToStockout} gün sonra tükenecek ama tedarik süresi ${T.leadTimeDays} gün. Bugün sipariş verse bile yetişmez!`,
             componentCode: comp.code,
             productSku: MAIN_SKU,
             suggestedAction: `${comp.code} için ACİL sipariş + alternatif tedarikçi ara`,
             rootCause: [
               { order: 1, cause: `${comp.code} stok ömrü hesaplandı: ${comp.daysToStockout} gün`, data: { daysToStockout: comp.daysToStockout } },
-              { order: 2, cause: `Standart tedarik süresi: ${LEAD_TIME_DAYS} gün`, data: { leadTime: LEAD_TIME_DAYS } },
-              { order: 3, cause: `Stok ömrü (${comp.daysToStockout}) < tedarik süresi (${LEAD_TIME_DAYS}) — sipariş yetişmez`, data: { gap: LEAD_TIME_DAYS - comp.daysToStockout } },
+              { order: 2, cause: `Adaptif tedarik süresi: ${T.leadTimeDays} gün`, data: { leadTime: T.leadTimeDays } },
+              { order: 3, cause: `Stok ömrü (${comp.daysToStockout}) < tedarik süresi (${T.leadTimeDays}) — sipariş yetişmez`, data: { gap: T.leadTimeDays - comp.daysToStockout } },
             ],
             timestamp: now,
           });
@@ -307,7 +307,7 @@ export async function evaluateRules(trigger: {
       }
 
       // ── Rule 8: Talep Anomalisi ──
-      const anomalies = intel.components.filter(c => c.trend === "accelerating" && c.trendRatio > DEMAND_ANOMALY_RATIO);
+      const anomalies = intel.components.filter(c => c.trend === "accelerating" && c.trendRatio > T.demandAnomalyRatio);
       for (const comp of anomalies) {
         alerts.push({
           id: makeAlertId(),
@@ -361,7 +361,7 @@ export async function evaluateRules(trigger: {
       if (capacityHistory.length >= 3) {
         const last3 = capacityHistory.slice(-3);
         const isDecreasing = last3[0].capacity > last3[1].capacity && last3[1].capacity > last3[2].capacity;
-        if (isDecreasing && capacity.maxProducible > CAPACITY_CRITICAL_THRESHOLD) { // <10 zaten Rule 2'de
+        if (isDecreasing && capacity.maxProducible > T.capacityCriticalThreshold) { // kapasiteCritical zaten Rule 2'de
           alerts.push({
             id: makeAlertId(),
             type: "capacity_degradation_trend",

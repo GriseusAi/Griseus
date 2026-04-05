@@ -332,3 +332,47 @@ export const tokenMetrics = pgTable("token_metrics", {
 });
 
 export type TokenMetric = typeof tokenMetrics.$inferSelect;
+
+// --- Tenant Profiles (ATE — Adaptive Threshold Engine) ---
+
+export const tenantProfiles = pgTable("tenant_profiles", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().unique().default("cukurova"),
+  companyName: text("company_name").notNull(),
+  // Operasyonel parametreler
+  avgLeadTimeDays: numeric("avg_lead_time_days").notNull().default("14"),
+  leadTimeStdDev: numeric("lead_time_std_dev").notNull().default("3"),
+  demandVolatility: numeric("demand_volatility").notNull().default("0.4"), // CV = σ/μ
+  seasonalAmplitude: numeric("seasonal_amplitude").notNull().default("1.0"), // max_index / min_index
+  // Maliyet parametreleri
+  stockoutDailyCostTL: numeric("stockout_daily_cost_tl").notNull().default("2500"),
+  holdingCostRate: numeric("holding_cost_rate").notNull().default("0.20"),
+  // Davranıştan öğrenilen
+  riskTolerance: numeric("risk_tolerance").notNull().default("0.5"), // 0=temkinli 1=risk sever
+  alertResponseRate: numeric("alert_response_rate").notNull().default("0.5"), // alert'lere tepki oranı
+  avgDecisionTimeMin: numeric("avg_decision_time_min").notNull().default("60"), // karar verme süresi
+  // Hesaplanan adaptif eşikler (cache)
+  adaptiveThresholds: jsonb("adaptive_thresholds"), // { urgencyCritical, urgencyWarning, ... }
+  // Meta
+  lastBehaviorUpdate: timestamp("last_behavior_update"),
+  lastThresholdCalc: timestamp("last_threshold_calc"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type TenantProfile = typeof tenantProfiles.$inferSelect;
+
+// --- Alert Interactions (ATE — kullanıcı davranış takibi) ---
+
+export const alertInteractions = pgTable("alert_interactions", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().default("cukurova"),
+  alertId: text("alert_id").notNull(),
+  alertType: text("alert_type").notNull(),
+  alertSeverity: text("alert_severity").notNull(),
+  action: text("action").notNull(), // seen | dismissed | acted | escalated
+  responseTimeMs: integer("response_time_ms"), // ne kadar sürede tepki verdi
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AlertInteraction = typeof alertInteractions.$inferSelect;

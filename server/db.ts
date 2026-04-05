@@ -106,7 +106,46 @@ export async function ensureTables() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
-    console.log("[db] validation_alerts + custom_rules + audit_log + outcome_tracking + token_metrics tabloları hazır");
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS tenant_profiles (
+        id SERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL UNIQUE DEFAULT 'cukurova',
+        company_name TEXT NOT NULL,
+        avg_lead_time_days NUMERIC NOT NULL DEFAULT 14,
+        lead_time_std_dev NUMERIC NOT NULL DEFAULT 3,
+        demand_volatility NUMERIC NOT NULL DEFAULT 0.4,
+        seasonal_amplitude NUMERIC NOT NULL DEFAULT 1.0,
+        stockout_daily_cost_tl NUMERIC NOT NULL DEFAULT 2500,
+        holding_cost_rate NUMERIC NOT NULL DEFAULT 0.20,
+        risk_tolerance NUMERIC NOT NULL DEFAULT 0.5,
+        alert_response_rate NUMERIC NOT NULL DEFAULT 0.5,
+        avg_decision_time_min NUMERIC NOT NULL DEFAULT 60,
+        adaptive_thresholds JSONB,
+        last_behavior_update TIMESTAMP,
+        last_threshold_calc TIMESTAMP,
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS alert_interactions (
+        id SERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'cukurova',
+        alert_id TEXT NOT NULL,
+        alert_type TEXT NOT NULL,
+        alert_severity TEXT NOT NULL,
+        action TEXT NOT NULL,
+        response_time_ms INTEGER,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    // Seed default tenant profile
+    await pool.query(`
+      INSERT INTO tenant_profiles (tenant_id, company_name)
+      VALUES ('cukurova', 'Çukurova Isı Sistemleri')
+      ON CONFLICT (tenant_id) DO NOTHING;
+    `);
+    console.log("[db] validation_alerts + custom_rules + audit_log + outcome_tracking + token_metrics + tenant_profiles + alert_interactions tabloları hazır");
   } catch (err) {
     console.error("[db] Tablo oluşturma hatası:", err);
   }

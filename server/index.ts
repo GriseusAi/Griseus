@@ -143,6 +143,14 @@ app.use((req, res, next) => {
   const { ensureTables } = await import("./db");
   await ensureTables();
 
+  // ATE — Adaptive Threshold Engine başlat
+  const { initATE, updateBehaviorProfile } = await import("./lib/adaptive-thresholds");
+  await initATE().catch(err => console.error("[ATE] Init error:", err));
+  // Davranış analizi 30 dakikada bir
+  setInterval(() => {
+    updateBehaviorProfile().catch(err => console.error("[ATE] Behavior update error:", err));
+  }, 30 * 60 * 1000);
+
   // OLE — Outcome Learning Engine başlat
   const { rebuildConfidenceCache, autoVerifyOutcomes } = await import("./lib/outcome-engine");
   await rebuildConfidenceCache().catch(err => console.error("[OLE] Cache rebuild error:", err));

@@ -10,7 +10,8 @@
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "../routes/bom";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL, DAYS_IN_MONTH } from "./seasonal-constants";
-import { MAIN_SKU, LEAD_TIME_DAYS } from "./constants";
+import { MAIN_SKU } from "./constants";
+import { getThresholds } from "./adaptive-thresholds";
 
 const SKU = MAIN_SKU;
 
@@ -96,6 +97,9 @@ export interface WhatIfResult {
 }
 
 export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfResult> {
+  // ATE — Adaptif eşikleri çek
+  const T = await getThresholds();
+
   // Get current state
   const [intel, bomItems] = await Promise.all([
     computeComponentIntelligence(SKU),
@@ -197,13 +201,13 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
 
     const afterUrgency =
       afterStock <= 0 ? "critical"
-      : afterWalk.days <= 180 ? "critical"
-      : afterWalk.days <= 365 ? "warning"
-      : afterWalk.days <= 730 ? "ok"
+      : afterWalk.days <= T.urgencyCriticalDays ? "critical"
+      : afterWalk.days <= T.urgencyWarningDays ? "warning"
+      : afterWalk.days <= T.urgencyOkDays ? "ok"
       : "abundant";
 
     const winterMonths = [10, 11, 0, 1];
-    const winterStress = afterStock > 0 && winterMonths.includes(afterWalk.depletionMonth) && afterWalk.days <= 365;
+    const winterStress = afterStock > 0 && winterMonths.includes(afterWalk.depletionMonth) && afterWalk.days <= T.urgencyWarningDays;
 
     // Action needed?
     let actionNeeded: string | null = null;
@@ -213,7 +217,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
     if (afterUrgency === "critical" || afterUrgency === "warning") {
       const neededDays = 90; // 3 month buffer
       orderQuantity = Math.ceil(effectiveDailyRate * neededDays);
-      const deadlineDays = Math.max(0, afterWalk.days - LEAD_TIME_DAYS - 30);
+      const deadlineDays = Math.max(0, afterWalk.days - T.leadTimeDays - 30);
       orderDeadline = new Date(now.getTime() + deadlineDays * 86400000).toISOString().split("T")[0];
       actionNeeded = afterUrgency === "critical"
         ? `ACİL: ${orderQuantity} adet sipariş ver (son tarih: ${orderDeadline})`

@@ -39,7 +39,7 @@ GRİSEUS PLATFORMU SAYFALARI:
 1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
 2. Ürün İstihbaratı (/stok/urun/ELT.7-11) — Üretim kapasitesi (241 adet), darboğaz analizi (ilk 10), mevsimsel talep grafiği, sipariş simülasyonu, 43 parça BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
 3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
-4. CEO Agent (/engine) — SENSİN. 21 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
+4. CEO Agent (/engine) — SENSİN. 23 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
 5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
 6. Token Value Tracker — Ontoloji değer metrikleri (V/T), flywheel skoru
 
@@ -54,6 +54,13 @@ TOKEN VALUE TRACKER (TVT):
 - Generic model (ChatGPT vb.) bu soruları cevaplayamaz — ontoloji avantajı sonsuz
 - Flywheel skoru: veri büyümesi × kişiselleştirme × etkileşim artışı
 - Kullanıcı "ne kadar değer üretiyoruz?" diye sorarsa get_token_value_metrics kullan
+
+ADAPTIVE THRESHOLD ENGINE (ATE):
+- Eşikler artık SABİT DEĞİL — firma profiline göre dinamik hesaplanır
+- Risk toleransı kullanıcı davranışından öğrenilir (Bayesian güncelleme)
+- Tedarik süresi, volatilite, mevsimsellik profili eşikleri belirler
+- "Neden kritik?" sorusunda adaptif eşikleri açıkla: "180 gün eşiği firmanızın profili için X gün olarak ayarlandı"
+- Kullanıcı profil/eşik soruyorsa get_adaptive_profile kullan
 
 STOK DURUMU ÖZETİ:
 - Çoğu parça 2-5 yıl yetecek stokta (aşırı stok, bağlı sermaye)
@@ -364,6 +371,15 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_token_value_metrics",
     description: "Token Value Tracker (V/T) metrikleri. Her etkileşimin token başına değeri, ontoloji avantaj oranı (OAR), flywheel skoru, kategori bazlı performans. 'ne kadar değer üretiyoruz?', 'token verimliliği', 'ROI', 'flywheel' sorularında kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_adaptive_profile",
+    description: "Firma operasyonel profili ve adaptif eşikler. Tedarik süresi, talep volatilitesi, risk toleransı, mevsimsel genlik ve bunlara göre hesaplanan dinamik eşikler. Varsayılan eşiklerle karşılaştırma. 'eşikler niye böyle?', 'profil', 'risk toleransı', 'neden kritik sayılıyor?', 'adaptif' sorularında kullan.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -1082,6 +1098,44 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         };
       } catch (err: any) {
         return { error: `Outcome dashboard hatası: ${err.message}` };
+      }
+    }
+
+    case "get_adaptive_profile": {
+      try {
+        const { getTenantFingerprint, getDefaultThresholds } = await import("../lib/adaptive-thresholds");
+        const fingerprint = await getTenantFingerprint();
+        const defaults = getDefaultThresholds();
+        if (!fingerprint) return { error: "Firma profili bulunamadı" };
+
+        const T = fingerprint.thresholds;
+        return {
+          title: "Adaptive Threshold Engine — Firma Profili",
+          profile: {
+            firma: fingerprint.companyName,
+            tedariSüresi: `${fingerprint.avgLeadTimeDays} gün (±${fingerprint.leadTimeStdDev} gün)`,
+            talepVolatilitesi: `${(fingerprint.demandVolatility * 100).toFixed(0)}% (CV)`,
+            mevsimselGenlik: `${fingerprint.seasonalAmplitude.toFixed(1)}x (max/min)`,
+            riskTolerası: `${(fingerprint.riskTolerance * 100).toFixed(0)}% (0=temkinli, 100=risk sever)`,
+            alertTepkiOranı: `${(fingerprint.alertResponseRate * 100).toFixed(0)}%`,
+            ortKararSüresi: `${fingerprint.avgDecisionTimeMin} dakika`,
+          },
+          adaptiveThresholds: {
+            aciliyetKritik: `${T.urgencyCriticalDays} gün (varsayılan: ${defaults.urgencyCriticalDays})`,
+            aciliyetUyarı: `${T.urgencyWarningDays} gün (varsayılan: ${defaults.urgencyWarningDays})`,
+            aciliyetYeterli: `${T.urgencyOkDays} gün (varsayılan: ${defaults.urgencyOkDays})`,
+            lineerKritik: `${T.linearCriticalDays} gün (varsayılan: ${defaults.linearCriticalDays})`,
+            lineerUyarı: `${T.linearWarningDays} gün (varsayılan: ${defaults.linearWarningDays})`,
+            tedariSüresi: `${T.leadTimeDays} gün (varsayılan: ${defaults.leadTimeDays})`,
+            kapasiteKritik: `${T.capacityCriticalThreshold} adet (varsayılan: ${defaults.capacityCriticalThreshold})`,
+            mevsimselSpike: `${T.seasonalSpikeRatio}x (varsayılan: ${defaults.seasonalSpikeRatio})`,
+            kaskadEşik: `${T.cascadeFailureThreshold} bileşen (varsayılan: ${defaults.cascadeFailureThreshold})`,
+            talepAnomali: `${T.demandAnomalyRatio}x (varsayılan: ${defaults.demandAnomalyRatio})`,
+          },
+          explanation: "Eşikler firma profiline göre otomatik hesaplanır. Risk toleransı kullanıcı davranışından (alert tepkileri) Bayesian güncelleme ile öğrenilir.",
+        };
+      } catch (err: any) {
+        return { error: `ATE profil hatası: ${err.message}` };
       }
     }
 
