@@ -79,12 +79,15 @@ router.get("/uretim-plani", async (req: Request, res: Response) => {
 });
 
 // DEMO 2: GET /api/palantir/demo/6-ay-plan
+// TEK KAYNAK: computeComponentIntelligence — Ürün İstihbaratı ile aynı motor
 router.get("/6-ay-plan", async (_req: Request, res: Response) => {
   try {
     const startTime = Date.now();
     const currentMonth = new Date().getMonth(); // 0-indexed
-    const bomItems = await getBomWithStock(SKU);
-    const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
+
+    // Aynı motor: intelligence.ts'deki computeComponentIntelligence
+    const { computeComponentIntelligence } = await import("./intelligence");
+    const intel = await computeComponentIntelligence(SKU);
 
     const stockRows = await db.execute(sql`
       SELECT sl.in_warehouse + sl.in_production as toplam
@@ -92,6 +95,7 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
     `);
     const mamulStok = stockRows.rows.length > 0 ? Number((stockRows.rows[0] as any).toplam) : 0;
 
+    // Her ay için: o ayda hangi bileşenler tükenmiş olacak (seasonalDays + depletionMonth bazlı)
     const plan = [];
     let kumStok = mamulStok;
     const kritikUyarilar: string[] = [];
@@ -99,34 +103,38 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
     for (let offset = 0; offset < 6; offset++) {
       const ay = (currentMonth + offset) % 12;
       const talep = MONTHLY_DEMAND[ay];
-      const bilesenDurum = tier1and2.map(comp => {
-        let toplamTuketim = 0;
-        for (let i = 0; i <= offset; i++) {
-          const m = (currentMonth + i) % 12;
-          toplamTuketim += MONTHLY_DEMAND[m] * comp.requiredQty;
-        }
-        // Yarı mamül: efektif stok = mevcut + alt bileşenlerden üretilebilir
-        let efektifStok = comp.currentStock;
-        if (comp.tier === 2) {
-          const sub = computeSubAssemblyCapacity(comp.code, bomItems);
-          efektifStok = comp.currentStock + sub.producible;
-        }
-        return { kod: comp.code, ad: comp.name, kalanStok: Math.round(efektifStok - toplamTuketim), tukenir: efektifStok - toplamTuketim <= 0 };
+
+      // Intelligence motorundan gelen mevsimsel tükenme verisi — TEK KAYNAK
+      const targetDays = offset === 0 ? 30 : offset * 30; // bu ayın sonuna kadar kaç gün
+      const bilesenDurum = intel.components.map(comp => {
+        const seasonalDays = comp.seasonalDays ?? 9999;
+        const tukenir = seasonalDays <= targetDays;
+        // Kalan stok tahmini: seasonalDays - targetDays gün daha yetecek stok
+        const kalanGun = seasonalDays - targetDays;
+        return {
+          kod: comp.code, ad: comp.name,
+          kalanStok: Math.round(comp.currentStock * Math.max(0, kalanGun) / Math.max(1, seasonalDays)),
+          tukenir,
+          seasonalDays,
+          depletionMonth: comp.depletionMonth,
+          depletionYear: comp.depletionYear,
+        };
       });
+
       const tukenenler = bilesenDurum.filter(b => b.tukenir);
-      const enKritik = bilesenDurum.sort((a, b) => a.kalanStok - b.kalanStok)[0];
+      const enKritik = bilesenDurum.sort((a, b) => a.seasonalDays - b.seasonalDays)[0];
       kumStok -= talep;
       const mevsimIndex = Math.round((talep / (ANNUAL_DEMAND / 12)) * 100) / 100;
       const donemTipi = mevsimIndex > 1.2 ? "YOGUN" : mevsimIndex < 0.8 ? "DUSUK" : "NORMAL";
       if (tukenenler.length > 0 && offset <= 3) {
-        kritikUyarilar.push(`${MONTH_NAMES[ay]}: ${tukenenler.length} parca tukenecek! En kritik: ${enKritik.kod} (${enKritik.kalanStok} adet)`);
+        kritikUyarilar.push(`${MONTH_NAMES[ay]}: ${tukenenler.length} parca tukenecek! En kritik: ${enKritik.kod} (${enKritik.depletionMonth} ${enKritik.depletionYear})`);
       }
       plan.push({
         ay: MONTH_NAMES[ay], ayNo: ay + 1, tapinenTalep: talep, mevsimsellik: donemTipi, mevsimIndex,
         mamulStokProjeksiyonu: Math.round(kumStok),
         tukenenBilesenSayisi: tukenenler.length,
-        tukenenler: tukenenler.map(t => ({ kod: t.kod, ad: t.ad, kalanStok: t.kalanStok })),
-        enKritikBilesen: enKritik ? `${enKritik.kod} — kalan: ${enKritik.kalanStok}` : "-",
+        tukenenler: tukenenler.map(t => ({ kod: t.kod, ad: t.ad, kalanStok: t.kalanStok, bitisAy: t.depletionMonth, bitisYil: t.depletionYear })),
+        enKritikBilesen: enKritik ? `${enKritik.kod} — ${enKritik.depletionMonth} ${enKritik.depletionYear}` : "-",
         strateji: mevsimIndex > 1.2 ? "Onceki ayda stok biriktirmis olmasin" : mevsimIndex < 0.5 ? "Fazla uret, gelecek yogun aya hazirlan" : "Normal uretim temposu",
       });
     }
@@ -142,6 +150,7 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
     res.json({
       _test: "CUKUROVA ISI — 6 AYLIK STRATEJIK PLAN",
       _hesapSuresi: `${calcTime}ms`,
+      _kaynak: "computeComponentIntelligence (tek kaynak — Ürün İstihbaratı ile aynı motor)",
       ozet: {
         mevcutMamulStok: mamulStok,
         onumuzdeki6AyToplamTalep: plan.reduce((s, p) => s + p.tapinenTalep, 0),
