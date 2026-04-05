@@ -170,14 +170,11 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
       toplamTalep += MONTHLY_DEMAND[ay];
       aylar.push(`${MONTH_NAMES[ay]}(${MONTHLY_DEMAND[ay]})`);
     }
-    const siparisListesi = tier1and2.map(comp => {
+    // Sadece tier 1 (doğrudan malzeme) — tier 2 yarı mamüller sipariş edilmez, montajlanır
+    const tier1Only = tier1and2.filter(comp => comp.tier === 1);
+    const siparisListesi = tier1Only.map(comp => {
       const gerekli = toplamTalep * comp.requiredQty;
-      // Yarı mamül: efektif stok
-      let stok = comp.currentStock;
-      if (comp.tier === 2) {
-        const sub = computeSubAssemblyCapacity(comp.code, bomItems);
-        stok = comp.currentStock + sub.producible;
-      }
+      const stok = comp.currentStock;
       const gunlukTuketim = (ANNUAL_DEMAND / 365) * comp.requiredQty;
       const guvenlikStoku = Math.ceil(gunlukTuketim * LEAD_TIME_DAYS);
       const siparisMiktari = Math.max(0, Math.ceil(gerekli - stok + guvenlikStoku));
