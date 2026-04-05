@@ -1,5 +1,6 @@
 import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useLocation } from "wouter";
 import TopNav from "@/components/top-nav";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 
@@ -26,6 +27,8 @@ const glass = {
 
 export default function PalantirPage() {
   const [activeTab, setActiveTab] = useState<"plan6" | "siparis">("plan6");
+  const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
+  const [, navigate] = useLocation();
   const queryClient = useQueryClient();
 
   // WebSocket — kalp atisi: stok degisince tum sihir yeniden hesaplanir
@@ -179,40 +182,69 @@ export default function PalantirPage() {
                   <div style={{ fontSize: 13, fontWeight: 500, color: C.mid, marginBottom: 12 }}>
                     Bilesen Tukenme Haritasi
                   </div>
-                  {plan6.data.aylikPlan?.map((m: any) => (
-                    <div key={m.ayNo} style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
-                      <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                        <div style={{ width: 60, fontSize: 12, fontWeight: 500, color: C.white }}>{m.ay}</div>
-                        <div style={{
-                          flex: 1, height: 24, borderRadius: 6, position: "relative", overflow: "hidden",
-                          background: C.dimmer,
-                        }}>
+                  {plan6.data.aylikPlan?.map((m: any) => {
+                    const isExpanded = expandedMonth === m.ayNo;
+                    const tukenenler: any[] = m.tukenenler || [];
+                    const hasTukenen = tukenenler.length > 0;
+                    const visibleItems = isExpanded ? tukenenler : tukenenler.slice(0, 5);
+
+                    return (
+                      <div key={m.ayNo} style={{ padding: "8px 0", borderBottom: `1px solid ${C.border}` }}>
+                        <div
+                          style={{ display: "flex", alignItems: "center", gap: 12, cursor: hasTukenen ? "pointer" : "default" }}
+                          onClick={() => hasTukenen && setExpandedMonth(isExpanded ? null : m.ayNo)}
+                        >
+                          <div style={{ width: 60, fontSize: 12, fontWeight: 500, color: C.white }}>{m.ay}</div>
                           <div style={{
-                            position: "absolute", left: 0, top: 0, bottom: 0,
-                            width: `${Math.min(100, (m.tukenenBilesenSayisi / 43) * 100)}%`,
-                            background: m.tukenenBilesenSayisi > 10 ? C.err : m.tukenenBilesenSayisi > 0 ? C.warn : C.ok,
-                            borderRadius: 6, transition: "width 0.5s ease",
-                          }} />
+                            flex: 1, height: 24, borderRadius: 6, position: "relative", overflow: "hidden",
+                            background: C.dimmer,
+                          }}>
+                            <div style={{
+                              position: "absolute", left: 0, top: 0, bottom: 0,
+                              width: `${Math.min(100, (m.tukenenBilesenSayisi / 43) * 100)}%`,
+                              background: m.tukenenBilesenSayisi > 10 ? C.err : m.tukenenBilesenSayisi > 0 ? C.warn : C.ok,
+                              borderRadius: 6, transition: "width 0.5s ease",
+                            }} />
+                          </div>
+                          <div style={{ width: 100, textAlign: "right", fontSize: 11, color: m.tukenenBilesenSayisi > 0 ? C.err : C.ok, display: "flex", alignItems: "center", justifyContent: "flex-end", gap: 4 }}>
+                            {m.tukenenBilesenSayisi}/43 tukenir
+                            {hasTukenen && <span style={{ fontSize: 10, color: C.dim }}>{isExpanded ? "▲" : "▼"}</span>}
+                          </div>
                         </div>
-                        <div style={{ width: 80, textAlign: "right", fontSize: 11, color: m.tukenenBilesenSayisi > 0 ? C.err : C.ok }}>
-                          {m.tukenenBilesenSayisi}/43 tukenir
-                        </div>
+                        {hasTukenen && (
+                          <div style={{ marginLeft: 72, marginTop: 6, display: "flex", flexWrap: "wrap", gap: 4 }}>
+                            {visibleItems.map((t: any, i: number) => {
+                              const kod = typeof t === "string" ? t.split(" ")[0] : t.kod;
+                              const label = typeof t === "string" ? t : `${t.kod} ${t.ad} (${t.kalanStok})`;
+                              return (
+                                <span
+                                  key={i}
+                                  onClick={(e) => { e.stopPropagation(); navigate("/stok/urun/ELT.7-11"); }}
+                                  style={{
+                                    fontSize: 11, padding: "3px 8px", borderRadius: 6,
+                                    background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,
+                                    cursor: "pointer", transition: "all 0.15s",
+                                  }}
+                                  onMouseEnter={e => { e.currentTarget.style.background = "rgba(239,68,68,0.15)"; e.currentTarget.style.borderColor = C.err; }}
+                                  onMouseLeave={e => { e.currentTarget.style.background = C.errDim; e.currentTarget.style.borderColor = C.errBorder; }}
+                                >
+                                  {label}
+                                </span>
+                              );
+                            })}
+                            {!isExpanded && tukenenler.length > 5 && (
+                              <span
+                                onClick={(e) => { e.stopPropagation(); setExpandedMonth(m.ayNo); }}
+                                style={{ fontSize: 11, color: C.accent, cursor: "pointer", padding: "3px 8px" }}
+                              >
+                                +{tukenenler.length - 5} daha goster
+                              </span>
+                            )}
+                          </div>
+                        )}
                       </div>
-                      {m.tukenenler?.length > 0 && (
-                        <div style={{ marginLeft: 72, marginTop: 4, display: "flex", flexWrap: "wrap", gap: 4 }}>
-                          {m.tukenenler.map((t: string, i: number) => (
-                            <span key={i} style={{
-                              fontSize: 10, padding: "2px 6px", borderRadius: 4,
-                              background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,
-                            }}>{t}</span>
-                          ))}
-                          {m.tukenenBilesenSayisi > 3 && (
-                            <span style={{ fontSize: 10, color: C.dim }}>+{m.tukenenBilesenSayisi - 3} daha</span>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             )}
