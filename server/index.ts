@@ -142,6 +142,16 @@ app.use((req, res, next) => {
   await seedDatabase();
   const { ensureTables } = await import("./db");
   await ensureTables();
+
+  // OLE — Outcome Learning Engine başlat
+  const { rebuildConfidenceCache, autoVerifyOutcomes } = await import("./lib/outcome-engine");
+  await rebuildConfidenceCache().catch(err => console.error("[OLE] Cache rebuild error:", err));
+  // Periyodik auto-verify (15 dakikada bir)
+  const { OUTCOME_CHECK_FREQUENCY } = await import("./lib/constants");
+  setInterval(() => {
+    autoVerifyOutcomes().catch(err => console.error("[OLE] Auto-verify error:", err));
+  }, OUTCOME_CHECK_FREQUENCY);
+
   initWebSocket(httpServer);
   await registerRoutes(httpServer, app);
 

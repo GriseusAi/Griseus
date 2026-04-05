@@ -280,3 +280,55 @@ export const auditLog = pgTable("audit_log", {
 });
 
 export type AuditLogEntry = typeof auditLog.$inferSelect;
+
+// --- Outcome Tracking (OLE — Outcome Learning Engine) ---
+
+export const outcomeTracking = pgTable("outcome_tracking", {
+  id: serial("id").primaryKey(),
+  predictionId: varchar("prediction_id", { length: 64 }).notNull(),
+  source: text("source").notNull(), // alert | purchase_suggestion | what_if | agent_recommendation
+  sourceId: text("source_id").notNull(), // alert_id veya suggestion_id
+  ruleType: text("rule_type"), // hangi kural tetikledi
+  componentCode: text("component_code"),
+  productSku: text("product_sku"),
+  predictedOutcome: text("predicted_outcome").notNull(), // ne tahmin edildi (Türkçe)
+  predictedValue: jsonb("predicted_value"), // { metric, threshold, direction, magnitude }
+  confidence: numeric("confidence").notNull().default("0.5"), // başlangıç güven skoru
+  deadline: timestamp("deadline").notNull(), // ne zamana kadar gerçekleşmeli
+  checkIntervals: jsonb("check_intervals"), // [7, 14, 30] gün sonra kontrol
+  actualOutcome: text("actual_outcome"), // gerçekte ne oldu
+  actualValue: jsonb("actual_value"), // { metric, measuredValue }
+  outcomeStatus: text("outcome_status").notNull().default("pending"), // pending | verified_correct | verified_incorrect | expired | partially_correct
+  valueGenerated: numeric("value_generated"), // TL cinsinden üretilen değer
+  tokensConsumed: integer("tokens_consumed"), // bu tahmin için harcanan token
+  verifiedAt: timestamp("verified_at"),
+  verifiedBy: text("verified_by"), // system | user | auto_check
+  metadata: jsonb("metadata"), // snapshot of system state at prediction time
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type OutcomeTrack = typeof outcomeTracking.$inferSelect;
+
+// --- Token Metrics (TVT — Token Value Tracker) ---
+
+export const tokenMetrics = pgTable("token_metrics", {
+  id: serial("id").primaryKey(),
+  interactionId: varchar("interaction_id", { length: 64 }).notNull(),
+  interactionType: text("interaction_type").notNull(), // agent_chat | alert_generated | rule_evaluated | what_if | import
+  inputTokens: integer("input_tokens").notNull().default(0),
+  outputTokens: integer("output_tokens").notNull().default(0),
+  totalTokens: integer("total_tokens").notNull().default(0),
+  toolsUsed: jsonb("tools_used"), // ["get_component_intelligence", "what_if_analysis"]
+  queryCategory: text("query_category"), // stock_check | forecast | planning | alert_response | operational
+  outcomeLinked: boolean("outcome_linked").notNull().default(false),
+  outcomeId: text("outcome_id"), // FK to outcomeTracking.predictionId
+  estimatedValueTL: numeric("estimated_value_tl"), // tahmini değer (TL)
+  actualValueTL: numeric("actual_value_tl"), // doğrulanmış değer (TL)
+  valuePerToken: numeric("value_per_token"), // actualValueTL / totalTokens
+  genericBaselineTL: numeric("generic_baseline_tl"), // generic model bu soruyu çözer miydi? 0 = hayır
+  ontologyAdvantageRatio: numeric("ontology_advantage_ratio"), // V/T_griseus / V/T_generic
+  actor: text("actor").notNull().default("ceo_agent"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type TokenMetric = typeof tokenMetrics.$inferSelect;

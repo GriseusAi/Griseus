@@ -14,6 +14,7 @@ import { evaluateRules } from "../rules-engine";
 import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS } from "../lib/seasonal-constants";
 import { MAIN_SKU } from "../lib/constants";
 import { buildDynamicContext } from "../rag";
+import { logTokenInteraction } from "../lib/token-value-tracker";
 
 const router = Router();
 
@@ -38,7 +39,21 @@ GRİSEUS PLATFORMU SAYFALARI:
 1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
 2. Ürün İstihbaratı (/stok/urun/ELT.7-11) — Üretim kapasitesi (241 adet), darboğaz analizi (ilk 10), mevsimsel talep grafiği, sipariş simülasyonu, 43 parça BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
 3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
-4. CEO Agent (/engine) — SENSİN. 12 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
+4. CEO Agent (/engine) — SENSİN. 21 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
+5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
+6. Token Value Tracker — Ontoloji değer metrikleri (V/T), flywheel skoru
+
+OUTCOME LEARNING ENGINE (OLE):
+- Her alert ve öneri bir "tahmin" olarak kaydedilir
+- Zaman içinde otomatik veya manuel doğrulanır (doğru/yanlış/kısmen doğru)
+- Bayesian güncelleme ile her kuralın güven skoru sürekli iyileşir
+- Kullanıcı "tahminler ne kadar doğru?" diye sorarsa get_outcome_dashboard kullan
+
+TOKEN VALUE TRACKER (TVT):
+- Her etkileşimin token başına değerini (V/T) ölçer
+- Generic model (ChatGPT vb.) bu soruları cevaplayamaz — ontoloji avantajı sonsuz
+- Flywheel skoru: veri büyümesi × kişiselleştirme × etkileşim artışı
+- Kullanıcı "ne kadar değer üretiyoruz?" diye sorarsa get_token_value_metrics kullan
 
 STOK DURUMU ÖZETİ:
 - Çoğu parça 2-5 yıl yetecek stokta (aşırı stok, bağlı sermaye)
@@ -331,6 +346,24 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_import_guide",
     description: "Veri import rehberi. Kullanıcı Excel/CSV yüklemek istediğinde hangi formatların desteklendiğini, kolon isimlerini ve endpoint'leri açıklar. Import durumunu da gösterir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_outcome_dashboard",
+    description: "Outcome Learning Engine dashboard. Tüm tahminlerin doğruluk oranı, kural bazlı güven skorları, haftalık trend, toplam üretilen değer (TL). 'tahminler ne kadar doğru?', 'hangi kural güvenilir?', 'outcome', 'öğrenme' sorularında kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_token_value_metrics",
+    description: "Token Value Tracker (V/T) metrikleri. Her etkileşimin token başına değeri, ontoloji avantaj oranı (OAR), flywheel skoru, kategori bazlı performans. 'ne kadar değer üretiyoruz?', 'token verimliliği', 'ROI', 'flywheel' sorularında kullan.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -1015,9 +1048,98 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
       }
     }
 
+    case "get_outcome_dashboard": {
+      try {
+        const { getOutcomeDashboard } = await import("../lib/outcome-engine");
+        const dashboard = await getOutcomeDashboard();
+        return {
+          title: "Outcome Learning Engine — Tahmin Doğruluk Raporu",
+          summary: {
+            totalPredictions: dashboard.totalPredictions,
+            pendingVerification: dashboard.pendingVerification,
+            overallAccuracy: dashboard.overallAccuracy != null
+              ? `%${(dashboard.overallAccuracy * 100).toFixed(1)}`
+              : "Henüz yeterli veri yok",
+            totalValueGenerated: `${dashboard.totalValueGenerated.toLocaleString("tr-TR")} TL`,
+          },
+          breakdown: {
+            verifiedCorrect: dashboard.verifiedCorrect,
+            verifiedIncorrect: dashboard.verifiedIncorrect,
+            partiallyCorrect: dashboard.partiallyCorrect,
+            expired: dashboard.expired,
+          },
+          ruleConfidence: dashboard.byRule.map(r => ({
+            rule: r.ruleType,
+            component: r.componentCode,
+            confidence: `%${(r.confidence * 100).toFixed(0)}`,
+            predictions: r.totalPredictions,
+            correct: r.correctPredictions,
+            avgValueTL: Math.round(r.avgValueGenerated),
+            trend: r.trend,
+          })),
+          weeklyTrend: dashboard.weeklyTrend,
+          recentOutcomes: dashboard.recentOutcomes.slice(0, 10),
+        };
+      } catch (err: any) {
+        return { error: `Outcome dashboard hatası: ${err.message}` };
+      }
+    }
+
+    case "get_token_value_metrics": {
+      try {
+        const { getTVTDashboard } = await import("../lib/token-value-tracker");
+        const tvt = await getTVTDashboard();
+        return {
+          title: "Token Value Tracker — Ontoloji Değer Raporu",
+          summary: {
+            totalInteractions: tvt.totalInteractions,
+            totalTokensConsumed: tvt.totalTokensConsumed.toLocaleString("tr-TR"),
+            totalEstimatedValueTL: `${tvt.totalEstimatedValueTL.toLocaleString("tr-TR")} TL`,
+            totalActualValueTL: `${tvt.totalActualValueTL.toLocaleString("tr-TR")} TL`,
+            avgValuePerToken: tvt.avgValuePerToken != null
+              ? `${tvt.avgValuePerToken.toFixed(2)} TL/token`
+              : "Hesaplanıyor",
+            ontologyAdvantageRatio: tvt.avgOntologyAdvantageRatio != null
+              ? `${tvt.avgOntologyAdvantageRatio.toFixed(1)}x`
+              : "∞ (generic model cevaplayamaz)",
+          },
+          flywheel: {
+            dataGrowthRate: `${(tvt.flywheel.dataGrowthRate * 100).toFixed(1)}%`,
+            personalizationDepth: `${(tvt.flywheel.personalizationDepth * 100).toFixed(1)}%`,
+            engagementTrend: `${(tvt.flywheel.engagementTrend * 100).toFixed(1)}%`,
+            velocityScore: tvt.flywheel.velocityScore.toFixed(3),
+            explanation: "Flywheel: veri büyümesi × kişiselleştirme × etkileşim artışı. Pozitif velocity = flywheel dönüyor.",
+          },
+          weeklyVPT: tvt.weeklyVPT,
+          byCategory: tvt.byCategory,
+          topTools: tvt.topTools,
+        };
+      } catch (err: any) {
+        return { error: `TVT dashboard hatası: ${err.message}` };
+      }
+    }
+
     default:
       return { error: `Bilinmeyen tool: ${toolName}` };
   }
+}
+
+/** Kullanıcı sorgusunu kategorize et — TVT değer tahmini için */
+function classifyQuery(
+  message: string,
+  toolsUsed: string[]
+): "stock_check" | "forecast" | "planning" | "alert_response" | "operational" {
+  const msg = message.toLowerCase();
+
+  if (toolsUsed.includes("what_if_analysis") || toolsUsed.includes("get_intelligence_engine")) return "forecast";
+  if (toolsUsed.includes("get_validation_dashboard") || toolsUsed.includes("check_stock_alerts") ||
+    msg.includes("uyarı") || msg.includes("alert") || msg.includes("kritik")) return "alert_response";
+  if (toolsUsed.includes("simulate_order_fulfillment") || msg.includes("plan") ||
+    msg.includes("üret") || msg.includes("sipariş")) return "planning";
+  if (toolsUsed.includes("get_live_stock_levels") || toolsUsed.includes("get_component_intelligence") ||
+    msg.includes("stok") || msg.includes("durum") || msg.includes("kaç")) return "stock_check";
+
+  return "operational";
 }
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1222,6 +1344,21 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     }
 
     const responseText = extractText(response.content) || lastGoodText || "Cevap üretilemedi.";
+
+    // TVT — Token Value Tracker: her etkileşimi logla
+    const usage = response.usage;
+    if (usage) {
+      const category = classifyQuery(message, toolsUsed);
+      logTokenInteraction({
+        interactionType: "agent_chat",
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+        queryCategory: category,
+        actor: "ceo_agent",
+      });
+    }
+
     res.json({ response: responseText, tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
   } catch (err: any) {
     console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);

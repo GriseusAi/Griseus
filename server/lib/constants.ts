@@ -107,3 +107,47 @@ export const ORDER_COST_PER_ORDER = 500;
 
 /** Stok tükenme maliyet çarpanı (tutma maliyetinin 3x'i) */
 export const STOCKOUT_COST_MULTIPLIER = 3;
+
+// ══════════════════════════════════════════════════════════
+// OUTCOME LEARNING ENGINE (OLE)
+// ══════════════════════════════════════════════════════════
+
+/** Outcome kontrol aralıkları (gün) — tahmin sonrası kaçıncı günlerde kontrol */
+export const OUTCOME_CHECK_INTERVALS = [7, 14, 30] as const;
+
+/** Outcome auto-check analiz aralığı (ms) — 15 dakikada bir */
+export const OUTCOME_CHECK_FREQUENCY = 15 * 60 * 1000;
+
+/** Başlangıç Bayesian prior güven skoru */
+export const OUTCOME_PRIOR_CONFIDENCE = 0.5;
+
+/** Bayesian güncelleme learning rate — α (0=yavaş, 1=agresif) */
+export const OUTCOME_LEARNING_RATE = 0.2;
+
+/** Bir kuralın güvenilir sayılması için minimum outcome sayısı */
+export const OUTCOME_MIN_SAMPLES = 5;
+
+/** Expired sayılma süresi — deadline + bu kadar gün sonra hâlâ pending ise expired */
+export const OUTCOME_EXPIRY_GRACE_DAYS = 7;
+
+// ══════════════════════════════════════════════════════════
+// TOKEN VALUE TRACKER (TVT)
+// ══════════════════════════════════════════════════════════
+
+/** Stoksuzluk maliyeti — gün başına tahmini TL */
+export const STOCKOUT_DAILY_COST_TL = 2500;
+
+/** Üretim durması maliyeti — saat başına TL */
+export const PRODUCTION_DOWNTIME_HOURLY_TL = 5000;
+
+/** Karar süresi tasarrufu — saat başına yönetici maliyet TL */
+export const DECISION_TIME_HOURLY_TL = 500;
+
+/** Fazla stok holding maliyeti — aylık birim başına TL */
+export const OVERSTOCK_MONTHLY_UNIT_TL = 15;
+
+/** Generic model baseline — ontolojik sorulara cevap veremez (V/T = 0) */
+export const GENERIC_MODEL_BASELINE_VT = 0;
+
+/** TVT metrik toplama aralığı (ms) — 10 dakikada bir aggregate */
+export const TVT_AGGREGATION_INTERVAL = 10 * 60 * 1000;

@@ -11,6 +11,7 @@ import { computeProductionCapacity, getBomWithStock } from "./routes/bom";
 import { type ReasoningStep } from "./lib/impact-types";
 import { SEASONAL_INDICES, MONTH_LABELS, MONTHLY_DEMAND } from "./lib/seasonal-constants";
 import { persistAlerts } from "./lib/alert-persistence";
+import { trackAlertsAsOutcomes } from "./lib/outcome-engine";
 import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
 import { adjustSeverity, refreshSuppression } from "./lib/feedback-loop";
 import {
@@ -408,6 +409,8 @@ export async function evaluateRules(trigger: {
   // Alert'leri DB'ye kaydet (fire-and-forget)
   if (alerts.length > 0) {
     persistAlerts(alerts).catch(err => console.error("[rules-engine] Alert persistence error:", err));
+    // OLE — Her alert bir tahmindir, outcome tracking'e kaydet
+    trackAlertsAsOutcomes(alerts);
   }
 
   return alerts;
