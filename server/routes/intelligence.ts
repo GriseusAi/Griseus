@@ -3,9 +3,10 @@ import { db } from "../db";
 import { stockMovementsV2, products, componentStock } from "@shared/schema";
 import { eq, and, sql, desc, gte } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
-import { MONTHLY_DEMAND, YEARLY_TOTAL, MONTHLY_AVG, SEASONAL_INDICES, DAYS_IN_MONTH, MONTH_LABELS } from "../lib/seasonal-constants";
+import { MONTHLY_DEMAND, YEARLY_TOTAL, MONTHLY_AVG, SEASONAL_INDICES, SEASONAL_INDICES as STATIC_INDICES, DAYS_IN_MONTH, MONTH_LABELS } from "../lib/seasonal-constants";
 import { WINTER_MONTHS } from "../lib/constants";
 import { getThresholds, type AdaptiveThresholds } from "../lib/adaptive-thresholds";
+import { getDynamicIndices, getDynamicDemand, getDynamicTotals } from "../lib/dynamic-seasonality";
 
 const router = Router();
 
@@ -48,13 +49,14 @@ export interface ComponentIntelligence {
 // (constants imported from ../lib/seasonal-constants)
 // ═══════════════════════════════════════════════════════════
 
-function seasonalForwardWalk(stock: number, dailyRate: number): {
+function seasonalForwardWalk(stock: number, dailyRate: number, indices?: number[]): {
   days: number;
   depletionMonth: number;
   depletionYear: number;
 } {
   if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear() };
 
+  const seasonalIdx = indices ?? [...SEASONAL_INDICES];
   const now = new Date();
   let monthIndex = now.getMonth();
   const currentDay = now.getDate();
@@ -64,7 +66,7 @@ function seasonalForwardWalk(stock: number, dailyRate: number): {
   let yearOffset = 0;
 
   for (let i = 0; i < 200; i++) {
-    const idx = SEASONAL_INDICES[monthIndex];
+    const idx = seasonalIdx[monthIndex];
     const adjustedRate = dailyRate * idx;
     const daysThisMonth = isFirstMonth
       ? DAYS_IN_MONTH[monthIndex] - currentDay + 1
@@ -105,6 +107,11 @@ export async function computeComponentIntelligence(sku: string): Promise<{
 }> {
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
+
+  // DSE — Dinamik mevsimsel indeksleri çek
+  const dynIndices = await getDynamicIndices();
+  const dynDemand = await getDynamicDemand();
+  const { yearlyTotal: dynYearlyTotal, monthlyAvg: dynMonthlyAvg } = await getDynamicTotals();
 
   const items = await getBomWithStock(sku);
   if (items.length === 0) throw new Error(`BOM bulunamadı: ${sku}`);
@@ -170,9 +177,9 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const trend: "accelerating" | "stable" | "decelerating" =
         trendRatio > 1.2 ? "accelerating" : trendRatio < 0.8 ? "decelerating" : "stable";
 
-      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2)
-      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? YEARLY_TOTAL / 365 * item.requiredQty : 0);
-      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate);
+      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2) — DSE dinamik
+      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? dynYearlyTotal / 365 * item.requiredQty : 0);
+      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate, dynIndices);
 
       // Urgency: prefer seasonal forward-walk over simple daysToStockout (ATE adaptif eşikler)
       const urgencyFromSeasonal: "critical" | "warning" | "ok" | "abundant" =
@@ -194,9 +201,9 @@ export async function computeComponentIntelligence(sku: string): Promise<{
       const urgency = urgencyRank[urgencyFromSeasonal] <= urgencyRank[urgencyFromLinear]
         ? urgencyFromSeasonal : urgencyFromLinear;
       const currentMonthIdx = new Date().getMonth();
-      const currentSeasonalRate = effectiveDailyRate * SEASONAL_INDICES[currentMonthIdx];
-      const peakSeasonalRate = effectiveDailyRate * Math.max(...SEASONAL_INDICES);
-      const seasonalReorderPt = Math.ceil(reorderPoint * SEASONAL_INDICES[currentMonthIdx]);
+      const currentSeasonalRate = effectiveDailyRate * dynIndices[currentMonthIdx];
+      const peakSeasonalRate = effectiveDailyRate * Math.max(...dynIndices);
+      const seasonalReorderPt = Math.ceil(reorderPoint * dynIndices[currentMonthIdx]);
 
       // Depletion risk based on HOW SOON stock runs out (ATE adaptif eşikler)
       const depRisk = effectiveStock <= 0 ? "KRİTİK" as const
@@ -260,11 +267,11 @@ export async function computeComponentIntelligence(sku: string): Promise<{
     // Palantir Ontology Summary
     ontology: {
       currentMonth: MONTH_LABELS[currentMonthIdx],
-      currentSeasonalIndex: Math.round(SEASONAL_INDICES[currentMonthIdx] * 100) / 100,
+      currentSeasonalIndex: Math.round(dynIndices[currentMonthIdx] * 100) / 100,
       winterRiskCount,
       avgDaysDifference: avgDiff,
-      seasonalIndices: SEASONAL_INDICES.map((v, i) => ({ month: MONTH_LABELS[i], index: Math.round(v * 100) / 100 })),
-      monthlyDemand: MONTHLY_DEMAND.map((v, i) => ({ month: MONTH_LABELS[i], demand: v })),
+      seasonalIndices: dynIndices.map((v, i) => ({ month: MONTH_LABELS[i], index: Math.round(v * 100) / 100, baseline: Math.round(STATIC_INDICES[i] * 100) / 100 })),
+      monthlyDemand: dynDemand.map((v, i) => ({ month: MONTH_LABELS[i], demand: Math.round(v), baseline: MONTHLY_DEMAND[i] })),
     },
   };
 }

@@ -10,16 +10,18 @@
 import { getBomWithStock, computeProductionCapacity, computeSubAssemblyCapacity } from "../routes/bom";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL, DAYS_IN_MONTH } from "./seasonal-constants";
+import { getDynamicIndices, getDynamicTotals } from "./dynamic-seasonality";
 import { MAIN_SKU } from "./constants";
 import { getThresholds } from "./adaptive-thresholds";
 
 const SKU = MAIN_SKU;
 
 // Forward-walk (same as intelligence.ts but standalone for virtual stock)
-function virtualForwardWalk(stock: number, dailyRate: number): {
+function virtualForwardWalk(stock: number, dailyRate: number, dynIdx?: number[]): {
   days: number; depletionMonth: number; depletionYear: number;
 } {
   if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear() };
+  const seasonalIdx = dynIdx ?? [...SEASONAL_INDICES];
   const now = new Date();
   let monthIndex = now.getMonth();
   const currentDay = now.getDate();
@@ -29,7 +31,7 @@ function virtualForwardWalk(stock: number, dailyRate: number): {
   let yearOffset = 0;
 
   for (let i = 0; i < 200; i++) {
-    const idx = SEASONAL_INDICES[monthIndex];
+    const idx = seasonalIdx[monthIndex];
     const adjustedRate = dailyRate * idx;
     const daysThisMonth = isFirstMonth ? DAYS_IN_MONTH[monthIndex] - currentDay + 1 : DAYS_IN_MONTH[monthIndex];
     const consumption = adjustedRate * daysThisMonth;
@@ -100,6 +102,10 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
 
+  // DSE — Dinamik mevsimsel indeksler
+  const dynIndices = await getDynamicIndices();
+  const { yearlyTotal: dynYearlyTotal } = await getDynamicTotals();
+
   // Get current state
   const [intel, bomItems] = await Promise.all([
     computeComponentIntelligence(SKU),
@@ -163,14 +169,14 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
     }
     case "months_forward": {
       scenarioDesc = `${scenario.months} ay ileri simülasyon (mevsimsel tüketim)`;
-      const dailyRate = YEARLY_TOTAL / 365;
+      const dailyRate = dynYearlyTotal / 365;
       for (const [code, info] of bomMap) {
         if (info.tier === 1 || info.tier === 2) {
           const current = virtualStocks.get(code) ?? 0;
           let consumed = 0;
           let mIdx = currentMonthIdx;
           for (let m = 0; m < scenario.months; m++) {
-            consumed += dailyRate * info.requiredQty * SEASONAL_INDICES[mIdx] * DAYS_IN_MONTH[mIdx];
+            consumed += dailyRate * info.requiredQty * dynIndices[mIdx] * DAYS_IN_MONTH[mIdx];
             mIdx = (mIdx + 1) % 12;
           }
           virtualStocks.set(code, Math.max(0, current - consumed));
@@ -189,7 +195,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
 
   // Compute component-level impacts
   const componentImpacts: ComponentImpact[] = [];
-  const dailyBaseRate = YEARLY_TOTAL / 365;
+  const dailyBaseRate = dynYearlyTotal / 365;
 
   for (const comp of intel.components) {
     const afterStock = virtualStocks.get(comp.code) ?? comp.currentStock;
@@ -197,7 +203,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
 
     // Virtual forward-walk
     const effectiveDailyRate = comp.dailyBurnRate > 0 ? comp.dailyBurnRate : dailyBaseRate * comp.requiredPerUnit;
-    const afterWalk = virtualForwardWalk(afterStock, effectiveDailyRate);
+    const afterWalk = virtualForwardWalk(afterStock, effectiveDailyRate, dynIndices);
 
     const afterUrgency =
       afterStock <= 0 ? "critical"

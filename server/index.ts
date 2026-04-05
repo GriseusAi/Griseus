@@ -143,6 +143,10 @@ app.use((req, res, next) => {
   const { ensureTables } = await import("./db");
   await ensureTables();
 
+  // DSE — Dynamic Seasonality Engine başlat
+  const { initDSE } = await import("./lib/dynamic-seasonality");
+  await initDSE().catch(err => console.error("[DSE] Init error:", err));
+
   // ATE — Adaptive Threshold Engine başlat
   const { initATE, updateBehaviorProfile } = await import("./lib/adaptive-thresholds");
   await initATE().catch(err => console.error("[ATE] Init error:", err));

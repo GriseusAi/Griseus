@@ -139,6 +139,26 @@ export async function ensureTables() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS seasonal_indices (
+        id SERIAL PRIMARY KEY,
+        tenant_id TEXT NOT NULL DEFAULT 'cukurova',
+        product_sku TEXT NOT NULL,
+        month INTEGER NOT NULL,
+        baseline_demand NUMERIC NOT NULL,
+        baseline_index NUMERIC NOT NULL,
+        dynamic_demand NUMERIC NOT NULL,
+        dynamic_index NUMERIC NOT NULL,
+        sample_count INTEGER NOT NULL DEFAULT 0,
+        std_dev NUMERIC NOT NULL DEFAULT 0,
+        last_actual_demand NUMERIC,
+        last_actual_year INTEGER,
+        anomaly_detected BOOLEAN NOT NULL DEFAULT false,
+        anomaly_reason TEXT,
+        updated_at TIMESTAMP DEFAULT NOW(),
+        UNIQUE(tenant_id, product_sku, month)
+      );
+    `);
     // Seed default tenant profile
     await pool.query(`
       INSERT INTO tenant_profiles (tenant_id, company_name)

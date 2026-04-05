@@ -10,6 +10,7 @@ import { computeComponentIntelligence, type ComponentIntelligence } from "./rout
 import { computeProductionCapacity, getBomWithStock } from "./routes/bom";
 import { type ReasoningStep } from "./lib/impact-types";
 import { SEASONAL_INDICES, MONTH_LABELS, MONTHLY_DEMAND } from "./lib/seasonal-constants";
+import { getDynamicIndices, getDynamicDemand } from "./lib/dynamic-seasonality";
 import { persistAlerts } from "./lib/alert-persistence";
 import { trackAlertsAsOutcomes } from "./lib/outcome-engine";
 import { evaluateCustomRules } from "./lib/nl-rules-evaluator";
@@ -50,6 +51,10 @@ export async function evaluateRules(trigger: {
 
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
+
+  // DSE — Dinamik mevsimsel indeksler
+  const dynIndices = await getDynamicIndices();
+  const dynDemand = await getDynamicDemand();
 
   // Ortak veriyi bir kez hesapla
   let intel: { components: ComponentIntelligence[]; criticalCount: number } | null = null;
@@ -224,8 +229,8 @@ export async function evaluateRules(trigger: {
 
     if (intel) {
       // ── Rule 5: Mevsimsel Talep Spike Tahmini ──
-      const currentIdx = SEASONAL_INDICES[currentMonthIdx];
-      const nextIdx = SEASONAL_INDICES[nextMonthIdx];
+      const currentIdx = dynIndices[currentMonthIdx];
+      const nextIdx = dynIndices[nextMonthIdx];
       if (nextIdx > currentIdx * T.seasonalSpikeRatio) {
         const spikeRatio = (nextIdx / currentIdx).toFixed(2);
         const criticalForSpike = intel.components.filter(c =>
@@ -237,7 +242,7 @@ export async function evaluateRules(trigger: {
             type: "seasonal_spike_prediction",
             severity: "warning",
             title: "Mevsimsel Talep Artışı Yaklaşıyor",
-            message: `${MONTH_LABELS[nextMonthIdx]} ayında talep ${spikeRatio}x artacak (${MONTHLY_DEMAND[currentMonthIdx]} → ${MONTHLY_DEMAND[nextMonthIdx]} adet). ${criticalForSpike.length} bileşen risk altında.`,
+            message: `${MONTH_LABELS[nextMonthIdx]} ayında talep ${spikeRatio}x artacak (${Math.round(dynDemand[currentMonthIdx])} → ${Math.round(dynDemand[nextMonthIdx])} adet). ${criticalForSpike.length} bileşen risk altında.`,
             productSku: MAIN_SKU,
             suggestedAction: `Risk altındaki ${criticalForSpike.length} bileşen için stok takviyesi planla`,
             rootCause: [

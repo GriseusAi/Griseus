@@ -6,6 +6,7 @@ import { Router, type Request, type Response } from "express";
 import multer from "multer";
 import { smartImport, analyzeFile, type ImportType } from "../lib/smart-import";
 import { MAIN_SKU } from "../lib/constants";
+import { bulkUpdateFromSalesHistory } from "../lib/dynamic-seasonality";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -28,6 +29,13 @@ router.post("/execute", upload.single("file"), async (req: Request, res: Respons
     const type = (req.body.type as ImportType) || "auto";
     const productSku = (req.body.product_sku as string) || MAIN_SKU;
     const result = await smartImport(req.file.buffer, { type, productSku });
+
+    // DSE — Satış verisi import edildiyse mevsimsel indeksleri güncelle (fire-and-forget)
+    if (type === "sales_history" || type === "auto") {
+      bulkUpdateFromSalesHistory("cukurova", productSku).catch(err =>
+        console.error("[import] DSE update error:", err));
+    }
+
     res.json(result);
   } catch (err: any) {
     res.status(500).json({ error: err.message });

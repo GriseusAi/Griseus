@@ -39,7 +39,7 @@ GRİSEUS PLATFORMU SAYFALARI:
 1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
 2. Ürün İstihbaratı (/stok/urun/ELT.7-11) — Üretim kapasitesi (241 adet), darboğaz analizi (ilk 10), mevsimsel talep grafiği, sipariş simülasyonu, 43 parça BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
 3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
-4. CEO Agent (/engine) — SENSİN. 23 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
+4. CEO Agent (/engine) — SENSİN. 24 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
 5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
 6. Token Value Tracker — Ontoloji değer metrikleri (V/T), flywheel skoru
 
@@ -54,6 +54,12 @@ TOKEN VALUE TRACKER (TVT):
 - Generic model (ChatGPT vb.) bu soruları cevaplayamaz — ontoloji avantajı sonsuz
 - Flywheel skoru: veri büyümesi × kişiselleştirme × etkileşim artışı
 - Kullanıcı "ne kadar değer üretiyoruz?" diye sorarsa get_token_value_metrics kullan
+
+DYNAMIC SEASONALITY ENGINE (DSE):
+- Mevsimsel indeksler artık SABİT DEĞİL — EWMA (λ=0.3) ile her yeni satış verisinde güncellenir
+- Anomali tespiti: gerçek talep > 2σ sapma → "yeni trend mi?" flag
+- Baseline vs dinamik karşılaştırma: drift analizi
+- "mevsimsel tahmin değişti mi?" → get_seasonal_intelligence kullan
 
 ADAPTIVE THRESHOLD ENGINE (ATE):
 - Eşikler artık SABİT DEĞİL — firma profiline göre dinamik hesaplanır
@@ -380,6 +386,15 @@ const TOOLS: Anthropic.Tool[] = [
   {
     name: "get_adaptive_profile",
     description: "Firma operasyonel profili ve adaptif eşikler. Tedarik süresi, talep volatilitesi, risk toleransı, mevsimsel genlik ve bunlara göre hesaplanan dinamik eşikler. Varsayılan eşiklerle karşılaştırma. 'eşikler niye böyle?', 'profil', 'risk toleransı', 'neden kritik sayılıyor?', 'adaptif' sorularında kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_seasonal_intelligence",
+    description: "Dinamik mevsimsel istihbarat. EWMA ile güncellenen aylık talep indeksleri, baseline vs dinamik karşılaştırma, anomali tespitleri, drift analizi. 'mevsimsel tahmin ne diyor?', 'talep değişti mi?', 'hangi ayda anomali var?', 'seasonality', 'mevsim' sorularında kullan.",
     input_schema: {
       type: "object" as const,
       properties: {},
@@ -1098,6 +1113,47 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         };
       } catch (err: any) {
         return { error: `Outcome dashboard hatası: ${err.message}` };
+      }
+    }
+
+    case "get_seasonal_intelligence": {
+      try {
+        const { getSeasonalDashboard } = await import("../lib/dynamic-seasonality");
+        const dashboard = await getSeasonalDashboard();
+        return {
+          title: "Dynamic Seasonality Engine — Mevsimsel İstihbarat",
+          summary: {
+            yıllıkTalepBaseline: `${dashboard.yearlyTotalBaseline} adet`,
+            yıllıkTalepDinamik: `${dashboard.yearlyTotalDynamic} adet`,
+            aylıkOrtDinamik: `${dashboard.monthlyAvgDynamic} adet`,
+            anomaliSayısı: dashboard.anomalies.length,
+            ortDrift: `%${dashboard.driftSummary.avgAbsDrift}`,
+            önemliKayma: dashboard.driftSummary.isSignificantShift ? "EVET — mevsimsel pattern değişiyor" : "Hayır — kararlı",
+          },
+          months: dashboard.months.map(m => ({
+            ay: m.monthLabel,
+            baselineTalep: m.baselineDemand,
+            dinamikTalep: m.dynamicDemand,
+            baselineIndex: m.baselineIndex,
+            dinamikIndex: m.dynamicIndex,
+            drift: `${m.drift > 0 ? "+" : ""}${m.drift}%`,
+            örnekSayısı: m.sampleCount,
+            sonGerçekTalep: m.lastActualDemand,
+            sonGerçekYıl: m.lastActualYear,
+            anomali: m.anomalyDetected ? m.anomalyReason : null,
+          })),
+          driftAnalizi: {
+            enBüyükArtış: dashboard.driftSummary.maxPositiveDrift
+              ? `${dashboard.driftSummary.maxPositiveDrift.month}: +%${dashboard.driftSummary.maxPositiveDrift.drift}`
+              : "Yok",
+            enBüyükDüşüş: dashboard.driftSummary.maxNegativeDrift
+              ? `${dashboard.driftSummary.maxNegativeDrift.month}: %${dashboard.driftSummary.maxNegativeDrift.drift}`
+              : "Yok",
+          },
+          explanation: "İndeksler EWMA (λ=0.3) ile her yeni satış verisinde güncellenir. Anomali: gerçek talep > 2σ sapma. Drift: dinamik vs baseline farkı (%).",
+        };
+      } catch (err: any) {
+        return { error: `DSE dashboard hatası: ${err.message}` };
       }
     }
 

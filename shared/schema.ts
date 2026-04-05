@@ -376,3 +376,30 @@ export const alertInteractions = pgTable("alert_interactions", {
 });
 
 export type AlertInteraction = typeof alertInteractions.$inferSelect;
+
+// --- Dynamic Seasonal Indices (DSE — Dynamic Seasonality Engine) ---
+
+export const seasonalIndices = pgTable("seasonal_indices", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").notNull().default("cukurova"),
+  productSku: text("product_sku").notNull(),
+  month: integer("month").notNull(), // 0-11 (Oca=0, Ara=11)
+  // Statik baseline (3 yıl ort.)
+  baselineDemand: numeric("baseline_demand").notNull(),
+  baselineIndex: numeric("baseline_index").notNull(),
+  // EWMA dinamik değerler
+  dynamicDemand: numeric("dynamic_demand").notNull(),
+  dynamicIndex: numeric("dynamic_index").notNull(),
+  // İstatistik
+  sampleCount: integer("sample_count").notNull().default(0), // kaç yıllık veri
+  stdDev: numeric("std_dev").notNull().default("0"), // talep std sapması
+  lastActualDemand: numeric("last_actual_demand"), // son gerçek talep
+  lastActualYear: integer("last_actual_year"), // hangi yılın verisi
+  // Anomali
+  anomalyDetected: boolean("anomaly_detected").notNull().default(false),
+  anomalyReason: text("anomaly_reason"),
+  // Meta
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export type SeasonalIndex = typeof seasonalIndices.$inferSelect;
