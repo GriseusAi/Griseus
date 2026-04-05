@@ -403,3 +403,33 @@ export const seasonalIndices = pgTable("seasonal_indices", {
 });
 
 export type SeasonalIndex = typeof seasonalIndices.$inferSelect;
+
+// --- Agent Decision Memory (ADM) ---
+
+export const agentMemory = pgTable("agent_memory", {
+  id: serial("id").primaryKey(),
+  memoryId: varchar("memory_id", { length: 64 }).notNull(),
+  tenantId: text("tenant_id").notNull().default("cukurova"),
+  // Sorgu
+  queryText: text("query_text").notNull(),
+  queryCategory: text("query_category"), // stock_check | forecast | planning | alert_response | operational
+  queryEmbedding: vector("query_embedding"),
+  // Cevap & araçlar
+  toolsUsed: jsonb("tools_used"), // ["get_component_intelligence", ...]
+  toolCount: integer("tool_count").notNull().default(0),
+  recommendationMade: text("recommendation_made"), // özet öneri
+  responseLength: integer("response_length").notNull().default(0),
+  // Kullanıcı aksiyonu
+  userAction: text("user_action"), // applied | ignored | modified | asked_more | null (henüz bilinmiyor)
+  actionTimestamp: timestamp("action_timestamp"),
+  // Kalite metrikleri
+  qualityScore: numeric("quality_score").notNull().default("0"), // 0-1 arası
+  outcomeId: text("outcome_id"), // OLE bağlantısı
+  outcomeValue: numeric("outcome_value"), // TL
+  // Decay
+  decayWeight: numeric("decay_weight").notNull().default("1.0"), // zamanla azalır
+  // Meta
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export type AgentMemoryEntry = typeof agentMemory.$inferSelect;

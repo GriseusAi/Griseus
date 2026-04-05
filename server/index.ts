@@ -143,6 +143,12 @@ app.use((req, res, next) => {
   const { ensureTables } = await import("./db");
   await ensureTables();
 
+  // ADM — Agent Decision Memory decay (6 saatte bir)
+  const { applyDecay } = await import("./lib/agent-memory");
+  setInterval(() => {
+    applyDecay().catch(err => console.error("[ADM] Decay error:", err));
+  }, 6 * 60 * 60 * 1000);
+
   // DSE — Dynamic Seasonality Engine başlat
   const { initDSE } = await import("./lib/dynamic-seasonality");
   await initDSE().catch(err => console.error("[DSE] Init error:", err));

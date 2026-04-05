@@ -159,6 +159,27 @@ export async function ensureTables() {
         UNIQUE(tenant_id, product_sku, month)
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS agent_memory (
+        id SERIAL PRIMARY KEY,
+        memory_id VARCHAR(64) NOT NULL,
+        tenant_id TEXT NOT NULL DEFAULT 'cukurova',
+        query_text TEXT NOT NULL,
+        query_category TEXT,
+        query_embedding vector(1024),
+        tools_used JSONB,
+        tool_count INTEGER NOT NULL DEFAULT 0,
+        recommendation_made TEXT,
+        response_length INTEGER NOT NULL DEFAULT 0,
+        user_action TEXT,
+        action_timestamp TIMESTAMP,
+        quality_score NUMERIC NOT NULL DEFAULT 0,
+        outcome_id TEXT,
+        outcome_value NUMERIC,
+        decay_weight NUMERIC NOT NULL DEFAULT 1.0,
+        created_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
     // Seed default tenant profile
     await pool.query(`
       INSERT INTO tenant_profiles (tenant_id, company_name)

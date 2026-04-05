@@ -15,6 +15,7 @@ import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LA
 import { MAIN_SKU } from "../lib/constants";
 import { buildDynamicContext } from "../rag";
 import { logTokenInteraction } from "../lib/token-value-tracker";
+import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
 
 const router = Router();
 
@@ -39,7 +40,7 @@ GRİSEUS PLATFORMU SAYFALARI:
 1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
 2. Ürün İstihbaratı (/stok/urun/ELT.7-11) — Üretim kapasitesi (241 adet), darboğaz analizi (ilk 10), mevsimsel talep grafiği, sipariş simülasyonu, 43 parça BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
 3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
-4. CEO Agent (/engine) — SENSİN. 24 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma
+4. CEO Agent (/engine) — SENSİN. 24 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma. GEÇMİŞ KARARLARIN HAFIZASINA SAHİPSİN (ADM)
 5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
 6. Token Value Tracker — Ontoloji değer metrikleri (V/T), flywheel skoru
 
@@ -60,6 +61,13 @@ DYNAMIC SEASONALITY ENGINE (DSE):
 - Anomali tespiti: gerçek talep > 2σ sapma → "yeni trend mi?" flag
 - Baseline vs dinamik karşılaştırma: drift analizi
 - "mevsimsel tahmin değişti mi?" → get_seasonal_intelligence kullan
+
+AGENT DECISION MEMORY (ADM):
+- GEÇMİŞ KARARLAR bölümünde (═══ GEÇMİŞ KARARLAR ═══) benzer geçmiş sorgular ve sonuçları listelenir
+- Bu bilgileri kullanarak TUTARLI kararlar ver — aynı sorulara farklı cevaplar verme
+- Geçmişte kullanıcı bir öneriyi "uyguladıysa" benzer durumlarda aynı yaklaşımı öner
+- Geçmişte "görmezden gelindiyse" farklı bir açıdan yaklaş
+- Geçmiş kararlarla çelişen bir öneri yapacaksan nedenini açıkla
 
 ADAPTIVE THRESHOLD ENGINE (ATE):
 - Eşikler artık SABİT DEĞİL — firma profiline göre dinamik hesaplanır
@@ -1234,6 +1242,27 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
   }
 }
 
+/** Agent cevabından öneri özetini çıkar — ADM hafızası için */
+function extractRecommendation(responseText: string): string | undefined {
+  // "Önerilen Aksiyonlar:" bloğunu bul
+  const actionIdx = responseText.indexOf("Önerilen Aksiyonlar:");
+  if (actionIdx !== -1) {
+    const block = responseText.slice(actionIdx, actionIdx + 300);
+    return block.split("\n").slice(0, 4).join(" ").trim();
+  }
+
+  // "Öneri:" veya "Tavsiye:" ile başlayan satırları bul
+  const lines = responseText.split("\n");
+  for (const line of lines) {
+    const trimmed = line.trim();
+    if (trimmed.startsWith("Öneri:") || trimmed.startsWith("Tavsiye:") || trimmed.startsWith("⚠️")) {
+      return trimmed.slice(0, 200);
+    }
+  }
+
+  return undefined;
+}
+
 /** Kullanıcı sorgusunu kategorize et — TVT değer tahmini için */
 function classifyQuery(
   message: string,
@@ -1373,6 +1402,18 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
     }
 
+    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar)
+    let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
+    try {
+      admMemories = await recallRelevantMemories(message);
+      if (admMemories.contextBlock) {
+        systemPrompt += "\n" + admMemories.contextBlock;
+        console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
+      }
+    } catch (admErr: any) {
+      console.warn("[agent/adm] ADM failed, continuing without memory:", admErr.message);
+    }
+
     // All tools: custom ontology tools + Anthropic built-in web search
     const allTools: any[] = [
       ...TOOLS,
@@ -1457,8 +1498,8 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     // TVT — Token Value Tracker: her etkileşimi logla
     const usage = response.usage;
+    const category = classifyQuery(message, toolsUsed);
     if (usage) {
-      const category = classifyQuery(message, toolsUsed);
       logTokenInteraction({
         interactionType: "agent_chat",
         inputTokens: usage.input_tokens,
@@ -1468,6 +1509,15 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
         actor: "ceo_agent",
       });
     }
+
+    // ADM — Etkileşimi hafızaya kaydet (fire-and-forget)
+    recordMemory({
+      queryText: message,
+      queryCategory: category,
+      toolsUsed,
+      recommendationMade: extractRecommendation(responseText),
+      responseLength: responseText.length,
+    }).catch(err => console.warn("[agent/adm] Memory record failed:", err.message));
 
     res.json({ response: responseText, tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
   } catch (err: any) {
