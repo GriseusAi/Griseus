@@ -1314,48 +1314,43 @@ function classifyQuery(
 async function buildLiveSnapshot(): Promise<string> {
   try {
     const today = new Date();
-    const ayIdx = today.getMonth();
 
-    // Fetch ALL products with BOM
+    // Lightweight: just list products and their capacity — no heavy computation
     const allProducts = await db.execute(sql`
-      SELECT DISTINCT p.sku, p.name FROM products p
+      SELECT DISTINCT p.sku, p.name,
+        (SELECT COUNT(*) FROM bom_items WHERE parent_product_sku = p.sku) as bom_count
+      FROM products p
       WHERE p.sku IN (SELECT DISTINCT parent_product_sku FROM bom_items)
       ORDER BY p.sku
     `);
-    const productList = allProducts.rows as Array<{ sku: string; name: string }>;
+    const productList = allProducts.rows as Array<{ sku: string; name: string; bom_count: string }>;
 
-    // Stock levels for all products
+    // Stock levels
     const stockRows = await db
-      .select({ sku: products.sku, inProd: stockLevels.inProduction, inWh: stockLevels.inWarehouse, sold: stockLevels.totalSold })
+      .select({ sku: products.sku, inProd: stockLevels.inProduction, inWh: stockLevels.inWarehouse })
       .from(stockLevels).innerJoin(products, eq(stockLevels.productId, products.id));
 
     let snapshot = `\n═══ CANLI DURUM (${today.toLocaleDateString("tr-TR")}) ═══\n`;
-    snapshot += `KAYITLI ÜRÜNLER: ${productList.map(p => p.sku).join(", ")}\n`;
+    snapshot += `KAYITLI ÜRÜNLER:\n`;
 
     for (const prod of productList) {
-      const bomData = await getBomWithStock(prod.sku);
-      if (bomData.length === 0) continue;
-
-      const capacity = computeProductionCapacity(bomData);
       const stk = stockRows.find(r => r.sku === prod.sku);
-      const { demand, annual } = await getMonthlyDemandForSku(prod.sku);
-      const monthlyAvg = annual / 12;
-
-      snapshot += `\n── ${prod.sku} (${prod.name}) ──\n`;
-      snapshot += `  Mamul: ${stk ? stk.inProd + stk.inWh : 0} adet | Max üretilebilir: ${capacity.maxProducible} (darboğaz: ${capacity.bottlenecks[0]?.name || "-"})\n`;
-      snapshot += `  Bu ay talep: ~${Math.round(demand[ayIdx])} adet | Yıllık: ${annual} | Bileşen: ${bomData.filter(b => b.tier <= 2).length}\n`;
-
-      // Top 3 critical parts
-      const criticals = bomData
-        .filter(c => (c.tier === 1 || c.tier === 2) && c.currentStock <= c.requiredQty * monthlyAvg * 3)
-        .sort((a, b) => (a.currentStock / Math.max(a.requiredQty, 0.01)) - (b.currentStock / Math.max(b.requiredQty, 0.01)))
-        .slice(0, 3);
-      if (criticals.length > 0) {
-        snapshot += `  Kritik: ${criticals.map(c => `${c.code}(stok:${Math.round(c.currentStock)})`).join(", ")}\n`;
-      }
+      const mamul = stk ? stk.inProd + stk.inWh : 0;
+      snapshot += `  ${prod.sku} — ${prod.name} | Mamül: ${mamul} adet | ${prod.bom_count} bileşen\n`;
     }
 
+    // Only compute capacity for main product (fast path)
+    try {
+      const mainBom = await getBomWithStock(MAIN_SKU);
+      if (mainBom.length > 0) {
+        const cap = computeProductionCapacity(mainBom);
+        snapshot += `\n${MAIN_SKU} kapasite: ${cap.maxProducible} (darboğaz: ${cap.bottlenecks[0]?.name || "-"})\n`;
+      }
+    } catch {}
+
+    snapshot += `\nNOT: Herhangi bir ürün hakkında detay için tool'ları kullan (get_production_capacity, get_component_intelligence vb.) — sku parametresi ile ürün belirt.\n`;
     snapshot += `═══════════════════════════════════\n`;
+
     return snapshot;
   } catch (err) {
     console.warn("[agent/snapshot] Failed:", err);
