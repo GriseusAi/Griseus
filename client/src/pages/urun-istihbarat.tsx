@@ -5,6 +5,7 @@ import { motion } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import ProductSelector from "@/components/ProductSelector";
 
 /* ═══════════════════════════════════════════════════════════
    PALETTE — same Palantir dark theme as stok-durum
@@ -208,6 +209,11 @@ export default function UrunIstihbarat() {
       <TopNav connected={connected} />
 
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px", position: "relative", zIndex: 1 }}>
+        {/* ═══ Product Selector ═══ */}
+        <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
+          <ProductSelector value={sku} onChange={(newSku) => navigate(`/stok/urun/${newSku}`)} />
+        </div>
+
         {/* ═══ Section 1: Production Capacity Card ═══ */}
         <motion.div
           initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3 }}

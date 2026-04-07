@@ -64,14 +64,13 @@ export default function StokHareket() {
   const [successMsg, setSuccessMsg] = useState("");
   const [errorMsg, setErrorMsg] = useState("");
 
-  // Only fetch ELT.7-11 product
+  // Fetch all products with BOM
   const { data: productList = [] } = useQuery<Product[]>({ queryKey: ["/api/stock/products"] });
-  const eltProducts = productList.filter(p => p.sku === "ELT.7-11");
 
-  // Auto-select ELT.7-11 when loaded
-  const eltProduct = eltProducts[0];
-  if (eltProduct && selectedProduct === "") {
-    setSelectedProduct(eltProduct.id);
+  // Auto-select first product when loaded
+  const firstProduct = productList[0];
+  if (firstProduct && selectedProduct === "") {
+    setSelectedProduct(firstProduct.id);
   }
 
   const { data: movements = [] } = useQuery<Movement[]>({ queryKey: ["/api/stock/movements?limit=15"] });
@@ -145,10 +144,7 @@ export default function StokHareket() {
             STOK HAREKETİ GİRİŞİ
           </div>
           <div style={{ fontSize: 18, fontWeight: 400, color: C.white }}>
-            <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
-          </div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>
-            Seramik Plakalı Camlı Radyant Isıtıcı
+            <span style={{ color: C.accent }}>{productList.find(p => p.id === Number(selectedProduct))?.sku || "—"}</span>
           </div>
         </div>
 

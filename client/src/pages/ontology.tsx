@@ -2,6 +2,7 @@ import { useState, useCallback, useMemo, useRef, useEffect } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TopNav from "@/components/top-nav";
+import ProductSelector from "@/components/ProductSelector";
 import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocket";
 
 /* ═══════════════════════════════════════════════════════════
@@ -52,13 +53,13 @@ interface GNode {
 
 interface GEdge { source: string; target: string; label: string; qty: number }
 
-function buildGraph(components: BomComponent[]): { nodes: GNode[]; edges: GEdge[] } {
+function buildGraph(components: BomComponent[], sku: string): { nodes: GNode[]; edges: GEdge[] } {
   const nodes: GNode[] = [];
   const edges: GEdge[] = [];
 
   // Product node (center)
   nodes.push({
-    id: "ELT.7-11", label: "ELT.7-11\nGoldsun Elite", tier: 0,
+    id: sku, label: `${sku}\nGoldsun`, tier: 0,
     stock: 0, required: 0, maxProducts: null, status: "product", unit: "",
     x: 0, y: 0, vx: 0, vy: 0, parentCode: null, isProduct: true,
   });
@@ -75,7 +76,7 @@ function buildGraph(components: BomComponent[]): { nodes: GNode[]; edges: GEdge[
 
     // Edge: parent → child
     if (c.tier === 1 || c.tier === 2) {
-      edges.push({ source: "ELT.7-11", target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
+      edges.push({ source: sku, target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
     } else if (c.tier === 3 && c.parentComponentCode) {
       edges.push({ source: c.parentComponentCode, target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
     }
@@ -373,9 +374,10 @@ function drawGraph(
       ctx.fillStyle = C.accent;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText("ELT", n.x, n.y - 4);
+      const skuParts = n.id.split(/[.\-]/);
+      ctx.fillText(skuParts[0] || n.id, n.x, n.y - 4);
       ctx.font = "9px 'Outfit', sans-serif";
-      ctx.fillText("7-11", n.x, n.y + 8);
+      ctx.fillText(skuParts.slice(1).join("-") || "", n.x, n.y + 8);
       ctx.textBaseline = "alphabetic";
     }
   }
@@ -410,6 +412,7 @@ export default function OntologyPage() {
   const animRef = useRef<number>(0);
   const sizeRef = useRef({ w: 1200, h: 800 });
 
+  const [sku, setSku] = useState("ELT.7-11");
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [simQty, setSimQty] = useState(0);
@@ -420,27 +423,34 @@ export default function OntologyPage() {
 
   // WebSocket — live blood flow: stock changes pump to all organs instantly
   const handleStockUpdate = useCallback((data: StockUpdateEvent) => {
-    // Invalidate all shared queries — Stok Durumu, Ürün İstihbaratı, and this page all refresh
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/stock"] });
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/production-capacity"] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
     qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
     qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/intelligence"] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
     setLastUpdate(`${data.productSku} ${data.movementType} ×${data.quantity}`);
     setTimeout(() => setLastUpdate(null), 3000);
-  }, [qc]);
+  }, [qc, sku]);
   const { connected } = useStockWebSocket(handleStockUpdate);
+
+  // Reset state when SKU changes
+  useEffect(() => {
+    setSimQty(0);
+    setSimResult(null);
+    setSelectedNode(null);
+    setGraphReady(false);
+  }, [sku]);
 
   // Data — shared query keys with other pages = automatic cross-page sync
   const { data: stockData } = useQuery<StockData>({
-    queryKey: ["/api/bom/ELT.7-11/stock"],
-    queryFn: () => apiRequest("GET", "/api/bom/ELT.7-11/stock").then(r => r.json()),
-    staleTime: 5000, // 5s — faster refresh for live feel
+    queryKey: [`/api/bom/${sku}/stock`],
+    queryFn: () => apiRequest("GET", `/api/bom/${sku}/stock`).then(r => r.json()),
+    staleTime: 5000,
   });
 
   const { data: capacityData } = useQuery<CapacityData>({
-    queryKey: ["/api/bom/ELT.7-11/production-capacity"],
-    queryFn: () => apiRequest("GET", "/api/bom/ELT.7-11/production-capacity").then(r => r.json()),
+    queryKey: [`/api/bom/${sku}/production-capacity`],
+    queryFn: () => apiRequest("GET", `/api/bom/${sku}/production-capacity`).then(r => r.json()),
     staleTime: 5000,
   });
 
@@ -472,7 +482,7 @@ export default function OntologyPage() {
   // Build graph when data arrives
   useEffect(() => {
     if (!stockData?.components) return;
-    const { nodes, edges } = buildGraph(stockData.components);
+    const { nodes, edges } = buildGraph(stockData.components, sku);
     nodesRef.current = nodes;
     edgesRef.current = edges;
 
@@ -571,11 +581,14 @@ export default function OntologyPage() {
         }}>
           {/* Header */}
           <div>
-            <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, letterSpacing: 1.5, fontWeight: 400 }}>
-              ONTOLOGY DIAGRAM
+            <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
+              <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, letterSpacing: 1.5, fontWeight: 400 }}>
+                ONTOLOGY DIAGRAM
+              </div>
+              <ProductSelector value={sku} onChange={setSku} />
             </div>
             <div style={{ fontSize: 18, fontWeight: 400, color: C.white, marginTop: 4 }}>
-              ELT.7-11 Üretim Grafi
+              {sku} Üretim Grafi
             </div>
             <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>
               {stockData?.components.length || 0} bileşen &middot; {edgesRef.current.length} bağlantı
@@ -590,7 +603,7 @@ export default function OntologyPage() {
             }}>
               <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>MEVCUT KAPASİTE</div>
               <div style={{ fontSize: 32, fontWeight: 400, color: C.accent }}>{fmt(capacityData.maxProducible)}</div>
-              <div style={{ fontSize: 10, color: C.dim }}>adet ELT.7-11 üretilebilir</div>
+              <div style={{ fontSize: 10, color: C.dim }}>adet {sku} üretilebilir</div>
               {capacityData.bottlenecks[0] && (
                 <div style={{ fontSize: 10, color: C.err, marginTop: 8 }}>
                   Darboğaz: {capacityData.bottlenecks[0].name} ({fmt(capacityData.bottlenecks[0].stock)}/{capacityData.bottlenecks[0].required})

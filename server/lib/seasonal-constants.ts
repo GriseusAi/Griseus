@@ -36,3 +36,33 @@ export const MONTH_NAMES = ["Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran"
 export function demandForMonth(zeroIndexedMonth: number): number {
   return MONTHLY_DEMAND[zeroIndexedMonth % 12];
 }
+
+/**
+ * Multi-product helper: get monthly demand from DB for any SKU.
+ * Falls back to hardcoded MONTHLY_DEMAND for the main SKU.
+ * Returns 0-indexed array [Jan..Dec].
+ */
+export async function getMonthlyDemandForSku(sku: string): Promise<{ demand: number[]; annual: number }> {
+  const { MAIN_SKU } = await import("../lib/constants");
+  if (sku === MAIN_SKU) {
+    return { demand: [...MONTHLY_DEMAND], annual: YEARLY_TOTAL };
+  }
+
+  // Fetch from sales_history — 3-year average
+  const { db } = await import("../db");
+  const { sql } = await import("drizzle-orm");
+  const rows = await db.execute(sql`
+    SELECT month, ROUND(AVG(quantity_sold)) as avg_qty
+    FROM sales_history
+    WHERE product_sku = ${sku}
+    GROUP BY month
+    ORDER BY month
+  `);
+
+  const demand = new Array(12).fill(0);
+  for (const row of rows.rows as any[]) {
+    demand[row.month - 1] = Number(row.avg_qty) || 0;
+  }
+  const annual = demand.reduce((s: number, v: number) => s + v, 0);
+  return { demand, annual };
+}

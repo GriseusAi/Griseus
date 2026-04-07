@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "../db";
-import { bomItems, componentStock } from "@shared/schema";
+import { bomItems, componentStock, products } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
 import { evaluateRules } from "../rules-engine";
@@ -153,7 +153,7 @@ router.get("/:sku", async (req: Request, res: Response) => {
 
   res.json({
     product: sku,
-    productName: "Goldsun Elite - Seramik Plakalı Camlı Radyant Isıtıcı - 7/9/11 KW Üç kademeli",
+    productName: await db.select({ name: products.name }).from(products).where(eq(products.sku, sku)).then(r => r[0]?.name || sku),
     totalComponents: items.length,
     tree: {
       directMaterials: tier1.map((i) => ({

@@ -16,6 +16,9 @@ import { simulateWhatIf, type WhatIfScenario } from "./lib/whatif-engine";
 import validationRouter from "./routes/validation";
 import importRouter from "./routes/import";
 import outcomeRouter from "./routes/outcome";
+import { db } from "./db";
+import { products, bomItems } from "@shared/schema";
+import { sql } from "drizzle-orm";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -32,6 +35,23 @@ export async function registerRoutes(
   app.use("/api/validation", validationRouter);
   app.use("/api/import", importRouter);
   app.use("/api/outcomes", outcomeRouter);
+
+  // ── Products API — hangi urunler mevcut ──
+  app.get("/api/products", async (_req, res) => {
+    try {
+      // BOM'u olan urunleri getir (aktif urunler)
+      const result = await db.execute(sql`
+        SELECT DISTINCT p.id, p.sku, p.name, p.category,
+          (SELECT COUNT(*) FROM bom_items WHERE parent_product_sku = p.sku) as component_count
+        FROM products p
+        WHERE p.sku IN (SELECT DISTINCT parent_product_sku FROM bom_items)
+        ORDER BY p.name
+      `);
+      res.json(result.rows);
+    } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
 
   // ── Impact Propagation API ──
   app.get("/api/impact/latest", (_req, res) => {

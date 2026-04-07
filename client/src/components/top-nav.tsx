@@ -24,7 +24,7 @@ const mono = "'Outfit', sans-serif";
 
 const NAV_ITEMS = [
   { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
-  { path: "/stok/urun/ELT.7-11", label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}" },
+  { path: "/stok/urun/ELT.7-11", label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
   { path: "/sihir", label: "Sihir", icon: "\u2B21" },
   { path: "/ontology", label: "Ontology", icon: "\u25C8" },
 ];

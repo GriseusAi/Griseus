@@ -2,6 +2,7 @@ import { useState, useCallback } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import TopNav from "@/components/top-nav";
+import ProductSelector from "@/components/ProductSelector";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 
 const C = {
@@ -26,6 +27,7 @@ const glass = {
    ═══════════════════════════════════════════════════════════ */
 
 export default function PalantirPage() {
+  const [sku, setSku] = useState("ELT.7-11");
   const [activeTab, setActiveTab] = useState<"plan6" | "siparis">("plan6");
   const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
   const [, navigate] = useLocation();
@@ -33,20 +35,20 @@ export default function PalantirPage() {
 
   // WebSocket — kalp atisi: stok degisince tum sihir yeniden hesaplanir
   const onStockUpdate = useCallback(() => {
-    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/6-ay-plan"] });
-    queryClient.invalidateQueries({ queryKey: ["/api/palantir/demo/acil-siparis"] });
-  }, [queryClient]);
+    queryClient.invalidateQueries({ queryKey: [`/api/palantir/demo/6-ay-plan?sku=${sku}`] });
+    queryClient.invalidateQueries({ queryKey: [`/api/palantir/demo/acil-siparis?sku=${sku}`] });
+  }, [queryClient, sku]);
   const { connected } = useStockWebSocket(onStockUpdate);
 
   // Queries
   const plan6 = useQuery<any>({
-    queryKey: ["/api/palantir/demo/6-ay-plan"],
-    queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
+    queryKey: [`/api/palantir/demo/6-ay-plan?sku=${sku}`],
+    queryFn: () => fetch(`/api/palantir/demo/6-ay-plan?sku=${sku}`).then(r => r.json()),
   });
 
   const siparis = useQuery<any>({
-    queryKey: ["/api/palantir/demo/acil-siparis"],
-    queryFn: () => fetch("/api/palantir/demo/acil-siparis?ay=3").then(r => r.json()),
+    queryKey: [`/api/palantir/demo/acil-siparis?sku=${sku}`],
+    queryFn: () => fetch(`/api/palantir/demo/acil-siparis?ay=3&sku=${sku}`).then(r => r.json()),
   });
 
   const tabs = [
@@ -68,9 +70,12 @@ export default function PalantirPage() {
             fontSize: 20,
           }}>⬡</div>
           <div>
-            <h1 style={{ fontSize: 22, fontWeight: 600, color: C.white, margin: 0, letterSpacing: "-0.5px" }}>
-              Intelligence Engine
-            </h1>
+            <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
+              <h1 style={{ fontSize: 22, fontWeight: 600, color: C.white, margin: 0, letterSpacing: "-0.5px" }}>
+                Intelligence Engine
+              </h1>
+              <ProductSelector value={sku} onChange={setSku} />
+            </div>
             <p style={{ fontSize: 12, color: C.mid, margin: "2px 0 0" }}>
               6 Aylik Strateji + Acil Siparis Listesi
             </p>
@@ -114,7 +119,7 @@ export default function PalantirPage() {
               <div>
                 {/* Summary cards */}
                 <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr 1fr", gap: 12, marginBottom: 16 }}>
-                  <StatCard label="Mamul Stok" value={plan6.data.ozet?.mevcutMamulStok ?? 0} sub="adet ELT.7-11" color={C.blue} />
+                  <StatCard label="Mamul Stok" value={plan6.data.ozet?.mevcutMamulStok ?? 0} sub={`adet ${sku}`} color={C.blue} />
                   <StatCard label="6 Ay Talep" value={plan6.data.ozet?.onumuzdeki6AyToplamTalep ?? 0} sub="adet toplam" color={C.purple} />
                   <StatCard label="En Yogun" value={plan6.data.ozet?.enYogunAy?.ay || "-"} sub={`${plan6.data.ozet?.enYogunAy?.tapinenTalep || 0} adet`} color={C.err} />
                   <StatCard label="En Dusuk" value={plan6.data.ozet?.enDusukAy?.ay || "-"} sub={`${plan6.data.ozet?.enDusukAy?.tapinenTalep || 0} adet`} color={C.ok} />
@@ -219,7 +224,7 @@ export default function PalantirPage() {
                               return (
                                 <span
                                   key={i}
-                                  onClick={(e) => { e.stopPropagation(); navigate("/stok/urun/ELT.7-11"); }}
+                                  onClick={(e) => { e.stopPropagation(); navigate(`/stok/urun/${sku}`); }}
                                   style={{
                                     fontSize: 11, padding: "3px 8px", borderRadius: 6,
                                     background: C.errDim, border: `1px solid ${C.errBorder}`, color: C.err,

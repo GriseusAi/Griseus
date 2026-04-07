@@ -5,6 +5,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, type ProactiveAlertData, type ImpactPropagationEvent, type ImpactEventData } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import ProductSelector from "@/components/ProductSelector";
 import { useGlobalAlerts } from "../App";
 
 /* ═══════════════════════════════════════════════════════════
@@ -157,7 +158,7 @@ function Pipeline({ product }: { product: StockLevel | null }) {
 }
 
 /* ── Capacity Gauge ── */
-function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
+function CapacityGauge({ capacity, sku }: { capacity: Capacity | undefined; sku: string }) {
   if (!capacity) return null;
   const max = capacity.maxProducible;
   const top = capacity.bottlenecks[0];
@@ -174,7 +175,7 @@ function CapacityGauge({ capacity }: { capacity: Capacity | undefined }) {
       <div style={{ fontSize: 48, fontWeight: 400, fontFamily: mono, color: C.accent, lineHeight: 1, marginBottom: 4 }}>
         {fmt(max)}
       </div>
-      <div style={{ fontSize: 13, color: C.mid, marginBottom: 12 }}>adet ELT.7-11</div>
+      <div style={{ fontSize: 13, color: C.mid, marginBottom: 12 }}>adet {sku}</div>
       {top && (
         <div style={{
           display: "inline-flex", alignItems: "center", gap: 6, padding: "6px 14px",
@@ -500,6 +501,7 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
 export default function StokDurum() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
+  const [sku, setSku] = useState("ELT.7-11");
   const [filterType, setFilterType] = useState<string>("");
   const [ontologyFilter, setOntologyFilter] = useState<OntologyFilter>("all");
   const [flashedCode, setFlashedCode] = useState<string | null>(null);
@@ -515,14 +517,13 @@ export default function StokDurum() {
   const { data: levels = [] } = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
   const { data: summary } = useQuery<Summary>({ queryKey: ["/api/stock/summary"] });
   const { data: bomData } = useQuery<{ product: string; components: BomComponent[] }>({
-    queryKey: ["/api/bom/ELT.7-11/stock"],
+    queryKey: [`/api/bom/${sku}/stock`],
   });
   const { data: capacity } = useQuery<Capacity>({
-    queryKey: ["/api/bom/ELT.7-11/production-capacity"],
+    queryKey: [`/api/bom/${sku}/production-capacity`],
   });
 
-  // Find ELT.7-11 product
-  const product = levels.find(l => l.productSku === "ELT.7-11") || null;
+  const product = levels.find(l => l.productSku === sku) || null;
   const productId = product?.productId;
 
   const { data: movements = [] } = useQuery<Movement[]>({
@@ -530,8 +531,8 @@ export default function StokDurum() {
     enabled: !!productId,
   });
 
-  // Auto-reset: clean test data on first load if there are non-ELT products
-  const hasOldData = levels.length > 0 && levels.some(l => l.productSku !== "ELT.7-11");
+  // Auto-reset: clean test data on first load if there are unexpected products
+  const hasOldData = false; // disabled — multi-product now supported
   useEffect(() => {
     if (hasOldData && !resetDone) {
       fetch("/api/stock/reset", { method: "POST" }).then(() => {
@@ -572,9 +573,9 @@ export default function StokDurum() {
   const handleStockUpdate = useCallback((data: StockUpdateEvent) => {
     qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
     qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/stock"] });
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/production-capacity"] });
-    qc.invalidateQueries({ queryKey: ["/api/bom/ELT.7-11/intelligence"] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
     if (productId) {
       qc.invalidateQueries({ queryKey: [`/api/stock/movements?product_id=${productId}&limit=30`] });
     }
@@ -585,7 +586,7 @@ export default function StokDurum() {
     setToasts(prev => [...prev.slice(-2), { id, sku: data.productSku, type: data.movementType, qty: data.quantity, ts: Date.now() }]);
     setTimeout(() => setToasts(prev => prev.map(t => t.id === id ? { ...t, exiting: true } : t)), 2500);
     setTimeout(() => setToasts(prev => prev.filter(t => t.id !== id)), 3000);
-  }, [qc, productId]);
+  }, [qc, productId, sku]);
 
   const { alerts: globalAlerts, pushAlerts } = useGlobalAlerts();
 
@@ -681,13 +682,13 @@ export default function StokDurum() {
         {/* ════ HERO — Product Identity ════ */}
         <div style={{ textAlign: "center", padding: "28px 0 8px" }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 2, marginBottom: 6 }}>
-            ÇUKUROVA ISI SİSTEMLERİ — TEK ÜRÜN KOMUTA MERKEZİ
+            ÇUKUROVA ISI SİSTEMLERİ — ÜRÜN KOMUTA MERKEZİ
           </div>
-          <div style={{ fontSize: 22, fontWeight: 400, color: C.white, letterSpacing: -0.5, marginBottom: 4 }}>
-            <span style={{ color: C.accent }}>ELT.7-11</span> — Goldsun Elite
-          </div>
-          <div style={{ fontSize: 12, color: C.dim }}>
-            Seramik Plakalı Camlı Radyant Isıtıcı — 7/9/11 KW Üç kademeli
+          <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 12, marginBottom: 4 }}>
+            <div style={{ fontSize: 22, fontWeight: 400, color: C.white, letterSpacing: -0.5 }}>
+              <span style={{ color: C.accent }}>{sku}</span>
+            </div>
+            <ProductSelector value={sku} onChange={setSku} />
           </div>
         </div>
 
@@ -699,7 +700,7 @@ export default function StokDurum() {
           }}>
             <Pipeline product={product} />
           </div>
-          <CapacityGauge capacity={capacity} />
+          <CapacityGauge capacity={capacity} sku={sku} />
         </div>
 
         {/* ════ QUICK ACTIONS ════ */}
@@ -708,7 +709,7 @@ export default function StokDurum() {
           padding: "16px 20px", marginBottom: 20, ...glass,
         }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 10 }}>
-            ⚡ AKSİYONLAR — ELT.7-11 Stok Hareketi
+            ⚡ AKSİYONLAR — {sku} Stok Hareketi
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
             {QUICK_ACTIONS.map(a => {
@@ -872,7 +873,7 @@ export default function StokDurum() {
           padding: "16px 20px", marginBottom: 40, ...glass,
         }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 10 }}>
-            SON HAREKETLER — ELT.7-11
+            SON HAREKETLER — {sku}
           </div>
 
           {/* Filters */}

@@ -6,15 +6,15 @@ import { Router, type Request, type Response } from "express";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
 import { getBomWithStock, computeSubAssemblyCapacity } from "./bom";
-import { MONTHLY_DEMAND, ANNUAL_DEMAND, MONTH_NAMES } from "../lib/seasonal-constants";
+import { MONTHLY_DEMAND as DEFAULT_DEMAND, ANNUAL_DEMAND as DEFAULT_ANNUAL, MONTH_NAMES, getMonthlyDemandForSku } from "../lib/seasonal-constants";
 import { MAIN_SKU, LEAD_TIME_DAYS } from "../lib/constants";
 
 const router = Router();
-const SKU = MAIN_SKU;
 
-// DEMO 1: GET /api/palantir/demo/uretim-plani?adet=100
+// DEMO 1: GET /api/palantir/demo/uretim-plani?adet=100&sku=ELT.7-11
 router.get("/uretim-plani", async (req: Request, res: Response) => {
   try {
+    const SKU = (req.query.sku as string) || MAIN_SKU;
     const adet = parseInt(req.query.adet as string) || 100;
     const startTime = Date.now();
     const bomItems = await getBomWithStock(SKU);
@@ -78,12 +78,14 @@ router.get("/uretim-plani", async (req: Request, res: Response) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// DEMO 2: GET /api/palantir/demo/6-ay-plan
+// DEMO 2: GET /api/palantir/demo/6-ay-plan?sku=ELT.7-11
 // TEK KAYNAK: computeComponentIntelligence — Ürün İstihbaratı ile aynı motor
 router.get("/6-ay-plan", async (_req: Request, res: Response) => {
   try {
+    const SKU = (_req.query.sku as string) || MAIN_SKU;
     const startTime = Date.now();
     const currentMonth = new Date().getMonth(); // 0-indexed
+    const { demand: MONTHLY_DEMAND, annual: ANNUAL_DEMAND } = await getMonthlyDemandForSku(SKU);
 
     // Aynı motor: intelligence.ts'deki computeComponentIntelligence
     const { computeComponentIntelligence } = await import("./intelligence");
@@ -164,15 +166,17 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
   } catch (err: any) { res.status(500).json({ error: err.message }); }
 });
 
-// DEMO 3: GET /api/palantir/demo/acil-siparis?ay=3
+// DEMO 3: GET /api/palantir/demo/acil-siparis?ay=3&sku=ELT.7-11
 // TEK KAYNAK: computeComponentIntelligence — tüm sayfalarla tutarlı
 router.get("/acil-siparis", async (req: Request, res: Response) => {
   try {
+    const SKU = (req.query.sku as string) || MAIN_SKU;
     const ayIleri = parseInt(req.query.ay as string) || 3;
     const startTime = Date.now();
     const currentMonth = new Date().getMonth();
     const { getThresholds } = await import("../lib/adaptive-thresholds");
     const T = await getThresholds();
+    const { demand: MONTHLY_DEMAND } = await getMonthlyDemandForSku(SKU);
 
     // Talep özeti (sadece bilgi amaçlı)
     const aylar: string[] = [];
@@ -254,6 +258,7 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
 // DEMO 4: GET /api/palantir/demo/10x
 router.get("/10x", async (_req: Request, res: Response) => {
   try {
+    const SKU = (_req.query.sku as string) || MAIN_SKU;
     const startTime = Date.now();
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);

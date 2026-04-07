@@ -3,6 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import ProductSelector from "@/components/ProductSelector";
 import { motion, AnimatePresence } from "framer-motion";
 
 /* ═══════════════════════════════════════════════════════════
@@ -27,7 +28,7 @@ const glass = {
 const MONTH_NAMES = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
 const MONTH_FULL = ["", "Ocak", "Subat", "Mart", "Nisan", "Mayis", "Haziran", "Temmuz", "Agustos", "Eylul", "Ekim", "Kasim", "Aralik"];
 
-const SKU = "ELT.7-11";
+const DEFAULT_SKU = "ELT.7-11";
 
 /* ── Types ── */
 interface MonthlyAvg {
@@ -75,6 +76,7 @@ interface ImportResult {
 export default function PlanlamaPage() {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
+  const [sku, setSku] = useState(DEFAULT_SKU);
   const [monthsAhead, setMonthsAhead] = useState(3);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"forecast" | "predict" | "import">("predict");
@@ -87,14 +89,14 @@ export default function PlanlamaPage() {
 
   // Queries
   const forecast = useQuery<ForecastData>({
-    queryKey: ["/api/planning/forecast", SKU],
-    queryFn: () => fetch(`/api/planning/forecast/${SKU}`).then(r => r.ok ? r.json() : null),
+    queryKey: ["/api/planning/forecast", sku],
+    queryFn: () => fetch(`/api/planning/forecast/${sku}`).then(r => r.ok ? r.json() : null),
     retry: false,
   });
 
   const predict = useQuery<PredictData>({
-    queryKey: ["/api/planning/predict", SKU, monthsAhead],
-    queryFn: () => fetch(`/api/planning/predict/${SKU}?months_ahead=${monthsAhead}`).then(r => r.ok ? r.json() : null),
+    queryKey: ["/api/planning/predict", sku, monthsAhead],
+    queryFn: () => fetch(`/api/planning/predict/${sku}?months_ahead=${monthsAhead}`).then(r => r.ok ? r.json() : null),
     retry: false,
   });
 
@@ -118,7 +120,7 @@ export default function PlanlamaPage() {
     if (!file) return;
     const fd = new FormData();
     fd.append("file", file);
-    fd.append("product_sku", SKU);
+    fd.append("product_sku", sku);
     importMut.mutate(fd);
   };
 
@@ -134,11 +136,14 @@ export default function PlanlamaPage() {
       <div style={{ maxWidth: 1200, margin: "0 auto", padding: "24px 16px" }}>
         {/* Header */}
         <div style={{ marginBottom: 24 }}>
-          <h1 style={{ fontSize: 22, fontWeight: 500, color: C.white, margin: 0 }}>
-            Prediktif Planlama
-          </h1>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <h1 style={{ fontSize: 22, fontWeight: 500, color: C.white, margin: 0 }}>
+              Prediktif Planlama
+            </h1>
+            <ProductSelector value={sku} onChange={setSku} />
+          </div>
           <p style={{ fontSize: 13, color: C.mid, margin: "4px 0 0" }}>
-            ELT.7-11 — Tarihsel satis verileri + ileriye donuk uretim planlama + BOM gap analizi
+            {sku} — Tarihsel satis verileri + ileriye donuk uretim planlama + BOM gap analizi
           </p>
         </div>
 
@@ -424,7 +429,7 @@ export default function PlanlamaPage() {
           }}>
             <h3 style={{ margin: "0 0 8px", fontSize: 16, color: C.white }}>Satis Verisi Import</h3>
             <p style={{ fontSize: 12, color: C.mid, margin: "0 0 20px" }}>
-              Son 3 yilin ELT.7-11 satis belgelerini yukleyin. Excel dosyasinda su kolonlar olmali:
+              Son 3 yilin {sku} satis belgelerini yukleyin. Excel dosyasinda su kolonlar olmali:
             </p>
 
             {/* Format guide */}
