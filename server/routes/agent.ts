@@ -25,20 +25,17 @@ const router = Router();
 
 const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin Operasyonel İstihbarat Platformu.
 
-ÜRÜN: ELT.7-11 Kombi Brülörü — 43 bileşenli BOM reçetesi. Darboğaz: 27.031 Paslanmaz Reflektör Tutucu (BOM qty:2, max 241 adet üretilebilir).
+ÜRÜNLER: Sisteme kayıtlı tüm ürünlerin BOM, stok ve istihbarat verilerine erişebilirsin. Her ürünün bileşen reçetesi, darboğaz analizi ve kapasite hesabı canlı veriden gelir.
 
-KRİTİK: 27.125 Brülör (Yerli Malzeme) bir YARI MAMÜLDÜR. Stokta 0 görünmesi normaldir — bu bir kriz DEĞİLDİR. Yarı mamüller alt bileşenlerinden montajlanır. Brülör için önemli olan 5 alt bileşenin (27.123, 27.160, 27.161, 27.162, 27.164) stokta olmasıdır. Efektif brülör kapasitesi = mevcut stok + alt bileşenlerden monte edilebilir adet. Kapasite hesabında her zaman efektif stoku kullan.
+KRİTİK: YARI MAMÜL bileşenlerde stokta 0 görünmesi normaldir — bu bir kriz DEĞİLDİR. Yarı mamüller alt bileşenlerinden montajlanır. Efektif kapasite = mevcut stok + alt bileşenlerden monte edilebilir adet. Kapasite hesabında her zaman efektif stoku kullan.
 
-MEVSİMSEL TALEP (3 yıl ort. 2023-2025, PDF doğrulanmış):
-Oca:340(1.73x) Şub:278(1.41x) Mar:131(0.67x) Nis:222(1.13x) May:162(0.82x) Haz:234(1.19x) Tem:108(0.55x) Ağu:269(1.37x) Eyl:98(0.50x) Eki:169(0.86x) Kas:22(0.11x) Ara:325(1.65x)
-Yıllık: 2358 adet. Günlük ort: 0.77 adet/gün.
-PİK: Oca(1.73x), Ağu(1.37x), Ara(1.65x). DİP: Kas(0.11x), Eyl(0.50x), Tem(0.55x).
+MEVSİMSEL TALEP: Mevsimsel indeksler DSE (Dynamic Seasonality Engine) tarafından dinamik olarak hesaplanır. Detaylar için get_seasonal_intelligence tool'unu kullan.
 
-FORWARD-WALK ALGORİTMASI: Stok kaç gün yeter hesabı artık mevsimseldir. Sabit bölme yerine, her ay o ayın indeksiyle tüketim simüle edilir. Örnek: 0.77 adet/gün baz × 1.13(Nis indeksi) = 0.87 adet/gün gerçek tüketim.
+FORWARD-WALK ALGORİTMASI: Stok kaç gün yeter hesabı mevsimseldir. Sabit bölme yerine, her ay o ayın indeksiyle tüketim simüle edilir.
 
 GRİSEUS PLATFORMU SAYFALARI:
 1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
-2. Ürün İstihbaratı (/stok/urun/ELT.7-11) — Üretim kapasitesi (241 adet), darboğaz analizi (ilk 10), mevsimsel talep grafiği, sipariş simülasyonu, 43 parça BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
+2. Ürün İstihbaratı (/stok/urun/{SKU}) — Üretim kapasitesi, darboğaz analizi, mevsimsel talep grafiği, sipariş simülasyonu, BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
 3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
 4. CEO Agent (/engine) — SENSİN. 24 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma. GEÇMİŞ KARARLARIN HAFIZASINA SAHİPSİN (ADM)
 5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
@@ -76,13 +73,7 @@ ADAPTIVE THRESHOLD ENGINE (ATE):
 - "Neden kritik?" sorusunda adaptif eşikleri açıkla: "180 gün eşiği firmanızın profili için X gün olarak ayarlandı"
 - Kullanıcı profil/eşik soruyorsa get_adaptive_profile kullan
 
-STOK DURUMU ÖZETİ:
-- Çoğu parça 2-5 yıl yetecek stokta (aşırı stok, bağlı sermaye)
-- 27.125 Brülör stok 0 = NORMAL (yarı mamül — alt bileşenlerden ~373 adet monte edilebilir)
-- 27.031 Reflektör Tutucu en yakın darboğaz (Şub 2027'de biter)
-- Tedarikçi: Çukurova Isı, tedarik süresi ~14 gün
-
-STRATEJİ: Düşük dönemde üret+stokla → yoğun dönemde hazır ol. Tem'de stokla→Ağu'ya hazırlan. Kas'da stokla→Ara-Oca'ya hazırlan.
+STRATEJİ: Düşük dönemde üret+stokla → yoğun dönemde hazır ol. Mevsimsel dip dönemlerinde stokla, pik dönemlerine hazırlan. Canlı stok durumu aşağıdaki CANLI DURUM bölümünden okunur.
 
 CEVAP TARZI (KRİTİK — HER CEVAPTA UYGULANACAK):
 
@@ -724,7 +715,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
       });
 
       // Proactive rules (fire-and-forget)
-      evaluateRules({ type: "stock_movement", productId: match.id })
+      evaluateRules({ type: "stock_movement", productId: match.id, sku: match.sku || undefined })
         .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
         .catch(err => console.error("[rules-engine]", err));
 
@@ -773,12 +764,17 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         stockLevel: { inProduction: 0, inWarehouse: newStock, totalSold: 0 },
       });
 
+      // Look up parent product SKU for this component
+      const [bomRef] = await db.select({ parentProductSku: bomItems.parentProductSku })
+        .from(bomItems).where(eq(bomItems.componentCode, code)).limit(1);
+
       // Correction Propagation — stok düzeltmesi tüm kolları re-evaluate eder
       propagateCorrection({
         type: "stock_corrected",
         entityId: code,
         detail: `${code} stok düzeltme: ${oldStock} → ${newStock}`,
         actor: "ceo_agent",
+        sku: bomRef?.parentProductSku || undefined,
       }).catch(err => console.error("[correction-propagation]", err));
 
       return {

@@ -235,7 +235,7 @@ stockPocRouter.post("/movements", async (req, res) => {
       });
 
       // Proactive rules evaluation (fire-and-forget)
-      evaluateRules({ type: "stock_movement", productId: product_id })
+      evaluateRules({ type: "stock_movement", productId: product_id, sku: product.sku || undefined })
         .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
         .catch(err => console.error("[rules-engine]", err));
 
@@ -384,7 +384,7 @@ stockPocRouter.post("/movements", async (req, res) => {
     });
 
     // Proactive rules evaluation (fire-and-forget)
-    evaluateRules({ type: "stock_movement", productId: product_id })
+    evaluateRules({ type: "stock_movement", productId: product_id, sku: product.sku || undefined })
       .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
       .catch(err => console.error("[rules-engine]", err));
 

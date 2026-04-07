@@ -14,8 +14,6 @@ import { getDynamicIndices, getDynamicTotals } from "./dynamic-seasonality";
 import { MAIN_SKU } from "./constants";
 import { getThresholds } from "./adaptive-thresholds";
 
-const SKU = MAIN_SKU;
-
 // Forward-walk (same as intelligence.ts but standalone for virtual stock)
 function virtualForwardWalk(stock: number, dailyRate: number, dynIdx?: number[]): {
   days: number; depletionMonth: number; depletionYear: number;
@@ -98,7 +96,7 @@ export interface WhatIfResult {
   }>;
 }
 
-export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfResult> {
+export async function simulateWhatIf(scenario: WhatIfScenario, sku: string = MAIN_SKU): Promise<WhatIfResult> {
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
 
@@ -108,8 +106,8 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
 
   // Get current state
   const [intel, bomItems] = await Promise.all([
-    computeComponentIntelligence(SKU),
-    getBomWithStock(SKU),
+    computeComponentIntelligence(sku),
+    getBomWithStock(sku),
   ]);
 
   const currentCapacity = computeProductionCapacity(bomItems);
@@ -137,7 +135,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario): Promise<WhatIfRe
 
   switch (scenario.type) {
     case "produce": {
-      scenarioDesc = `${scenario.quantity} adet ELT 7-11 üretilse`;
+      scenarioDesc = `${scenario.quantity} adet ${sku} üretilse`;
       for (const [code, info] of bomMap) {
         if (info.tier === 1 || info.tier === 2) {
           const current = virtualStocks.get(code) ?? 0;

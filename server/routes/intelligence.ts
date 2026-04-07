@@ -108,10 +108,10 @@ export async function computeComponentIntelligence(sku: string): Promise<{
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
 
-  // DSE — Dinamik mevsimsel indeksleri çek
-  const dynIndices = await getDynamicIndices();
-  const dynDemand = await getDynamicDemand();
-  const { yearlyTotal: dynYearlyTotal, monthlyAvg: dynMonthlyAvg } = await getDynamicTotals();
+  // DSE — Dinamik mevsimsel indeksleri çek (SKU bazlı)
+  const dynIndices = await getDynamicIndices("cukurova", sku);
+  const dynDemand = await getDynamicDemand("cukurova", sku);
+  const { yearlyTotal: dynYearlyTotal, monthlyAvg: dynMonthlyAvg } = await getDynamicTotals("cukurova", sku);
 
   const items = await getBomWithStock(sku);
   if (items.length === 0) throw new Error(`BOM bulunamadı: ${sku}`);

@@ -22,6 +22,7 @@ export interface CorrectionEvent {
   entityId: string;
   detail: string;
   actor: string;
+  sku?: string;
 }
 
 export interface PropagationResult {
@@ -52,8 +53,8 @@ export async function propagateCorrection(event: CorrectionEvent): Promise<Propa
 
     // 3. Rules Engine re-evaluate (her iki trigger tipi için)
     const [stockAlerts, compAlerts] = await Promise.all([
-      evaluateRules({ type: "stock_movement" }).catch(() => [] as ProactiveAlert[]),
-      evaluateRules({ type: "component_stock_update" }).catch(() => [] as ProactiveAlert[]),
+      evaluateRules({ type: "stock_movement", sku: event.sku }).catch(() => [] as ProactiveAlert[]),
+      evaluateRules({ type: "component_stock_update", sku: event.sku }).catch(() => [] as ProactiveAlert[]),
     ]);
 
     // Deduplicate (aynı tip uyarılar birleş)

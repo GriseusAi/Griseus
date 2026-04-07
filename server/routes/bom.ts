@@ -283,8 +283,14 @@ router.post("/component-stock/update", async (req: Request, res: Response) => {
     stockLevel: { inProduction: 0, inWarehouse: stock, totalSold: 0 },
   });
 
+  // Look up parent product SKU for this component
+  const [bomRow] = await db.select({ parentProductSku: bomItems.parentProductSku })
+    .from(bomItems)
+    .where(eq(bomItems.componentCode, code))
+    .limit(1);
+
   // Proactive rules evaluation (fire-and-forget)
-  evaluateRules({ type: "component_stock_update", componentCode: code })
+  evaluateRules({ type: "component_stock_update", componentCode: code, sku: bomRow?.parentProductSku || undefined })
     .then(alerts => { if (alerts.length > 0) broadcastProactiveAlert({ event: "proactive_alert", alerts }); })
     .catch(err => console.error("[rules-engine]", err));
 

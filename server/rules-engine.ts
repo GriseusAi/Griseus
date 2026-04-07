@@ -43,7 +43,9 @@ export async function evaluateRules(trigger: {
   type: "stock_movement" | "component_stock_update";
   productId?: number;
   componentCode?: string;
+  sku?: string;
 }): Promise<ProactiveAlert[]> {
+  const sku = trigger.sku || MAIN_SKU;
   const alerts: ProactiveAlert[] = [];
   const now = new Date().toISOString();
   const currentMonthIdx = new Date().getMonth();
@@ -63,8 +65,8 @@ export async function evaluateRules(trigger: {
 
   try {
     [intel, bomItems_data] = await Promise.all([
-      computeComponentIntelligence(MAIN_SKU).catch(() => null),
-      getBomWithStock(MAIN_SKU).catch(() => null),
+      computeComponentIntelligence(sku).catch(() => null),
+      getBomWithStock(sku).catch(() => null),
     ]);
     if (bomItems_data && bomItems_data.length > 0) {
       capacity = computeProductionCapacity(bomItems_data);
@@ -150,8 +152,8 @@ export async function evaluateRules(trigger: {
         type: "production_capacity_critical",
         severity: "critical",
         title: "Üretim Durma Riski",
-        message: `ELT.7-11 üretim kapasitesi ${capacity.maxProducible} adete düştü! Darboğaz: ${topBottleneck?.name || "?"} (${topBottleneck?.stock || 0} adet stok)`,
-        productSku: MAIN_SKU,
+        message: `${sku} üretim kapasitesi ${capacity.maxProducible} adete düştü! Darboğaz: ${topBottleneck?.name || "?"} (${topBottleneck?.stock || 0} adet stok)`,
+        productSku: sku,
         componentCode: topBottleneck?.code,
         suggestedAction: `${topBottleneck?.code} için acil tedarik başlat`,
         rootCause: [
@@ -174,7 +176,7 @@ export async function evaluateRules(trigger: {
             title: "Stok Tükenme Uyarısı",
             message: `${comp.code} ${comp.name} — Mevcut tüketim hızıyla ${comp.daysToStockout} gün içinde tükenecek! Stok: ${comp.currentStock}, Günlük tüketim: ${comp.dailyBurnRate}`,
             componentCode: comp.code,
-            productSku: MAIN_SKU,
+            productSku: sku,
             suggestedAction: `${comp.suggestedOrderQty} ${comp.unit} sipariş ver`,
             rootCause: [
               { order: 1, cause: `${comp.code} ${comp.name} bileşeni analiz edildi`, data: { code: comp.code, tier: comp.tier } },
@@ -243,7 +245,7 @@ export async function evaluateRules(trigger: {
             severity: "warning",
             title: "Mevsimsel Talep Artışı Yaklaşıyor",
             message: `${MONTH_LABELS[nextMonthIdx]} ayında talep ${spikeRatio}x artacak (${Math.round(dynDemand[currentMonthIdx])} → ${Math.round(dynDemand[nextMonthIdx])} adet). ${criticalForSpike.length} bileşen risk altında.`,
-            productSku: MAIN_SKU,
+            productSku: sku,
             suggestedAction: `Risk altındaki ${criticalForSpike.length} bileşen için stok takviyesi planla`,
             rootCause: [
               { order: 1, cause: `Mevsimsel indeks karşılaştırması: ${MONTH_LABELS[currentMonthIdx]} (${currentIdx.toFixed(2)}) → ${MONTH_LABELS[nextMonthIdx]} (${nextIdx.toFixed(2)})`, data: { currentIndex: currentIdx, nextIndex: nextIdx } },
@@ -269,7 +271,7 @@ export async function evaluateRules(trigger: {
           severity: "critical",
           title: "Çoklu Bileşen Krizi",
           message: `${criticalComps.length} bileşen aynı anda kritik seviyede! Üretim durma riski yüksek — kurtarma süresi uzar.`,
-          productSku: MAIN_SKU,
+          productSku: sku,
           suggestedAction: "Acil tedarik toplantısı — tüm kritik bileşenler için koordineli sipariş",
           rootCause: [
             { order: 1, cause: `${criticalComps.length} bileşen aynı anda KRİTİK durumda (eşik: 3)` },
@@ -299,7 +301,7 @@ export async function evaluateRules(trigger: {
             title: "Tedarik Süresi Riski",
             message: `${comp.code} ${comp.name} — ${comp.daysToStockout} gün sonra tükenecek ama tedarik süresi ${T.leadTimeDays} gün. Bugün sipariş verse bile yetişmez!`,
             componentCode: comp.code,
-            productSku: MAIN_SKU,
+            productSku: sku,
             suggestedAction: `${comp.code} için ACİL sipariş + alternatif tedarikçi ara`,
             rootCause: [
               { order: 1, cause: `${comp.code} stok ömrü hesaplandı: ${comp.daysToStockout} gün`, data: { daysToStockout: comp.daysToStockout } },
@@ -321,7 +323,7 @@ export async function evaluateRules(trigger: {
           title: "Anormal Tüketim Hızı",
           message: `${comp.code} ${comp.name} — Tüketim hızı normalin ${comp.trendRatio.toFixed(1)}x üstünde! Beklenmedik talep artışı veya veri hatası olabilir.`,
           componentCode: comp.code,
-          productSku: MAIN_SKU,
+          productSku: sku,
           suggestedAction: `${comp.code} tüketim kaydını kontrol et + stok takviyesi değerlendir`,
           rootCause: [
             { order: 1, cause: `${comp.code} tüketim trendi: ${comp.trend}`, data: { trend: comp.trend } },
@@ -345,7 +347,7 @@ export async function evaluateRules(trigger: {
           title: "Kış Stresi Tahmini",
           message: `${comp.code} ${comp.name} — Stok kış aylarında (${comp.depletionMonth} ${comp.depletionYear}) tükenecek. Kış talebi yüksek olduğundan erken tedarik önerilir.`,
           componentCode: comp.code,
-          productSku: MAIN_SKU,
+          productSku: sku,
           suggestedAction: `${comp.code} için kış öncesi stok takviyesi planla`,
           rootCause: [
             { order: 1, cause: `${comp.code} mevsimsel forward-walk analizi yapıldı` },
@@ -373,7 +375,7 @@ export async function evaluateRules(trigger: {
             severity: "warning",
             title: "Kapasite Erozyon Trendi",
             message: `Üretim kapasitesi sürekli düşüyor: ${last3.map(h => h.capacity).join(" → ")}. Mevcut darboğaz: ${capacity.bottlenecks[0]?.name || "?"}`,
-            productSku: MAIN_SKU,
+            productSku: sku,
             suggestedAction: "Darboğaz bileşenlerin tedarik planını gözden geçir",
             rootCause: [
               { order: 1, cause: `Son 3 ölçümde kapasite monoton düşüyor`, data: { readings: last3.map(h => h.capacity).join(", ") } },
