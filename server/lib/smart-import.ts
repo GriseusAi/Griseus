@@ -12,6 +12,7 @@ import { db } from "../db";
 import { salesHistory, componentStock, bomItems } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { MAIN_SKU } from "./constants";
+import { getMonthlyDemandForSku } from "./seasonal-constants";
 
 // ══════════════════════════════════════════════════════════
 // TYPES
@@ -101,19 +102,18 @@ function mapColumns(headers: string[]): { mapping: Record<string, string>; type:
 // ANOMALİ TESPİTİ
 // ══════════════════════════════════════════════════════════
 
-const MONTHLY_DEMAND_EXPECTED = [340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325];
-
-function detectAnomalies(rows: Record<string, any>[], type: ImportType, mapping: Record<string, string>): Anomaly[] {
+function detectAnomalies(rows: Record<string, any>[], type: ImportType, mapping: Record<string, string>, monthlyDemandExpected?: number[]): Anomaly[] {
   const anomalies: Anomaly[] = [];
 
-  if (type === "sales_history") {
+  if (type === "sales_history" && monthlyDemandExpected && monthlyDemandExpected.some(d => d > 0)) {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const qty = Number(row[mapping.quantity]);
       const month = Number(row[mapping.month]);
 
       if (!isNaN(qty) && !isNaN(month) && month >= 1 && month <= 12) {
-        const expected = MONTHLY_DEMAND_EXPECTED[month - 1];
+        const expected = monthlyDemandExpected[month - 1];
+        if (!expected || expected <= 0) continue;
         const ratio = qty / expected;
 
         // %200'den fazla veya %20'den az — anomali
@@ -214,8 +214,17 @@ export async function smartImport(
     };
   }
 
-  // Anomali tespiti
-  const anomalies = detectAnomalies(rawData, finalType, mapping);
+  // Anomali tespiti — fetch expected demand dynamically for the product
+  let monthlyDemandExpected: number[] | undefined;
+  try {
+    const demandData = await getMonthlyDemandForSku(productSku);
+    if (demandData.annual > 0) {
+      monthlyDemandExpected = demandData.demand;
+    }
+  } catch {
+    // No sales history yet — skip anomaly detection
+  }
+  const anomalies = detectAnomalies(rawData, finalType, mapping, monthlyDemandExpected);
   const criticalAnomalies = anomalies.filter(a => a.severity === "critical");
 
   // Preview (ilk 5 satır)

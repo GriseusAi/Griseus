@@ -219,7 +219,7 @@ export async function computeImpactPropagation(
         affectedNodes.push({
           entity: "production",
           code: SKU,
-          name: "ELT 7-11 Üretim Kapasitesi",
+          name: `${SKU} Üretim Kapasitesi`,
           field: "maxProducible",
           previousValue: before.maxProducible,
           newValue: after.maxProducible,

@@ -37,7 +37,7 @@ const router = Router();
 // CONSTANTS & CONFIG — The Ontology Properties (from constants.ts)
 // ═══════════════════════════════════════════════════════════
 
-const SKU = MAIN_SKU;
+const DEFAULT_SKU = MAIN_SKU;
 
 // ═══════════════════════════════════════════════════════════
 // DATA LAYER — Ontology Object Retrieval
@@ -48,11 +48,11 @@ interface MonthlyDemand {
   avgSales: number;
 }
 
-async function getMonthlyDemand(): Promise<MonthlyDemand[]> {
+async function getMonthlyDemand(sku: string = DEFAULT_SKU): Promise<MonthlyDemand[]> {
   const rows = await db.execute(sql`
     SELECT month, avg_monthly_sales
     FROM demand_forecast
-    WHERE product_sku = ${SKU}
+    WHERE product_sku = ${sku}
     ORDER BY month
   `);
   return (rows.rows as any[]).map(r => ({
@@ -541,10 +541,11 @@ function compute10XScore(
 
 // ── GET /api/palantir/oracle — THE MASTER ENDPOINT ──
 // Returns the complete intelligence package
-router.get("/oracle", async (_req: Request, res: Response) => {
+router.get("/oracle", async (req: Request, res: Response) => {
   try {
+    const SKU = (req.query.sku as string) || DEFAULT_SKU;
     // 1. Get demand data
-    const demand = await getMonthlyDemand();
+    const demand = await getMonthlyDemand(SKU);
     if (demand.length === 0) {
       return res.status(404).json({ error: "Talep verisi bulunamadı. Önce seed-demand çalıştırın." });
     }
@@ -685,9 +686,10 @@ router.get("/oracle", async (_req: Request, res: Response) => {
 });
 
 // ── GET /api/palantir/forecast — Demand forecast only ──
-router.get("/forecast", async (_req: Request, res: Response) => {
+router.get("/forecast", async (req: Request, res: Response) => {
   try {
-    const demand = await getMonthlyDemand();
+    const SKU = (req.query.sku as string) || DEFAULT_SKU;
+    const demand = await getMonthlyDemand(SKU);
     const monthlyDemands = demand.map(d => d.avgSales);
     const hwResult = holtWinters(monthlyDemands);
 
@@ -702,9 +704,10 @@ router.get("/forecast", async (_req: Request, res: Response) => {
 });
 
 // ── GET /api/palantir/mrp — MRP explosion only ──
-router.get("/mrp", async (_req: Request, res: Response) => {
+router.get("/mrp", async (req: Request, res: Response) => {
   try {
-    const demand = await getMonthlyDemand();
+    const SKU = (req.query.sku as string) || DEFAULT_SKU;
+    const demand = await getMonthlyDemand(SKU);
     const monthlyDemands = demand.map(d => d.avgSales);
     const hwResult = holtWinters(monthlyDemands);
 
@@ -724,9 +727,10 @@ router.get("/mrp", async (_req: Request, res: Response) => {
 });
 
 // ── GET /api/palantir/abc — ABC-XYZ classification only ──
-router.get("/abc", async (_req: Request, res: Response) => {
+router.get("/abc", async (req: Request, res: Response) => {
   try {
-    const demand = await getMonthlyDemand();
+    const SKU = (req.query.sku as string) || DEFAULT_SKU;
+    const demand = await getMonthlyDemand(SKU);
     const monthlyDemands = demand.map(d => d.avgSales);
 
     const bomData = await getBomWithStock(SKU);

@@ -103,27 +103,27 @@ YAPMA:
 - Gereksiz uzun tablolar yapma
 
 ÖRNEK İYİ CEVAP:
-"⚠️ 27.031 Reflektör Tutucu — stok azalıyor, kış öncesi sipariş gerekli
+"⚠️ [Bileşen kodu] [Bileşen adı] — stok azalıyor, kış öncesi sipariş gerekli
 
-📦 Stok: **402 adet**
-🏭 Günlük tüketim: **1.53 adet/gün**
-📅 Tükenme: **Ocak 2027** (kış pik dönemi!)
+📦 Stok: **X adet**
+🏭 Günlük tüketim: **Y adet/gün**
+📅 Tükenme: **[Ay Yıl]** (kış pik dönemi!)
 
 **Neden önemli?**
-1. Kış aylarında talep **1.73 kat** artıyor
-2. Tedarik süresi **19 gün** — geç kalınırsa üretim durur
+1. Kış aylarında talep **Z kat** artıyor
+2. Tedarik süresi **N gün** — geç kalınırsa üretim durur
 3. Bu parça ana darboğaz — tükenirse hiç üretim yapılamaz
 
 **Ne yapmalı?**
-1. En az **500 adet** sipariş ver (kış öncesi stok artışı)
-2. Mayıs sonuna kadar siparişi tamamla
+1. En az **M adet** sipariş ver (kış öncesi stok artışı)
+2. [Tarih] sonuna kadar siparişi tamamla
 3. Kasım-Ocak döneminde günlük stok takibi yap"
 
 WHAT-IF ANALİZ KURALLARI (KRİTİK — MUTLAKA UYGULANACAK):
 - what_if_analysis tool'undan dönen verileri OLDUĞU GİBİ kullan. SAYI UYDURMA, YUVARLAMA veya YORUMLAMA.
 - "afterStock" değeri bileşenin simülasyon sonrası stokudur — bunu direkt yaz.
 - "afterSeasonalDays" değeri mevsimsel kaç gün yeteceğidir — bunu direkt yaz.
-- "currentStock → afterStock" formatında yaz: ör. "27.031: 482 → 982 adet"
+- "currentStock → afterStock" formatında yaz: ör. "XX.XXX: 482 → 982 adet"
 - Sadece "urgencyChanged: true" olan bileşenleri raporla, değişmeyen bileşenleri atlayabilirsin.
 - "stockDelta: 0" olan bileşenleri "stoku değişmedi" olarak belirt, ASLA saydırma yaparak farklı sayı türetme.
 - restock_component senaryosunda SADECE belirtilen bileşenin stoku değişir. Diğer bileşenlerin stockDelta'sı 0'dır — bunları "stoku sıfıra düştü" gibi yanlış gösterme.
@@ -173,7 +173,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        product_code: { type: "string", description: "Ürün kodu (ör: 'BH55', 'ELT.7-11')" },
+        product_code: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
         quantity: { type: "number", description: "Sipariş miktarı (adet)" },
       },
       required: ["product_code", "quantity"],
@@ -190,7 +190,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
+        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
       },
       required: [],
     },
@@ -201,7 +201,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
+        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
         quantity: { type: "number", description: "Kaç adet üretilmek isteniyor" },
       },
       required: ["quantity"],
@@ -213,7 +213,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
+        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
       },
       required: [],
     },
@@ -225,7 +225,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        product_code: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11')" },
+        product_code: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
         movement_type: {
           type: "string",
           enum: ["produced", "to_warehouse", "to_sales"],
@@ -243,7 +243,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        component_code: { type: "string", description: "Bileşen kodu (ör: '27.004')" },
+        component_code: { type: "string", description: "Bileşen kodu" },
         new_stock: { type: "number", description: "Yeni stok miktarı" },
         reason: { type: "string", description: "Güncelleme sebebi" },
       },
@@ -284,7 +284,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
+        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
         component_code: { type: "string", description: "Belirli bir bileşen kodu ile filtrele" },
       },
       required: [],
@@ -319,7 +319,7 @@ const TOOLS: Anthropic.Tool[] = [
           description: "Senaryo tipi: produce=üretim yapsak, order_received=sipariş alsak, restock_component=bileşen stoklasak, months_forward=N ay ileri simülasyon",
         },
         quantity: { type: "number", description: "Miktar (adet veya ay sayısı)" },
-        component_code: { type: "string", description: "Bileşen kodu (sadece restock_component için, ör: '27.031')" },
+        component_code: { type: "string", description: "Bileşen kodu (sadece restock_component için)" },
       },
       required: ["scenario_type", "quantity"],
     },
@@ -340,7 +340,7 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "create_custom_rule",
-    description: "Doğal dilde (Türkçe) iş kuralı oluştur. Kullanıcının sözlü tarifini yapılandırılmış kurala çevirir ve sisteme kaydeder. Örnek: 'Kış aylarında güvenlik stoku %50 artır', '27.031 stoku 200'ün altına düşerse kritik uyarı ver', 'Kapasite 50'nin altına düşünce sipariş oluştur'.",
+    description: "Doğal dilde (Türkçe) iş kuralı oluştur. Kullanıcının sözlü tarifini yapılandırılmış kurala çevirir ve sisteme kaydeder. Örnek: 'Kış aylarında güvenlik stoku %50 artır', 'X bileşenin stoku 200'ün altına düşerse kritik uyarı ver', 'Kapasite 50'nin altına düşünce sipariş oluştur'.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -379,7 +379,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        entity_id: { type: "string", description: "Bileşen kodu (ör. 27.031) veya ürün ID'si" },
+        entity_id: { type: "string", description: "Bileşen kodu veya ürün ID'si" },
         limit: { type: "number", description: "Son kaç kayıt (varsayılan: 20)" },
       },
       required: ["entity_id"],
@@ -1001,14 +1001,14 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
             type: "component_stock",
             description: "Bileşen stok güncellemesi",
             requiredColumns: ["kod/code/bileşen", "stok/stock/miktar"],
-            example: "Kod | Stok\n27.031 | 500\n27.061 | 250",
+            example: "Kod | Stok\nXX.XXX | 500\nXX.XXX | 250",
           },
           {
             type: "bom_update",
             description: "BOM reçete güncellemesi",
             requiredColumns: ["kod/code", "ad/name"],
             optionalColumns: ["gerekli/required", "birim/unit", "tier"],
-            example: "Kod | Ad | Gerekli\n27.031 | Reflektör Tutucu | 2",
+            example: "Kod | Ad | Gerekli\nXX.XXX | Bileşen Adı | 2",
           },
         ],
         endpoints: {

@@ -34,9 +34,9 @@ export interface ParsedRule {
 const PARSER_PROMPT = `Sen bir Türkçe iş kuralı ayrıştırıcısısın. Kullanıcının doğal dilde yazdığı stok/üretim kurallarını yapılandırılmış JSON'a çeviriyorsun.
 
 BAĞLAM:
-- ELT 7-11 cihazı üretimi, 43 bileşenli BOM reçetesi
-- Bileşen kodları: 27.xxx formatında (ör. 27.031 Paslanmaz Reflektör Tutucu)
-- Mevsimsel talep: Oca:340, Şub:278, Mar:131, Nis:222, May:162, Haz:234, Tem:108, Ağu:269, Eyl:98, Eki:169, Kas:22, Ara:325
+- Çukurova Isı Sistemleri — çoklu ürün üretimi
+- Bileşen kodları: ürüne göre değişir (XX.XXX formatında)
+- Mevsimsel talep: ürüne göre değişir
 - Kış ayları: Kasım(10), Aralık(11), Ocak(0), Şubat(1) — 0-indexed
 - Yaz ayları: Haziran(5), Temmuz(6), Ağustos(7)
 - Tedarik süresi: 14 gün

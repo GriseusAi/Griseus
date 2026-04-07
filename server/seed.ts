@@ -141,5 +141,13 @@ async function seedGSS20P() {
       });
       console.log("  ✓ GSS20P: stock levels seeded (0 — clean start)");
     }
+
+    // Fix existing record if it has wrong initial values (e.g. 203 from old seed)
+    if (existingLevel && existingLevel.inWarehouse === 203 && existingLevel.totalSold === 0) {
+      await db.update(stockLevels)
+        .set({ inWarehouse: 0 })
+        .where(eq(stockLevels.productId, productRow.id));
+      console.log("  ✓ GSS20P: fixed initial stock 203 → 0");
+    }
   }
 }
