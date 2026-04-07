@@ -11,7 +11,7 @@ import { simulateWhatIf, type WhatIfScenario } from "../lib/whatif-engine";
 import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
-import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS } from "../lib/seasonal-constants";
+import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS, getMonthlyDemandForSku } from "../lib/seasonal-constants";
 import { MAIN_SKU } from "../lib/constants";
 import { buildDynamicContext } from "../rag";
 import { logTokenInteraction } from "../lib/token-value-tracker";
@@ -190,7 +190,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
       },
       required: [],
     },
@@ -201,7 +201,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
         quantity: { type: "number", description: "Kaç adet üretilmek isteniyor" },
       },
       required: ["quantity"],
@@ -213,7 +213,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
       },
       required: [],
     },
@@ -284,7 +284,7 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (varsayılan: 'ELT.7-11')" },
+        sku: { type: "string", description: "Ürün kodu (ör: 'ELT.7-11' veya 'GSS20P')" },
         component_code: { type: "string", description: "Belirli bir bileşen kodu ile filtrele" },
       },
       required: [],
@@ -1313,60 +1313,49 @@ function classifyQuery(
 
 async function buildLiveSnapshot(): Promise<string> {
   try {
-    const SKU = MAIN_SKU;
-    const bomItems = await getBomWithStock(SKU);
-    const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);
+    const today = new Date();
+    const ayIdx = today.getMonth();
 
-    // Stock levels
+    // Fetch ALL products with BOM
+    const allProducts = await db.execute(sql`
+      SELECT DISTINCT p.sku, p.name FROM products p
+      WHERE p.sku IN (SELECT DISTINCT parent_product_sku FROM bom_items)
+      ORDER BY p.sku
+    `);
+    const productList = allProducts.rows as Array<{ sku: string; name: string }>;
+
+    // Stock levels for all products
     const stockRows = await db
       .select({ sku: products.sku, inProd: stockLevels.inProduction, inWh: stockLevels.inWarehouse, sold: stockLevels.totalSold })
       .from(stockLevels).innerJoin(products, eq(stockLevels.productId, products.id));
-    const elt = stockRows.find(r => r.sku === SKU);
-
-    // Capacity
-    const capacity = computeProductionCapacity(bomItems);
-
-    // Critical parts (stock < 3 months need)
-    const MONTHLY_AVG = SHARED_MONTHLY_AVG;
-    const criticals = tier1and2
-      .filter(c => c.currentStock <= c.requiredQty * MONTHLY_AVG * 3)
-      .sort((a, b) => (a.currentStock / Math.max(a.requiredQty, 0.01)) - (b.currentStock / Math.max(b.requiredQty, 0.01)))
-      .slice(0, 8);
-
-    // Top overstocked (>24 months)
-    const overstocked = tier1and2
-      .filter(c => c.currentStock > c.requiredQty * MONTHLY_AVG * 24)
-      .sort((a, b) => (b.currentStock / Math.max(b.requiredQty * MONTHLY_AVG, 0.01)) - (a.currentStock / Math.max(a.requiredQty * MONTHLY_AVG, 0.01)))
-      .slice(0, 5);
-
-    const today = new Date();
-    const ayIdx = today.getMonth(); // 0-indexed
 
     let snapshot = `\n═══ CANLI DURUM (${today.toLocaleDateString("tr-TR")}) ═══\n`;
-    snapshot += `Mamul stok: ${elt ? elt.inProd + elt.inWh : 0} adet (üretimde:${elt?.inProd ?? 0} depoda:${elt?.inWh ?? 0} satılan:${elt?.sold ?? 0})\n`;
-    snapshot += `Max üretilebilir: ${capacity.maxProducible} adet (darboğaz: ${capacity.bottlenecks[0]?.name || "-"})\n`;
-    snapshot += `Bu ay: ${MONTH_LABELS[ayIdx]} — talep ${DEMAND_0[ayIdx]} adet (${(DEMAND_0[ayIdx] / MONTHLY_AVG).toFixed(2)}x)\n`;
+    snapshot += `KAYITLI ÜRÜNLER: ${productList.map(p => p.sku).join(", ")}\n`;
 
-    if (criticals.length > 0) {
-      snapshot += `\nKRİTİK/AZ STOK:\n`;
-      for (const c of criticals) {
-        const months = c.currentStock / Math.max(c.requiredQty * MONTHLY_AVG, 0.01);
-        snapshot += `  ${c.code} ${c.name}: stok=${Math.round(c.currentStock)} (${months.toFixed(1)} aylık)\n`;
+    for (const prod of productList) {
+      const bomData = await getBomWithStock(prod.sku);
+      if (bomData.length === 0) continue;
+
+      const capacity = computeProductionCapacity(bomData);
+      const stk = stockRows.find(r => r.sku === prod.sku);
+      const { demand, annual } = await getMonthlyDemandForSku(prod.sku);
+      const monthlyAvg = annual / 12;
+
+      snapshot += `\n── ${prod.sku} (${prod.name}) ──\n`;
+      snapshot += `  Mamul: ${stk ? stk.inProd + stk.inWh : 0} adet | Max üretilebilir: ${capacity.maxProducible} (darboğaz: ${capacity.bottlenecks[0]?.name || "-"})\n`;
+      snapshot += `  Bu ay talep: ~${Math.round(demand[ayIdx])} adet | Yıllık: ${annual} | Bileşen: ${bomData.filter(b => b.tier <= 2).length}\n`;
+
+      // Top 3 critical parts
+      const criticals = bomData
+        .filter(c => (c.tier === 1 || c.tier === 2) && c.currentStock <= c.requiredQty * monthlyAvg * 3)
+        .sort((a, b) => (a.currentStock / Math.max(a.requiredQty, 0.01)) - (b.currentStock / Math.max(b.requiredQty, 0.01)))
+        .slice(0, 3);
+      if (criticals.length > 0) {
+        snapshot += `  Kritik: ${criticals.map(c => `${c.code}(stok:${Math.round(c.currentStock)})`).join(", ")}\n`;
       }
     }
 
-    if (overstocked.length > 0) {
-      snapshot += `\nAŞIRI STOK (>2 yıl):\n`;
-      for (const c of overstocked) {
-        const months = c.currentStock / Math.max(c.requiredQty * MONTHLY_AVG, 0.01);
-        snapshot += `  ${c.code} ${c.name}: stok=${Math.round(c.currentStock)} (${months.toFixed(1)} aylık)\n`;
-      }
-    }
-
-    snapshot += `\nÖnümüzdeki 3 ay: ${MONTH_LABELS[ayIdx]}(${DEMAND_0[ayIdx]}) → ${MONTH_LABELS[(ayIdx + 1) % 12]}(${DEMAND_0[(ayIdx + 1) % 12]}) → ${MONTH_LABELS[(ayIdx + 2) % 12]}(${DEMAND_0[(ayIdx + 2) % 12]})\n`;
-    snapshot += `Toplam bileşen: ${tier1and2.length} | Sıfır stoklu: ${tier1and2.filter(c => c.currentStock <= 0).length}\n`;
     snapshot += `═══════════════════════════════════\n`;
-
     return snapshot;
   } catch (err) {
     console.warn("[agent/snapshot] Failed:", err);
