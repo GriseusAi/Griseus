@@ -131,15 +131,15 @@ async function seedGSS20P() {
     console.log("  ✓ GSS20P: 36 months sales history seeded");
   }
 
-  // 4. Stock levels (mamul stok: 203)
+  // 4. Stock levels (sıfırdan başla — depoya transfer yapılmadı)
   const [productRow] = await db.select().from(products).where(eq(products.sku, SKU));
   if (productRow) {
     const [existingLevel] = await db.select().from(stockLevels).where(eq(stockLevels.productId, productRow.id));
     if (!existingLevel) {
       await db.insert(stockLevels).values({
-        productId: productRow.id, inProduction: 0, inWarehouse: 203, totalSold: 0,
+        productId: productRow.id, inProduction: 0, inWarehouse: 0, totalSold: 0,
       });
-      console.log("  ✓ GSS20P: stock levels seeded (203 in warehouse)");
+      console.log("  ✓ GSS20P: stock levels seeded (0 — clean start)");
     }
   }
 }
