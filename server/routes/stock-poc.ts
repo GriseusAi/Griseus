@@ -33,10 +33,11 @@ export async function ensureStockLevel(productId: number, tx?: any): Promise<{
   return { inProduction: created.inProduction, inWarehouse: created.inWarehouse, totalSold: created.totalSold };
 }
 
-// ── GET /api/stock/levels — sadece ELT.7-11 stok durumu ───────────────
-stockPocRouter.get("/levels", async (_req, res) => {
+// ── GET /api/stock/levels — tüm ürünlerin stok durumu ───────────────
+stockPocRouter.get("/levels", async (req, res) => {
   try {
-    const rows = await db
+    const skuFilter = req.query.sku as string | undefined;
+    let query = db
       .select({
         id: stockLevels.id,
         productId: stockLevels.productId,
@@ -49,8 +50,11 @@ stockPocRouter.get("/levels", async (_req, res) => {
         updatedAt: stockLevels.updatedAt,
       })
       .from(stockLevels)
-      .innerJoin(products, eq(stockLevels.productId, products.id))
-      .where(eq(products.sku, MAIN_SKU));
+      .innerJoin(products, eq(stockLevels.productId, products.id));
+
+    const rows = skuFilter
+      ? await query.where(eq(products.sku, skuFilter))
+      : await query;
 
     res.json(rows);
   } catch (error: any) {
@@ -541,14 +545,16 @@ stockPocRouter.post("/reset", async (_req, res) => {
   }
 });
 
-// ── GET /api/stock/products — sadece ELT.7-11 ────────────
+// ── GET /api/stock/products — tüm BOM'lu ürünler ────────────
 stockPocRouter.get("/products", async (_req, res) => {
   try {
-    const rows = await db
-      .select({ id: products.id, sku: products.sku, name: products.name, category: products.category })
-      .from(products)
-      .where(eq(products.sku, MAIN_SKU));
-    res.json(rows);
+    const rows = await db.execute(sql`
+      SELECT DISTINCT p.id, p.sku, p.name, p.category
+      FROM products p
+      WHERE p.sku IN (SELECT DISTINCT parent_product_sku FROM bom_items)
+      ORDER BY p.name
+    `);
+    res.json(rows.rows);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }

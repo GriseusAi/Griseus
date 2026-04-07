@@ -73,6 +73,12 @@ ADAPTIVE THRESHOLD ENGINE (ATE):
 - "Neden kritik?" sorusunda adaptif eşikleri açıkla: "180 gün eşiği firmanızın profili için X gün olarak ayarlandı"
 - Kullanıcı profil/eşik soruyorsa get_adaptive_profile kullan
 
+ÇOKLU ÜRÜN DESTEĞİ (KRİTİK):
+- Sistemde BİRDEN FAZLA ürün var. CANLI DURUM bölümünde tüm kayıtlı ürünleri ve kapasitelerini görürsün.
+- Kullanıcı bir ürün adı veya kodu söylediğinde, DOĞRU SKU'yu tool çağrılarında kullan.
+- "GSS20P" veya "Supra" diyorsa sku="GSS20P", "ELT" veya "Elite" diyorsa sku="ELT.7-11" kullan.
+- Genel soru sorarsa (örn: "tüm ürünlerin durumu?") HER ürün için ayrı tool çağrısı yap.
+
 STRATEJİ: Düşük dönemde üret+stokla → yoğun dönemde hazır ol. Mevsimsel dip dönemlerinde stokla, pik dönemlerine hazırlan. Canlı stok durumu aşağıdaki CANLI DURUM bölümünden okunur.
 
 CEVAP TARZI (KRİTİK — HER CEVAPTA UYGULANACAK):
@@ -186,36 +192,36 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_production_capacity",
-    description: "BOM bazlı üretim kapasitesi. Mevcut bileşen stokları ile kaç adet ürün üretilebileceğini ve darboğazları hesaplar.",
+    description: "BOM bazlı üretim kapasitesi. Mevcut bileşen stokları ile kaç adet ürün üretilebileceğini ve darboğazları hesaplar. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
       },
-      required: [],
+      required: ["sku"],
     },
   },
   {
     name: "simulate_production",
-    description: "Üretim simülasyonu. Belirli miktarda ürün için gereken malzemeleri, eksikleri ve yeterliliği hesaplar.",
+    description: "Üretim simülasyonu. Belirli miktarda ürün için gereken malzemeleri, eksikleri ve yeterliliği hesaplar. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
         quantity: { type: "number", description: "Kaç adet üretilmek isteniyor" },
       },
-      required: ["quantity"],
+      required: ["sku", "quantity"],
     },
   },
   {
     name: "get_bom_tree",
-    description: "Ürün ağacını getir. Tüm bileşenleri, miktarlarını, stoklarını ve tier yapısını döner.",
+    description: "Ürün ağacını getir. Tüm bileşenleri, miktarlarını, stoklarını ve tier yapısını döner. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
       },
-      required: [],
+      required: ["sku"],
     },
   },
   // ── WRITE TOOLS — OAG (Ontology-Augmented Generation) ──
@@ -280,19 +286,19 @@ const TOOLS: Anthropic.Tool[] = [
   },
   {
     name: "get_component_intelligence",
-    description: "Bileşen istihbaratı. Tüketim hızı, stokta kaç gün yeteceği, sipariş noktası ve trend analizi.",
+    description: "Bileşen istihbaratı. Tüketim hızı, stokta kaç gün yeteceği, sipariş noktası ve trend analizi. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
-        sku: { type: "string", description: "Ürün kodu (sistemde kayıtlı herhangi bir SKU)" },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
         component_code: { type: "string", description: "Belirli bir bileşen kodu ile filtrele" },
       },
-      required: [],
+      required: ["sku"],
     },
   },
   {
     name: "get_intelligence_engine",
-    description: "Intelligence Engine — Tam ontoloji paketi. Holt-Winters mevsimsel tahmin, güvenlik stoku, MRP BOM patlatma, ABC-XYZ sınıflandırma, 6 aylık üretim planı, acil sipariş listesi ve 10X optimizasyon skoru. Bu tool'u MUTLAKA kullan — en kapsamlı analiz burada.",
+    description: "Intelligence Engine — Tam ontoloji paketi. Holt-Winters mevsimsel tahmin, güvenlik stoku, MRP BOM patlatma, ABC-XYZ sınıflandırma, 6 aylık üretim planı, acil sipariş listesi ve 10X optimizasyon skoru. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -301,15 +307,16 @@ const TOOLS: Anthropic.Tool[] = [
           enum: ["oracle", "uretim_plani", "alti_ay_plan", "acil_siparis", "tenx"],
           description: "Rapor tipi: oracle=tam paket, uretim_plani=üretim fizibilite, alti_ay_plan=6 aylık strateji, acil_siparis=acil sipariş listesi, tenx=10X optimizasyon",
         },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
         adet: { type: "number", description: "Üretim planı için adet (varsayılan: 222)" },
         ay: { type: "number", description: "Acil sipariş için kaç ay ileri (varsayılan: 3)" },
       },
-      required: [],
+      required: ["sku"],
     },
   },
   {
     name: "what_if_analysis",
-    description: "What-If Analizi — Cascading impact simülasyonu. Veri DEĞİŞTİRMEDEN senaryoları simüle eder ve tüm zincirleme etkileri gösterir: üretim kapasitesi, bileşen tükenme tarihleri, darboğaz değişimi, sipariş önerileri. Kullanıcı 'ne olur?' diye sorduğunda MUTLAKA bu tool'u kullan.",
+    description: "What-If Analizi — Cascading impact simülasyonu. Veri DEĞİŞTİRMEDEN senaryoları simüle eder ve tüm zincirleme etkileri gösterir: üretim kapasitesi, bileşen tükenme tarihleri, darboğaz değişimi, sipariş önerileri. Kullanıcı 'ne olur?' diye sorduğunda MUTLAKA bu tool'u kullan. CANLI DURUM'daki SKU'lardan birini seç.",
     input_schema: {
       type: "object" as const,
       properties: {
@@ -319,9 +326,10 @@ const TOOLS: Anthropic.Tool[] = [
           description: "Senaryo tipi: produce=üretim yapsak, order_received=sipariş alsak, restock_component=bileşen stoklasak, months_forward=N ay ileri simülasyon",
         },
         quantity: { type: "number", description: "Miktar (adet veya ay sayısı)" },
+        sku: { type: "string", description: "Ürün kodu — CANLI DURUM'daki SKU'lardan biri (örn: ELT.7-11, GSS20P)" },
         component_code: { type: "string", description: "Bileşen kodu (sadece restock_component için)" },
       },
-      required: ["scenario_type", "quantity"],
+      required: ["scenario_type", "quantity", "sku"],
     },
   },
   {
@@ -846,24 +854,25 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     case "get_intelligence_engine": {
       const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
       const reportType = input.report_type || "oracle";
+      const intelSku = input.sku as string || MAIN_SKU;
 
       try {
         let url: string;
         switch (reportType) {
           case "uretim_plani":
-            url = `${baseUrl}/api/palantir/demo/uretim-plani?adet=${input.adet || 222}`;
+            url = `${baseUrl}/api/palantir/demo/uretim-plani?adet=${input.adet || 222}&sku=${intelSku}`;
             break;
           case "alti_ay_plan":
-            url = `${baseUrl}/api/palantir/demo/6-ay-plan`;
+            url = `${baseUrl}/api/palantir/demo/6-ay-plan?sku=${intelSku}`;
             break;
           case "acil_siparis":
-            url = `${baseUrl}/api/palantir/demo/acil-siparis?ay=${input.ay || 3}`;
+            url = `${baseUrl}/api/palantir/demo/acil-siparis?ay=${input.ay || 3}&sku=${intelSku}`;
             break;
           case "tenx":
-            url = `${baseUrl}/api/palantir/demo/10x`;
+            url = `${baseUrl}/api/palantir/demo/10x?sku=${intelSku}`;
             break;
           default:
-            url = `${baseUrl}/api/palantir/oracle`;
+            url = `${baseUrl}/api/palantir/oracle?sku=${intelSku}`;
         }
         const resp = await fetch(url);
         const data = await resp.json();
@@ -878,6 +887,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         const scenarioType = input.scenario_type as string;
         const quantity = input.quantity as number;
         const componentCode = input.component_code as string | undefined;
+        const whatIfSku = input.sku as string || MAIN_SKU;
 
         let scenario: WhatIfScenario;
         switch (scenarioType) {
@@ -898,7 +908,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
             return { error: `Bilinmeyen senaryo tipi: ${scenarioType}` };
         }
 
-        const result = await simulateWhatIf(scenario);
+        const result = await simulateWhatIf(scenario, whatIfSku);
         return {
           scenario: result.scenario,
           feasible: result.feasible,
@@ -1339,14 +1349,16 @@ async function buildLiveSnapshot(): Promise<string> {
       snapshot += `  ${prod.sku} — ${prod.name} | Mamül: ${mamul} adet | ${prod.bom_count} bileşen\n`;
     }
 
-    // Only compute capacity for main product (fast path)
-    try {
-      const mainBom = await getBomWithStock(MAIN_SKU);
-      if (mainBom.length > 0) {
-        const cap = computeProductionCapacity(mainBom);
-        snapshot += `\n${MAIN_SKU} kapasite: ${cap.maxProducible} (darboğaz: ${cap.bottlenecks[0]?.name || "-"})\n`;
-      }
-    } catch {}
+    // Compute capacity for ALL products with BOMs
+    for (const prod of productList) {
+      try {
+        const bom = await getBomWithStock(prod.sku);
+        if (bom.length > 0) {
+          const cap = computeProductionCapacity(bom);
+          snapshot += `${prod.sku} kapasite: ${cap.maxProducible} adet (darboğaz: ${cap.bottlenecks[0]?.name || "-"})\n`;
+        }
+      } catch {}
+    }
 
     snapshot += `\nNOT: Herhangi bir ürün hakkında detay için tool'ları kullan (get_production_capacity, get_component_intelligence vb.) — sku parametresi ile ürün belirt.\n`;
     snapshot += `═══════════════════════════════════\n`;
