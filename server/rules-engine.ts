@@ -55,8 +55,8 @@ export async function evaluateRules(trigger: {
   const T = await getThresholds();
 
   // DSE — Dinamik mevsimsel indeksler
-  const dynIndices = await getDynamicIndices();
-  const dynDemand = await getDynamicDemand();
+  const dynIndices = await getDynamicIndices("cukurova", sku);
+  const dynDemand = await getDynamicDemand("cukurova", sku);
 
   // Ortak veriyi bir kez hesapla
   let intel: { components: ComponentIntelligence[]; criticalCount: number } | null = null;

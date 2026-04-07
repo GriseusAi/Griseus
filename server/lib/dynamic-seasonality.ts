@@ -19,8 +19,10 @@ import { logAudit } from "./audit";
 import {
   MONTHLY_DEMAND, SEASONAL_INDICES as STATIC_INDICES,
   YEARLY_TOTAL, MONTHLY_AVG, MONTH_LABELS,
+  getMonthlyDemandForSku,
 } from "./seasonal-constants";
 import { MAIN_SKU } from "./constants";
+import { products, bomItems as bomItemsTable } from "@shared/schema";
 
 // ══════════════════════════════════════════════════════════
 // CONSTANTS
@@ -118,7 +120,20 @@ export async function getDynamicIndices(
     console.error("[DSE] Index fetch error:", err);
   }
 
-  // Fallback: statik indeksler
+  // Fallback: for MAIN_SKU use static indices, for others compute from sales_history
+  if (sku !== MAIN_SKU) {
+    try {
+      const { demand, annual } = await getMonthlyDemandForSku(sku);
+      if (annual > 0) {
+        const avg = annual / 12;
+        const computed = demand.map(d => d / avg);
+        indexCache.set(key, computed);
+        return computed;
+      }
+    } catch (err) {
+      console.error("[DSE] Fallback index computation error for", sku, err);
+    }
+  }
   return [...STATIC_INDICES];
 }
 
@@ -468,6 +483,89 @@ export async function initDSE(
     await getDynamicIndices(tenantId, sku);
   } catch (err) {
     console.error("[DSE] Init error:", err);
+  }
+}
+
+/**
+ * Initialize seasonal indices for ALL products that have BOM items.
+ * For MAIN_SKU: seeds from static MONTHLY_DEMAND.
+ * For other SKUs: seeds from sales_history via getMonthlyDemandForSku.
+ */
+export async function initAllProducts(tenantId: string = "cukurova"): Promise<void> {
+  // Always init MAIN_SKU first (uses static baseline)
+  await initDSE(tenantId, MAIN_SKU);
+
+  try {
+    // Find all product SKUs that have BOM items (excluding MAIN_SKU, already done)
+    const rows = await db.selectDistinct({ sku: bomItemsTable.parentProductSku })
+      .from(bomItemsTable);
+
+    const skus = rows
+      .map(r => r.sku)
+      .filter(s => s && s !== MAIN_SKU);
+
+    for (const sku of skus) {
+      await initDSEForProduct(tenantId, sku);
+    }
+
+    console.log(`[DSE] initAllProducts complete: MAIN_SKU + ${skus.length} additional products`);
+  } catch (err) {
+    console.error("[DSE] initAllProducts error:", err);
+  }
+}
+
+/**
+ * Initialize seasonal indices for a non-MAIN product.
+ * Seeds baseline from sales_history instead of static MONTHLY_DEMAND.
+ */
+async function initDSEForProduct(tenantId: string, sku: string): Promise<void> {
+  try {
+    const existing = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(seasonalIndices)
+      .where(and(
+        eq(seasonalIndices.tenantId, tenantId),
+        eq(seasonalIndices.productSku, sku),
+      ));
+
+    if (Number(existing[0].count) >= 12) {
+      console.log(`[DSE] Seasonal indices already seeded for ${sku}`);
+      await getDynamicIndices(tenantId, sku);
+      return;
+    }
+
+    // Get demand from sales_history
+    const { demand, annual } = await getMonthlyDemandForSku(sku);
+    const avg = annual > 0 ? annual / 12 : 1;
+
+    const values = demand.map((d, month) => ({
+      tenantId,
+      productSku: sku,
+      month,
+      baselineDemand: String(d),
+      baselineIndex: String(avg > 0 ? d / avg : 1),
+      dynamicDemand: String(d),
+      dynamicIndex: String(avg > 0 ? d / avg : 1),
+      sampleCount: annual > 0 ? 3 : 0,
+      stdDev: String(Math.round(d * 0.2)),
+    }));
+
+    await db.insert(seasonalIndices).values(values);
+
+    // Run EWMA over existing sales history
+    const salesCount = await db.select({ count: sql<number>`COUNT(*)` })
+      .from(salesHistory)
+      .where(eq(salesHistory.productSku, sku));
+
+    if (Number(salesCount[0].count) > 0) {
+      const result = await bulkUpdateFromSalesHistory(tenantId, sku);
+      console.log(`[DSE] ${sku}: initialized from salesHistory — ${result.updated} updates, ${result.anomalies.length} anomalies`);
+    } else {
+      console.log(`[DSE] ${sku}: initialized with sales_history baseline (no raw sales data)`);
+    }
+
+    await getDynamicIndices(tenantId, sku);
+  } catch (err) {
+    console.error(`[DSE] initDSEForProduct error for ${sku}:`, err);
   }
 }
 

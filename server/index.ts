@@ -149,9 +149,9 @@ app.use((req, res, next) => {
     applyDecay().catch(err => console.error("[ADM] Decay error:", err));
   }, 6 * 60 * 60 * 1000);
 
-  // DSE — Dynamic Seasonality Engine başlat
-  const { initDSE } = await import("./lib/dynamic-seasonality");
-  await initDSE().catch(err => console.error("[DSE] Init error:", err));
+  // DSE — Dynamic Seasonality Engine başlat (tüm ürünler)
+  const { initAllProducts } = await import("./lib/dynamic-seasonality");
+  await initAllProducts().catch(err => console.error("[DSE] Init error:", err));
 
   // ATE — Adaptive Threshold Engine başlat
   const { initATE, updateBehaviorProfile } = await import("./lib/adaptive-thresholds");

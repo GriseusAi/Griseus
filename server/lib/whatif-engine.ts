@@ -101,8 +101,8 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string = MAI
   const T = await getThresholds();
 
   // DSE — Dinamik mevsimsel indeksler
-  const dynIndices = await getDynamicIndices();
-  const { yearlyTotal: dynYearlyTotal } = await getDynamicTotals();
+  const dynIndices = await getDynamicIndices("cukurova", sku);
+  const { yearlyTotal: dynYearlyTotal } = await getDynamicTotals("cukurova", sku);
 
   // Get current state
   const [intel, bomItems] = await Promise.all([
