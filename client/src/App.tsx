@@ -5,6 +5,7 @@ import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
 import AgentPanel from "@/components/AgentPanel";
+import { SKUProvider } from "@/lib/sku-context";
 
 /* ═══════════════════════════════════════════════════════════
    GRISEUS — Single-Product Stock Intelligence
@@ -67,6 +68,7 @@ function App() {
 
   return (
     <QueryClientProvider client={queryClient}>
+      <SKUProvider>
       <AlertContext.Provider value={{ alerts, pushAlerts }}>
       <AgentPanelContext.Provider value={{ agentOpen, toggleAgent }}>
         <Switch>
@@ -83,6 +85,7 @@ function App() {
         <Toaster />
       </AgentPanelContext.Provider>
       </AlertContext.Provider>
+      </SKUProvider>
     </QueryClientProvider>
   );
 }

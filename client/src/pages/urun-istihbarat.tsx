@@ -1,4 +1,5 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
+import { useSKU } from "@/lib/sku-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
 import { motion } from "framer-motion";
@@ -123,7 +124,15 @@ function getStatusLabel(status: string): string {
 export default function UrunIstihbarat() {
   const [, params] = useRoute("/stok/urun/:sku");
   const [, navigate] = useLocation();
-  const sku = params?.sku || "ELT.7-11";
+  const { selectedSku: globalSku, setSelectedSku: setGlobalSku } = useSKU();
+  const sku = params?.sku || globalSku;
+
+  // URL'deki SKU değişince global context'i sync et
+  useEffect(() => {
+    if (params?.sku && params.sku !== globalSku) {
+      setGlobalSku(params.sku);
+    }
+  }, [params?.sku]);
   const [simQty, setSimQty] = useState<number>(100);
   const [runSim, setRunSim] = useState(false);
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
@@ -211,7 +220,7 @@ export default function UrunIstihbarat() {
       <div style={{ maxWidth: 1400, margin: "0 auto", padding: "24px", position: "relative", zIndex: 1 }}>
         {/* ═══ Product Selector ═══ */}
         <div style={{ marginBottom: 16, display: "flex", alignItems: "center", gap: 10 }}>
-          <ProductSelector value={sku} onChange={(newSku) => navigate(`/stok/urun/${newSku}`)} />
+          <ProductSelector value={sku} onChange={(newSku) => { setGlobalSku(newSku); navigate(`/stok/urun/${newSku}`); }} />
         </div>
 
         {/* ═══ Section 1: Production Capacity Card ═══ */}

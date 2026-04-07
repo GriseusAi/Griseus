@@ -1,4 +1,5 @@
 import { useState, useCallback, useMemo, useRef, useEffect } from "react";
+import { useSKU } from "@/lib/sku-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TopNav from "@/components/top-nav";
@@ -412,7 +413,7 @@ export default function OntologyPage() {
   const animRef = useRef<number>(0);
   const sizeRef = useRef({ w: 1200, h: 800 });
 
-  const [sku, setSku] = useState("ELT.7-11");
+  const { selectedSku: sku, setSelectedSku: setSku } = useSKU();
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
   const [simQty, setSimQty] = useState(0);

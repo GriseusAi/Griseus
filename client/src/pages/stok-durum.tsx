@@ -1,4 +1,5 @@
 import { useState, useCallback, useRef, useEffect } from "react";
+import { useSKU } from "@/lib/sku-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { motion, AnimatePresence } from "framer-motion";
@@ -501,7 +502,7 @@ function ToastStack({ toasts }: { toasts: Toast[] }) {
 export default function StokDurum() {
   const [, navigate] = useLocation();
   const qc = useQueryClient();
-  const [sku, setSku] = useState("ELT.7-11");
+  const { selectedSku: sku, setSelectedSku: setSku } = useSKU();
   const [filterType, setFilterType] = useState<string>("");
   const [ontologyFilter, setOntologyFilter] = useState<OntologyFilter>("all");
   const [flashedCode, setFlashedCode] = useState<string | null>(null);

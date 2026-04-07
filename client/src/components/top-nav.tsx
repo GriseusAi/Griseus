@@ -1,5 +1,6 @@
 import { useLocation } from "wouter";
 import { useAgentPanel, useGlobalAlerts } from "../App";
+import { useSKU } from "@/lib/sku-context";
 import { useState, useRef, useEffect } from "react";
 import type { ProactiveAlertData } from "../lib/useStockWebSocket";
 
@@ -22,17 +23,21 @@ const C = {
 };
 const mono = "'Outfit', sans-serif";
 
-const NAV_ITEMS = [
-  { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
-  { path: "/stok/urun/ELT.7-11", label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
-  { path: "/sihir", label: "Sihir", icon: "\u2B21" },
-  { path: "/ontology", label: "Ontology", icon: "\u25C8" },
-];
+function useNavItems() {
+  const { selectedSku } = useSKU();
+  return [
+    { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
+    { path: `/stok/urun/${selectedSku}`, label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
+    { path: "/sihir", label: "Sihir", icon: "\u2B21" },
+    { path: "/ontology", label: "Ontology", icon: "\u25C8" },
+  ];
+}
 
 export default function TopNav({ connected, alerts: propAlerts }: { connected?: boolean; alerts?: ProactiveAlertData[] }) {
   const [location, navigate] = useLocation();
   const { agentOpen, toggleAgent } = useAgentPanel();
   const { alerts: globalAlerts } = useGlobalAlerts();
+  const NAV_ITEMS = useNavItems();
   const alerts = propAlerts ?? globalAlerts;
   const [panelOpen, setPanelOpen] = useState(false);
   const [readCount, setReadCount] = useState(0);

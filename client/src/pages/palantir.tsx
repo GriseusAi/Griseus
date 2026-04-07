@@ -1,4 +1,5 @@
 import { useState, useCallback } from "react";
+import { useSKU } from "@/lib/sku-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import TopNav from "@/components/top-nav";
@@ -27,7 +28,7 @@ const glass = {
    ═══════════════════════════════════════════════════════════ */
 
 export default function PalantirPage() {
-  const [sku, setSku] = useState("ELT.7-11");
+  const { selectedSku: sku, setSelectedSku: setSku } = useSKU();
   const [activeTab, setActiveTab] = useState<"plan6" | "siparis">("plan6");
   const [expandedMonth, setExpandedMonth] = useState<number | null>(null);
   const [, navigate] = useLocation();

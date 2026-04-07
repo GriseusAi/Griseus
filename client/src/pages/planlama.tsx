@@ -1,4 +1,5 @@
 import { useState, useRef } from "react";
+import { useSKU } from "@/lib/sku-context";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
@@ -76,7 +77,7 @@ interface ImportResult {
 export default function PlanlamaPage() {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement>(null);
-  const [sku, setSku] = useState(DEFAULT_SKU);
+  const { selectedSku: sku, setSelectedSku: setSku } = useSKU();
   const [monthsAhead, setMonthsAhead] = useState(3);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<"forecast" | "predict" | "import">("predict");
