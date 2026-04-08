@@ -1,5 +1,6 @@
 [phases.setup]
 nixPkgs = ["nodejs_20", "npm-9_x"]
+aptPkgs = ["libatomic1"]
 
 [phases.install]
 cmds = ["npm ci --include=dev"]
