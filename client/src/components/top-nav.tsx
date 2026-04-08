@@ -45,6 +45,15 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
 
   const unreadCount = Math.max(0, alerts.length - readCount);
 
+  // Türkiye saati — canlı
+  const [now, setNow] = useState(new Date());
+  useEffect(() => {
+    const t = setInterval(() => setNow(new Date()), 1000);
+    return () => clearInterval(t);
+  }, []);
+  const trTime = now.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", hour: "2-digit", minute: "2-digit", second: "2-digit" });
+  const trDate = now.toLocaleString("tr-TR", { timeZone: "Europe/Istanbul", day: "numeric", month: "long", year: "numeric" });
+
   const handleToggle = () => {
     setPanelOpen(prev => !prev);
     if (!panelOpen) setReadCount(alerts.length);
@@ -128,6 +137,20 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
       </div>
 
       <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        {/* Türkiye Saati */}
+        <div style={{
+          display: "flex", alignItems: "center", gap: 8, padding: "4px 12px",
+          borderRadius: 8, background: "rgba(99,102,241,0.06)",
+          border: `1px solid rgba(99,102,241,0.15)`,
+        }}>
+          <span style={{ fontSize: 12, fontFamily: mono, color: C.accent, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
+            {trTime}
+          </span>
+          <span style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>
+            {trDate}
+          </span>
+        </div>
+
         {/* Bildirim Zili */}
         <div ref={panelRef} style={{ position: "relative" }}>
           <button
