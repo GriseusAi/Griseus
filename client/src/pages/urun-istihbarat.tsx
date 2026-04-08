@@ -133,8 +133,6 @@ export default function UrunIstihbarat() {
       setGlobalSku(params.sku);
     }
   }, [params?.sku]);
-  const [simQty, setSimQty] = useState<number>(100);
-  const [runSim, setRunSim] = useState(false);
   const [expandedSub, setExpandedSub] = useState<string | null>(null);
   const [showAllComponents, setShowAllComponents] = useState(false);
 
@@ -147,7 +145,6 @@ export default function UrunIstihbarat() {
     qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
     qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
     qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
-    if (runSim) qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/simulate`] });
   });
 
   const capacityQuery = useQuery<CapacityData>({
@@ -158,12 +155,6 @@ export default function UrunIstihbarat() {
   const stockQuery = useQuery<StockData>({
     queryKey: [`/api/bom/${sku}/stock`],
     queryFn: () => fetch(`/api/bom/${sku}/stock`).then(r => r.json()),
-  });
-
-  const simQuery = useQuery<SimulationData>({
-    queryKey: [`/api/bom/${sku}/simulate`, simQty],
-    queryFn: () => fetch(`/api/bom/${sku}/simulate?quantity=${simQty}`).then(r => r.json()),
-    enabled: runSim,
   });
 
   const intelQuery = useQuery<IntelData>({
@@ -184,7 +175,6 @@ export default function UrunIstihbarat() {
 
   const capacity = capacityQuery.data;
   const stock = stockQuery.data;
-  const sim = simQuery.data;
   const intel = intelQuery.data;
 
   // Sort components for tree view
@@ -406,179 +396,6 @@ export default function UrunIstihbarat() {
           </div>
         </motion.div>
 
-        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 24, marginBottom: 24 }}>
-          {/* ═══ Section 2: Simulation Card ═══ */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.15 }}
-            style={{
-              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
-              padding: "24px",
-            }}
-          >
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 16 }}>
-              SİPARİŞ SİMÜLASYONU
-            </div>
-            <div style={{ display: "flex", gap: 12, marginBottom: 16, alignItems: "center" }}>
-              <div style={{ fontSize: 13, color: C.mid }}>Kaç adet üretmek istiyorsun?</div>
-            </div>
-            <div style={{ display: "flex", gap: 8, marginBottom: 16 }}>
-              <input
-                type="number" value={simQty}
-                onChange={e => { setSimQty(parseInt(e.target.value) || 0); setRunSim(false); }}
-                style={{
-                  flex: 1, padding: "10px 14px", borderRadius: 8,
-                  background: C.bg, border: `1px solid ${C.border}`, color: C.white,
-                  fontFamily: mono, fontSize: 16, fontWeight: 400, outline: "none",
-                }}
-                onFocus={e => { e.target.style.borderColor = C.accent; }}
-                onBlur={e => { e.target.style.borderColor = C.border; }}
-              />
-              <button onClick={() => setRunSim(true)} style={{
-                padding: "10px 24px", borderRadius: 8, border: "none",
-                background: C.accent, color: "#fff", fontFamily: mono, fontSize: 12,
-                fontWeight: 400, cursor: "pointer", letterSpacing: 0.5, transition: "all 0.2s",
-              }}
-                onMouseEnter={e => { e.currentTarget.style.background = "#6366f1"; }}
-                onMouseLeave={e => { e.currentTarget.style.background = C.accent; }}
-              >
-                Simüle Et
-              </button>
-            </div>
-            {/* Quick presets */}
-            <div style={{ display: "flex", gap: 6, marginBottom: 16 }}>
-              {[50, thisMonthDemand, 200, 500].map(n => (
-                <button key={n} onClick={() => { setSimQty(n); setRunSim(true); }} style={{
-                  padding: "4px 12px", borderRadius: 6, border: `1px solid ${C.border}`,
-                  background: simQty === n ? C.accentDim : "transparent", color: simQty === n ? C.accent : C.mid,
-                  fontFamily: mono, fontSize: 11, cursor: "pointer",
-                }}>
-                  {n}
-                </button>
-              ))}
-            </div>
-
-            {/* Simulation Result */}
-            {sim && (
-              <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ duration: 0.2 }}>
-                <div style={{
-                  padding: "16px", borderRadius: 10,
-                  background: sim.canProduce ? C.okDim : C.errDim,
-                  border: `1px solid ${sim.canProduce ? C.okBorder : C.errBorder}`,
-                  marginBottom: 16,
-                }}>
-                  <div style={{
-                    fontSize: 16, fontWeight: 400, fontFamily: mono,
-                    color: sim.canProduce ? C.ok : C.err, marginBottom: 4,
-                  }}>
-                    {sim.canProduce ? `✓ EVET — ${simQty} adet üretilebilir` : `✗ HAYIR — maksimum ${sim.maxProducible} adet`}
-                  </div>
-                  {!sim.canProduce && sim.shortages.length > 0 && (
-                    <div style={{ fontSize: 12, color: C.mid, marginTop: 8 }}>
-                      <div style={{ fontFamily: mono, color: C.err, fontWeight: 400, marginBottom: 4 }}>Eksik malzemeler:</div>
-                      {sim.shortages.map(s => (
-                        <div key={s.code} style={{ fontFamily: mono, fontSize: 11, color: C.mid, marginBottom: 2 }}>
-                          {s.code} — {s.name}: {s.shortage} {s.need > 0 ? "eksik" : ""}
-                        </div>
-                      ))}
-                    </div>
-                  )}
-                </div>
-
-                {/* Top materials needed */}
-                {sim.materialsNeeded.length > 0 && (
-                  <div>
-                    <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>
-                      MALZEME İHTİYACI
-                    </div>
-                    {sim.materialsNeeded.slice(0, 8).map(m => (
-                      <div key={m.code} style={{
-                        display: "flex", alignItems: "center", justifyContent: "space-between",
-                        padding: "6px 10px", borderRadius: 6, marginBottom: 4,
-                        background: m.remaining < 0 ? C.errDim : "transparent",
-                        border: `1px solid ${m.remaining < 0 ? C.errBorder : "transparent"}`,
-                      }}>
-                        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                          <span style={{ fontFamily: mono, fontSize: 10, color: C.dim, width: 48 }}>{m.code}</span>
-                          <span style={{ fontSize: 12, color: C.white }}>{m.name}</span>
-                          {m.mustAssemble !== undefined && m.mustAssemble > 0 && (
-                            <span style={{
-                              fontSize: 9, fontFamily: mono, padding: "1px 6px", borderRadius: 4,
-                              background: C.accentDim, color: C.accent,
-                            }}>
-                              {m.mustAssemble} montaj
-                            </span>
-                          )}
-                        </div>
-                        <div style={{ fontFamily: mono, fontSize: 11, display: "flex", gap: 16 }}>
-                          <span style={{ color: C.mid }}>İhtiyaç: <span style={{ color: C.white }}>{m.need}</span></span>
-                          <span style={{ color: m.remaining < 0 ? C.err : C.ok }}>
-                            {m.remaining < 0 ? `${Math.abs(m.remaining)} eksik` : `${m.remaining} fazla`}
-                          </span>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </motion.div>
-            )}
-          </motion.div>
-
-          {/* ═══ Section 3: Top Bottlenecks ═══ */}
-          <motion.div
-            initial={{ opacity: 0, y: 12 }} animate={{ opacity: 1, y: 0 }} transition={{ duration: 0.3, delay: 0.2 }}
-            style={{
-              background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
-              padding: "24px",
-            }}
-          >
-            <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 16 }}>
-              DARBOĞAZ ANALİZİ — İLK 10
-            </div>
-            {capacity?.bottlenecks.map((b, i) => {
-              const maxCap = capacity.maxProducible;
-              const barWidth = maxCap > 0 ? Math.min(100, (b.maxProducts / (maxCap * 3)) * 100) : 0;
-              const barColor = b.maxProducts < 50 ? C.err : b.maxProducts < 200 ? C.warn : b.maxProducts < 500 ? C.ok : C.blue;
-              return (
-                <div key={b.code} style={{ marginBottom: 12 }}>
-                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 4 }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-                      <span style={{
-                        fontFamily: mono, fontSize: 10, color: C.dim, width: 20, textAlign: "right",
-                      }}>
-                        #{i + 1}
-                      </span>
-                      <span style={{ fontFamily: mono, fontSize: 10, color: C.mid }}>{b.code}</span>
-                      <span style={{ fontSize: 12, color: C.white }}>{b.name}</span>
-                      {b.tier === 2 && (
-                        <span style={{
-                          fontSize: 8, fontFamily: mono, padding: "1px 6px", borderRadius: 4,
-                          background: C.accentDim, color: C.accent, fontWeight: 400,
-                        }}>
-                          YARI MAMÜL
-                        </span>
-                      )}
-                    </div>
-                    <span style={{ fontFamily: mono, fontSize: 13, fontWeight: 400, color: barColor }}>
-                      {b.maxProducts}
-                    </span>
-                  </div>
-                  <div style={{ height: 4, background: C.dimmer, borderRadius: 2, overflow: "hidden" }}>
-                    <motion.div
-                      initial={{ width: 0 }} animate={{ width: `${barWidth}%` }}
-                      transition={{ duration: 0.6, delay: i * 0.05 }}
-                      style={{ height: "100%", borderRadius: 2, background: barColor }}
-                    />
-                  </div>
-                  {b.note && (
-                    <div style={{ fontSize: 10, fontFamily: mono, color: C.accent, marginTop: 2 }}>
-                      {b.note}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </motion.div>
-        </div>
 
         {/* ═══ Section 4: Full Component Table ═══ */}
         <motion.div
