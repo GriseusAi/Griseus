@@ -97,17 +97,7 @@ async function seed() {
       unit: item.unit,
       tier: item.tier,
       parentComponentCode: item.parent || null,
-    }).onConflictDoUpdate({
-      target: bomItems.componentCode,
-      set: {
-        componentName: item.name,
-        requiredQuantity: String(item.qty),
-        unit: item.unit,
-        tier: item.tier,
-        parentComponentCode: item.parent || null,
-        parentProductSku: SKU,
-      },
-    });
+    }).onConflictDoNothing();
   }
   console.log(`  ✓ ${BOM_DATA.length} BOM items inserted/updated`);
 

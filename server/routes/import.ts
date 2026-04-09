@@ -111,15 +111,6 @@ router.post("/bulk/bom", async (req: Request, res: Response) => {
     for (const item of items) {
       if (!item.code || !item.name || !item.qty || !item.unit) continue;
 
-      // componentCode unique constraint — aynı bileşen başka üründe varsa skip
-      const [existingComponent] = await db.select().from(bomItems).where(eq(bomItems.componentCode, item.code));
-      if (existingComponent) {
-        // Bileşen zaten başka üründe kayıtlı — güncelle parentProductSku
-        // NOT: unique constraint nedeniyle aynı bileşen birden fazla üründe olamaz
-        // Bu ileride schema migration ile çözülecek
-        continue;
-      }
-
       await db.insert(bomItems).values({
         parentProductSku: sku,
         componentCode: item.code,

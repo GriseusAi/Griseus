@@ -318,12 +318,12 @@ export async function smartImport(
         }
 
         const [existing] = await db.select().from(bomItems)
-          .where(eq(bomItems.componentCode, code));
+          .where(and(eq(bomItems.componentCode, code), eq(bomItems.parentProductSku, productSku)));
 
         if (existing && qty !== undefined && !isNaN(qty)) {
           await db.update(bomItems)
             .set({ requiredQuantity: String(qty), ...(name ? { componentName: name } : {}) })
-            .where(eq(bomItems.componentCode, code));
+            .where(and(eq(bomItems.componentCode, code), eq(bomItems.parentProductSku, productSku)));
           updated++;
         } else if (!existing) {
           errors.push({ row: i + 2, value: code, reason: `BOM'da bulunamadı: ${code}` });

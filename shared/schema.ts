@@ -111,14 +111,17 @@ export type StockMovementV2 = typeof stockMovementsV2.$inferSelect;
 export const bomItems = pgTable("bom_items", {
   id: serial("id").primaryKey(),
   parentProductSku: text("parent_product_sku").notNull(),
-  componentCode: text("component_code").notNull().unique(),
+  componentCode: text("component_code").notNull(),
   componentName: text("component_name").notNull(),
   requiredQuantity: numeric("required_quantity").notNull(),
   unit: text("unit").notNull(),
   tier: integer("tier").notNull(),
   parentComponentCode: text("parent_component_code"),
   createdAt: timestamp("created_at").defaultNow(),
-});
+}, (table) => [
+  index("bom_sku_component_idx").on(table.parentProductSku, table.componentCode),
+  index("bom_component_idx").on(table.componentCode),
+]);
 
 export const insertBomItemSchema = createInsertSchema(bomItems).omit({ id: true, createdAt: true });
 export type InsertBomItem = z.infer<typeof insertBomItemSchema>;

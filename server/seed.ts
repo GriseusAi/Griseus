@@ -89,16 +89,7 @@ async function seedGSS20P() {
         unit: item.unit,
         tier: 1,
         parentComponentCode: null,
-      }).onConflictDoUpdate({
-        target: bomItems.componentCode,
-        set: {
-          componentName: item.name,
-          requiredQuantity: String(item.qty),
-          unit: item.unit,
-          tier: 1,
-          parentProductSku: SKU,
-        },
-      });
+      }).onConflictDoNothing();
     }
     console.log(`  ✓ GSS20P: ${BOM_DATA.length} BOM items seeded`);
 
