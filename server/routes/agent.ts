@@ -1460,25 +1460,23 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const snapshot = await buildLiveSnapshot();
     if (snapshot) systemPrompt += snapshot;
 
-    // 2. RAG (semantic search for domain knowledge) — max 2000 chars
+    // 2. RAG (semantic search for domain knowledge) — no cap, domain knowledge is critical
     try {
       const ragContext = await buildDynamicContext(message);
       if (ragContext) {
-        const cappedRag = ragContext.length > 2000 ? ragContext.slice(0, 2000) + "\n...(kısaltıldı)" : ragContext;
-        systemPrompt += "\n" + cappedRag;
-        console.log(`[agent/rag] Injected dynamic context (${cappedRag.length} chars)`);
+        systemPrompt += "\n" + ragContext;
+        console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
       }
     } catch (ragErr: any) {
       console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
     }
 
-    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar) — max 1500 chars
+    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar)
     let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
     try {
       admMemories = await recallRelevantMemories(message);
       if (admMemories.contextBlock) {
-        const cappedAdm = admMemories.contextBlock.length > 1500 ? admMemories.contextBlock.slice(0, 1500) + "\n...(kısaltıldı)" : admMemories.contextBlock;
-        systemPrompt += "\n" + cappedAdm;
+        systemPrompt += "\n" + admMemories.contextBlock;
         console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
       }
     } catch (admErr: any) {
@@ -1656,19 +1654,13 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
 
     try {
       const ragContext = await buildDynamicContext(message);
-      if (ragContext) {
-        const cappedRag = ragContext.length > 2000 ? ragContext.slice(0, 2000) + "\n...(kısaltıldı)" : ragContext;
-        systemPrompt += "\n" + cappedRag;
-      }
+      if (ragContext) systemPrompt += "\n" + ragContext;
     } catch {}
 
     let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
     try {
       admMemories = await recallRelevantMemories(message);
-      if (admMemories.contextBlock) {
-        const cappedAdm = admMemories.contextBlock.length > 1500 ? admMemories.contextBlock.slice(0, 1500) + "\n...(kısaltıldı)" : admMemories.contextBlock;
-        systemPrompt += "\n" + cappedAdm;
-      }
+      if (admMemories.contextBlock) systemPrompt += "\n" + admMemories.contextBlock;
     } catch {}
 
     const allTools: any[] = [
