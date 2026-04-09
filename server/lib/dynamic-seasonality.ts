@@ -96,7 +96,7 @@ function cacheKey(tenantId: string, sku: string): string {
  */
 export async function getDynamicIndices(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<number[]> {
   const key = cacheKey(tenantId, sku);
   const cached = indexCache.get(key);
@@ -142,7 +142,7 @@ export async function getDynamicIndices(
  */
 export async function getDynamicDemand(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<number[]> {
   try {
     const rows = await db.select()
@@ -168,7 +168,7 @@ export async function getDynamicDemand(
  */
 export async function getDynamicTotals(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<{ yearlyTotal: number; monthlyAvg: number }> {
   const demand = await getDynamicDemand(tenantId, sku);
   const yearlyTotal = demand.reduce((a, b) => a + b, 0);
@@ -194,7 +194,7 @@ export async function updateSeasonalIndex(
   actualDemand: number,
   year: number,
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
   useFastLambda: boolean = false,
 ): Promise<{ anomalyDetected: boolean; anomalyReason: string | null }> {
   const lambda = useFastLambda ? FAST_LAMBDA : EWMA_LAMBDA;
@@ -313,7 +313,7 @@ export async function updateSeasonalIndex(
 /** Toplu güncelleme — satış verisi importu sonrası */
 export async function bulkUpdateFromSalesHistory(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<{ updated: number; anomalies: string[] }> {
   // salesHistory'den tüm veriyi çek, yıl+ay bazında
   const rows = await db.select({
@@ -348,7 +348,7 @@ export async function bulkUpdateFromSalesHistory(
 
 export async function getSeasonalDashboard(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<SeasonalDashboard> {
   const rows = await db.select()
     .from(seasonalIndices)
@@ -435,7 +435,7 @@ export async function getSeasonalDashboard(
 /** Statik baseline'dan seed et (DB boşsa) */
 export async function initDSE(
   tenantId: string = "cukurova",
-  sku: string = MAIN_SKU,
+  sku: string,
 ): Promise<void> {
   try {
     const existing = await db.select({ count: sql<number>`COUNT(*)` })

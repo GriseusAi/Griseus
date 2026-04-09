@@ -27,7 +27,8 @@ router.post("/execute", upload.single("file"), async (req: Request, res: Respons
   try {
     if (!req.file) return res.status(400).json({ error: "Dosya yüklenmedi" });
     const type = (req.body.type as ImportType) || "auto";
-    const productSku = (req.body.product_sku as string) || MAIN_SKU;
+    const productSku = req.body.product_sku as string;
+    if (!productSku) return res.status(400).json({ error: "product_sku gerekli" });
     const result = await smartImport(req.file.buffer, { type, productSku });
 
     // DSE — Satış verisi import edildiyse mevsimsel indeksleri güncelle (fire-and-forget)

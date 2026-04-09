@@ -96,7 +96,7 @@ export interface WhatIfResult {
   }>;
 }
 
-export async function simulateWhatIf(scenario: WhatIfScenario, sku: string = MAIN_SKU): Promise<WhatIfResult> {
+export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Promise<WhatIfResult> {
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
 

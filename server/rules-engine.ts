@@ -45,7 +45,7 @@ export async function evaluateRules(trigger: {
   componentCode?: string;
   sku?: string;
 }): Promise<ProactiveAlert[]> {
-  const sku = trigger.sku || MAIN_SKU;
+  const sku = trigger.sku || "ELT.7-11"; // TODO: trigger'dan her zaman explicit gelmeli
   const alerts: ProactiveAlert[] = [];
   const now = new Date().toISOString();
   const currentMonthIdx = new Date().getMonth();

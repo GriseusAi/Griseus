@@ -180,7 +180,8 @@ export async function smartImport(
   options?: { type?: ImportType; productSku?: string; dryRun?: boolean }
 ): Promise<ImportResult> {
   const type = options?.type || "auto";
-  const productSku = options?.productSku || MAIN_SKU;
+  const productSku = options?.productSku;
+  if (!productSku) throw new Error("productSku gerekli — hangi ürün için import yapılıyor?");
   const dryRun = options?.dryRun ?? false;
 
   const workbook = XLSX.read(buffer, { type: "buffer" });

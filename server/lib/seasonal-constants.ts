@@ -43,12 +43,7 @@ export function demandForMonth(zeroIndexedMonth: number): number {
  * Returns 0-indexed array [Jan..Dec].
  */
 export async function getMonthlyDemandForSku(sku: string): Promise<{ demand: number[]; annual: number }> {
-  const { MAIN_SKU } = await import("../lib/constants");
-  if (sku === MAIN_SKU) {
-    return { demand: [...MONTHLY_DEMAND], annual: YEARLY_TOTAL };
-  }
-
-  // Fetch from sales_history — 3-year average
+  // Her zaman DB'den çek — hardcoded fallback yok
   const { db } = await import("../db");
   const { sql } = await import("drizzle-orm");
   const rows = await db.execute(sql`
@@ -64,5 +59,11 @@ export async function getMonthlyDemandForSku(sku: string): Promise<{ demand: num
     demand[row.month - 1] = Number(row.avg_qty) || 0;
   }
   const annual = demand.reduce((s: number, v: number) => s + v, 0);
+
+  // DB'de veri yoksa legacy constant'lara fallback (ELT.7-11 için)
+  if (annual === 0) {
+    return { demand: [...MONTHLY_DEMAND], annual: YEARLY_TOTAL };
+  }
+
   return { demand, annual };
 }

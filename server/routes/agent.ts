@@ -12,7 +12,6 @@ import { broadcastStockUpdate, broadcastProactiveAlert } from "../ws";
 import { computeComponentIntelligence } from "./intelligence";
 import { evaluateRules } from "../rules-engine";
 import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LABELS, getMonthlyDemandForSku } from "../lib/seasonal-constants";
-import { MAIN_SKU } from "../lib/constants";
 import { buildDynamicContext } from "../rag";
 import { logTokenInteraction } from "../lib/token-value-tracker";
 import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
@@ -218,6 +217,15 @@ WHAT-IF ANALİZ KURALLARI (KRİTİK — MUTLAKA UYGULANACAK):
 // ══════════════════════════════════════════════════════════════════════
 
 const TOOLS: Anthropic.Tool[] = [
+  {
+    name: "list_products",
+    description: "Sistemdeki tüm ürünleri listele. Her ürünün SKU kodu, adı ve kategorisini döner. Hangi ürünlerin mevcut olduğunu öğrenmek için kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {},
+      required: [],
+    },
+  },
   {
     name: "get_live_stock_levels",
     description: "Canlı stok durumu. Tüm ürünlerin üretimde, depoda ve satılan miktarlarını getirir.",
@@ -522,6 +530,18 @@ const TOOLS: Anthropic.Tool[] = [
 
 async function callTool(toolName: string, input: Record<string, any>): Promise<any> {
   switch (toolName) {
+    case "list_products": {
+      const allProducts = await db.select({
+        sku: products.sku,
+        name: products.name,
+        category: products.category,
+      }).from(products);
+      return {
+        products: allProducts,
+        count: allProducts.length,
+      };
+    }
+
     case "get_live_stock_levels": {
       const rows = await db
         .select({
@@ -679,7 +699,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_production_capacity": {
-      const sku = input.sku || MAIN_SKU;
+      const sku = input.sku;
+      if (!sku) return { error: "sku parametresi gerekli (ör: 'ELT.7-11')" };
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
       const capacity = computeProductionCapacity(items);
@@ -691,7 +712,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "simulate_production": {
-      const sku = input.sku || MAIN_SKU;
+      const sku = input.sku;
+      if (!sku) return { error: "sku parametresi gerekli (ör: 'ELT.7-11')" };
       const quantity = input.quantity || 100;
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
@@ -719,7 +741,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_bom_tree": {
-      const sku = input.sku || MAIN_SKU;
+      const sku = input.sku;
+      if (!sku) return { error: "sku parametresi gerekli (ör: 'ELT.7-11')" };
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
       return {
@@ -919,7 +942,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     }
 
     case "get_component_intelligence": {
-      const sku = input.sku || MAIN_SKU;
+      const sku = input.sku;
+      if (!sku) return { error: "sku parametresi gerekli (ör: 'ELT.7-11')" };
       const result = await computeComponentIntelligence(sku);
       if (input.component_code) {
         result.components = result.components.filter(c => c.code === input.component_code);
@@ -930,7 +954,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     case "get_intelligence_engine": {
       const baseUrl = `http://localhost:${process.env.PORT || 3000}`;
       const reportType = input.report_type || "oracle";
-      const intelSku = input.sku as string || MAIN_SKU;
+      const intelSku = input.sku as string;
+      if (!intelSku) return { error: "sku parametresi gerekli" };
 
       try {
         let url: string;
@@ -963,7 +988,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
         const scenarioType = input.scenario_type as string;
         const quantity = input.quantity as number;
         const componentCode = input.component_code as string | undefined;
-        const whatIfSku = input.sku as string || MAIN_SKU;
+        const whatIfSku = input.sku as string || "ELT.7-11";
 
         let scenario: WhatIfScenario;
         switch (scenarioType) {
@@ -1239,7 +1264,8 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
     case "get_seasonal_intelligence": {
       try {
         const { getSeasonalDashboard } = await import("../lib/dynamic-seasonality");
-        const dashboard = await getSeasonalDashboard();
+        const dashSku = input.sku as string || "ELT.7-11";
+        const dashboard = await getSeasonalDashboard("cukurova", dashSku);
         return {
           title: "Dynamic Seasonality Engine — Mevsimsel İstihbarat",
           summary: {

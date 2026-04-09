@@ -43,7 +43,7 @@ export async function evaluateCustomRules(context: {
         severity: parsed.action.severity || (rule.severity as "critical" | "warning" | "info"),
         title: `Özel Kural: ${rule.nlDescription.slice(0, 40)}${rule.nlDescription.length > 40 ? "..." : ""}`,
         message: parsed.action.message,
-        productSku: MAIN_SKU,
+        productSku: (rule as any).productSku || "ELT.7-11",
         componentCode: parsed.condition.componentCode || undefined,
         suggestedAction: getSuggestedAction(parsed),
         rootCause: [

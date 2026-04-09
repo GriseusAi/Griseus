@@ -12,7 +12,8 @@ import { getBomWithStock, computeProductionCapacity } from "../routes/bom";
 import { SEASONAL_INDICES, MONTH_LABELS, YEARLY_TOTAL } from "./seasonal-constants";
 import { MAIN_SKU, LEAD_TIME_DAYS, IMPACT_BUFFER_SIZE } from "./constants";
 
-const SKU = MAIN_SKU;
+// Impact engine artık SKU'yu parametre olarak almalı
+const SKU = process.env.MAIN_PRODUCT_SKU || "ELT.7-11"; // legacy default
 
 // In-memory ring buffer for recent impacts
 const impactBuffer: ImpactEvent[] = [];

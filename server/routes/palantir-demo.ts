@@ -14,7 +14,7 @@ const router = Router();
 // DEMO 1: GET /api/palantir/demo/uretim-plani?adet=100&sku=ELT.7-11
 router.get("/uretim-plani", async (req: Request, res: Response) => {
   try {
-    const SKU = (req.query.sku as string) || MAIN_SKU;
+    const SKU = (req.query.sku as string) || "ELT.7-11";
     const adet = parseInt(req.query.adet as string) || 100;
     const startTime = Date.now();
     const bomItems = await getBomWithStock(SKU);
@@ -82,7 +82,7 @@ router.get("/uretim-plani", async (req: Request, res: Response) => {
 // TEK KAYNAK: computeComponentIntelligence — Ürün İstihbaratı ile aynı motor
 router.get("/6-ay-plan", async (_req: Request, res: Response) => {
   try {
-    const SKU = (_req.query.sku as string) || MAIN_SKU;
+    const SKU = (_req.query.sku as string) || "ELT.7-11";
     const startTime = Date.now();
     const currentMonth = new Date().getMonth(); // 0-indexed
     const { demand: MONTHLY_DEMAND, annual: ANNUAL_DEMAND } = await getMonthlyDemandForSku(SKU);
@@ -170,7 +170,7 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
 // TEK KAYNAK: computeComponentIntelligence — tüm sayfalarla tutarlı
 router.get("/acil-siparis", async (req: Request, res: Response) => {
   try {
-    const SKU = (req.query.sku as string) || MAIN_SKU;
+    const SKU = (req.query.sku as string) || "ELT.7-11";
     const ayIleri = parseInt(req.query.ay as string) || 3;
     const startTime = Date.now();
     const currentMonth = new Date().getMonth();
@@ -258,7 +258,7 @@ router.get("/acil-siparis", async (req: Request, res: Response) => {
 // DEMO 4: GET /api/palantir/demo/10x
 router.get("/10x", async (_req: Request, res: Response) => {
   try {
-    const SKU = (_req.query.sku as string) || MAIN_SKU;
+    const SKU = (_req.query.sku as string) || "ELT.7-11";
     const startTime = Date.now();
     const bomItems = await getBomWithStock(SKU);
     const tier1and2 = bomItems.filter(b => b.tier === 1 || b.tier === 2);

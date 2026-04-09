@@ -37,7 +37,7 @@ const router = Router();
 // CONSTANTS & CONFIG — The Ontology Properties (from constants.ts)
 // ═══════════════════════════════════════════════════════════
 
-const DEFAULT_SKU = MAIN_SKU;
+const DEFAULT_SKU = "ELT.7-11"; // legacy — route'lar ?sku= parametresi kabul ediyor
 
 // ═══════════════════════════════════════════════════════════
 // DATA LAYER — Ontology Object Retrieval

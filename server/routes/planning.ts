@@ -54,7 +54,10 @@ router.post("/import", upload.single("file"), async (req: Request, res: Response
       return res.status(400).json({ error: "Dosya yüklenmedi" });
     }
 
-    const productSku = (req.body.product_sku as string) || MAIN_SKU;
+    const productSku = req.body.product_sku as string;
+    if (!productSku) {
+      return res.status(400).json({ error: "product_sku gerekli" });
+    }
     const source = (req.body.source as string) || "excel";
 
     const workbook = XLSX.read(req.file.buffer, { type: "buffer" });

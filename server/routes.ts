@@ -79,7 +79,8 @@ export async function registerRoutes(
         default: return res.status(400).json({ error: "type: produce|order|restock|forward" });
       }
 
-      const result = await simulateWhatIf(scenario);
+      const sku = (req.query.sku as string) || "ELT.7-11";
+      const result = await simulateWhatIf(scenario, sku);
       res.json(result);
     } catch (err: any) {
       res.status(500).json({ error: err.message });

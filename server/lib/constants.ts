@@ -9,7 +9,11 @@
 // ÜRÜN
 // ══════════════════════════════════════════════════════════
 
-/** Ana ürün SKU — tüm hesaplamalar bu ürün için */
+/**
+ * @deprecated Multi-product geçişinde kaldırılacak.
+ * Yeni kodda MAIN_SKU kullanma — SKU her zaman explicit parametre olarak geçilmeli.
+ * Sadece legacy fallback olarak var, geriye dönük uyumluluk için.
+ */
 export const MAIN_SKU = process.env.MAIN_PRODUCT_SKU || "ELT.7-11";
 
 // ══════════════════════════════════════════════════════════
