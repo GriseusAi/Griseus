@@ -15,6 +15,7 @@ import { MONTHLY_DEMAND as DEMAND_0, MONTHLY_AVG as SHARED_MONTHLY_AVG, MONTH_LA
 import { buildDynamicContext } from "../rag";
 import { logTokenInteraction } from "../lib/token-value-tracker";
 import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
+import { runCrossProductAnalysis } from "../lib/cross-product-engine";
 
 const router = Router();
 
@@ -519,6 +520,20 @@ const TOOLS: Anthropic.Tool[] = [
     input_schema: {
       type: "object" as const,
       properties: {},
+      required: [],
+    },
+  },
+  {
+    name: "get_cross_product_analysis",
+    description: "Çapraz ürün optimizasyon analizi. Ortak bileşenleri paylaşan ürünler arasında akıllı stok tahsisi. Hangi bileşen kaç üründe ortak, önümüzdeki N ay toplam çapraz talep, mevsimsel ağırlıklı oransal tahsis. 'ortak bileşenler', 'çapraz analiz', 'cross product', 'hangi bileşen paylaşılıyor?', 'stok tahsisi', 'ürünler arası optimizasyon' sorularında kullan.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        months: {
+          type: "number",
+          description: "Kaç aylık projeksiyon (varsayılan 3)",
+        },
+      },
       required: [],
     },
   },
@@ -1373,6 +1388,38 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
       } catch (err: any) {
         return { error: `TVT dashboard hatası: ${err.message}` };
       }
+    }
+
+    case "get_cross_product_analysis": {
+      const months = input.months || 3;
+      const analysis = await runCrossProductAnalysis(months);
+      return {
+        projectionMonths: analysis.projectionMonths,
+        sharedComponents: analysis.sharedComponents.map(c => ({
+          code: c.componentCode,
+          name: c.componentName,
+          stock: c.currentStock,
+          unit: c.unit,
+          usedInProducts: c.usedIn.map(u => `${u.productSku} (${u.requiredQtyPerUnit} ${c.unit}/adet)`),
+          productCount: c.productCount,
+        })),
+        allocations: analysis.allocations.map(a => ({
+          component: `${a.componentCode} — ${a.componentName}`,
+          stock: a.currentStock,
+          totalNeed: a.totalNeed,
+          deficit: a.deficit,
+          severity: a.severity,
+          recommendation: a.recommendation,
+          perProduct: a.allocations.map(al => ({
+            product: al.productSku,
+            need: al.need,
+            allocated: al.allocated,
+            shortfall: al.shortfall,
+            allocationPercent: `${al.allocationPercent}%`,
+          })),
+        })),
+        summary: analysis.summary,
+      };
     }
 
     default:

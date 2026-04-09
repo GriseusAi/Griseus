@@ -19,6 +19,7 @@ import outcomeRouter from "./routes/outcome";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
 import { sql } from "drizzle-orm";
+import { runCrossProductAnalysis } from "./lib/cross-product-engine";
 
 export async function registerRoutes(
   httpServer: Server,
@@ -83,6 +84,18 @@ export async function registerRoutes(
       const result = await simulateWhatIf(scenario, sku);
       res.json(result);
     } catch (err: any) {
+      res.status(500).json({ error: err.message });
+    }
+  });
+
+  // ── Cross-Product Optimization API ──
+  app.get("/api/v1/cross-product/analysis", async (req, res) => {
+    try {
+      const months = Number(req.query.months) || 3;
+      const analysis = await runCrossProductAnalysis(months);
+      res.json(analysis);
+    } catch (err: any) {
+      console.error("[CrossProduct] Error:", err);
       res.status(500).json({ error: err.message });
     }
   });
