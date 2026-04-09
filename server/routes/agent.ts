@@ -20,6 +20,71 @@ import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
 const router = Router();
 
 // ══════════════════════════════════════════════════════════════════════
+// SINGLETON CLIENT — reuse connection across requests
+// ══════════════════════════════════════════════════════════════════════
+
+let _anthropicClient: Anthropic | null = null;
+function getClient(): Anthropic {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) throw new Error("ANTHROPIC_API_KEY eksik");
+  if (!_anthropicClient) {
+    _anthropicClient = new Anthropic({ apiKey });
+  }
+  return _anthropicClient;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// HISTORY SANITIZER — enforce alternating user/assistant roles
+// ══════════════════════════════════════════════════════════════════════
+
+function sanitizeHistory(history: { role: string; content: string }[]): Anthropic.MessageParam[] {
+  const clean: Anthropic.MessageParam[] = [];
+  for (const h of history) {
+    if (!h.content || typeof h.content !== "string" || !h.content.trim()) continue;
+    const role = h.role as "user" | "assistant";
+    if (role !== "user" && role !== "assistant") continue;
+    // Skip if same role as previous — merge or drop to maintain alternation
+    if (clean.length > 0 && clean[clean.length - 1].role === role) {
+      // Merge consecutive same-role messages
+      clean[clean.length - 1] = {
+        role,
+        content: clean[clean.length - 1].content + "\n\n" + h.content,
+      };
+      continue;
+    }
+    clean.push({ role, content: h.content });
+  }
+  // API requires first message to be "user" — drop leading assistant messages
+  while (clean.length > 0 && clean[0].role !== "user") {
+    clean.shift();
+  }
+  return clean;
+}
+
+// ══════════════════════════════════════════════════════════════════════
+// RETRY WITH BACKOFF — handle 429 and transient errors
+// ══════════════════════════════════════════════════════════════════════
+
+async function createWithRetry(
+  client: Anthropic,
+  params: Anthropic.MessageCreateParamsNonStreaming,
+  maxRetries = 2,
+): Promise<Anthropic.Message> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await client.messages.create(params);
+    } catch (err: any) {
+      const isRetryable = err.status === 429 || err.status === 529 || err.status >= 500;
+      if (!isRetryable || attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      console.warn(`[agent/retry] Attempt ${attempt + 1} failed (${err.status}), retrying in ${delay}ms...`);
+      await new Promise(r => setTimeout(r, delay));
+    }
+  }
+  throw new Error("Unreachable");
+}
+
+// ══════════════════════════════════════════════════════════════════════
 // CORE PROMPT — slim, domain knowledge injected dynamically via RAG
 // ══════════════════════════════════════════════════════════════════════
 
@@ -1386,11 +1451,16 @@ async function buildLiveSnapshot(): Promise<string> {
 // ══════════════════════════════════════════════════════════════════════
 
 router.post("/agent/chat", async (req: Request, res: Response) => {
-  try {
-    const apiKey = process.env.ANTHROPIC_API_KEY;
-    if (!apiKey) {
-      return res.status(503).json({ error: "API key eksik. ANTHROPIC_API_KEY ortam değişkenini yapılandırın." });
+  // Request timeout — 45s max
+  const TIMEOUT_MS = 45_000;
+  const timeout = setTimeout(() => {
+    if (!res.headersSent) {
+      res.status(504).json({ error: "İstek zaman aşımına uğradı. Tekrar deneyin." });
     }
+  }, TIMEOUT_MS);
+
+  try {
+    const client = getClient();
 
     const { message, history } = req.body as {
       message: string;
@@ -1398,20 +1468,14 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     };
 
     if (!message || typeof message !== "string") {
+      clearTimeout(timeout);
       return res.status(400).json({ error: "message alanı gereklidir." });
     }
 
-    const client = new Anthropic({ apiKey });
-
-    // Filter out empty/invalid history entries and ensure alternating roles
-    const cleanHistory = (history || []).filter(
-      (h) => h.content && typeof h.content === "string" && h.content.trim().length > 0
-    );
+    // Sanitize history — enforce alternating roles, merge duplicates
+    const cleanHistory = sanitizeHistory(history || []);
     const messages: Anthropic.MessageParam[] = [
-      ...cleanHistory.map((h) => ({
-        role: h.role as "user" | "assistant",
-        content: h.content,
-      })),
+      ...cleanHistory,
       { role: "user", content: message },
     ];
 
@@ -1457,7 +1521,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       },
     ];
 
-    let response = await client.messages.create({
+    let response = await createWithRetry(client, {
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
       max_tokens: 4096,
       system: systemPrompt,
@@ -1508,7 +1572,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       messages.push({ role: "user", content: toolResults });
 
       try {
-        response = await client.messages.create({
+        response = await createWithRetry(client, {
           model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
           max_tokens: 4096,
           system: systemPrompt,
@@ -1518,15 +1582,17 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
         const newText = extractText(response.content);
         if (newText) lastGoodText = newText;
       } catch (loopErr: any) {
-        // Rate limit in loop — return whatever text we have so far
         console.error("[agent/chat] Loop error:", loopErr.status, loopErr.message);
         if (lastGoodText) {
-          return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı (rate limit)*", tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
+          clearTimeout(timeout);
+          return res.json({ response: lastGoodText + "\n\n⚠️ *Analiz kısmen tamamlandı*", tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
         }
-        throw loopErr; // re-throw if we have nothing
+        throw loopErr;
       }
     }
 
+    clearTimeout(timeout);
+    if (res.headersSent) return;
     const responseText = extractText(response.content) || lastGoodText || "Cevap üretilemedi.";
 
     // TVT — Token Value Tracker: her etkileşimi logla
@@ -1554,10 +1620,12 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     res.json({ response: responseText, tools_used: toolsUsed, rag_injected: systemPrompt.length > CORE_PROMPT.length });
   } catch (err: any) {
+    clearTimeout(timeout);
+    if (res.headersSent) return;
     console.error("[agent/chat] Error:", err.status, err.message, err.error?.message);
     if (err.status === 429) {
       return res.json({
-        response: "⏳ **Yoğunluk** — API limiti aşıldı. 30 saniye bekleyip tekrar deneyin.",
+        response: "⏳ **Yoğunluk** — API limiti aşıldı. Birkaç saniye bekleyip tekrar deneyin.",
         tools_used: [],
       });
     }
