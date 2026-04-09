@@ -109,7 +109,13 @@ CEVAP FORMAT:
 - Son: "**Ne yapmalı?**" ile somut aksiyonlar (tarih + miktar)
 - # ## ### KULLANMA, teknik jargon KULLANMA, uzun paragraf YAZMA
 
-WHAT-IF: Tool'dan gelen sayıları olduğu gibi kullan. Sayı uydurma. stockDelta=0 ise "değişmedi" de.`;
+WHAT-IF: Tool'dan gelen sayıları olduğu gibi kullan. Sayı uydurma. stockDelta=0 ise "değişmedi" de.
+
+HALÜSİNASYON YASAK (KRİTİK):
+- Sistemde OLMAYAN veriyi UYDURMA. Fiyat, maliyet, ciro, kâr, yatırım tutarı gibi finansal veriler DB'de YOK.
+- "€45.000 yatırım gerekli" gibi sayılar YAZMA — bu veri sistemde mevcut değil.
+- Bilmediğin bir veri varsa "bu veri sistemde mevcut değil" de, tahmin YÜRÜTME.
+- Sadece tool'lardan dönen verilere dayan. Tool'da olmayan bilgiyi kendin türetme.`;
 
 
 // ══════════════════════════════════════════════════════════════════════
