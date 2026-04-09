@@ -1453,34 +1453,31 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     const toolsUsed: string[] = [];
 
-    // ── Live snapshot + RAG: Dynamic context injection ──
+    // ── Context injection (parallel with 8s timeout each) ──
     let systemPrompt = CORE_PROMPT;
 
-    // 1. Live snapshot (fast DB queries — agent knows current state without tool calls)
-    const snapshot = await buildLiveSnapshot();
+    const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      Promise.race([promise, new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))]);
+
+    const [snapshot, ragContext, admResult] = await Promise.all([
+      withTimeout(buildLiveSnapshot(), 8000, ""),
+      withTimeout(buildDynamicContext(message).catch(() => ""), 8000, ""),
+      withTimeout(
+        recallRelevantMemories(message).catch(() => ({ contextBlock: "", memories: [] })),
+        8000,
+        { contextBlock: "", memories: [] as any[] },
+      ),
+    ]);
+
     if (snapshot) systemPrompt += snapshot;
-
-    // 2. RAG (semantic search for domain knowledge) — no cap, domain knowledge is critical
-    try {
-      const ragContext = await buildDynamicContext(message);
-      if (ragContext) {
-        systemPrompt += "\n" + ragContext;
-        console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
-      }
-    } catch (ragErr: any) {
-      console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
+    if (ragContext) {
+      systemPrompt += "\n" + ragContext;
+      console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
     }
-
-    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar)
-    let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
-    try {
-      admMemories = await recallRelevantMemories(message);
-      if (admMemories.contextBlock) {
-        systemPrompt += "\n" + admMemories.contextBlock;
-        console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
-      }
-    } catch (admErr: any) {
-      console.warn("[agent/adm] ADM failed, continuing without memory:", admErr.message);
+    let admMemories = admResult;
+    if (admMemories.contextBlock) {
+      systemPrompt += "\n" + admMemories.contextBlock;
+      console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
     }
 
     // All tools: custom ontology tools + Anthropic built-in web search
@@ -1653,21 +1650,26 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
 
     const toolsUsed: string[] = [];
 
-    // Build system prompt (same as non-streaming)
+    // Build system prompt (parallel with 8s timeout each)
     let systemPrompt = CORE_PROMPT;
-    const snapshot = await buildLiveSnapshot();
+
+    const withTimeout = <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> =>
+      Promise.race([promise, new Promise<T>(resolve => setTimeout(() => resolve(fallback), ms))]);
+
+    const [snapshot, ragContext, admResult] = await Promise.all([
+      withTimeout(buildLiveSnapshot(), 8000, ""),
+      withTimeout(buildDynamicContext(message).catch(() => ""), 8000, ""),
+      withTimeout(
+        recallRelevantMemories(message).catch(() => ({ contextBlock: "", memories: [] })),
+        8000,
+        { contextBlock: "", memories: [] as any[] },
+      ),
+    ]);
+
     if (snapshot) systemPrompt += snapshot;
-
-    try {
-      const ragContext = await buildDynamicContext(message);
-      if (ragContext) systemPrompt += "\n" + ragContext;
-    } catch {}
-
-    let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
-    try {
-      admMemories = await recallRelevantMemories(message);
-      if (admMemories.contextBlock) systemPrompt += "\n" + admMemories.contextBlock;
-    } catch {}
+    if (ragContext) systemPrompt += "\n" + ragContext;
+    let admMemories = admResult;
+    if (admMemories.contextBlock) systemPrompt += "\n" + admMemories.contextBlock;
 
     const allTools: any[] = [
       ...TOOLS,
