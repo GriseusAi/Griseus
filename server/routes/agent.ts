@@ -1423,8 +1423,8 @@ async function buildLiveSnapshot(): Promise<string> {
 // ══════════════════════════════════════════════════════════════════════
 
 router.post("/agent/chat", async (req: Request, res: Response) => {
-  // Request timeout — 45s max
-  const TIMEOUT_MS = 45_000;
+  // Request timeout — 90s max (tool loop can take multiple API calls)
+  const TIMEOUT_MS = 90_000;
   const timeout = setTimeout(() => {
     if (!res.headersSent) {
       res.status(504).json({ error: "İstek zaman aşımına uğradı. Tekrar deneyin." });
@@ -1626,7 +1626,13 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
     res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
   };
 
+  // Keep-alive: send heartbeat every 10s to prevent timeout
+  const heartbeat = setInterval(() => {
+    res.write(`: heartbeat\n\n`);
+  }, 10000);
+
   try {
+    send("status", { message: "Analiz başlıyor..." });
     const client = getClient();
     const { message, history } = req.body as {
       message: string;
@@ -1734,6 +1740,7 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
       }
     }
 
+    clearInterval(heartbeat);
     send("done", { tools_used: toolsUsed });
     res.end();
 
@@ -1759,6 +1766,7 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
     }).catch(() => {});
 
   } catch (err: any) {
+    clearInterval(heartbeat);
     console.error("[agent/stream] Error:", err.status, err.message);
     send("error", { error: err.status === 429
       ? "API limiti aşıldı. Birkaç saniye bekleyin."

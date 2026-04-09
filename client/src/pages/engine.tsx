@@ -111,9 +111,10 @@ export default function EnginePage() {
       let streamedText = "";
       let usedTools: string[] = [];
       let buffer = "";
+      let currentEvent = "";
 
       // Add placeholder assistant message
-      setMessages(prev => [...prev, { role: "assistant", content: "", tools: [] }]);
+      setMessages(prev => [...prev, { role: "assistant", content: "🔍 Analiz başlıyor...", tools: [] }]);
 
       while (true) {
         const { done, value } = await reader.read();
@@ -125,14 +126,19 @@ export default function EnginePage() {
 
         for (const line of lines) {
           if (line.startsWith("event: ")) {
-            const event = line.slice(7);
-            const dataLine = lines[lines.indexOf(line) + 1];
-            if (!dataLine?.startsWith("data: ")) continue;
+            currentEvent = line.slice(7).trim();
+          } else if (line.startsWith("data: ") && currentEvent) {
             try {
-              const data = JSON.parse(dataLine.slice(6));
-              if (event === "tool") {
+              const data = JSON.parse(line.slice(6));
+              if (currentEvent === "status") {
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === "assistant") last.content = `🔍 ${data.message}`;
+                  return [...updated];
+                });
+              } else if (currentEvent === "tool") {
                 usedTools.push(data.name);
-                // Update last message with tool info
                 setMessages(prev => {
                   const updated = [...prev];
                   const last = updated[updated.length - 1];
@@ -142,22 +148,23 @@ export default function EnginePage() {
                   }
                   return [...updated];
                 });
-              } else if (event === "text") {
+              } else if (currentEvent === "text") {
                 streamedText += data.chunk;
                 setMessages(prev => {
                   const updated = [...prev];
                   const last = updated[updated.length - 1];
-                  if (last?.role === "assistant") {
-                    last.content = streamedText;
-                  }
+                  if (last?.role === "assistant") last.content = streamedText;
                   return [...updated];
                 });
-              } else if (event === "done") {
+              } else if (currentEvent === "done") {
                 usedTools = data.tools_used || usedTools;
-              } else if (event === "error") {
+              } else if (currentEvent === "error") {
                 throw new Error(data.error);
               }
-            } catch {}
+            } catch (parseErr: any) {
+              if (parseErr.message && !parseErr.message.includes("JSON")) throw parseErr;
+            }
+            currentEvent = "";
           }
         }
       }
