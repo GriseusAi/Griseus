@@ -88,129 +88,28 @@ async function createWithRetry(
 // CORE PROMPT — slim, domain knowledge injected dynamically via RAG
 // ══════════════════════════════════════════════════════════════════════
 
-const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin Operasyonel İstihbarat Platformu.
+const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin CEO danışmanı. Fabrikada çalışan herkes seni anlayabilmeli.
 
-ÜRÜNLER: Sisteme kayıtlı tüm ürünlerin BOM, stok ve istihbarat verilerine erişebilirsin. Her ürünün bileşen reçetesi, darboğaz analizi ve kapasite hesabı canlı veriden gelir.
+KRİTİK KURALLAR:
+- Yarı mamül stokta 0 = normal. Alt bileşenlerden montajlanır. Efektif stok = mevcut + monte edilebilir.
+- Mevsimsel forward-walk: stok ömrü her ayın talebine göre simüle edilir, sabit bölme YAPMA.
+- Çoklu ürün: CANLI DURUM'daki SKU'ları kullan. "Supra/GSS" = GSS20P, "ELT/Elite" = ELT.7-11.
+- Geçmiş kararlarla tutarlı ol (GEÇMİŞ KARARLAR bölümüne bak).
 
-KRİTİK: YARI MAMÜL bileşenlerde stokta 0 görünmesi normaldir — bu bir kriz DEĞİLDİR. Yarı mamüller alt bileşenlerinden montajlanır. Efektif kapasite = mevcut stok + alt bileşenlerden monte edilebilir adet. Kapasite hesabında her zaman efektif stoku kullan.
+ANALİZ DERİNLİĞİ — her stok sorusunda:
+1. Mevsimsel bağlam (hangi dönemdeyiz, pik ne zaman)
+2. Darboğaz + tükenme tarihi + tedarik süresi riski
+3. Finansal etki (gecikme maliyeti)
+4. Somut aksiyon: ne kadar, ne zaman, neden
 
-MEVSİMSEL TALEP: Mevsimsel indeksler DSE (Dynamic Seasonality Engine) tarafından dinamik olarak hesaplanır. Detaylar için get_seasonal_intelligence tool'unu kullan.
+CEVAP FORMAT:
+- Türkçe, sade, kısa satırlar
+- Başlık: **kalın**, sayılar: **kalın**, durum: emoji (✅⚠️🔴📦🏭📅)
+- İlk satır: durumu tek cümle özetle
+- Son: "**Ne yapmalı?**" ile somut aksiyonlar (tarih + miktar)
+- # ## ### KULLANMA, teknik jargon KULLANMA, uzun paragraf YAZMA
 
-FORWARD-WALK ALGORİTMASI: Stok kaç gün yeter hesabı mevsimseldir. Sabit bölme yerine, her ay o ayın indeksiyle tüketim simüle edilir.
-
-GRİSEUS PLATFORMU SAYFALARI:
-1. Stok Durumu (/) — Canlı ürün stok seviyeleri, üretim/depo/satış
-2. Ürün İstihbaratı (/stok/urun/{SKU}) — Üretim kapasitesi, darboğaz analizi, mevsimsel talep grafiği, sipariş simülasyonu, BOM tablosu, tüketim istihbaratı (mevsimsel KAÇ GÜN, bitiş ayı, sipariş noktası), ontoloji diyagramı (Part→Product→Season→Supplier)
-3. Sihir (/sihir) — 6 aylık strateji penceresi, aylık talep projeksiyonu, bileşen tükenme haritası, sezonsel fırsatlar, acil sipariş listesi
-4. CEO Agent (/engine) — SENSİN. 24 tool ile canlı veri sorgulama, stok güncelleme, sipariş önerisi oluşturma. GEÇMİŞ KARARLARIN HAFIZASINA SAHİPSİN (ADM)
-5. Outcome Dashboard — Tahminlerin doğruluk oranı, Bayesian güven skorları
-6. Token Value Tracker — Ontoloji değer metrikleri (V/T), flywheel skoru
-
-OUTCOME LEARNING ENGINE (OLE):
-- Her alert ve öneri bir "tahmin" olarak kaydedilir
-- Zaman içinde otomatik veya manuel doğrulanır (doğru/yanlış/kısmen doğru)
-- Bayesian güncelleme ile her kuralın güven skoru sürekli iyileşir
-- Kullanıcı "tahminler ne kadar doğru?" diye sorarsa get_outcome_dashboard kullan
-
-TOKEN VALUE TRACKER (TVT):
-- Her etkileşimin token başına değerini (V/T) ölçer
-- Generic model (ChatGPT vb.) bu soruları cevaplayamaz — ontoloji avantajı sonsuz
-- Flywheel skoru: veri büyümesi × kişiselleştirme × etkileşim artışı
-- Kullanıcı "ne kadar değer üretiyoruz?" diye sorarsa get_token_value_metrics kullan
-
-DYNAMIC SEASONALITY ENGINE (DSE):
-- Mevsimsel indeksler artık SABİT DEĞİL — EWMA (λ=0.3) ile her yeni satış verisinde güncellenir
-- Anomali tespiti: gerçek talep > 2σ sapma → "yeni trend mi?" flag
-- Baseline vs dinamik karşılaştırma: drift analizi
-- "mevsimsel tahmin değişti mi?" → get_seasonal_intelligence kullan
-
-AGENT DECISION MEMORY (ADM):
-- GEÇMİŞ KARARLAR bölümünde (═══ GEÇMİŞ KARARLAR ═══) benzer geçmiş sorgular ve sonuçları listelenir
-- Bu bilgileri kullanarak TUTARLI kararlar ver — aynı sorulara farklı cevaplar verme
-- Geçmişte kullanıcı bir öneriyi "uyguladıysa" benzer durumlarda aynı yaklaşımı öner
-- Geçmişte "görmezden gelindiyse" farklı bir açıdan yaklaş
-- Geçmiş kararlarla çelişen bir öneri yapacaksan nedenini açıkla
-
-ADAPTIVE THRESHOLD ENGINE (ATE):
-- Eşikler artık SABİT DEĞİL — firma profiline göre dinamik hesaplanır
-- Risk toleransı kullanıcı davranışından öğrenilir (Bayesian güncelleme)
-- Tedarik süresi, volatilite, mevsimsellik profili eşikleri belirler
-- "Neden kritik?" sorusunda adaptif eşikleri açıkla: "180 gün eşiği firmanızın profili için X gün olarak ayarlandı"
-- Kullanıcı profil/eşik soruyorsa get_adaptive_profile kullan
-
-ÇOKLU ÜRÜN DESTEĞİ (KRİTİK):
-- Sistemde BİRDEN FAZLA ürün var. CANLI DURUM bölümünde tüm kayıtlı ürünleri ve kapasitelerini görürsün.
-- Kullanıcı bir ürün adı veya kodu söylediğinde, DOĞRU SKU'yu tool çağrılarında kullan.
-- "GSS20P" veya "Supra" diyorsa sku="GSS20P", "ELT" veya "Elite" diyorsa sku="ELT.7-11" kullan.
-- Genel soru sorarsa (örn: "tüm ürünlerin durumu?") HER ürün için ayrı tool çağrısı yap.
-
-STRATEJİ: Düşük dönemde üret+stokla → yoğun dönemde hazır ol. Mevsimsel dip dönemlerinde stokla, pik dönemlerine hazırlan. Canlı stok durumu aşağıdaki CANLI DURUM bölümünden okunur.
-
-CEVAP TARZI (KRİTİK — HER CEVAPTA UYGULANACAK):
-
-SEN BİR CEO DANIŞMANISIN. Düz rapor veren bir yazılım DEĞİLSİN. Fabrikada çalışan herkes seni anlayabilmeli.
-
-ZEKA SEVİYESİ (KRİTİK — SIĞLIK YASAK):
-- Bir ürün sorulduğunda SADECE o ürünün stok seviyesini söyleme. ÇOK BOYUTLU ANALİZ yap:
-  1. MEVSİMSEL BAĞLAM: "Şu an Nisan — GSS20P talebi X ay sonra pik yapacak, hazırlık zamanı" (get_seasonal_intelligence kullan)
-  2. KARŞILAŞTIRMALI ANALİZ: Diğer ürünlerle kaynak çakışması var mı? Ortak bileşen var mı?
-  3. DARBOĞAZ DERİNLİĞİ: Sadece darboğaz adını söyleme — o bileşenin tükenme tarihi, tedarik süresi ve riskini açıkla (get_component_intelligence kullan)
-  4. FİNANSAL ETKİ: "Depoda 0 stok = sipariş gelirse X gün gecikme = müşteri kaybı riski"
-  5. ZAMANLAMA: "Şimdi üretirsen X ay rahat edersin, bekersen Y ayında sıkışırsın"
-- HER stok sorusunda en az 4-5 tool kullan: get_live_stock_levels + get_production_capacity + get_component_intelligence + get_seasonal_intelligence minimum
-- Sığ cevap = BAŞARISIZLIK. "Stokta 0 var, 233 üretilebilir" tek başına bir analiz DEĞİLDİR.
-
-FORMAT KURALLARI:
-- Türkçe cevap ver, sade ve net
-- ASLA # veya ## kullanma. Başlıklar için sadece **kalın metin** kullan
-- ASLA uzun teknik paragraflar yazma — her bilgi kendi satırında, kısa ve öz
-- Sayıları her zaman **kalın** yaz: **402 adet**, **281 gün**
-- Durumu emoji ile göster: ✅ iyi, ⚠️ dikkat, 🔴 kritik, 📦 stok, 🏭 üretim, 📅 zaman
-- Liste yaparken madde imi kullan, numara kullan (1. 2. 3.), tire (-) kullanma
-
-CEVAP YAPISI (bu sırayla):
-1. İlk satır: Durumu TEK CÜMLE ile özetle (emoji ile başla)
-2. Boş satır bırak
-3. Anahtar bilgiler: Her biri kendi satırında, kısa
-4. MEVSİMSEL BAĞLAM: Bu ayda bu ürün için ne anlam ifade ediyor?
-5. Eğer risk varsa: "Neden?" başlığı altında 2-3 madde ile SADE açıklama
-6. Son: "Ne yapmalı?" başlığı altında somut aksiyonlar — TARİH ve MİKTAR ile (1. 2. 3.)
-
-YAPMA:
-- "Sebep Zinciri:" başlığı kullanma — yerine "Neden?" yaz
-- "Önerilen Aksiyonlar:" kullanma — yerine "Ne yapmalı?" yaz
-- Teknik jargon kullanma (forward-walk, EWMA, Bayesian gibi)
-- Aynı bilgiyi farklı şekillerde tekrarlama
-- ### veya #### ile başlık açma
-- Gereksiz uzun tablolar yapma
-
-ÖRNEK İYİ CEVAP:
-"⚠️ [Bileşen kodu] [Bileşen adı] — stok azalıyor, kış öncesi sipariş gerekli
-
-📦 Stok: **X adet**
-🏭 Günlük tüketim: **Y adet/gün**
-📅 Tükenme: **[Ay Yıl]** (kış pik dönemi!)
-
-**Neden önemli?**
-1. Kış aylarında talep **Z kat** artıyor
-2. Tedarik süresi **N gün** — geç kalınırsa üretim durur
-3. Bu parça ana darboğaz — tükenirse hiç üretim yapılamaz
-
-**Ne yapmalı?**
-1. En az **M adet** sipariş ver (kış öncesi stok artışı)
-2. [Tarih] sonuna kadar siparişi tamamla
-3. Kasım-Ocak döneminde günlük stok takibi yap"
-
-WHAT-IF ANALİZ KURALLARI (KRİTİK — MUTLAKA UYGULANACAK):
-- what_if_analysis tool'undan dönen verileri OLDUĞU GİBİ kullan. SAYI UYDURMA, YUVARLAMA veya YORUMLAMA.
-- "afterStock" değeri bileşenin simülasyon sonrası stokudur — bunu direkt yaz.
-- "afterSeasonalDays" değeri mevsimsel kaç gün yeteceğidir — bunu direkt yaz.
-- "currentStock → afterStock" formatında yaz: ör. "XX.XXX: 482 → 982 adet"
-- Sadece "urgencyChanged: true" olan bileşenleri raporla, değişmeyen bileşenleri atlayabilirsin.
-- "stockDelta: 0" olan bileşenleri "stoku değişmedi" olarak belirt, ASLA saydırma yaparak farklı sayı türetme.
-- restock_component senaryosunda SADECE belirtilen bileşenin stoku değişir. Diğer bileşenlerin stockDelta'sı 0'dır — bunları "stoku sıfıra düştü" gibi yanlış gösterme.
-- "feasible: false" ise "KARŞILANAMAZ" yaz, sebebini "criticalComponents" listesinden al.
-- Tool'dan gelen "summary" alanını referans al ama sayıları her zaman "topImpacts" dizisinden doğrula.`;
+WHAT-IF: Tool'dan gelen sayıları olduğu gibi kullan. Sayı uydurma. stockDelta=0 ise "değişmedi" de.`;
 
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1561,23 +1460,25 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     const snapshot = await buildLiveSnapshot();
     if (snapshot) systemPrompt += snapshot;
 
-    // 2. RAG (semantic search for domain knowledge)
+    // 2. RAG (semantic search for domain knowledge) — max 2000 chars
     try {
       const ragContext = await buildDynamicContext(message);
       if (ragContext) {
-        systemPrompt += "\n" + ragContext;
-        console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
+        const cappedRag = ragContext.length > 2000 ? ragContext.slice(0, 2000) + "\n...(kısaltıldı)" : ragContext;
+        systemPrompt += "\n" + cappedRag;
+        console.log(`[agent/rag] Injected dynamic context (${cappedRag.length} chars)`);
       }
     } catch (ragErr: any) {
       console.warn("[agent/rag] RAG failed, using core prompt only:", ragErr.message);
     }
 
-    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar)
+    // 3. ADM (Agent Decision Memory — benzer geçmiş kararlar) — max 1500 chars
     let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
     try {
       admMemories = await recallRelevantMemories(message);
       if (admMemories.contextBlock) {
-        systemPrompt += "\n" + admMemories.contextBlock;
+        const cappedAdm = admMemories.contextBlock.length > 1500 ? admMemories.contextBlock.slice(0, 1500) + "\n...(kısaltıldı)" : admMemories.contextBlock;
+        systemPrompt += "\n" + cappedAdm;
         console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
       }
     } catch (admErr: any) {
@@ -1596,7 +1497,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
 
     let response = await createWithRetry(client, {
       model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-      max_tokens: 4096,
+      max_tokens: 8192,
       system: systemPrompt,
       tools: allTools,
       messages,
@@ -1612,7 +1513,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     let iterations = 0;
     let lastGoodText = extractText(response.content);
 
-    while (response.stop_reason === "tool_use" && iterations < 3) {
+    while (response.stop_reason === "tool_use" && iterations < 5) {
       iterations++;
       const assistantContent = response.content;
 
@@ -1634,7 +1535,11 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
         const block = toolBlock as any;
         try {
           const result = await callTool(block.name, block.input as Record<string, any>);
-          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: JSON.stringify(result) });
+          let resultStr = JSON.stringify(result);
+          if (resultStr.length > 3000) {
+            resultStr = resultStr.slice(0, 2900) + '..."__truncated__":true}';
+          }
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: resultStr });
         } catch (err: any) {
           toolResults.push({ type: "tool_result", tool_use_id: block.id,
             content: JSON.stringify({ error: err.message || "Tool execution failed" }), is_error: true });
@@ -1647,7 +1552,7 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       try {
         response = await createWithRetry(client, {
           model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-          max_tokens: 4096,
+          max_tokens: 8192,
           system: systemPrompt,
           tools: allTools,
           messages,
@@ -1704,6 +1609,169 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     }
     const msg = err.error?.message || err.message || "AI Agent hatası";
     res.status(err.status || 500).json({ error: msg });
+  }
+});
+
+// ══════════════════════════════════════════════════════════════════════
+// STREAMING CHAT ENDPOINT (SSE)
+// ══════════════════════════════════════════════════════════════════════
+
+router.post("/agent/chat/stream", async (req: Request, res: Response) => {
+  // SSE headers
+  res.writeHead(200, {
+    "Content-Type": "text/event-stream",
+    "Cache-Control": "no-cache",
+    Connection: "keep-alive",
+  });
+
+  const send = (event: string, data: any) => {
+    res.write(`event: ${event}\ndata: ${JSON.stringify(data)}\n\n`);
+  };
+
+  try {
+    const client = getClient();
+    const { message, history } = req.body as {
+      message: string;
+      history?: { role: string; content: string }[];
+    };
+
+    if (!message || typeof message !== "string") {
+      send("error", { error: "message alanı gereklidir." });
+      res.end();
+      return;
+    }
+
+    const cleanHistory = sanitizeHistory(history || []);
+    const messages: Anthropic.MessageParam[] = [
+      ...cleanHistory,
+      { role: "user", content: message },
+    ];
+
+    const toolsUsed: string[] = [];
+
+    // Build system prompt (same as non-streaming)
+    let systemPrompt = CORE_PROMPT;
+    const snapshot = await buildLiveSnapshot();
+    if (snapshot) systemPrompt += snapshot;
+
+    try {
+      const ragContext = await buildDynamicContext(message);
+      if (ragContext) {
+        const cappedRag = ragContext.length > 2000 ? ragContext.slice(0, 2000) + "\n...(kısaltıldı)" : ragContext;
+        systemPrompt += "\n" + cappedRag;
+      }
+    } catch {}
+
+    let admMemories: Awaited<ReturnType<typeof recallRelevantMemories>> | null = null;
+    try {
+      admMemories = await recallRelevantMemories(message);
+      if (admMemories.contextBlock) {
+        const cappedAdm = admMemories.contextBlock.length > 1500 ? admMemories.contextBlock.slice(0, 1500) + "\n...(kısaltıldı)" : admMemories.contextBlock;
+        systemPrompt += "\n" + cappedAdm;
+      }
+    } catch {}
+
+    const allTools: any[] = [
+      ...TOOLS,
+      { type: "web_search_20250305", name: "web_search", max_uses: 3 },
+    ];
+
+    const baseParams = {
+      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
+      max_tokens: 8192,
+      system: systemPrompt,
+      tools: allTools,
+    };
+
+    // Tool-use loop (non-streaming — need full response for tool calls)
+    let response = await createWithRetry(client, { ...baseParams, messages });
+    let iterations = 0;
+
+    while (response.stop_reason === "tool_use" && iterations < 5) {
+      iterations++;
+      const assistantContent = response.content;
+
+      const toolUseBlocks = assistantContent.filter(
+        (b: any) => b.type === "tool_use" && b.name !== "web_search"
+      );
+
+      for (const b of assistantContent.filter((b: any) => b.type === "tool_use" || b.type === "server_tool_use")) {
+        toolsUsed.push((b as any).name);
+      }
+
+      if (toolUseBlocks.length === 0) break;
+
+      // Send tool progress to client
+      for (const block of toolUseBlocks) {
+        send("tool", { name: (block as any).name });
+      }
+
+      const toolResults: Anthropic.ToolResultBlockParam[] = [];
+      for (const toolBlock of toolUseBlocks) {
+        const block = toolBlock as any;
+        try {
+          const result = await callTool(block.name, block.input as Record<string, any>);
+          let resultStr = JSON.stringify(result);
+          if (resultStr.length > 3000) {
+            resultStr = resultStr.slice(0, 2900) + '..."__truncated__":true}';
+          }
+          toolResults.push({ type: "tool_result", tool_use_id: block.id, content: resultStr });
+        } catch (err: any) {
+          toolResults.push({ type: "tool_result", tool_use_id: block.id,
+            content: JSON.stringify({ error: err.message || "Tool execution failed" }), is_error: true });
+        }
+      }
+
+      messages.push({ role: "assistant", content: assistantContent });
+      messages.push({ role: "user", content: toolResults });
+
+      response = await createWithRetry(client, { ...baseParams, messages });
+    }
+
+    // Final response — stream it token by token
+    const finalText = response.content
+      .filter((b: any) => b.type === "text")
+      .map((b: any) => b.text)
+      .join("\n");
+
+    if (finalText) {
+      // Stream in chunks for smooth UX
+      const chunkSize = 12;
+      for (let i = 0; i < finalText.length; i += chunkSize) {
+        send("text", { chunk: finalText.slice(i, i + chunkSize) });
+      }
+    }
+
+    send("done", { tools_used: toolsUsed });
+    res.end();
+
+    // Fire-and-forget: TVT + ADM logging
+    const usage = response.usage;
+    const category = classifyQuery(message, toolsUsed);
+    if (usage) {
+      logTokenInteraction({
+        interactionType: "agent_chat",
+        inputTokens: usage.input_tokens,
+        outputTokens: usage.output_tokens,
+        toolsUsed: toolsUsed.length > 0 ? toolsUsed : undefined,
+        queryCategory: category,
+        actor: "ceo_agent",
+      });
+    }
+    recordMemory({
+      queryText: message,
+      queryCategory: category,
+      toolsUsed,
+      recommendationMade: extractRecommendation(finalText),
+      responseLength: finalText.length,
+    }).catch(() => {});
+
+  } catch (err: any) {
+    console.error("[agent/stream] Error:", err.status, err.message);
+    send("error", { error: err.status === 429
+      ? "API limiti aşıldı. Birkaç saniye bekleyin."
+      : (err.error?.message || err.message || "Agent hatası") });
+    res.end();
   }
 });
 

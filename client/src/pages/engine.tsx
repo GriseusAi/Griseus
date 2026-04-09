@@ -91,19 +91,90 @@ export default function EnginePage() {
 
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const res = await fetch("/api/v1/agent/chat", {
+
+      // Streaming SSE endpoint
+      const res = await fetch("/api/v1/agent/chat/stream", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), history }),
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(data.error || "Agent hatası");
-      const usedTools: string[] = data.tools_used || [];
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: data.response,
-        tools: usedTools,
-      }]);
+
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({ error: "Agent hatası" }));
+        throw new Error(data.error || "Agent hatası");
+      }
+
+      const reader = res.body?.getReader();
+      if (!reader) throw new Error("Stream okunamadı");
+
+      const decoder = new TextDecoder();
+      let streamedText = "";
+      let usedTools: string[] = [];
+      let buffer = "";
+
+      // Add placeholder assistant message
+      setMessages(prev => [...prev, { role: "assistant", content: "", tools: [] }]);
+
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split("\n");
+        buffer = lines.pop() || "";
+
+        for (const line of lines) {
+          if (line.startsWith("event: ")) {
+            const event = line.slice(7);
+            const dataLine = lines[lines.indexOf(line) + 1];
+            if (!dataLine?.startsWith("data: ")) continue;
+            try {
+              const data = JSON.parse(dataLine.slice(6));
+              if (event === "tool") {
+                usedTools.push(data.name);
+                // Update last message with tool info
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === "assistant") {
+                    last.tools = [...usedTools];
+                    last.content = `🔍 *${data.name}* analiz ediliyor...`;
+                  }
+                  return [...updated];
+                });
+              } else if (event === "text") {
+                streamedText += data.chunk;
+                setMessages(prev => {
+                  const updated = [...prev];
+                  const last = updated[updated.length - 1];
+                  if (last?.role === "assistant") {
+                    last.content = streamedText;
+                  }
+                  return [...updated];
+                });
+              } else if (event === "done") {
+                usedTools = data.tools_used || usedTools;
+              } else if (event === "error") {
+                throw new Error(data.error);
+              }
+            } catch {}
+          }
+        }
+      }
+
+      // Final update with all tools
+      setMessages(prev => {
+        const updated = [...prev];
+        const last = updated[updated.length - 1];
+        if (last?.role === "assistant") {
+          last.tools = usedTools;
+          if (!last.content || last.content.includes("analiz ediliyor")) {
+            last.content = streamedText || "Cevap üretilemedi.";
+          }
+        }
+        return [...updated];
+      });
+
       if (usedTools.some(t => WRITE_TOOLS.has(t))) {
         qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
         qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
@@ -112,6 +183,12 @@ export default function EnginePage() {
       }
     } catch (e: any) {
       setError(e.message);
+      // Remove empty assistant message on error
+      setMessages(prev => {
+        const last = prev[prev.length - 1];
+        if (last?.role === "assistant" && !last.content) return prev.slice(0, -1);
+        return prev;
+      });
     } finally {
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
