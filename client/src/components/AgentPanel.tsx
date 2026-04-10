@@ -35,7 +35,16 @@ interface Message {
   role: "user" | "assistant";
   content: string;
   tools?: string[];
+  agents?: string[];
 }
+
+// Ontology v2 sub-agent display names (Türkçe)
+const AGENT_LABELS: Record<string, string> = {
+  tukenme: "🔺 Tükenme",
+  yapi: "🔺 Yapı",
+  risk: "🔺 Risk",
+  aksiyon: "⚡ Aksiyon",
+};
 
 const WRITE_TOOLS = new Set([
   "create_stock_movement", "update_component_stock", "create_purchase_suggestion",
@@ -107,10 +116,12 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
       const data = await res.json();
       if (!res.ok) throw new Error(data.error || "Agent hatası");
       const usedTools: string[] = data.tools_used || [];
+      const usedAgents: string[] = data.agents_used || [];
       setMessages(prev => [...prev, {
         role: "assistant",
         content: data.response,
         tools: usedTools,
+        agents: usedAgents,
       }]);
       if (usedTools.some(t => WRITE_TOOLS.has(t))) {
         qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
@@ -274,6 +285,21 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                   <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{m.content}</div>
                 )}
               </div>
+
+              {/* Sub-agent badges (Ontology v2) */}
+              {m.agents && m.agents.length > 0 && (
+                <div style={{ display: "flex", gap: 4, marginTop: 6, flexWrap: "wrap" }}>
+                  {m.agents.map((a, j) => (
+                    <span key={j} style={{
+                      fontSize: 11, padding: "3px 9px", borderRadius: 6,
+                      background: C.accentGlow, color: C.accent, fontWeight: 600,
+                      border: `1px solid ${C.accentBorder}`,
+                    }}>
+                      {AGENT_LABELS[a] || a}
+                    </span>
+                  ))}
+                </div>
+              )}
 
               {/* Tool badges */}
               {m.tools && m.tools.length > 0 && (
