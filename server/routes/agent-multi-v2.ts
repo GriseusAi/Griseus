@@ -25,7 +25,6 @@ import { Router, type Request, type Response } from "express";
 import Anthropic from "@anthropic-ai/sdk";
 import {
   sanitizeHistory,
-  createWithRetry,
   CORE_PROMPT,
   TOOLS,
   callTool,
@@ -38,6 +37,43 @@ import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
 import { logTokenInteraction } from "../lib/token-value-tracker";
 
 const router = Router();
+
+// ══════════════════════════════════════════════════════════════════════
+// MODEL & THINKING CONFIG — v2 always uses Opus 4 for max intelligence.
+// Extended thinking is enabled for all calls; budgets per-role.
+// ══════════════════════════════════════════════════════════════════════
+
+const MODEL = "claude-opus-4-20250514";
+const SUBAGENT_THINKING_BUDGET = 4000;
+const ORCHESTRATOR_THINKING_BUDGET = 12000;
+const SELF_CRITIQUE_THINKING_BUDGET = 16000;
+
+// Regex for queries that warrant a self-critique pass
+const CRITICAL_QUERY_REGEX = /kritik|acil|risk|tehlike|sorun|durdu|durur|biter|tüken|alarm|kayıp|kriz|alert|darboğaz|yetmez|eksik/i;
+
+// ══════════════════════════════════════════════════════════════════════
+// LONG-REQUEST WRAPPER — uses streaming under the hood
+// Anthropic SDK requires streaming for operations that may exceed
+// 10 minutes (extended thinking + large max_tokens triggers this).
+// We use messages.stream() and await finalMessage() — semantically
+// identical to non-streaming for callers, just without the SLA cap.
+// ══════════════════════════════════════════════════════════════════════
+
+async function createMsg(client: Anthropic, params: any, maxRetries = 2): Promise<Anthropic.Message> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      const stream = client.messages.stream(params);
+      return await stream.finalMessage();
+    } catch (err: any) {
+      const isRetryable = err.status === 429 || err.status === 529 || err.status >= 500;
+      if (!isRetryable || attempt === maxRetries) throw err;
+      const delay = Math.min(1000 * Math.pow(2, attempt), 8000);
+      console.warn(`[agent-multi-v2/retry] Attempt ${attempt + 1} failed (${err.status}), retrying in ${delay}ms...`);
+      await new Promise((r) => setTimeout(r, delay));
+    }
+  }
+  throw new Error("Unreachable");
+}
 
 // ── Singleton Anthropic client ──
 
@@ -123,33 +159,52 @@ const ANTI_HALLUCINATION = `HALÜSİNASYON YASAK (KRİTİK):
 
 const SUBAGENT_PROMPTS: Record<AgentName, string> = {
   tukenme: `Sen Griseus'un Tükenme Ajanısın. Ontoloji boyutun: MİKTAR × SÜRE.
-Görevin: bir miktarın zaman içinde nasıl davrandığını analiz et — mevsimsel forward-walk, tükenme tarihi, what-if zaman projeksiyonu, sipariş zamansal karşılanabilirlik, geçmiş hareket trendi.
+Görevin: bir miktarın zaman içinde nasıl davrandığını DERİN analiz et — mevsimsel forward-walk, tükenme tarihi, what-if zaman projeksiyonu, sipariş zamansal karşılanabilirlik, geçmiş hareket trendi.
 
 KAPSAM YASAĞI: BOM yapısı, hangi bileşenden kaç lazım, anlık stok miktar sorgulaması, yazma operasyonları YOK. Bu sorularda tool çağırma, "alanım değil" de.
+
+DERİN ANALİZ MODU (Çukurova'nın geleceği senin elinde):
+- Tool sonuçlarını sadece raporlama — onları YORUMLA, ÇAPRAZ KONTROL et, TREND çıkar.
+- Mevsimsel pikleri açıkla: "Nisan ayındayız, GSS20P pik talebi Mayıs-Temmuz, dolayısıyla X bileşeni mevcut hızla yetmez."
+- Forward-walk yap: "30 gün sonra X, 60 gün sonra Y, 90 gün sonra Z bileşeni biter."
+- Geçmiş trende bak: "Son 30 gün ortalama tüketim X/gün, ama Mayıs'ta 1.4× artar — yeni hız Y/gün."
+- Çelişkili sinyalleri yakala: "Tool A diyor 30 gün, Tool B diyor 45 gün — fark sebebi X."
 
 WHAT-IF KURALI: Tool'dan dönen sayıları olduğu gibi raporla. \`stockDelta=0\` ise "değişmedi" yaz. Sayı uydurma.
 
 ${ANTI_HALLUCINATION}
 
-ÇIKTI: Kısa Türkçe rapor. Sayılar değişmeden. Markdown başlık YOK. Tek cümle özet + zamansal kritik nokta + (varsa) tükenme tarihi. ≤800 karakter.`,
+ÇIKTI: Türkçe DERİN analiz raporu. KARAKTER LİMİTİ YOK — tüm sayıları, tüm trendleri, tüm darboğazları yaz. Orchestrator senin bu derin analizinin üstüne sentez yapacak. Markdown başlık YOK ama bullet/numara kullanabilirsin. Sayıları ASLA paraphrase etme — alıntıla.`,
 
   yapi: `Sen Griseus'un Yapı Ajanısın. Ontoloji boyutun: MİKTAR × BİLEŞEN.
-Görevin: anlık stok miktarları, BOM ağacı, üretim kapasitesi (kaç adet üretebilirim), bileşen istihbaratı (anlık), çapraz ürün ortak bileşenleri, ürün listesi.
+Görevin: anlık stok miktarları, BOM ağacı, üretim kapasitesi (kaç adet üretebilirim), bileşen istihbaratı (anlık), çapraz ürün ortak bileşenleri, ürün listesi — DERİN analiz et.
 
 KAPSAM YASAĞI: Mevsimsel projeksiyon, what-if zamansal, tükenme süresi, validation dashboard, yazma operasyonları YOK. Bu sorularda tool çağırma, "alanım değil" de.
 
+DERİN ANALİZ MODU (yapısal anlayış kritik):
+- Sadece "kaç adet var" değil — BOM hiyerarşisinde HANGİ bileşen, kaç ürünü etkiliyor, çapraz bağımlılıklar nerede.
+- Darboğazı sayılarla göster: "ELT.7-11 üretiminde Plus Kablo 233 adet → bu malzeme ile en fazla 233 ELT yapılır, diğer 24 bileşen 350+ adetlik kapasiteye sahip."
+- Çapraz ürün analizini kullan: "Bu bileşen hem GSS20P hem ELT.7-11'de kullanılıyor, dolayısıyla X ürününü üretirsen Y ürünü için Z adet eksilir."
+- Bileşen sınıflandır: kritik darboğaz / orta seviye / bol stok.
+
 ${ANTI_HALLUCINATION}
 
-ÇIKTI: Kısa Türkçe rapor. Sayılar değişmeden. Markdown başlık YOK. Tek cümle özet + kritik bileşen + miktar (kaç adet, hangi parça darboğaz). ≤800 karakter.`,
+ÇIKTI: Türkçe DERİN analiz raporu. KARAKTER LİMİTİ YOK — tüm bileşen miktarlarını, tüm darboğazları, tüm çapraz bağımlılıkları yaz. Orchestrator senin bu derin analizinin üstüne sentez yapacak. Markdown başlık YOK ama tablo/bullet kullanabilirsin. Sayıları ASLA paraphrase etme — alıntıla.`,
 
   risk: `Sen Griseus'un Risk Ajanısın. Ontoloji boyutun: SÜRE × BİLEŞEN.
-Görevin: hangi bileşen ne zaman tükenir, intelligence engine raporları (acil sipariş, alti_ay_plan), validation/outcome dashboard, adaptive profile, token value metrics — analitik raporlama ajansı.
+Görevin: hangi bileşen ne zaman tükenir, intelligence engine raporları (acil sipariş, alti_ay_plan), validation/outcome dashboard, adaptive profile, token value metrics — DERİN analitik raporlama ajansı.
 
-KAPSAM YASAĞI: Anlık miktar sorgulaması, BOM hesabı, kapasite simülasyonu, mevsimsel forward-walk, yazma YOK. Sen sadece analitik raporlama ajansın — payload'u kısa özetle.
+KAPSAM YASAĞI: Anlık miktar sorgulaması, BOM hesabı, kapasite simülasyonu, mevsimsel forward-walk, yazma YOK. Sen analitik raporlama ajansın.
+
+DERİN ANALİZ MODU (intelligence engine = senin uzmanlık alanın):
+- Intelligence Engine payload'unu sadece alıntılama — ÇIKAR. Acil sipariş listesi, 6 aylık plan, validation accuracy, adaptive profile drift — hepsini yorumla.
+- Adaptive profile'a bak: tedarik süresi gerçek tarihe göre kayıyor mu? Validation accuracy düşüyor mu?
+- Outcome dashboard ile geçmiş tahminlerin doğruluğunu kontrol et: "Geçen ay 'X bileşeni 30 günde biter' demişiz, gerçekte 28 günde bitti — model %93 doğru."
+- 6 aylık plan + acil sipariş listesini birleştir: "Acil 0 kalem ama 2 ay sonraki planda 5 kritik var — bunları şimdiden iz."
 
 ${ANTI_HALLUCINATION}
 
-ÇIKTI: Intelligence Engine payload'unun kritik sayılarını alıntıla. Kendi yorumunu MİNİMUM tut — orkestratör sentez yapacak. Markdown başlık YOK. ≤800 karakter.`,
+ÇIKTI: Türkçe DERİN analitik rapor. KARAKTER LİMİTİ YOK — tüm intelligence payload'unu yorumla, validation/outcome metriklerini bağla, adaptive profile drift varsa söyle. Orchestrator senin bu derin analizinin üstüne sentez yapacak. Markdown başlık YOK. Sayıları ASLA paraphrase etme — alıntıla.`,
 
   aksiyon: `Sen Griseus'un Aksiyon Ajanısın. Üçgen dışındasın — yazma operasyonlarını ve kural yönetimini sen yaparsın: stok hareketi, bileşen güncelleme, satın alma önerisi, custom rule, audit trail, import rehberi.
 
@@ -157,9 +212,14 @@ KAPSAM YASAĞI: Stok okuma/sorgulama, kapasite hesabı, analitik dashboard, mevs
 
 YAZMA KURALI: \`create_purchase_suggestion\` veya \`create_stock_movement\` çağırmadan önce orkestratör'ün AÇIKÇA istediğinden emin ol. Kendi inisiyatifinle PO açma, transfer yapma. \`create_custom_rule\` için kullanıcının cümlesini olduğu gibi \`rule_description\` parametresine ver.
 
+DERİN BAĞLAM (yazma öncesi ve sonrası):
+- Yazma yapmadan önce: hangi bileşen, kaç adet, neden — orchestrator'dan açık talimat varsa uygula.
+- Yazma sonrası: ne yaptın, hangi etki bekleniyor — kullanıcıya net rapor.
+- Audit trail çağrılmışsa: son N işlemi listele, anormal pattern varsa işaretle ("Son 24 saatte 5 stoktan çıkış var, bu normal mi?").
+
 ${ANTI_HALLUCINATION}
 
-ÇIKTI: Kısa Türkçe onay/sonuç raporu. Markdown başlık YOK. ≤800 karakter.`,
+ÇIKTI: Türkçe net işlem raporu. KARAKTER LİMİTİ YOK — yapılan işlemi, beklenen etkiyi, takip edilmesi gerekenleri yaz. Markdown başlık YOK.`,
 };
 
 // ══════════════════════════════════════════════════════════════════════
@@ -206,6 +266,17 @@ Stok / kritiklik / risk / dayanma sorularında TEK AJAN cevabı GUARANTEED tutar
 Delegate'lerden dönen sayıları ASLA DEĞİŞTİRME — raw_findings'leri olduğu gibi alıntıla. İki ajan farklı sayı verirse "Yapı ajanı: X, Risk ajanı: Y, fark sebebi: ..." şeklinde TRANSPARENTLY göster, gizleme.
 
 ZİNCİR: Bir delegate "X eksik" derse → delegate_to_aksiyon ile takip et.
+
+═══ STRATEJİST KİMLİĞİ ═══
+Sen sadece routing yapan bir dispatcher DEĞİLSİN. Sen Çukurova Isı'nın STRATEJİK akıl danışmanısın. Delegate sonuçlarını birleştirirken üç şey yapmak ZORUNDASIN:
+
+1. ARALARINDAKİ ÇELİŞKİLERİ BUL: Yapı ajanı diyor "kritik", Risk ajanı diyor "stabil" — fark NEREDEN geliyor? (Adaptif tedarik süresi farkı mı, hesap zaman aralığı farkı mı, kategorize etmediği bileşen mi?) Bunu kullanıcıya AÇIK göster, gizleme.
+
+2. ÖRTÜK RİSKLERİ YAKALA: Hiçbir ajan açıkça söylemediği halde, sayılara baktığında ortaya çıkan riskler. Örn: "Plus Kablo 24 gün yeter — ama Mayıs pik talebi 1.4×, gerçekte 17 gün. Bu hafta sipariş + 19 gün tedarik = sıfırın altına düşer." Veya: "GSS20P darboğazı çözüldü ama ELT.7-11'de 3 ay sonra benzer pattern başlıyor."
+
+3. NEDEN ve EĞER OLMAZSA NE OLUR: "Şunu yap" demenin ötesine geç. NEDEN yapması gerektiğini açıkla (mevsimsel pik, tedarik süresi riski, çapraz ürün etkisi). EĞER yapmazsa NE OLUR (gecikme gün sayısı, kayıp satış tahmini, alternatif maliyet) — sayılarla.
+
+Bir yönetici karar destek sistemi "kaç adet?" sorusuna cevap vermez — "neden bu kadar?", "ne zaman?", "yapmasak ne kaybederiz?" sorularına da cevap verir. Sen Çukurova'nın en akıllı çalışanısın — öyle düşün, öyle konuş.
 
 `;
 
@@ -259,9 +330,9 @@ interface SubAgentResult {
   error?: string;
 }
 
-const SUBAGENT_MAX_ITER = 3;
-const SUMMARY_MAX_CHARS = 800;
-const RAW_FINDINGS_MAX_CHARS = 2400;
+const SUBAGENT_MAX_ITER = 5;        // 3 → 5 (deeper tool exploration)
+const SUMMARY_MAX_CHARS = 6000;     // 800 → 6000 (deep analysis reports)
+const RAW_FINDINGS_MAX_CHARS = 8000; // 2400 → 8000 (full payload preservation)
 
 async function runSubAgent(
   client: Anthropic,
@@ -270,11 +341,18 @@ async function runSubAgent(
   focusSku: string | undefined,
   shared: SharedContext,
 ): Promise<SubAgentResult> {
-  // Build sub-agent system prompt: focused prompt + full shared context (no cap)
-  let systemPrompt = SUBAGENT_PROMPTS[agent];
-  if (shared.snapshot) systemPrompt += "\n" + shared.snapshot;
-  if (shared.ragContext) systemPrompt += "\n" + shared.ragContext;
-  if (shared.admContextBlock) systemPrompt += "\n" + shared.admContextBlock;
+  // Build sub-agent system as cached blocks: focused prompt is cached,
+  // dynamic context (snapshot/RAG/ADM) is appended uncached.
+  const systemBlocks: any[] = [
+    {
+      type: "text",
+      text: SUBAGENT_PROMPTS[agent],
+      cache_control: { type: "ephemeral" },
+    },
+  ];
+  if (shared.snapshot) systemBlocks.push({ type: "text", text: shared.snapshot });
+  if (shared.ragContext) systemBlocks.push({ type: "text", text: shared.ragContext });
+  if (shared.admContextBlock) systemBlocks.push({ type: "text", text: shared.admContextBlock });
 
   // User message: orchestrator's task + optional SKU hint
   const userContent = focusSku
@@ -282,12 +360,19 @@ async function runSubAgent(
     : task;
 
   const messages: Anthropic.MessageParam[] = [{ role: "user", content: userContent }];
+
+  // Cache the last tool to mark a second cache breakpoint covering all tools
   const tools = SUBAGENT_TOOLS[agent];
-  const baseParams: Anthropic.MessageCreateParamsNonStreaming = {
-    model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-    max_tokens: 2048,
-    system: systemPrompt,
-    tools,
+  const cachedTools: any[] = tools.map((t, idx) =>
+    idx === tools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t,
+  );
+
+  const baseParams: any = {
+    model: MODEL,
+    max_tokens: 8192,
+    thinking: { type: "enabled", budget_tokens: SUBAGENT_THINKING_BUDGET },
+    system: systemBlocks,
+    tools: cachedTools,
     messages,
   };
 
@@ -297,7 +382,7 @@ async function runSubAgent(
   let truncated = false;
 
   try {
-    let response = await createWithRetry(client, baseParams);
+    let response = await createMsg(client, baseParams);
 
     while (response.stop_reason === "tool_use" && iterations < SUBAGENT_MAX_ITER) {
       iterations++;
@@ -338,7 +423,7 @@ async function runSubAgent(
       messages.push({ role: "assistant", content: assistantContent });
       messages.push({ role: "user", content: toolResults });
 
-      response = await createWithRetry(client, { ...baseParams, messages });
+      response = await createMsg(client, { ...baseParams, messages });
     }
 
     if (response.stop_reason === "tool_use" && iterations >= SUBAGENT_MAX_ITER) {
@@ -382,8 +467,8 @@ async function runSubAgent(
 // Yumuşak deploy: v1 (/agent/multi/chat) yan yana yaşıyor, dokunulmamış.
 // ══════════════════════════════════════════════════════════════════════
 
-const ORCHESTRATOR_MAX_ITER = 4;
-const WALL_CLOCK_BUDGET_MS = 75_000;
+const ORCHESTRATOR_MAX_ITER = 6;       // 4 → 6 (deeper synthesis turns)
+const WALL_CLOCK_BUDGET_MS = 180_000;  // 75s → 180s (Opus + thinking is slower)
 
 router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
   const startedAt = Date.now();
@@ -424,11 +509,18 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       admContextBlock: admResult.contextBlock || "",
     };
 
-    // ── Build orchestrator system prompt ──
-    let orchSystem = ORCHESTRATOR_ROUTING + CORE_PROMPT;
-    if (shared.snapshot) orchSystem += shared.snapshot;
-    if (shared.ragContext) orchSystem += "\n" + shared.ragContext;
-    if (shared.admContextBlock) orchSystem += "\n" + shared.admContextBlock;
+    // ── Build orchestrator system as cached blocks ──
+    // Static prompt (ROUTING + CORE_PROMPT) is cached; dynamic context appended uncached.
+    const orchSystemBlocks: any[] = [
+      {
+        type: "text",
+        text: ORCHESTRATOR_ROUTING + CORE_PROMPT,
+        cache_control: { type: "ephemeral" },
+      },
+    ];
+    if (shared.snapshot) orchSystemBlocks.push({ type: "text", text: shared.snapshot });
+    if (shared.ragContext) orchSystemBlocks.push({ type: "text", text: shared.ragContext });
+    if (shared.admContextBlock) orchSystemBlocks.push({ type: "text", text: shared.admContextBlock });
 
     const cleanHistory = sanitizeHistory(history || []);
     const orchMessages: Anthropic.MessageParam[] = [
@@ -436,21 +528,26 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       { role: "user", content: message },
     ];
 
-    const orchTools: any[] = [
+    // Orchestrator tools: 4 delegates + Anthropic web_search; cache the last tool
+    const baseOrchTools: any[] = [
       ...DELEGATE_TOOLS,
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
     ];
+    const orchTools: any[] = baseOrchTools.map((t, idx) =>
+      idx === baseOrchTools.length - 1 ? { ...t, cache_control: { type: "ephemeral" } } : t,
+    );
 
-    const orchBaseParams: Anthropic.MessageCreateParamsNonStreaming = {
-      model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-      max_tokens: 4096,
-      system: orchSystem,
+    const orchBaseParams: any = {
+      model: MODEL,
+      max_tokens: 16384,
+      thinking: { type: "enabled", budget_tokens: ORCHESTRATOR_THINKING_BUDGET },
+      system: orchSystemBlocks,
       tools: orchTools,
       messages: orchMessages,
     };
 
     // ── Orchestrator tool-use loop ──
-    let orchResponse = await createWithRetry(client, orchBaseParams);
+    let orchResponse = await createMsg(client, orchBaseParams);
 
     while (orchResponse.stop_reason === "tool_use" && iterCounts.orchestrator < ORCHESTRATOR_MAX_ITER) {
       if (budgetExceeded()) {
@@ -525,12 +622,13 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       orchMessages.push({ role: "assistant", content: assistantContent });
       orchMessages.push({ role: "user", content: toolResults });
 
-      orchResponse = await createWithRetry(client, { ...orchBaseParams, messages: orchMessages });
+      orchResponse = await createMsg(client, { ...orchBaseParams, messages: orchMessages });
     }
 
     // ── Final synthesis (non-streaming) ──
     let finalText = "";
     let synthesisUsage: Anthropic.Usage | null = null;
+    let critiqueUsage: Anthropic.Usage | null = null;
 
     if (orchResponse.stop_reason === "end_turn") {
       finalText = orchResponse.content
@@ -542,15 +640,16 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       orchMessages.push({
         role: "user",
         content:
-          "Yukarıdaki delegate sonuçlarını kullanarak kullanıcıya FINAL Türkçe cevabı yaz. Tool çağırma. Sayıları olduğu gibi alıntıla. CEVAP FORMAT bölümüne uy.",
+          "Yukarıdaki delegate sonuçlarını kullanarak kullanıcıya FINAL Türkçe cevabı yaz. Tool çağırma. Sayıları olduğu gibi alıntıla. STRATEJİST KİMLİĞİ kuralına uy: çelişkileri göster, örtük riskleri yakala, NEDEN ve EĞER OLMAZSA NE OLUR boyutlarını ekle.",
       });
 
-      const synthesisResponse = await createWithRetry(client, {
-        model: process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514",
-        max_tokens: 4096,
-        system: orchSystem,
+      const synthesisResponse = await createMsg(client, {
+        model: MODEL,
+        max_tokens: 16384,
+        thinking: { type: "enabled", budget_tokens: ORCHESTRATOR_THINKING_BUDGET },
+        system: orchSystemBlocks,
         messages: orchMessages,
-      });
+      } as any);
 
       finalText = synthesisResponse.content
         .filter((b: any) => b.type === "text")
@@ -561,6 +660,54 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
     }
 
     if (!finalText.trim()) finalText = "Cevap üretilemedi.";
+
+    // ══════════════════════════════════════════════════════════════════
+    // CONDITIONAL SELF-CRITIQUE PASS (Opus + extra thinking budget)
+    // Triggered for critical/risk/depletion queries — second Opus call
+    // critiques the answer and appends extra analysis if gaps exist.
+    // ══════════════════════════════════════════════════════════════════
+    const isCriticalQuery = CRITICAL_QUERY_REGEX.test(message);
+    if (isCriticalQuery && finalText.length > 100 && !budgetExceeded()) {
+      try {
+        const critiqueMessages: Anthropic.MessageParam[] = [
+          ...orchMessages,
+          { role: "assistant", content: finalText },
+          {
+            role: "user",
+            content: `Kendi yukarıdaki cevabını ELEŞTİREL bir gözle incele. Şu soruları sor:
+1) EKSİK ANALİZ: Kullanıcı "ama şu ne olacak?" deseydi cevabın ne olurdu? Hangi boyut atlanmış?
+2) ÖRTÜK RİSKLER: Sayılarda gizli olan ama açıkça söylenmeyen riskler var mı? (Mevsimsel pik, çapraz bağımlılık, tedarik gecikmesi, vs.)
+3) ÇELİŞKİLER: Cevabın içinde tutarsız sayı/iddia var mı?
+4) NEDEN/EĞER OLMAZSA: "Yapması gereken" verildi ama NEDEN ve YAPMAZSA NE OLUR boyutları yeterince derin mi?
+
+Sadece EKSİK olanları yaz — baştan sona tekrarlama. Direkt "**🧠 Derinleştirilmiş Analiz:**" başlığıyla başla. Eğer cevap zaten mükemmelse "Cevap yeterli, ekleme yok." de.`,
+          },
+        ];
+
+        const critiqueResponse = await createMsg(client, {
+          model: MODEL,
+          max_tokens: 8192,
+          thinking: { type: "enabled", budget_tokens: SELF_CRITIQUE_THINKING_BUDGET },
+          system: orchSystemBlocks,
+          messages: critiqueMessages,
+        } as any);
+
+        const additionalAnalysis = critiqueResponse.content
+          .filter((b: any) => b.type === "text")
+          .map((b: any) => b.text)
+          .join("\n")
+          .trim();
+
+        critiqueUsage = critiqueResponse.usage;
+
+        if (additionalAnalysis && !/cevap yeterli/i.test(additionalAnalysis)) {
+          finalText += "\n\n---\n\n" + additionalAnalysis;
+        }
+      } catch (critiqueErr: any) {
+        console.error("[agent-multi-v2/self-critique] Error:", critiqueErr?.status, critiqueErr?.message);
+        // Self-critique failure is non-fatal — original answer still returned
+      }
+    }
 
     // ── Response shape mirrors /agent/chat: { response, tools_used } + extras ──
     res.json({
@@ -587,6 +734,16 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
         interactionType: "agent_multi_v2_chat",
         inputTokens: synthesisUsage.input_tokens,
         outputTokens: synthesisUsage.output_tokens,
+        toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
+        queryCategory: classifyQuery(message, allToolsUsed),
+        actor: "ceo_agent",
+      });
+    }
+    if (critiqueUsage) {
+      logTokenInteraction({
+        interactionType: "agent_multi_v2_chat",
+        inputTokens: critiqueUsage.input_tokens,
+        outputTokens: critiqueUsage.output_tokens,
         toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
         queryCategory: classifyQuery(message, allToolsUsed),
         actor: "ceo_agent",
