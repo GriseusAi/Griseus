@@ -37,7 +37,7 @@ function getClient(): Anthropic {
 // HISTORY SANITIZER — enforce alternating user/assistant roles
 // ══════════════════════════════════════════════════════════════════════
 
-function sanitizeHistory(history: { role: string; content: string }[]): Anthropic.MessageParam[] {
+export function sanitizeHistory(history: { role: string; content: string }[]): Anthropic.MessageParam[] {
   const clean: Anthropic.MessageParam[] = [];
   for (const h of history) {
     if (!h.content || typeof h.content !== "string" || !h.content.trim()) continue;
@@ -65,7 +65,7 @@ function sanitizeHistory(history: { role: string; content: string }[]): Anthropi
 // RETRY WITH BACKOFF — handle 429 and transient errors
 // ══════════════════════════════════════════════════════════════════════
 
-async function createWithRetry(
+export async function createWithRetry(
   client: Anthropic,
   params: Anthropic.MessageCreateParamsNonStreaming,
   maxRetries = 2,
@@ -88,7 +88,7 @@ async function createWithRetry(
 // CORE PROMPT — slim, domain knowledge injected dynamically via RAG
 // ══════════════════════════════════════════════════════════════════════
 
-const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin CEO danışmanı. Fabrikada çalışan herkes seni anlayabilmeli.
+export const CORE_PROMPT = `Sen Griseus — Çukurova Isı Sistemleri'nin CEO danışmanı. Fabrikada çalışan herkes seni anlayabilmeli.
 
 KRİTİK KURALLAR:
 - Yarı mamül stokta 0 = normal. Alt bileşenlerden montajlanır. Efektif stok = mevcut + monte edilebilir.
@@ -122,7 +122,7 @@ HALÜSİNASYON YASAK (KRİTİK):
 // TOOLS — 7 stock intelligence tools
 // ══════════════════════════════════════════════════════════════════════
 
-const TOOLS: Anthropic.Tool[] = [
+export const TOOLS: Anthropic.Tool[] = [
   {
     name: "list_products",
     description: "Sistemdeki tüm ürünleri listele. Her ürünün SKU kodu, adı ve kategorisini döner. Hangi ürünlerin mevcut olduğunu öğrenmek için kullan.",
@@ -448,7 +448,7 @@ const TOOLS: Anthropic.Tool[] = [
 // TOOL EXECUTION
 // ══════════════════════════════════════════════════════════════════════
 
-async function callTool(toolName: string, input: Record<string, any>): Promise<any> {
+export async function callTool(toolName: string, input: Record<string, any>): Promise<any> {
   switch (toolName) {
     case "list_products": {
       const allProducts = await db.select({
@@ -1333,7 +1333,7 @@ async function callTool(toolName: string, input: Record<string, any>): Promise<a
 }
 
 /** Agent cevabından öneri özetini çıkar — ADM hafızası için */
-function extractRecommendation(responseText: string): string | undefined {
+export function extractRecommendation(responseText: string): string | undefined {
   // "Önerilen Aksiyonlar:" bloğunu bul
   const actionIdx = responseText.indexOf("Önerilen Aksiyonlar:");
   if (actionIdx !== -1) {
@@ -1354,7 +1354,7 @@ function extractRecommendation(responseText: string): string | undefined {
 }
 
 /** Kullanıcı sorgusunu kategorize et — TVT değer tahmini için */
-function classifyQuery(
+export function classifyQuery(
   message: string,
   toolsUsed: string[]
 ): "stock_check" | "forecast" | "planning" | "alert_response" | "operational" {
@@ -1375,7 +1375,7 @@ function classifyQuery(
 // LIVE SNAPSHOT — Pre-compute system state so agent already knows
 // ══════════════════════════════════════════════════════════════════════
 
-async function buildLiveSnapshot(): Promise<string> {
+export async function buildLiveSnapshot(): Promise<string> {
   try {
     const today = new Date();
 

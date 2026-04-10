@@ -92,8 +92,11 @@ export default function EnginePage() {
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
 
-      // Streaming SSE endpoint
-      const res = await fetch("/api/v1/agent/chat/stream", {
+      // Streaming SSE endpoint — feature-flagged: multi-agent vs monolithic
+      const ENDPOINT = import.meta.env.VITE_AGENT_MULTI === "true"
+        ? "/api/v1/agent/multi/chat/stream"
+        : "/api/v1/agent/chat/stream";
+      const res = await fetch(ENDPOINT, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), history }),

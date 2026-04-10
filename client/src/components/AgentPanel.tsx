@@ -99,7 +99,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
 
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
-      const res = await fetch("/api/v1/agent/chat", {
+      const res = await fetch("/api/v1/agent/multi/chat", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ message: text.trim(), history }),
