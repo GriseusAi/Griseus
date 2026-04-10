@@ -26,7 +26,7 @@ import {
 // ══════════════════════════════════════════════════════════
 
 export interface TokenInteraction {
-  interactionType: "agent_chat" | "agent_multi_chat" | "alert_generated" | "rule_evaluated" | "what_if" | "import";
+  interactionType: "agent_chat" | "agent_multi_chat" | "agent_multi_v2_chat" | "alert_generated" | "rule_evaluated" | "what_if" | "import";
   inputTokens: number;
   outputTokens: number;
   toolsUsed?: string[];
