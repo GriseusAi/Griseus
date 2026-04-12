@@ -444,6 +444,19 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       return res.status(400).json({ error: "Geri alınmış hareket tekrar geri alınamaz" });
     }
 
+    // Check if this movement was already undone
+    const [existingUndo] = await db
+      .select({ id: stockMovementsV2.id })
+      .from(stockMovementsV2)
+      .where(and(
+        eq(stockMovementsV2.movementType, "undo"),
+        sql`${stockMovementsV2.note} LIKE ${'%#' + movementId + ' (%'}`,
+      ));
+
+    if (existingUndo) {
+      return res.status(400).json({ error: "Bu hareket zaten geri alınmış" });
+    }
+
     const prev = movement.previousState as { inProduction: number; inWarehouse: number; totalSold: number } | null;
     if (!prev) {
       return res.status(400).json({ error: "Bu hareketin önceki durumu kaydedilmemiş" });
