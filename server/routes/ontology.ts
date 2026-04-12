@@ -172,6 +172,22 @@ router.get("/graph", async (_req: Request, res: Response) => {
 // Run once; idempotent (ON CONFLICT DO NOTHING)
 // ══════════════════════════════════════════════════════════════════════
 
+// Toggle an action type on/off — controls whether agent can use the tool
+router.patch("/action-types/:id/toggle", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const [current] = await db.select().from(ontologyActionTypes).where(eq(ontologyActionTypes.id, id));
+    if (!current) return res.status(404).json({ error: "Action type bulunamadi" });
+
+    const newEnabled = !current.enabled;
+    await db.update(ontologyActionTypes)
+      .set({ enabled: newEnabled })
+      .where(eq(ontologyActionTypes.id, id));
+
+    res.json({ id, enabled: newEnabled, toolName: current.agentToolName });
+  } catch (err: any) { res.status(500).json({ error: err.message }); }
+});
+
 router.post("/seed", async (_req: Request, res: Response) => {
   try {
     const result = await seedOntology();
