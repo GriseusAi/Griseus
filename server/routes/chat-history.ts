@@ -93,6 +93,23 @@ router.post("/chat/sessions/:id/messages", async (req: Request, res: Response) =
   }
 });
 
+// PATCH /chat/sessions/:id — rename a session
+router.patch("/chat/sessions/:id", async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { title } = req.body as { title?: string };
+    if (!title?.trim()) return res.status(400).json({ error: "title gerekli" });
+    const [updated] = await db
+      .update(chatSessions)
+      .set({ title: title.trim(), updatedAt: new Date() })
+      .where(eq(chatSessions.id, id))
+      .returning();
+    res.json(updated);
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // DELETE /chat/sessions/:id — delete a session and its messages
 router.delete("/chat/sessions/:id", async (req: Request, res: Response) => {
   try {

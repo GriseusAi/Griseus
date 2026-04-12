@@ -359,10 +359,10 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
   }, []);
 
   // Load a past session
-  const loadSession = useCallback(async (session: ChatSession) => {
+  const loadSession = useCallback(async (sessionId: string) => {
     setLoadingHistory(true);
     try {
-      const res = await fetch(`/api/v1/chat/sessions/${session.id}/messages`);
+      const res = await fetch(`/api/v1/chat/sessions/${sessionId}/messages`);
       const msgs = await res.json();
       setMessages(msgs.map((m: any) => ({
         role: m.role as "user" | "assistant",
@@ -371,7 +371,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
         agents: m.agentsUsed || [],
         mode: m.mode || undefined,
       })));
-      setActiveSessionId(session.id);
+      setActiveSessionId(sessionId);
       setShowHistory(false);
     } catch {
       setError("Gecmis yuklenemedi");
@@ -379,6 +379,35 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
       setLoadingHistory(false);
     }
   }, []);
+
+  // Rename session
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editTitle, setEditTitle] = useState("");
+
+  const renameSession = useCallback(async (sessionId: string, newTitle: string) => {
+    if (!newTitle.trim()) return;
+    try {
+      await fetch(`/api/v1/chat/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: newTitle.trim() }),
+      });
+      setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, title: newTitle.trim() } : s));
+    } catch {}
+    setEditingSessionId(null);
+  }, []);
+
+  // Delete session
+  const deleteSession = useCallback(async (sessionId: string) => {
+    try {
+      await fetch(`/api/v1/chat/sessions/${sessionId}`, { method: "DELETE" });
+      setSessions(prev => prev.filter(s => s.id !== sessionId));
+      if (activeSessionId === sessionId) {
+        setMessages([]);
+        setActiveSessionId(null);
+      }
+    } catch {}
+  }, [activeSessionId]);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
@@ -551,12 +580,10 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
           </div>
         </div>
 
-        {/* History Panel (overlay) */}
-        {showHistory && (
+        {/* History Panel OR Chat Area — only one visible at a time */}
+        {showHistory ? (
           <div style={{
-            position: "absolute", top: 68, left: 0, right: 0, bottom: 0,
-            zIndex: 10, background: C.bg, overflowY: "auto",
-            padding: "16px 20px",
+            flex: 1, overflowY: "auto", padding: "16px 20px",
             scrollbarWidth: "thin",
             scrollbarColor: "rgba(255,255,255,0.08) transparent",
           }}>
@@ -568,39 +595,90 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                 Henuz kayitli sohbet yok
               </div>
             )}
-            {sessions.map(s => (
-              <button
-                key={s.id}
-                onClick={() => loadSession(s)}
-                style={{
-                  width: "100%", padding: "12px 14px", marginBottom: 6,
-                  borderRadius: 10, textAlign: "left",
-                  background: activeSessionId === s.id ? C.accentGlow : C.glass,
-                  border: `1px solid ${activeSessionId === s.id ? C.accentBorder : C.glassBorder}`,
-                  color: C.textPrimary, cursor: "pointer",
-                  transition: "all 0.15s",
-                }}
-                onMouseEnter={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glassHover; }}
-                onMouseLeave={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glass; }}
-              >
-                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, color: C.white }}>
-                  {s.title}
-                </div>
-                <div style={{ fontSize: 11, color: C.textDim, display: "flex", gap: 8 }}>
-                  <span>{new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
-                  {s.mode && <span style={{ opacity: 0.7 }}>{MODES.find(m => m.key === s.mode)?.icon} {s.mode}</span>}
-                </div>
-              </button>
-            ))}
             {loadingHistory && (
               <div style={{ textAlign: "center", padding: 20, color: C.textDim, fontSize: 13 }}>
                 Yukleniyor...
               </div>
             )}
+            {sessions.map(s => (
+              <div
+                key={s.id}
+                style={{
+                  padding: "12px 14px", marginBottom: 6,
+                  borderRadius: 10,
+                  background: activeSessionId === s.id ? C.accentGlow : C.glass,
+                  border: `1px solid ${activeSessionId === s.id ? C.accentBorder : C.glassBorder}`,
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glassHover; }}
+                onMouseLeave={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glass; }}
+              >
+                {editingSessionId === s.id ? (
+                  /* Rename input */
+                  <form onSubmit={e => { e.preventDefault(); renameSession(s.id, editTitle); }}
+                    style={{ display: "flex", gap: 6 }}>
+                    <input
+                      autoFocus
+                      value={editTitle}
+                      onChange={e => setEditTitle(e.target.value)}
+                      onBlur={() => renameSession(s.id, editTitle)}
+                      onKeyDown={e => { if (e.key === "Escape") setEditingSessionId(null); }}
+                      style={{
+                        flex: 1, padding: "4px 8px", borderRadius: 6,
+                        background: "rgba(0,0,0,0.3)", border: `1px solid ${C.accentBorder}`,
+                        color: C.white, fontSize: 13, outline: "none", fontFamily: "inherit",
+                      }}
+                    />
+                  </form>
+                ) : (
+                  /* Normal display */
+                  <>
+                    <div
+                      onClick={() => loadSession(s.id)}
+                      style={{ cursor: "pointer", marginBottom: 4 }}
+                    >
+                      <div style={{ fontSize: 13, fontWeight: 500, color: C.white }}>
+                        {s.title}
+                      </div>
+                      <div style={{ fontSize: 11, color: C.textDim, display: "flex", gap: 8, marginTop: 4 }}>
+                        <span>{new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                        {s.mode && <span style={{ opacity: 0.7 }}>{MODES.find(m => m.key === s.mode)?.icon} {s.mode}</span>}
+                      </div>
+                    </div>
+                    {/* Edit / Delete buttons */}
+                    <div style={{ display: "flex", gap: 4, marginTop: 6 }}>
+                      <button
+                        onClick={() => { setEditingSessionId(s.id); setEditTitle(s.title); }}
+                        style={{
+                          padding: "3px 8px", borderRadius: 5, fontSize: 10,
+                          background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBorder}`,
+                          color: C.textDim, cursor: "pointer", transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = C.white; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = C.textDim; }}
+                      >
+                        Yeniden adlandir
+                      </button>
+                      <button
+                        onClick={() => deleteSession(s.id)}
+                        style={{
+                          padding: "3px 8px", borderRadius: 5, fontSize: 10,
+                          background: "rgba(255,255,255,0.04)", border: `1px solid ${C.glassBorder}`,
+                          color: C.textDim, cursor: "pointer", transition: "all 0.15s",
+                        }}
+                        onMouseEnter={e => { e.currentTarget.style.color = C.err; }}
+                        onMouseLeave={e => { e.currentTarget.style.color = C.textDim; }}
+                      >
+                        Sil
+                      </button>
+                    </div>
+                  </>
+                )}
+              </div>
+            ))}
           </div>
-        )}
-
-        {/* Chat Area */}
+        ) : (
+        /* Chat Area */
         <div ref={scrollRef} style={{
           flex: 1, overflowY: "auto", padding: "20px",
           scrollbarWidth: "thin",
@@ -759,6 +837,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
             </div>
           )}
         </div>
+        )}
 
         {/* Mode Selector */}
         <div style={{
