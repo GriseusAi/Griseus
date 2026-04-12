@@ -436,3 +436,26 @@ export const agentMemory = pgTable("agent_memory", {
 });
 
 export type AgentMemoryEntry = typeof agentMemory.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// CHAT HISTORY — persist agent conversations for recall
+// ═══════════════════════════════════════════════════════════
+
+export const chatSessions = pgTable("chat_sessions", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  title: text("title").notNull().default("Yeni Sohbet"),
+  mode: varchar("mode", { length: 20 }), // fast | normal | research | visual
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const chatMessages = pgTable("chat_messages", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id").notNull().references(() => chatSessions.id),
+  role: varchar("role", { length: 10 }).notNull(), // user | assistant
+  content: text("content").notNull(),
+  mode: varchar("mode", { length: 20 }),
+  toolsUsed: jsonb("tools_used").$type<string[]>(),
+  agentsUsed: jsonb("agents_used").$type<string[]>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});

@@ -132,8 +132,8 @@ function sanitizeMermaid(raw: string): string {
   return code;
 }
 
-/** Renders a single mermaid code block into SVG */
-function MermaidBlock({ code }: { code: string }) {
+/** Renders a single mermaid code block into SVG — clickable for fullscreen */
+function MermaidBlock({ code, onExpand }: { code: string; onExpand: (svg: string) => void }) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
 
@@ -144,14 +144,12 @@ function MermaidBlock({ code }: { code: string }) {
     mermaid.render(id, sanitized)
       .then(({ svg: rendered }) => setSvg(rendered))
       .catch(() => {
-        // Retry: try wrapping in a simple flowchart if type is unknown
         const fallbackId = `mermaid-fb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
         const lines = sanitized.split("\n");
         const firstLine = lines[0]?.trim().toLowerCase() || "";
         const isKnownType = /^(flowchart|graph|pie|gantt|sequenceDiagram|classDiagram)/.test(firstLine);
 
         if (!isKnownType && lines.length > 1) {
-          // Try as flowchart
           const fallbackCode = "flowchart TD\n" + lines.slice(1).join("\n");
           mermaid.render(fallbackId, fallbackCode)
             .then(({ svg: rendered }) => setSvg(rendered))
@@ -185,23 +183,87 @@ function MermaidBlock({ code }: { code: string }) {
 
   return (
     <div
+      onClick={() => svg && onExpand(svg)}
       style={{
         margin: "12px 0", padding: "16px", borderRadius: 12,
         background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
-        overflow: "auto",
+        overflow: "auto", cursor: svg ? "pointer" : "default",
+        transition: "border-color 0.2s",
+        position: "relative",
       }}
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+      onMouseEnter={e => { if (svg) e.currentTarget.style.borderColor = "rgba(129,140,248,0.3)"; }}
+      onMouseLeave={e => { e.currentTarget.style.borderColor = "rgba(255,255,255,0.08)"; }}
+    >
+      <div dangerouslySetInnerHTML={{ __html: svg }} />
+      {svg && (
+        <div style={{
+          position: "absolute", top: 8, right: 8,
+          fontSize: 10, color: C.textDim, padding: "2px 6px",
+          background: "rgba(0,0,0,0.4)", borderRadius: 4,
+          opacity: 0.6,
+        }}>
+          Buyutmek icin tikla
+        </div>
+      )}
+    </div>
+  );
+}
+
+/** Fullscreen diagram modal */
+function DiagramModal({ svg, onClose }: { svg: string; onClose: () => void }) {
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape") onClose(); };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [onClose]);
+
+  return (
+    <div
+      onClick={onClose}
+      style={{
+        position: "fixed", inset: 0, zIndex: 10000,
+        background: "rgba(0,0,0,0.85)", backdropFilter: "blur(8px)",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        padding: 40, cursor: "pointer",
+      }}
+    >
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          maxWidth: "90vw", maxHeight: "90vh", overflow: "auto",
+          background: "rgba(15,15,30,0.95)", borderRadius: 16,
+          border: `1px solid ${C.glassBorder}`, padding: 32,
+          boxShadow: "0 24px 80px rgba(0,0,0,0.6)",
+          cursor: "default",
+        }}
+      >
+        <div dangerouslySetInnerHTML={{ __html: svg }} style={{ minWidth: 400 }} />
+      </div>
+      <button
+        onClick={onClose}
+        style={{
+          position: "absolute", top: 20, right: 20,
+          width: 40, height: 40, borderRadius: 10,
+          background: "rgba(255,255,255,0.1)", border: "1px solid rgba(255,255,255,0.15)",
+          color: "#fff", fontSize: 20, cursor: "pointer",
+          display: "flex", alignItems: "center", justifyContent: "center",
+        }}
+      >
+        ✕
+      </button>
+    </div>
   );
 }
 
 /** Split markdown content into text and mermaid blocks for rendering */
-function MessageContent({ content, style }: { content: string; style: React.CSSProperties }) {
-  // Split on ```mermaid ... ``` blocks
+function MessageContent({ content, style, onExpandDiagram }: {
+  content: string;
+  style: React.CSSProperties;
+  onExpandDiagram: (svg: string) => void;
+}) {
   const parts = content.split(/(```mermaid[\s\S]*?```)/g);
 
   if (parts.length === 1) {
-    // No mermaid blocks — render as plain markdown
     return (
       <div style={style} dangerouslySetInnerHTML={{ __html: renderMarkdown(content) }} />
     );
@@ -212,7 +274,7 @@ function MessageContent({ content, style }: { content: string; style: React.CSSP
       {parts.map((part, i) => {
         const mermaidMatch = part.match(/^```mermaid\s*\n([\s\S]*?)```$/);
         if (mermaidMatch) {
-          return <MermaidBlock key={i} code={mermaidMatch[1]} />;
+          return <MermaidBlock key={i} code={mermaidMatch[1]} onExpand={onExpandDiagram} />;
         }
         if (!part.trim()) return null;
         return (
@@ -221,6 +283,14 @@ function MessageContent({ content, style }: { content: string; style: React.CSSP
       })}
     </div>
   );
+}
+
+interface ChatSession {
+  id: string;
+  title: string;
+  mode: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export default function AgentPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
@@ -233,6 +303,22 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
   const scrollRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
 
+  // Diagram modal
+  const [expandedSvg, setExpandedSvg] = useState<string | null>(null);
+
+  // Chat history
+  const [showHistory, setShowHistory] = useState(false);
+  const [sessions, setSessions] = useState<ChatSession[]>([]);
+  const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
+  const [loadingHistory, setLoadingHistory] = useState(false);
+
+  // Fetch sessions when history panel opens
+  useEffect(() => {
+    if (showHistory) {
+      fetch("/api/v1/chat/sessions").then(r => r.json()).then(setSessions).catch(() => {});
+    }
+  }, [showHistory]);
+
   useEffect(() => {
     scrollRef.current?.scrollTo({ top: scrollRef.current.scrollHeight, behavior: "smooth" });
   }, [messages]);
@@ -242,10 +328,57 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
   }, [open]);
 
   useEffect(() => {
-    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open) onClose(); };
+    const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open) { if (expandedSvg) setExpandedSvg(null); else if (showHistory) setShowHistory(false); else onClose(); } };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [open, onClose]);
+  }, [open, onClose, expandedSvg, showHistory]);
+
+  // Save message to DB
+  const persistMessage = useCallback(async (sessionId: string, msg: Message) => {
+    try {
+      await fetch(`/api/v1/chat/sessions/${sessionId}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          role: msg.role,
+          content: msg.content,
+          mode: msg.mode,
+          toolsUsed: msg.tools,
+          agentsUsed: msg.agents,
+        }),
+      });
+    } catch {}
+  }, []);
+
+  // Start new chat
+  const startNewChat = useCallback(() => {
+    setMessages([]);
+    setActiveSessionId(null);
+    setShowHistory(false);
+    setError("");
+  }, []);
+
+  // Load a past session
+  const loadSession = useCallback(async (session: ChatSession) => {
+    setLoadingHistory(true);
+    try {
+      const res = await fetch(`/api/v1/chat/sessions/${session.id}/messages`);
+      const msgs = await res.json();
+      setMessages(msgs.map((m: any) => ({
+        role: m.role as "user" | "assistant",
+        content: m.content,
+        tools: m.toolsUsed || [],
+        agents: m.agentsUsed || [],
+        mode: m.mode || undefined,
+      })));
+      setActiveSessionId(session.id);
+      setShowHistory(false);
+    } catch {
+      setError("Gecmis yuklenemedi");
+    } finally {
+      setLoadingHistory(false);
+    }
+  }, []);
 
   const sendMessage = useCallback(async (text: string) => {
     if (!text.trim() || loading) return;
@@ -254,6 +387,24 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
     setInput("");
     setLoading(true);
     setError("");
+
+    // Create session if needed
+    let sessionId = activeSessionId;
+    if (!sessionId) {
+      try {
+        const sRes = await fetch("/api/v1/chat/sessions", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ mode }),
+        });
+        const session = await sRes.json();
+        sessionId = session.id;
+        setActiveSessionId(sessionId);
+      } catch {}
+    }
+
+    // Persist user message
+    if (sessionId) persistMessage(sessionId, userMsg);
 
     try {
       const history = messages.map(m => ({ role: m.role, content: m.content }));
@@ -266,13 +417,18 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
       if (!res.ok) throw new Error(data.error || "Agent hatası");
       const usedTools: string[] = data.tools_used || [];
       const usedAgents: string[] = data.agents_used || [];
-      setMessages(prev => [...prev, {
+      const assistantMsg: Message = {
         role: "assistant",
         content: data.response,
         tools: usedTools,
         agents: usedAgents,
         mode: data.mode || mode,
-      }]);
+      };
+      setMessages(prev => [...prev, assistantMsg]);
+
+      // Persist assistant message
+      if (sessionId) persistMessage(sessionId, assistantMsg);
+
       if (usedTools.some(t => WRITE_TOOLS.has(t))) {
         qc.invalidateQueries({ queryKey: ["/api/stock/levels"] });
         qc.invalidateQueries({ queryKey: ["/api/stock/summary"] });
@@ -285,7 +441,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
       setLoading(false);
       setTimeout(() => inputRef.current?.focus(), 100);
     }
-  }, [messages, loading, qc, mode]);
+  }, [messages, loading, qc, mode, activeSessionId, persistMessage]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
@@ -343,21 +499,106 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
               </div>
             </div>
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              width: 32, height: 32, borderRadius: 8,
-              background: C.glass, border: `1px solid ${C.glassBorder}`,
-              color: C.textSecondary, fontSize: 16, cursor: "pointer",
-              display: "flex", alignItems: "center", justifyContent: "center",
-              transition: "all 0.15s",
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; }}
-            onMouseLeave={e => { e.currentTarget.style.background = C.glass; }}
-          >
-            ✕
-          </button>
+          <div style={{ display: "flex", gap: 6 }}>
+            {/* New chat */}
+            <button
+              onClick={startNewChat}
+              title="Yeni sohbet"
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: C.glass, border: `1px solid ${C.glassBorder}`,
+                color: C.textSecondary, fontSize: 15, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.glass; e.currentTarget.style.color = C.textSecondary; }}
+            >
+              +
+            </button>
+            {/* History */}
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              title="Gecmis"
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: showHistory ? C.accentGlow : C.glass,
+                border: `1px solid ${showHistory ? C.accentBorder : C.glassBorder}`,
+                color: showHistory ? C.accent : C.textSecondary, fontSize: 14, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { if (!showHistory) { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; } }}
+              onMouseLeave={e => { if (!showHistory) { e.currentTarget.style.background = C.glass; e.currentTarget.style.color = C.textSecondary; } }}
+            >
+              ☰
+            </button>
+            {/* Close */}
+            <button
+              onClick={onClose}
+              style={{
+                width: 32, height: 32, borderRadius: 8,
+                background: C.glass, border: `1px solid ${C.glassBorder}`,
+                color: C.textSecondary, fontSize: 16, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; }}
+              onMouseLeave={e => { e.currentTarget.style.background = C.glass; }}
+            >
+              ✕
+            </button>
+          </div>
         </div>
+
+        {/* History Panel (overlay) */}
+        {showHistory && (
+          <div style={{
+            position: "absolute", top: 68, left: 0, right: 0, bottom: 0,
+            zIndex: 10, background: C.bg, overflowY: "auto",
+            padding: "16px 20px",
+            scrollbarWidth: "thin",
+            scrollbarColor: "rgba(255,255,255,0.08) transparent",
+          }}>
+            <div style={{ fontSize: 14, fontWeight: 600, color: C.white, marginBottom: 12 }}>
+              Gecmis Sohbetler
+            </div>
+            {sessions.length === 0 && (
+              <div style={{ fontSize: 13, color: C.textDim, padding: "20px 0", textAlign: "center" }}>
+                Henuz kayitli sohbet yok
+              </div>
+            )}
+            {sessions.map(s => (
+              <button
+                key={s.id}
+                onClick={() => loadSession(s)}
+                style={{
+                  width: "100%", padding: "12px 14px", marginBottom: 6,
+                  borderRadius: 10, textAlign: "left",
+                  background: activeSessionId === s.id ? C.accentGlow : C.glass,
+                  border: `1px solid ${activeSessionId === s.id ? C.accentBorder : C.glassBorder}`,
+                  color: C.textPrimary, cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glassHover; }}
+                onMouseLeave={e => { if (activeSessionId !== s.id) e.currentTarget.style.background = C.glass; }}
+              >
+                <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 4, color: C.white }}>
+                  {s.title}
+                </div>
+                <div style={{ fontSize: 11, color: C.textDim, display: "flex", gap: 8 }}>
+                  <span>{new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", hour: "2-digit", minute: "2-digit" })}</span>
+                  {s.mode && <span style={{ opacity: 0.7 }}>{MODES.find(m => m.key === s.mode)?.icon} {s.mode}</span>}
+                </div>
+              </button>
+            ))}
+            {loadingHistory && (
+              <div style={{ textAlign: "center", padding: 20, color: C.textDim, fontSize: 13 }}>
+                Yukleniyor...
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Chat Area */}
         <div ref={scrollRef} style={{
@@ -426,6 +667,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                 {m.role === "assistant" ? (
                   <MessageContent
                     content={m.content}
+                    onExpandDiagram={setExpandedSvg}
                     style={{
                       fontSize: 14, lineHeight: 1.75, color: C.textPrimary,
                       whiteSpace: "pre-wrap", wordBreak: "break-word",
@@ -608,6 +850,9 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
           @keyframes agent-pulse { 0%,100%{opacity:1} 50%{opacity:0.2} }
         `}</style>
       </div>
+
+      {/* Fullscreen diagram modal */}
+      {expandedSvg && <DiagramModal svg={expandedSvg} onClose={() => setExpandedSvg(null)} />}
     </>
   );
 }

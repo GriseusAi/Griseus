@@ -18,6 +18,7 @@ import { simulateWhatIf, type WhatIfScenario } from "./lib/whatif-engine";
 import validationRouter from "./routes/validation";
 import importRouter from "./routes/import";
 import outcomeRouter from "./routes/outcome";
+import chatHistoryRouter from "./routes/chat-history";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
 import { sql } from "drizzle-orm";
@@ -40,6 +41,7 @@ export async function registerRoutes(
   app.use("/api/validation", validationRouter);
   app.use("/api/import", importRouter);
   app.use("/api/outcomes", outcomeRouter);
+  app.use("/api/v1", chatHistoryRouter);
 
   // ── Products API — hangi urunler mevcut ──
   app.get("/api/products", async (_req, res) => {
