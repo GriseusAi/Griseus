@@ -574,3 +574,104 @@ export const scenarioOverrides = pgTable("scenario_overrides", {
   overrideValue: text("override_value").notNull(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ═══════════════════════════════════════════════════════════
+// ONTOLOGY — Formal semantic layer (Palantir-inspired)
+// The heart of the system: Objects, Links, Actions, Functions
+// Everything builds on top of this metadata graph
+// ═══════════════════════════════════════════════════════════
+
+// Object Types — "What exists in our world?"
+// Maps to underlying DB tables but adds semantic meaning
+export const ontologyObjectTypes = pgTable("ontology_object_types", {
+  id: varchar("id", { length: 50 }).primaryKey(),         // "product" | "component" | "supplier"
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  displayNameTr: varchar("display_name_tr", { length: 100 }),  // Turkish label
+  description: text("description"),
+  icon: varchar("icon", { length: 10 }),                    // emoji icon
+  // Backing data source
+  backingTable: varchar("backing_table", { length: 100 }).notNull(), // DB table name
+  primaryKeyField: varchar("primary_key_field", { length: 50 }).notNull(), // which column is the PK
+  titleField: varchar("title_field", { length: 50 }),       // which column to show as title
+  // Properties schema (JSON Schema for the object's properties)
+  properties: jsonb("properties").$type<Record<string, OntologyProperty>>().notNull(),
+  // Ontology triangle mapping
+  ontologyAxis: varchar("ontology_axis", { length: 20 }),   // miktar | sure | bilesen | null
+  // Status
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+// Link Types — "How are objects related?"
+export const ontologyLinkTypes = pgTable("ontology_link_types", {
+  id: varchar("id", { length: 50 }).primaryKey(),         // "product_has_component" | "component_in_stock"
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  description: text("description"),
+  // Source → Target
+  sourceObjectType: varchar("source_object_type", { length: 50 }).notNull(),
+  targetObjectType: varchar("target_object_type", { length: 50 }).notNull(),
+  // How to resolve the link in DB
+  joinType: varchar("join_type", { length: 20 }).notNull().default("foreign_key"), // foreign_key | field_match | junction_table
+  sourceField: varchar("source_field", { length: 50 }).notNull(),   // field on source table
+  targetField: varchar("target_field", { length: 50 }).notNull(),   // field on target table
+  junctionTable: varchar("junction_table", { length: 100 }),        // if join_type = junction_table
+  // Cardinality
+  cardinality: varchar("cardinality", { length: 20 }).notNull().default("one_to_many"), // one_to_one | one_to_many | many_to_many
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Action Types — "What can be done?" (the kinetic layer)
+export const ontologyActionTypes = pgTable("ontology_action_types", {
+  id: varchar("id", { length: 50 }).primaryKey(),         // "create_stock_movement" | "create_purchase_suggestion"
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  displayNameTr: varchar("display_name_tr", { length: 100 }),
+  description: text("description"),
+  // Which object type does this action affect?
+  targetObjectType: varchar("target_object_type", { length: 50 }).notNull(),
+  // Action semantics
+  actionCategory: varchar("action_category", { length: 20 }).notNull(), // create | update | delete | trigger
+  // Parameters schema (what inputs does this action need?)
+  parameters: jsonb("parameters").$type<Record<string, OntologyProperty>>().notNull(),
+  // Which agent tool implements this?
+  agentToolName: varchar("agent_tool_name", { length: 50 }),  // maps to callTool dispatch
+  // Safety
+  requiresConfirmation: boolean("requires_confirmation").notNull().default(false),
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// Function Types — "What can be computed?" (derived intelligence)
+export const ontologyFunctionTypes = pgTable("ontology_function_types", {
+  id: varchar("id", { length: 50 }).primaryKey(),         // "depletion_calc" | "risk_score" | "capacity_calc"
+  displayName: varchar("display_name", { length: 100 }).notNull(),
+  displayNameTr: varchar("display_name_tr", { length: 100 }),
+  description: text("description"),
+  // Which object type does this function compute over?
+  sourceObjectType: varchar("source_object_type", { length: 50 }).notNull(),
+  // What does it return?
+  returnType: varchar("return_type", { length: 30 }).notNull(), // number | string | object | array
+  // Which agent tool or engine implements this?
+  implementation: varchar("implementation", { length: 100 }).notNull(), // agent tool name or engine function
+  // Ontology triangle mapping
+  ontologyEdge: varchar("ontology_edge", { length: 30 }),   // miktar_sure | sure_bilesen | bilesen_miktar
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+// TypeScript interface for property definitions
+export interface OntologyProperty {
+  type: "string" | "number" | "boolean" | "date" | "json";
+  displayName: string;
+  displayNameTr?: string;
+  required?: boolean;
+  description?: string;
+  unit?: string;           // "adet" | "metre" | "kg" | "gün"
+  constraints?: {
+    min?: number;
+    max?: number;
+    pattern?: string;
+    enum?: string[];
+  };
+}

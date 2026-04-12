@@ -20,6 +20,8 @@ import importRouter from "./routes/import";
 import outcomeRouter from "./routes/outcome";
 import chatHistoryRouter from "./routes/chat-history";
 import foundryRouter from "./routes/foundry";
+import ontologyRouter from "./routes/ontology";
+import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
 import { sql } from "drizzle-orm";
@@ -44,6 +46,10 @@ export async function registerRoutes(
   app.use("/api/outcomes", outcomeRouter);
   app.use("/api/v1", chatHistoryRouter);
   app.use("/api/foundry", foundryRouter);
+  app.use("/api/ontology", ontologyRouter);
+
+  // Auto-seed ontology on first boot (idempotent)
+  seedOntology().catch(err => console.error("[ontology] Seed error:", err.message));
 
   // ── Products API — hangi urunler mevcut ──
   app.get("/api/products", async (_req, res) => {
