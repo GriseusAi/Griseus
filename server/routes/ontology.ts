@@ -384,6 +384,169 @@ export async function seedOntology(): Promise<{ seeded: Record<string, number> }
     },
   ];
 
+  // ── READ/SIMULATE ACTION TYPES (agent tool discovery) ──
+  const readActionTypes = [
+    {
+      id: "list_products", displayName: "List Products", displayNameTr: "Urunleri Listele",
+      description: "List all products with SKU, name, category",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "list_products", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_live_stock_levels", displayName: "Live Stock Levels", displayNameTr: "Canli Stok Durumu",
+      description: "Real-time stock: production, warehouse, sold quantities for all products",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_live_stock_levels", requiresConfirmation: false,
+      parameters: { product_code: { type: "string" as const, displayName: "Product Code", displayNameTr: "Urun Kodu" } },
+    },
+    {
+      id: "get_stock_movement_history", displayName: "Stock Movement History", displayNameTr: "Stok Hareket Gecmisi",
+      description: "Recent stock movements: production, transfer, sales, undo",
+      targetObjectType: "stock_movement", actionCategory: "read",
+      agentToolName: "get_stock_movement_history", requiresConfirmation: false,
+      parameters: { product_code: { type: "string" as const, displayName: "Product Code" }, movement_type: { type: "string" as const, displayName: "Type" }, limit: { type: "number" as const, displayName: "Limit" } },
+    },
+    {
+      id: "simulate_order_fulfillment", displayName: "Order Fulfillment Check", displayNameTr: "Siparis Karsilama Simulasyonu",
+      description: "Can we fulfill N units? Calculates warehouse/production deficits",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "simulate_order_fulfillment", requiresConfirmation: false,
+      parameters: { product_code: { type: "string" as const, displayName: "Product Code", required: true }, quantity: { type: "number" as const, displayName: "Quantity", required: true } },
+    },
+    {
+      id: "check_stock_alerts", displayName: "Stock Alerts", displayNameTr: "Stok Uyarilari",
+      description: "Products with zero warehouse stock or critically low levels",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "check_stock_alerts", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_production_capacity", displayName: "Production Capacity", displayNameTr: "Uretim Kapasitesi",
+      description: "BOM-based: max producible units and bottleneck components",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_production_capacity", requiresConfirmation: false,
+      parameters: { sku: { type: "string" as const, displayName: "SKU", required: true } },
+    },
+    {
+      id: "simulate_production", displayName: "Production Simulation", displayNameTr: "Uretim Simulasyonu",
+      description: "Material requirements for producing N units — shortages and feasibility",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "simulate_production", requiresConfirmation: false,
+      parameters: { sku: { type: "string" as const, displayName: "SKU", required: true }, quantity: { type: "number" as const, displayName: "Quantity", required: true } },
+    },
+    {
+      id: "get_bom_tree", displayName: "BOM Tree", displayNameTr: "Urun Agaci",
+      description: "Full product tree with all components, quantities, stock, tier structure",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_bom_tree", requiresConfirmation: false,
+      parameters: { sku: { type: "string" as const, displayName: "SKU", required: true } },
+    },
+    {
+      id: "get_purchase_suggestions", displayName: "Purchase Suggestions", displayNameTr: "Satin Alma Onerileri",
+      description: "List pending/approved/rejected purchase suggestions",
+      targetObjectType: "purchase_suggestion", actionCategory: "read",
+      agentToolName: "get_purchase_suggestions", requiresConfirmation: false,
+      parameters: { status: { type: "string" as const, displayName: "Status" } },
+    },
+    {
+      id: "get_component_intelligence", displayName: "Component Intelligence", displayNameTr: "Bilesen Istihbarati",
+      description: "Consumption rate, days-to-stockout, reorder point, trend analysis",
+      targetObjectType: "component_stock", actionCategory: "read",
+      agentToolName: "get_component_intelligence", requiresConfirmation: false,
+      parameters: { sku: { type: "string" as const, displayName: "SKU", required: true }, component_code: { type: "string" as const, displayName: "Component Code" } },
+    },
+    {
+      id: "get_intelligence_engine", displayName: "Intelligence Engine", displayNameTr: "Istihbarat Motoru",
+      description: "Full oracle: Holt-Winters forecast, safety stock, MRP explosion, ABC-XYZ, 6-month plan",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_intelligence_engine", requiresConfirmation: false,
+      parameters: { sku: { type: "string" as const, displayName: "SKU", required: true }, report_type: { type: "string" as const, displayName: "Report Type" } },
+    },
+    {
+      id: "what_if_analysis", displayName: "What-If Analysis", displayNameTr: "Eger Analizi",
+      description: "Cascading impact simulation — non-destructive scenario testing",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "what_if_analysis", requiresConfirmation: false,
+      parameters: { scenario_type: { type: "string" as const, displayName: "Scenario Type", required: true }, quantity: { type: "number" as const, displayName: "Quantity", required: true }, sku: { type: "string" as const, displayName: "SKU", required: true } },
+    },
+    {
+      id: "get_validation_dashboard", displayName: "Validation Dashboard", displayNameTr: "Validasyon Panosu",
+      description: "Alert accuracy metrics, severity distribution, recent alerts",
+      targetObjectType: "validation_alert", actionCategory: "read",
+      agentToolName: "get_validation_dashboard", requiresConfirmation: false,
+      parameters: { include_recent_alerts: { type: "boolean" as const, displayName: "Include Recent" } },
+    },
+    {
+      id: "list_custom_rules", displayName: "List Custom Rules", displayNameTr: "Kurallari Listele",
+      description: "All custom rules with active status and trigger counts",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "list_custom_rules", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "toggle_custom_rule", displayName: "Toggle Custom Rule", displayNameTr: "Kural Aktif/Pasif",
+      description: "Activate, deactivate, or delete a custom rule",
+      targetObjectType: "product", actionCategory: "update",
+      agentToolName: "toggle_custom_rule", requiresConfirmation: true,
+      parameters: { rule_id: { type: "number" as const, displayName: "Rule ID", required: true }, action: { type: "string" as const, displayName: "Action", required: true } },
+    },
+    {
+      id: "get_audit_trail", displayName: "Audit Trail", displayNameTr: "Degisiklik Gecmisi",
+      description: "Data lineage: who changed what, when, why — old/new values",
+      targetObjectType: "component_stock", actionCategory: "read",
+      agentToolName: "get_audit_trail", requiresConfirmation: false,
+      parameters: { entity_id: { type: "string" as const, displayName: "Entity ID", required: true }, limit: { type: "number" as const, displayName: "Limit" } },
+    },
+    {
+      id: "get_import_guide", displayName: "Import Guide", displayNameTr: "Import Rehberi",
+      description: "Excel/CSV import format specs, column names, endpoints",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_import_guide", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_outcome_dashboard", displayName: "Outcome Dashboard", displayNameTr: "Sonuc Panosu",
+      description: "Prediction accuracy, Bayesian confidence scores, weekly trend, value generated",
+      targetObjectType: "validation_alert", actionCategory: "read",
+      agentToolName: "get_outcome_dashboard", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_token_value_metrics", displayName: "Token Value Metrics", displayNameTr: "Token Deger Metrikleri",
+      description: "V/T ratio, ontology advantage ratio (OAR), flywheel score",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_token_value_metrics", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_adaptive_profile", displayName: "Adaptive Profile", displayNameTr: "Adaptif Profil",
+      description: "Firm operational profile: lead time, demand volatility, risk tolerance, dynamic thresholds",
+      targetObjectType: "product", actionCategory: "read",
+      agentToolName: "get_adaptive_profile", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_seasonal_intelligence", displayName: "Seasonal Intelligence", displayNameTr: "Mevsimsel Istihbarat",
+      description: "EWMA-updated monthly demand indices, baseline vs dynamic, anomaly detection, drift",
+      targetObjectType: "seasonal_index", actionCategory: "read",
+      agentToolName: "get_seasonal_intelligence", requiresConfirmation: false,
+      parameters: {},
+    },
+    {
+      id: "get_cross_product_analysis", displayName: "Cross-Product Analysis", displayNameTr: "Capraz Urun Analizi",
+      description: "Shared components across products — Octopus optimization brain",
+      targetObjectType: "component", actionCategory: "read",
+      agentToolName: "get_cross_product_analysis", requiresConfirmation: false,
+      parameters: { months: { type: "number" as const, displayName: "Months Forward" } },
+    },
+  ];
+
+  for (const rat of readActionTypes) {
+    await db.insert(ontologyActionTypes).values(rat as any).onConflictDoNothing();
+    counts.actionTypes++;
+  }
+
   for (const at of actionTypes) {
     await db.insert(ontologyActionTypes).values(at as any).onConflictDoNothing();
     counts.actionTypes++;
