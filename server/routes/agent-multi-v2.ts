@@ -26,7 +26,7 @@ import Anthropic from "@anthropic-ai/sdk";
 import {
   sanitizeHistory,
   CORE_PROMPT,
-  TOOLS,
+  FALLBACK_TOOLS as TOOLS,
   callTool,
   buildLiveSnapshot,
   extractRecommendation,

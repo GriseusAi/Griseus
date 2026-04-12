@@ -22,7 +22,7 @@ import {
   sanitizeHistory,
   createWithRetry,
   CORE_PROMPT,
-  TOOLS,
+  FALLBACK_TOOLS as TOOLS,
   callTool,
   buildLiveSnapshot,
   extractRecommendation,

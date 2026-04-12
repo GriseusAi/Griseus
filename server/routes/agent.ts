@@ -16,6 +16,7 @@ import { buildDynamicContext } from "../rag";
 import { logTokenInteraction } from "../lib/token-value-tracker";
 import { recallRelevantMemories, recordMemory } from "../lib/agent-memory";
 import { runCrossProductAnalysis } from "../lib/cross-product-engine";
+import { ontologyObjectTypes, ontologyLinkTypes, ontologyActionTypes, ontologyFunctionTypes } from "@shared/schema";
 
 const router = Router();
 
@@ -122,7 +123,7 @@ HALÜSİNASYON YASAK (KRİTİK):
 // TOOLS — 7 stock intelligence tools
 // ══════════════════════════════════════════════════════════════════════
 
-export const TOOLS: Anthropic.Tool[] = [
+export const FALLBACK_TOOLS: Anthropic.Tool[] = [
   {
     name: "list_products",
     description: "Sistemdeki tüm ürünleri listele. Her ürünün SKU kodu, adı ve kategorisini döner. Hangi ürünlerin mevcut olduğunu öğrenmek için kullan.",
@@ -447,6 +448,93 @@ export const TOOLS: Anthropic.Tool[] = [
 // ══════════════════════════════════════════════════════════════════════
 // TOOL EXECUTION
 // ══════════════════════════════════════════════════════════════════════
+
+// ======================================================================
+// ONTOLOGY-DRIVEN TOOL BUILDING + CONTEXT INJECTION
+// ======================================================================
+
+async function buildToolsFromOntology(): Promise<Anthropic.Tool[]> {
+  try {
+    const actions = await db.select()
+      .from(ontologyActionTypes)
+      .where(eq(ontologyActionTypes.enabled, true));
+
+    if (actions.length === 0) {
+      console.warn("[agent/ontology] No active actions found, using fallback");
+      return FALLBACK_TOOLS;
+    }
+
+    // Build Anthropic tool definitions from ontology action types
+    const tools: Anthropic.Tool[] = actions
+      .filter(a => a.agentToolName) // only actions mapped to agent tools
+      .map(a => {
+        // Find matching fallback tool for input_schema
+        const fallback = FALLBACK_TOOLS.find(t => t.name === a.agentToolName);
+        return {
+          name: a.agentToolName!,
+          description: a.description || a.displayName,
+          input_schema: fallback?.input_schema || {
+            type: "object" as const,
+            properties: {},
+            required: [],
+          },
+        };
+      });
+
+    // Add any FALLBACK_TOOLS that aren't in ontology yet
+    for (const ft of FALLBACK_TOOLS) {
+      if (!tools.find(t => t.name === ft.name)) {
+        tools.push(ft);
+      }
+    }
+
+    console.log(`[agent/ontology] Loaded ${tools.length} tools (${actions.filter(a => a.agentToolName).length} from ontology)`);
+    return tools;
+  } catch (err) {
+    console.error("[agent/ontology] Failed to load tools, using fallback:", err);
+    return FALLBACK_TOOLS;
+  }
+}
+
+async function buildOntologyContext(): Promise<string> {
+  try {
+    const [objects, links, functions] = await Promise.all([
+      db.select().from(ontologyObjectTypes).where(eq(ontologyObjectTypes.enabled, true)),
+      db.select().from(ontologyLinkTypes).where(eq(ontologyLinkTypes.enabled, true)),
+      db.select().from(ontologyFunctionTypes).where(eq(ontologyFunctionTypes.enabled, true)),
+    ]);
+
+    if (objects.length === 0) return "";
+
+    let ctx = "\n\n\u2550\u2550\u2550 ONTOLOJ\u0130 HAR\u0130TASI \u2550\u2550\u2550\n";
+    ctx += "Sistem veri modeli \u2014 nesneler ve ili\u015fkileri:\n\n";
+
+    ctx += "NESNELER:\n";
+    for (const o of objects) {
+      ctx += `  ${o.icon || "\u2022"} ${o.id} (${o.displayNameTr || o.displayName}) \u2014 ${o.description || ""}\n`;
+    }
+
+    ctx += "\n\u0130L\u0130\u015eK\u0130LER:\n";
+    for (const l of links) {
+      ctx += `  ${l.sourceObjectType} \u2014[${l.displayName}]\u2192 ${l.targetObjectType}\n`;
+    }
+
+    if (functions.length > 0) {
+      ctx += "\nALGOR\u0130TMALAR:\n";
+      for (const f of functions) {
+        ctx += `  ${f.displayNameTr || f.displayName}: ${f.sourceObjectType} \u2192 ${f.returnType} (${f.implementation})\n`;
+      }
+    }
+
+    ctx += "\nBu haritay\u0131 kullanarak sorular\u0131 \u00e7ok boyutlu analiz et. Bir nesne soruldu\u011funda ili\u015fkili nesnelere de bak.\n";
+    ctx += "\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\n";
+
+    return ctx;
+  } catch (err) {
+    console.warn("[agent/ontology-ctx] Failed:", err);
+    return "";
+  }
+}
 
 export async function callTool(toolName: string, input: Record<string, any>): Promise<any> {
   switch (toolName) {
@@ -1476,6 +1564,11 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
     ]);
 
     if (snapshot) systemPrompt += snapshot;
+
+    // Ontology graph injection — agent understands the data model
+    const ontologyCtx = await buildOntologyContext();
+    if (ontologyCtx) systemPrompt += ontologyCtx;
+
     if (ragContext) {
       systemPrompt += "\n" + ragContext;
       console.log(`[agent/rag] Injected dynamic context (${ragContext.length} chars)`);
@@ -1486,9 +1579,10 @@ router.post("/agent/chat", async (req: Request, res: Response) => {
       console.log(`[agent/adm] Injected ${admMemories.memories.length} past decisions`);
     }
 
-    // All tools: custom ontology tools + Anthropic built-in web search
+    // All tools: loaded from ontology (fallback to hardcoded) + web search
+    const ontologyTools = await buildToolsFromOntology();
     const allTools: any[] = [
-      ...TOOLS,
+      ...ontologyTools,
       {
         type: "web_search_20250305",
         name: "web_search",
@@ -1673,12 +1767,15 @@ router.post("/agent/chat/stream", async (req: Request, res: Response) => {
     ]);
 
     if (snapshot) systemPrompt += snapshot;
+    const ontologyCtx2 = await buildOntologyContext();
+    if (ontologyCtx2) systemPrompt += ontologyCtx2;
     if (ragContext) systemPrompt += "\n" + ragContext;
     let admMemories = admResult;
     if (admMemories.contextBlock) systemPrompt += "\n" + admMemories.contextBlock;
 
+    const ontologyTools2 = await buildToolsFromOntology();
     const allTools: any[] = [
-      ...TOOLS,
+      ...ontologyTools2,
       { type: "web_search_20250305", name: "web_search", max_uses: 3 },
     ];
 
