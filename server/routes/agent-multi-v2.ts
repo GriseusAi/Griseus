@@ -43,13 +43,101 @@ const router = Router();
 // Extended thinking is enabled for all calls; budgets per-role.
 // ══════════════════════════════════════════════════════════════════════
 
-const MODEL = "claude-opus-4-20250514";
-const SUBAGENT_THINKING_BUDGET = 4000;
-const ORCHESTRATOR_THINKING_BUDGET = 12000;
-const SELF_CRITIQUE_THINKING_BUDGET = 16000;
+// ── MODE SYSTEM — weight class of each query ──
+// fast:     Sonnet, no thinking, single sub-agent, no orchestrator overhead
+// normal:   Sonnet, no thinking, orchestrator routing, moderate depth
+// research: Opus + extended thinking + self-critique (max intelligence)
+// visual:   Sonnet, orchestrator + diagram prompt, outputs Mermaid
 
-// Regex for queries that warrant a self-critique pass
+type AgentMode = "fast" | "normal" | "research" | "visual";
+
+interface ModeConfig {
+  model: string;
+  thinking: { type: "enabled"; budget_tokens: number } | { type: "disabled" };
+  subagentThinking: { type: "enabled"; budget_tokens: number } | { type: "disabled" };
+  maxTokens: number;
+  subagentMaxTokens: number;
+  orchestratorMaxIter: number;
+  subagentMaxIter: number;
+  wallClockMs: number;
+  selfCritique: boolean;
+  skipOrchestrator: boolean; // fast mode: bypass orchestrator, direct sub-agent
+}
+
+const MODE_CONFIGS: Record<AgentMode, ModeConfig> = {
+  fast: {
+    model: "claude-sonnet-4-20250514",
+    thinking: { type: "disabled" },
+    subagentThinking: { type: "disabled" },
+    maxTokens: 4096,
+    subagentMaxTokens: 2048,
+    orchestratorMaxIter: 0,
+    subagentMaxIter: 2,
+    wallClockMs: 30_000,
+    selfCritique: false,
+    skipOrchestrator: true,
+  },
+  normal: {
+    model: "claude-sonnet-4-20250514",
+    thinking: { type: "disabled" },
+    subagentThinking: { type: "disabled" },
+    maxTokens: 8192,
+    subagentMaxTokens: 4096,
+    orchestratorMaxIter: 4,
+    subagentMaxIter: 3,
+    wallClockMs: 60_000,
+    selfCritique: false,
+    skipOrchestrator: false,
+  },
+  research: {
+    model: "claude-opus-4-20250514",
+    thinking: { type: "enabled", budget_tokens: 12000 },
+    subagentThinking: { type: "enabled", budget_tokens: 4000 },
+    maxTokens: 16384,
+    subagentMaxTokens: 8192,
+    orchestratorMaxIter: 6,
+    subagentMaxIter: 5,
+    wallClockMs: 180_000,
+    selfCritique: true,
+    skipOrchestrator: false,
+  },
+  visual: {
+    model: "claude-sonnet-4-20250514",
+    thinking: { type: "disabled" },
+    subagentThinking: { type: "disabled" },
+    maxTokens: 8192,
+    subagentMaxTokens: 4096,
+    orchestratorMaxIter: 4,
+    subagentMaxIter: 3,
+    wallClockMs: 60_000,
+    selfCritique: false,
+    skipOrchestrator: false,
+  },
+};
+
+// Regex for queries that warrant a self-critique pass (only used in research mode)
 const CRITICAL_QUERY_REGEX = /kritik|acil|risk|tehlike|sorun|durdu|durur|biter|tüken|alarm|kayıp|kriz|alert|darboğaz|yetmez|eksik/i;
+
+// ── VISUAL MODE PROMPT ADDITION ──
+const VISUAL_PROMPT = `
+═══ GÖRSEL MOD AKTİF ═══
+Kullanıcı veriyi DİYAGRAM olarak görmek istiyor. Cevabında mutlaka Mermaid diagram(lar) üret.
+
+MERMAID KURALLARI:
+- Her diyagramı \`\`\`mermaid ... \`\`\` bloğu içinde yaz
+- Türkçe etiketler kullan
+- Diyagram türlerini veriye göre seç:
+  • Stok akışı → flowchart LR
+  • BOM ağacı → graph TD
+  • Tükenme timeline → gantt
+  • Karşılaştırma → pie veya bar chart (xychart-beta)
+  • Süreç/karar → flowchart TD
+  • Bileşen ilişkileri → graph LR
+- Diyagramın YANINDA kısa (2-3 cümle) yazılı özet de ver
+- Karmaşık veriyi BASİT göster — yönetici 3 saniyede anlamalı
+- Renkleri kullan: kritik=red, uyarı=orange, normal=green
+- Node isimlerinde özel karakter KULLANMA (parantez, tırnak vb. — Mermaid bozulur)
+`;
 
 // ══════════════════════════════════════════════════════════════════════
 // LONG-REQUEST WRAPPER — uses streaming under the hood
@@ -330,7 +418,6 @@ interface SubAgentResult {
   error?: string;
 }
 
-const SUBAGENT_MAX_ITER = 5;        // 3 → 5 (deeper tool exploration)
 const SUMMARY_MAX_CHARS = 6000;     // 800 → 6000 (deep analysis reports)
 const RAW_FINDINGS_MAX_CHARS = 8000; // 2400 → 8000 (full payload preservation)
 
@@ -340,6 +427,7 @@ async function runSubAgent(
   task: string,
   focusSku: string | undefined,
   shared: SharedContext,
+  modeConfig: ModeConfig = MODE_CONFIGS.research,
 ): Promise<SubAgentResult> {
   // Build sub-agent system as cached blocks: focused prompt is cached,
   // dynamic context (snapshot/RAG/ADM) is appended uncached.
@@ -368,9 +456,11 @@ async function runSubAgent(
   );
 
   const baseParams: any = {
-    model: MODEL,
-    max_tokens: 8192,
-    thinking: { type: "enabled", budget_tokens: SUBAGENT_THINKING_BUDGET },
+    model: modeConfig.model,
+    max_tokens: modeConfig.subagentMaxTokens,
+    ...(modeConfig.subagentThinking.type === "enabled"
+      ? { thinking: modeConfig.subagentThinking }
+      : {}),
     system: systemBlocks,
     tools: cachedTools,
     messages,
@@ -384,7 +474,7 @@ async function runSubAgent(
   try {
     let response = await createMsg(client, baseParams);
 
-    while (response.stop_reason === "tool_use" && iterations < SUBAGENT_MAX_ITER) {
+    while (response.stop_reason === "tool_use" && iterations < modeConfig.subagentMaxIter) {
       iterations++;
       const assistantContent = response.content;
       const toolUseBlocks = assistantContent.filter((b: any) => b.type === "tool_use");
@@ -426,7 +516,7 @@ async function runSubAgent(
       response = await createMsg(client, { ...baseParams, messages });
     }
 
-    if (response.stop_reason === "tool_use" && iterations >= SUBAGENT_MAX_ITER) {
+    if (response.stop_reason === "tool_use" && iterations >= modeConfig.subagentMaxIter) {
       truncated = true;
     }
 
@@ -467,23 +557,40 @@ async function runSubAgent(
 // Yumuşak deploy: v1 (/agent/multi/chat) yan yana yaşıyor, dokunulmamış.
 // ══════════════════════════════════════════════════════════════════════
 
-const ORCHESTRATOR_MAX_ITER = 6;       // 4 → 6 (deeper synthesis turns)
-const WALL_CLOCK_BUDGET_MS = 180_000;  // 75s → 180s (Opus + thinking is slower)
+// ── FAST MODE: classify query → pick best single sub-agent ──
+function classifyForFastMode(query: string): AgentName {
+  const q = query.toLowerCase();
+  // Write operations → aksiyon
+  if (/transfer|satın alma|öner|kural|ekle|sil|güncelle|import|oluştur/i.test(q)) return "aksiyon";
+  // Time/depletion questions → tukenme
+  if (/kaç gün|ne zaman|yeter|biter|tüken|süre|dayanır|forward/i.test(q)) return "tukenme";
+  // Risk/intelligence → risk
+  if (/kritik|risk|tehlike|alarm|intelligence|dashboard|valida/i.test(q)) return "risk";
+  // Default: stok/yapı/kapasite/BOM
+  return "yapi";
+}
 
 router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
-  const startedAt = Date.now();
-  const budgetExceeded = () => Date.now() - startedAt > WALL_CLOCK_BUDGET_MS;
-
   const allToolsUsed: string[] = [];
   const agentsUsed: AgentName[] = [];
   const iterCounts: Record<string, number> = { orchestrator: 0, tukenme: 0, yapi: 0, risk: 0, aksiyon: 0 };
 
   try {
     const client = getClient();
-    const { message, history } = req.body as {
+    const { message, history, mode: rawMode } = req.body as {
       message: string;
       history?: { role: string; content: string }[];
+      mode?: string;
     };
+
+    // Resolve mode (default: normal for cost efficiency)
+    const mode: AgentMode = (["fast", "normal", "research", "visual"].includes(rawMode || "")
+      ? rawMode as AgentMode
+      : "normal");
+    const modeConfig = MODE_CONFIGS[mode];
+
+    const startedAt = Date.now();
+    const budgetExceeded = () => Date.now() - startedAt > modeConfig.wallClockMs;
 
     if (!message || typeof message !== "string") {
       return res.status(400).json({ error: "message alanı gereklidir." });
@@ -509,12 +616,54 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       admContextBlock: admResult.contextBlock || "",
     };
 
+    // ══════════════════════════════════════════════════════════════════
+    // FAST MODE — skip orchestrator, single sub-agent, return directly
+    // ══════════════════════════════════════════════════════════════════
+    if (modeConfig.skipOrchestrator) {
+      const targetAgent = classifyForFastMode(message);
+      agentsUsed.push(targetAgent);
+
+      const result = await runSubAgent(client, targetAgent, message, undefined, shared, modeConfig);
+      for (const t of result.tools_used) allToolsUsed.push(t);
+      iterCounts[targetAgent] = result.iterations;
+
+      const finalText = result.summary || "Cevap üretilemedi.";
+
+      res.json({
+        response: finalText,
+        tools_used: allToolsUsed,
+        agents_used: agentsUsed,
+        iterations: iterCounts,
+        mode,
+      });
+
+      // Fire-and-forget logging
+      logTokenInteraction({
+        interactionType: `agent_multi_v2_${mode}`,
+        inputTokens: 0,
+        outputTokens: 0,
+        toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
+        queryCategory: classifyQuery(message, allToolsUsed),
+        actor: "ceo_agent",
+      });
+      recordMemory({
+        queryText: message,
+        queryCategory: classifyQuery(message, allToolsUsed),
+        toolsUsed: allToolsUsed,
+        recommendationMade: extractRecommendation(finalText),
+        responseLength: finalText.length,
+      }).catch(() => {});
+
+      return;
+    }
+
     // ── Build orchestrator system as cached blocks ──
     // Static prompt (ROUTING + CORE_PROMPT) is cached; dynamic context appended uncached.
+    const orchSystemText = ORCHESTRATOR_ROUTING + CORE_PROMPT + (mode === "visual" ? VISUAL_PROMPT : "");
     const orchSystemBlocks: any[] = [
       {
         type: "text",
-        text: ORCHESTRATOR_ROUTING + CORE_PROMPT,
+        text: orchSystemText,
         cache_control: { type: "ephemeral" },
       },
     ];
@@ -538,9 +687,11 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
     );
 
     const orchBaseParams: any = {
-      model: MODEL,
-      max_tokens: 16384,
-      thinking: { type: "enabled", budget_tokens: ORCHESTRATOR_THINKING_BUDGET },
+      model: modeConfig.model,
+      max_tokens: modeConfig.maxTokens,
+      ...(modeConfig.thinking.type === "enabled"
+        ? { thinking: modeConfig.thinking }
+        : {}),
       system: orchSystemBlocks,
       tools: orchTools,
       messages: orchMessages,
@@ -549,7 +700,7 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
     // ── Orchestrator tool-use loop ──
     let orchResponse = await createMsg(client, orchBaseParams);
 
-    while (orchResponse.stop_reason === "tool_use" && iterCounts.orchestrator < ORCHESTRATOR_MAX_ITER) {
+    while (orchResponse.stop_reason === "tool_use" && iterCounts.orchestrator < modeConfig.orchestratorMaxIter) {
       if (budgetExceeded()) {
         console.warn("[agent-multi-v2/chat] Wall-clock budget exceeded, forcing synthesis");
         break;
@@ -589,7 +740,7 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
         const task = input.task || message;
         const focusSku = input.focus_sku;
 
-        const result = await runSubAgent(client, agentName, task, focusSku, shared);
+        const result = await runSubAgent(client, agentName, task, focusSku, shared, modeConfig);
 
         // Flatten sub-agent tool names
         for (const t of result.tools_used) allToolsUsed.push(t);
@@ -644,9 +795,11 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
       });
 
       const synthesisResponse = await createMsg(client, {
-        model: MODEL,
-        max_tokens: 16384,
-        thinking: { type: "enabled", budget_tokens: ORCHESTRATOR_THINKING_BUDGET },
+        model: modeConfig.model,
+        max_tokens: modeConfig.maxTokens,
+        ...(modeConfig.thinking.type === "enabled"
+          ? { thinking: modeConfig.thinking }
+          : {}),
         system: orchSystemBlocks,
         messages: orchMessages,
       } as any);
@@ -666,7 +819,7 @@ router.post("/agent/multi/v2/chat", async (req: Request, res: Response) => {
     // Triggered for critical/risk/depletion queries — second Opus call
     // critiques the answer and appends extra analysis if gaps exist.
     // ══════════════════════════════════════════════════════════════════
-    const isCriticalQuery = CRITICAL_QUERY_REGEX.test(message);
+    const isCriticalQuery = modeConfig.selfCritique && CRITICAL_QUERY_REGEX.test(message);
     if (isCriticalQuery && finalText.length > 100 && !budgetExceeded()) {
       try {
         const critiqueMessages: Anthropic.MessageParam[] = [
@@ -685,9 +838,11 @@ Sadece EKSİK olanları yaz — baştan sona tekrarlama. Direkt "**🧠 Derinle�
         ];
 
         const critiqueResponse = await createMsg(client, {
-          model: MODEL,
-          max_tokens: 8192,
-          thinking: { type: "enabled", budget_tokens: SELF_CRITIQUE_THINKING_BUDGET },
+          model: modeConfig.model,
+          max_tokens: modeConfig.maxTokens,
+          ...(modeConfig.thinking.type === "enabled"
+            ? { thinking: { type: "enabled", budget_tokens: 16000 } }
+            : {}),
           system: orchSystemBlocks,
           messages: critiqueMessages,
         } as any);
@@ -715,13 +870,14 @@ Sadece EKSİK olanları yaz — baştan sona tekrarlama. Direkt "**🧠 Derinle�
       tools_used: allToolsUsed,
       agents_used: agentsUsed,
       iterations: iterCounts,
+      mode,
     });
 
-    // ── Fire-and-forget: TVT + ADM logging (tagged for v2 A/B) ──
+    // ── Fire-and-forget: TVT + ADM logging (tagged by mode) ──
     const usage = orchResponse.usage;
     if (usage) {
       logTokenInteraction({
-        interactionType: "agent_multi_v2_chat",
+        interactionType: `agent_multi_v2_${mode}`,
         inputTokens: usage.input_tokens,
         outputTokens: usage.output_tokens,
         toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
@@ -731,7 +887,7 @@ Sadece EKSİK olanları yaz — baştan sona tekrarlama. Direkt "**🧠 Derinle�
     }
     if (synthesisUsage) {
       logTokenInteraction({
-        interactionType: "agent_multi_v2_chat",
+        interactionType: `agent_multi_v2_${mode}`,
         inputTokens: synthesisUsage.input_tokens,
         outputTokens: synthesisUsage.output_tokens,
         toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
@@ -741,7 +897,7 @@ Sadece EKSİK olanları yaz — baştan sona tekrarlama. Direkt "**🧠 Derinle�
     }
     if (critiqueUsage) {
       logTokenInteraction({
-        interactionType: "agent_multi_v2_chat",
+        interactionType: `agent_multi_v2_${mode}`,
         inputTokens: critiqueUsage.input_tokens,
         outputTokens: critiqueUsage.output_tokens,
         toolsUsed: allToolsUsed.length > 0 ? allToolsUsed : undefined,
