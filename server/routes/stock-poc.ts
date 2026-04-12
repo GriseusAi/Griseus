@@ -462,11 +462,40 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       return res.status(400).json({ error: "Bu hareketin önceki durumu kaydedilmemiş" });
     }
 
-    // Get current state for the undo movement's previousState
+    // Get current state
     const currentState = await ensureStockLevel(movement.productId);
 
     // Get product SKU (needed for BOM restore)
     const [prod] = await db.select({ sku: products.sku }).from(products).where(eq(products.id, movement.productId));
+
+    // Calculate the REVERSE of this movement (don't snapshot-restore!)
+    const qty = movement.quantity;
+    let reverseInProduction = currentState.inProduction;
+    let reverseInWarehouse = currentState.inWarehouse;
+    let reverseTotalSold = currentState.totalSold;
+
+    switch (movement.movementType) {
+      case "produced":
+        reverseInProduction = currentState.inProduction - qty;
+        break;
+      case "to_warehouse":
+        reverseInProduction = currentState.inProduction + qty;
+        reverseInWarehouse = currentState.inWarehouse - qty;
+        break;
+      case "to_sales":
+        reverseInWarehouse = currentState.inWarehouse + qty;
+        reverseTotalSold = currentState.totalSold - qty;
+        break;
+      case "raw_material_in":
+        reverseInProduction = currentState.inProduction - qty;
+        break;
+    }
+
+    const reversedState = {
+      inProduction: reverseInProduction,
+      inWarehouse: reverseInWarehouse,
+      totalSold: reverseTotalSold,
+    };
 
     await db.transaction(async (tx) => {
       // Record undo movement
@@ -479,13 +508,11 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
         createdBy: "sistem",
       });
 
-      // Restore to previous state
+      // Apply the REVERSE — only undo this specific movement's effect
       await tx
         .update(stockLevels)
         .set({
-          inProduction: prev.inProduction,
-          inWarehouse: prev.inWarehouse,
-          totalSold: prev.totalSold,
+          ...reversedState,
           updatedAt: new Date(),
         })
         .where(eq(stockLevels.productId, movement.productId));
@@ -519,12 +546,13 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
       productSku: prod?.sku || "?",
       movementType: "undo",
       quantity: movement.quantity,
-      stockLevel: { inProduction: prev.inProduction, inWarehouse: prev.inWarehouse, totalSold: prev.totalSold },
+      stockLevel: reversedState,
     });
 
     res.json({
       success: true,
-      restored: prev,
+      reversed: reversedState,
+      undoneMovement: { type: movement.movementType, quantity: qty },
     });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
