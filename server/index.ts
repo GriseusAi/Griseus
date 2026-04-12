@@ -1,5 +1,6 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
+import { startPipelineScheduler } from "./lib/pipeline-scheduler";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import session from "express-session";
@@ -203,5 +204,7 @@ app.use((req, res, next) => {
   const port = parseInt(process.env.PORT || "3000", 10);
   httpServer.listen(port, "0.0.0.0", () => {
     log(`serving on port ${port}`);
+    // Start pipeline scheduler after server is ready
+    startPipelineScheduler();
   });
 })();

@@ -10,6 +10,7 @@ import { bulkUpdateFromSalesHistory } from "../lib/dynamic-seasonality";
 import { db } from "../db";
 import { products, bomItems, componentStock, salesHistory } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
+import { recordLineage, createSnapshot } from "./foundry";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -32,7 +33,26 @@ router.post("/execute", upload.single("file"), async (req: Request, res: Respons
     const type = (req.body.type as ImportType) || "auto";
     const productSku = req.body.product_sku as string;
     if (!productSku) return res.status(400).json({ error: "product_sku gerekli" });
+    // Snapshot before import (fire-and-forget, non-blocking)
+    const snapshotTables = type === "sales_history" ? ["component_stock"] : ["component_stock", "bom_items"];
+    createSnapshot(
+      `Import oncesi: ${req.file.originalname || "dosya"} (${type})`,
+      "auto_pre_import",
+      snapshotTables,
+      `import_${type}`,
+    ).catch(() => {});
+
     const result = await smartImport(req.file.buffer, { type, productSku });
+
+    // Record lineage for this import
+    recordLineage({
+      entity: type === "sales_history" ? "sales_history" : "component_stock",
+      entityId: productSku,
+      sourceType: "import",
+      sourceName: `Excel import: ${req.file.originalname || "dosya"}`,
+      actor: "import",
+      metadata: { type, productSku, rowCount: result.imported || 0 },
+    }).catch(() => {});
 
     // DSE — Satış verisi import edildiyse mevsimsel indeksleri güncelle (fire-and-forget)
     if (type === "sales_history" || type === "auto") {
@@ -75,6 +95,15 @@ router.post("/bulk/products", async (req: Request, res: Response) => {
         category: item.category || null,
       });
       created++;
+    }
+
+    // Lineage
+    if (created > 0) {
+      recordLineage({
+        entity: "product", entityId: "bulk",
+        sourceType: "import", sourceName: "Bulk product import",
+        actor: "import", metadata: { created, skipped, total: items.length },
+      }).catch(() => {});
     }
 
     res.json({ success: true, created, skipped, total: items.length });

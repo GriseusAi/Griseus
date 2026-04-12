@@ -459,3 +459,118 @@ export const chatMessages = pgTable("chat_messages", {
   agentsUsed: jsonb("agents_used").$type<string[]>(),
   createdAt: timestamp("created_at").defaultNow(),
 });
+
+// ═══════════════════════════════════════════════════════════
+// FOUNDRY LAYER 1: DATA LINEAGE — full provenance chain
+// "Bu sayı nereden geldi?" sorusuna cevap
+// ═══════════════════════════════════════════════════════════
+
+export const dataLineage = pgTable("data_lineage", {
+  id: serial("id").primaryKey(),
+  // What changed
+  entity: varchar("entity", { length: 50 }).notNull(),     // component_stock | bom_item | product | stock_level
+  entityId: varchar("entity_id", { length: 100 }).notNull(),
+  field: varchar("field", { length: 50 }),                   // quantity | lead_time | price etc.
+  previousValue: text("previous_value"),
+  newValue: text("new_value"),
+  // Chain — where did this come from?
+  sourceType: varchar("source_type", { length: 30 }).notNull(), // import | manual | agent | pipeline | rule_engine | correction
+  sourceId: varchar("source_id", { length: 100 }),              // import batch ID, pipeline run ID, agent session ID
+  sourceName: varchar("source_name", { length: 200 }),          // "Excel import: stok_nisan.xlsx" | "Pipeline: ERP sync" | "Agent: satın alma önerisi"
+  // Upstream/downstream chain
+  parentLineageId: integer("parent_lineage_id"),                // links to parent data_lineage.id — forms a DAG
+  // Who and when
+  actor: varchar("actor", { length: 50 }).notNull().default("system"),
+  createdAt: timestamp("created_at").defaultNow(),
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+});
+
+// ═══════════════════════════════════════════════════════════
+// FOUNDRY LAYER 2: PIPELINE SCHEDULING
+// Otomatik veri çekme, dönüşüm, health check
+// ═══════════════════════════════════════════════════════════
+
+export const pipelineDefinitions = pgTable("pipeline_definitions", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  // What does it do?
+  pipelineType: varchar("pipeline_type", { length: 30 }).notNull(), // import | transform | health_check | sync
+  // Schedule
+  cronExpression: varchar("cron_expression", { length: 50 }),       // "0 2 * * *" = every day at 2am
+  enabled: boolean("enabled").notNull().default(true),
+  // Config
+  config: jsonb("config").$type<Record<string, any>>(),            // source URL, file path, mappings, etc.
+  // Stats
+  lastRunAt: timestamp("last_run_at"),
+  lastStatus: varchar("last_status", { length: 20 }),               // success | failed | running
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const pipelineRuns = pgTable("pipeline_runs", {
+  id: serial("id").primaryKey(),
+  pipelineId: integer("pipeline_id").notNull().references(() => pipelineDefinitions.id),
+  status: varchar("status", { length: 20 }).notNull().default("running"), // running | success | failed
+  startedAt: timestamp("started_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+  // Results
+  recordsProcessed: integer("records_processed").default(0),
+  recordsFailed: integer("records_failed").default(0),
+  errorMessage: text("error_message"),
+  // Lineage link
+  lineageIds: jsonb("lineage_ids").$type<number[]>(),              // data_lineage entries created by this run
+  metadata: jsonb("metadata").$type<Record<string, any>>(),
+});
+
+// ═══════════════════════════════════════════════════════════
+// FOUNDRY LAYER 3: DATA VERSIONING — snapshot/rollback
+// Veriyi "code gibi" ele al: snapshot → diff → rollback
+// ═══════════════════════════════════════════════════════════
+
+export const dataSnapshots = pgTable("data_snapshots", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),                // "Import öncesi snapshot" | "Manual backup"
+  snapshotType: varchar("snapshot_type", { length: 30 }).notNull(), // auto_pre_import | auto_pre_pipeline | manual
+  // What was captured
+  tables: jsonb("tables").$type<string[]>().notNull(),              // ["component_stock", "bom_items"]
+  data: jsonb("data").$type<Record<string, any[]>>().notNull(),     // { component_stock: [...rows], bom_items: [...rows] }
+  // Context
+  triggeredBy: varchar("triggered_by", { length: 100 }),            // pipeline run ID, import session, user
+  createdAt: timestamp("created_at").defaultNow(),
+  // Stats
+  totalRecords: integer("total_records").default(0),
+  sizeBytes: integer("size_bytes").default(0),
+});
+
+// ═══════════════════════════════════════════════════════════
+// FOUNDRY LAYER 4: SCENARIO BRANCHING
+// What-if dalları — karşılaştır, birini seç, uygula
+// ═══════════════════════════════════════════════════════════
+
+export const scenarios = pgTable("scenarios", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  status: varchar("status", { length: 20 }).notNull().default("draft"), // draft | active | applied | archived
+  createdBy: varchar("created_by", { length: 50 }).default("user"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+  // Parent scenario for nested branches
+  parentScenarioId: integer("parent_scenario_id"),
+  // What-if results cached
+  simulationResult: jsonb("simulation_result").$type<Record<string, any>>(),
+});
+
+export const scenarioOverrides = pgTable("scenario_overrides", {
+  id: serial("id").primaryKey(),
+  scenarioId: integer("scenario_id").notNull().references(() => scenarios.id),
+  // What is being overridden
+  entity: varchar("entity", { length: 50 }).notNull(),       // component_stock | bom_item | product
+  entityId: varchar("entity_id", { length: 100 }).notNull(),
+  field: varchar("field", { length: 50 }).notNull(),          // quantity | lead_time | demand
+  // Override value
+  originalValue: text("original_value"),
+  overrideValue: text("override_value").notNull(),
+  createdAt: timestamp("created_at").defaultNow(),
+});

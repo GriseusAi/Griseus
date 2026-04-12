@@ -4,7 +4,7 @@
  * Fire-and-forget: ana işlemi bloklamaz.
  */
 import { db } from "../db";
-import { auditLog } from "@shared/schema";
+import { auditLog, dataLineage } from "@shared/schema";
 
 export interface AuditEntry {
   entity: string; // component_stock | stock_level | bom_item | purchase_suggestion | custom_rule
@@ -18,7 +18,7 @@ export interface AuditEntry {
   metadata?: Record<string, any>;
 }
 
-/** Tek bir audit kaydı oluştur */
+/** Tek bir audit kaydı oluştur + lineage */
 export function logAudit(entry: AuditEntry): void {
   db.insert(auditLog).values({
     entity: entry.entity,
@@ -31,6 +31,22 @@ export function logAudit(entry: AuditEntry): void {
     actor: entry.actor ?? "system",
     metadata: entry.metadata ?? null,
   }).catch(err => console.error("[audit] Log error:", err));
+
+  // Mirror to data_lineage for provenance chain
+  db.insert(dataLineage).values({
+    entity: entry.entity,
+    entityId: String(entry.entityId),
+    field: entry.field ?? null,
+    previousValue: entry.previousValue != null ? String(entry.previousValue) : null,
+    newValue: entry.newValue != null ? String(entry.newValue) : null,
+    sourceType: entry.actor === "ceo_agent" || entry.actor === "ai_agent" ? "agent"
+      : entry.actor === "rules_engine" ? "rule_engine"
+      : entry.actor === "import" ? "import"
+      : "manual",
+    sourceName: entry.reason ?? null,
+    actor: entry.actor ?? "system",
+    metadata: entry.metadata ?? null,
+  }).catch(err => console.error("[lineage] Log error:", err));
 }
 
 /** Birden fazla audit kaydı oluştur */

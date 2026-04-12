@@ -19,6 +19,7 @@ import validationRouter from "./routes/validation";
 import importRouter from "./routes/import";
 import outcomeRouter from "./routes/outcome";
 import chatHistoryRouter from "./routes/chat-history";
+import foundryRouter from "./routes/foundry";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
 import { sql } from "drizzle-orm";
@@ -42,6 +43,7 @@ export async function registerRoutes(
   app.use("/api/import", importRouter);
   app.use("/api/outcomes", outcomeRouter);
   app.use("/api/v1", chatHistoryRouter);
+  app.use("/api/foundry", foundryRouter);
 
   // ── Products API — hangi urunler mevcut ──
   app.get("/api/products", async (_req, res) => {
