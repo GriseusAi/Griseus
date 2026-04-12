@@ -114,27 +114,71 @@ function renderMarkdown(raw: string): string {
     .replace(/\n{3,}/g, '\n\n');
 }
 
+/** Sanitize mermaid code — fix common AI-generated syntax issues */
+function sanitizeMermaid(raw: string): string {
+  let code = raw.trim();
+  // Remove surrounding quotes that AI sometimes adds
+  code = code.replace(/^["']|["']$/g, "");
+  // Fix common Türkçe character issues in node IDs (not labels)
+  // Replace lines like: şık --> B  with  sik --> B
+  // But preserve labels inside [] or ()
+  // Remove any "```" that leaked into the code
+  code = code.replace(/```/g, "");
+  // Remove title lines with quotes that break xychart (fallback from bad prompts)
+  code = code.replace(/^\s*title\s+"[^"]*"\s*$/gm, (match) => {
+    // Strip quotes from title
+    return match.replace(/"/g, "");
+  });
+  return code;
+}
+
 /** Renders a single mermaid code block into SVG */
 function MermaidBlock({ code }: { code: string }) {
   const [svg, setSvg] = useState<string>("");
   const [error, setError] = useState<string>("");
 
   useEffect(() => {
+    const sanitized = sanitizeMermaid(code);
     const id = `mermaid-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
-    mermaid.render(id, code.trim())
+
+    mermaid.render(id, sanitized)
       .then(({ svg: rendered }) => setSvg(rendered))
-      .catch(() => setError("Diyagram render edilemedi"));
+      .catch(() => {
+        // Retry: try wrapping in a simple flowchart if type is unknown
+        const fallbackId = `mermaid-fb-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
+        const lines = sanitized.split("\n");
+        const firstLine = lines[0]?.trim().toLowerCase() || "";
+        const isKnownType = /^(flowchart|graph|pie|gantt|sequenceDiagram|classDiagram)/.test(firstLine);
+
+        if (!isKnownType && lines.length > 1) {
+          // Try as flowchart
+          const fallbackCode = "flowchart TD\n" + lines.slice(1).join("\n");
+          mermaid.render(fallbackId, fallbackCode)
+            .then(({ svg: rendered }) => setSvg(rendered))
+            .catch(() => setError("render-failed"));
+        } else {
+          setError("render-failed");
+        }
+      });
   }, [code]);
 
   if (error) {
     return (
       <div style={{
         padding: "12px 16px", borderRadius: 10, margin: "8px 0",
-        background: "rgba(248,113,113,0.08)", border: "1px solid rgba(248,113,113,0.2)",
-        color: "#f87171", fontSize: 12,
+        background: "rgba(255,255,255,0.03)", border: "1px solid rgba(255,255,255,0.08)",
+        color: C.textSecondary, fontSize: 12,
       }}>
-        {error}
-        <pre style={{ marginTop: 8, fontSize: 11, opacity: 0.7, whiteSpace: "pre-wrap" }}>{code}</pre>
+        <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
+          <span style={{ fontSize: 14 }}>📊</span>
+          <span style={{ color: C.textDim, fontSize: 11 }}>Diyagram render edilemedi — ham veri:</span>
+        </div>
+        <pre style={{
+          fontSize: 11, lineHeight: 1.6, opacity: 0.8, whiteSpace: "pre-wrap",
+          padding: "10px 12px", borderRadius: 8,
+          background: "rgba(0,0,0,0.3)", border: "1px solid rgba(255,255,255,0.05)",
+          overflowX: "auto",
+        }}>{code.trim()}</pre>
       </div>
     );
   }

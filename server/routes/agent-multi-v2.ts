@@ -123,20 +123,55 @@ const VISUAL_PROMPT = `
 ═══ GÖRSEL MOD AKTİF ═══
 Kullanıcı veriyi DİYAGRAM olarak görmek istiyor. Cevabında mutlaka Mermaid diagram(lar) üret.
 
-MERMAID KURALLARI:
-- Her diyagramı \`\`\`mermaid ... \`\`\` bloğu içinde yaz
-- Türkçe etiketler kullan
-- Diyagram türlerini veriye göre seç:
-  • Stok akışı → flowchart LR
-  • BOM ağacı → graph TD
-  • Tükenme timeline → gantt
-  • Karşılaştırma → pie veya bar chart (xychart-beta)
-  • Süreç/karar → flowchart TD
-  • Bileşen ilişkileri → graph LR
-- Diyagramın YANINDA kısa (2-3 cümle) yazılı özet de ver
-- Karmaşık veriyi BASİT göster — yönetici 3 saniyede anlamalı
-- Renkleri kullan: kritik=red, uyarı=orange, normal=green
-- Node isimlerinde özel karakter KULLANMA (parantez, tırnak vb. — Mermaid bozulur)
+MERMAID SYNTAX KURALLARI (ZORUNLU — ihlal edersen diyagram KIRILIR):
+
+1. GÜVENLI DİYAGRAM TÜRLERİ (sadece bunları kullan):
+   • flowchart LR veya flowchart TD — stok akışı, bileşen ilişkileri, BOM ağacı, karar süreçleri
+   • pie — yüzde dağılımları, kategori karşılaştırması
+   • gantt — zaman çizelgesi, tükenme takvimi
+   • graph TD veya graph LR — hiyerarşi, ağaç yapısı
+
+2. YASAK DİYAGRAM TÜRLERİ (ASLA KULLANMA — render CRASH eder):
+   • xychart-beta — KULLANMA, desteklenmiyor
+   • sequence — karmaşık, gereksiz
+   • class — iş bağlamında anlamsız
+   • Herhangi bir "-beta" suffix'li diagram tipi
+
+3. TÜRKÇE KARAKTER KURALLARI:
+   • Node ID'lerinde Türkçe karakter KULLANMA: A, B, C, stok1, bilesen2 gibi ASCII ID kullan
+   • Türkçe metin SADECE köşeli parantez içinde label olarak yaz: A[Bakir Boru - 233 adet]
+   • Tırnak işareti (" veya ') KULLANMA node label'larında — köşeli parantez [] yeterli
+   • Özel karakterler (ö, ü, ş, ç, ğ, ı) SADECE label text içinde kullan, ID'de ASLA
+   • Noktalı virgül, iki nokta, parantez label içinde KULLANMA
+
+4. STİL KURALLARI:
+   • Kritik düğümler: style NODE fill:#f87171,color:#fff
+   • Uyarı düğümler: style NODE fill:#fbbf24,color:#000
+   • Normal düğümler: style NODE fill:#34d399,color:#000
+   • Her diyagramda en fazla 12-15 node — fazlası okunmaz
+   • Bir cevatta en fazla 3 diyagram
+
+5. YAPI:
+   • Her diyagramı \`\`\`mermaid ... \`\`\` bloğu içinde yaz
+   • Her diyagramın ÜSTÜNE 1 satır başlık yaz (bold)
+   • Her diyagramın ALTINA 1-2 cümle yorum yaz
+   • Diyagramda gösterilemeyen detayları kısa bullet list olarak ekle
+
+6. SAYISAL VERİ GÖRSELLEŞTİRME:
+   • Bar chart yerine → flowchart ile yatay barlar simüle et: A[Label ████████ 350] gibi
+   • Veya pie chart kullan yüzde dağılımı için
+   • Tablo verisini → flowchart node'larına dönüştür (her satır bir node, renk kodlu)
+
+ÖRNEK İYİ DİYAGRAM:
+\`\`\`mermaid
+flowchart LR
+  A[Bakir Boru<br/>233 adet] --> B[ELT 7-11<br/>Uretim]
+  C[Plus Kablo<br/>89 adet] --> B
+  D[Fan Motoru<br/>450 adet] --> B
+  style A fill:#fbbf24,color:#000
+  style C fill:#f87171,color:#fff
+  style D fill:#34d399,color:#000
+\`\`\`
 `;
 
 // ══════════════════════════════════════════════════════════════════════
