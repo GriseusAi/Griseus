@@ -1,813 +1,413 @@
-import { useState, useCallback, useMemo, useRef, useEffect } from "react";
-import { useSKU } from "@/lib/sku-context";
+import { useState, useMemo, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import TopNav from "@/components/top-nav";
-import ProductSelector from "@/components/ProductSelector";
 
 /* ═══════════════════════════════════════════════════════════
    GRISEUS — LINEAGE CANVAS (Palantir SDDI)
-   Software Defined Data Integration — Freeform Pipeline Graph
+   Pure HTML/SVG — no Canvas API dependency
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
+  bg: "#050505", surface: "rgba(255,255,255,0.03)",
   border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.25)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.08)", okBorder: "rgba(52,211,153,0.15)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.08)", warnBorder: "rgba(251,191,36,0.15)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.06)", errBorder: "rgba(239,68,68,0.15)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)",
+  ok: "#34d399", okDim: "rgba(52,211,153,0.08)",
+  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.08)",
+  err: "#ef4444",
   blue: "#60a5fa", purple: "#a78bfa", cyan: "#22d3ee", orange: "#fb923c",
-  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#2a2a3a",
-  // Node type colors
-  source: "#fb923c",    // orange — data sources
-  store: "#60a5fa",     // blue — data stores (tables)
-  engine: "#a78bfa",    // purple — transform engines
-  output: "#34d399",    // green — outputs/actions
-  ontology: "#818cf8",  // accent — ontology triangle
+  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60",
+  source: "#fb923c", store: "#60a5fa", engine: "#a78bfa", output: "#34d399", ontology: "#818cf8",
 };
 const mono = "'Outfit', sans-serif";
 const fmt = (n: number) => n.toLocaleString("tr-TR");
 
-/* ═══════════════════════════════════════════════════════════
-   PIPELINE ARCHITECTURE — The Blueprint
-   Defines all nodes and edges in the Griseus data pipeline
-   ═══════════════════════════════════════════════════════════ */
-
+/* ── Types ── */
 type NodeType = "source" | "store" | "engine" | "output" | "ontology";
 
-interface PipelineNode {
-  id: string;
-  label: string;
-  sublabel?: string;
-  type: NodeType;
-  table?: string; // maps to DB table for live stats
-  x: number;
-  y: number;
+interface PNode {
+  id: string; label: string; sub?: string; type: NodeType; table?: string;
+  col: number; row: number; // grid position
+}
+interface PEdge { from: string; to: string; label?: string; live?: boolean; }
+
+/* ── Pipeline Blueprint ── */
+const NODES: PNode[] = [
+  // Sources (col 0)
+  { id: "excel_bom",    label: "Excel BOM",        sub: "Reçete İthalatı",      type: "source",  col: 0, row: 0 },
+  { id: "excel_sales",  label: "Excel Satış",      sub: "3 Yıllık Satış",       type: "source",  col: 0, row: 1 },
+  { id: "excel_stock",  label: "Excel Stok",       sub: "Stok Sayım",           type: "source",  col: 0, row: 2 },
+  { id: "manual_entry", label: "Manuel Giriş",     sub: "Stok Hareketi",        type: "source",  col: 0, row: 3 },
+  { id: "agent_wb",     label: "Agent Write-back",  sub: "Karar → Veri",        type: "source",  col: 0, row: 4 },
+  // Data Stores (col 1)
+  { id: "products",    label: "Ürünler",           sub: "products",             type: "store", table: "products",          col: 1, row: 0 },
+  { id: "bom_items",   label: "BOM Ağacı",         sub: "bom_items",            type: "store", table: "bom_items",         col: 1, row: 1 },
+  { id: "comp_stock",  label: "Bileşen Stok",      sub: "component_stock",      type: "store", table: "component_stock",   col: 1, row: 2 },
+  { id: "sales_hist",  label: "Satış Geçmişi",     sub: "sales_history",        type: "store", table: "sales_history",     col: 1, row: 3 },
+  { id: "stock_moves", label: "Stok Hareketleri",  sub: "stock_movements_v2",   type: "store", table: "stock_movements_v2", col: 1, row: 4 },
+  { id: "season_idx",  label: "Mevsimsel İndeks",  sub: "seasonal_indices",     type: "store", table: "seasonal_indices",   col: 1, row: 5 },
+  // Engines (col 2)
+  { id: "dse",        label: "DSE",               sub: "Mevsimsellik Motoru",   type: "engine", col: 2, row: 0 },
+  { id: "ate",        label: "ATE",               sub: "Adaptif Eşik",         type: "engine", col: 2, row: 1 },
+  { id: "intel",      label: "Intelligence",      sub: "Bileşen İstihbarat",   type: "engine", col: 2, row: 2 },
+  { id: "impact",     label: "Impact Engine",     sub: "Etki Yayılım",         type: "engine", col: 2, row: 3 },
+  { id: "whatif",     label: "What-If",           sub: "Senaryo Simülatör",    type: "engine", col: 2, row: 4 },
+  { id: "validation", label: "Validation",        sub: "10 Kural Motoru",      type: "engine", col: 2, row: 5 },
+  // Knowledge (col 3)
+  { id: "ole", label: "OLE",  sub: "Öğrenme Motoru",     type: "engine", table: "outcome_tracking", col: 3, row: 0 },
+  { id: "adm", label: "ADM",  sub: "Agent Hafıza",       type: "engine", table: "agent_memory",     col: 3, row: 1 },
+  { id: "tvt", label: "TVT",  sub: "Token Değer Takibi", type: "engine", table: "token_metrics",    col: 3, row: 2 },
+  // Outputs (col 4)
+  { id: "ceo_agent",   label: "CEO Agent",        sub: "24 Tool · 4 Mod",          type: "output", col: 4, row: 0 },
+  { id: "alerts",      label: "Uyarılar",         sub: "validation_alerts",        type: "output", table: "validation_alerts",    col: 4, row: 1 },
+  { id: "suggestions", label: "Satın Alma",       sub: "purchase_suggestions",     type: "output", table: "purchase_suggestions", col: 4, row: 2 },
+  { id: "plans",       label: "Üretim Planları",  sub: "production_plans",         type: "output", table: "production_plans",     col: 4, row: 3 },
+];
+
+const EDGES: PEdge[] = [
+  // Sources → Stores
+  { from: "excel_bom",    to: "bom_items",   label: "import",    live: true },
+  { from: "excel_bom",    to: "products",    label: "import" },
+  { from: "excel_sales",  to: "sales_hist",  label: "import",    live: true },
+  { from: "excel_stock",  to: "comp_stock",  label: "import",    live: true },
+  { from: "manual_entry", to: "stock_moves", label: "create",    live: true },
+  { from: "manual_entry", to: "comp_stock",  label: "update" },
+  { from: "agent_wb",     to: "stock_moves", label: "writeback" },
+  // Stores → Engines
+  { from: "sales_hist",  to: "dse",        label: "EWMA",       live: true },
+  { from: "dse",         to: "season_idx", label: "indeksler",   live: true },
+  { from: "comp_stock",  to: "intel",      label: "stok verisi" },
+  { from: "bom_items",   to: "intel",      label: "reçete" },
+  { from: "season_idx",  to: "intel",      label: "mevsimsel",   live: true },
+  { from: "products",    to: "intel",      label: "ürün bilgi" },
+  { from: "intel",       to: "ate",        label: "urgency" },
+  { from: "comp_stock",  to: "impact",     label: "stok delta" },
+  { from: "stock_moves", to: "impact",     label: "hareket" },
+  { from: "intel",       to: "whatif",     label: "kapasite" },
+  { from: "season_idx",  to: "whatif",     label: "talep" },
+  { from: "ate",         to: "validation", label: "eşikler" },
+  { from: "intel",       to: "validation", label: "risk skoru" },
+  // Engines → Outputs
+  { from: "intel",      to: "ceo_agent",   label: "istihbarat",  live: true },
+  { from: "whatif",     to: "ceo_agent",   label: "simülasyon" },
+  { from: "impact",     to: "ceo_agent",   label: "etki analiz" },
+  { from: "validation", to: "alerts",      label: "uyarı",       live: true },
+  { from: "ceo_agent",  to: "suggestions", label: "öneri",       live: true },
+  { from: "ceo_agent",  to: "plans",       label: "plan" },
+  // Knowledge ↔ Agent
+  { from: "ole", to: "ceo_agent", label: "güven" },
+  { from: "adm", to: "ceo_agent", label: "hafıza" },
+  { from: "tvt", to: "ceo_agent", label: "V/T" },
+  { from: "ceo_agent", to: "ole", label: "sonuç" },
+  { from: "ceo_agent", to: "adm", label: "embedding" },
+  { from: "ceo_agent", to: "tvt", label: "token" },
+  // Write-back loop
+  { from: "ceo_agent",  to: "agent_wb",   label: "karar",     live: true },
+  { from: "stock_moves", to: "comp_stock", label: "güncelle",  live: true },
+];
+
+const COL_LABELS = ["VERİ KAYNAKLARI", "VERİ HAVUZLARI", "MOTORLAR", "BİLGİ KATMANI", "ÇIKTILAR"];
+
+/* ── Grid layout calculation ── */
+const COL_COUNT = 5;
+const NODE_W = 150;
+const NODE_H = 52;
+const COL_GAP = 30;
+const ROW_GAP = 14;
+
+function nodePos(node: PNode, containerW: number) {
+  const colW = (containerW - COL_GAP * (COL_COUNT + 1)) / COL_COUNT;
+  const x = COL_GAP + node.col * (colW + COL_GAP) + colW / 2;
+  const maxRows = [5, 6, 6, 3, 4][node.col] || 6;
+  const totalH = maxRows * NODE_H + (maxRows - 1) * ROW_GAP;
+  const startY = 70;
+  const y = startY + node.row * (NODE_H + ROW_GAP) + NODE_H / 2;
+  return { x, y, colW };
 }
 
-interface PipelineEdge {
-  from: string;
-  to: string;
-  label?: string;
-  animated?: boolean;
-}
-
-// Initial layout: positions as ratios (0..1) of canvas size — scales to any screen
-// User can drag to rearrange at runtime
-function createPipelineBlueprint(): { nodes: PipelineNode[]; edges: PipelineEdge[] } {
-  // Ratio-based layout: 5 columns, rows spread vertically
-  const cols = [0.07, 0.27, 0.50, 0.70, 0.92]; // source, store, engine, knowledge, output
-  const row = (i: number, total: number) => 0.08 + (i / Math.max(total - 1, 1)) * 0.82;
-
-  const nodes: PipelineNode[] = [
-    // ── SOURCES (Column 0) ──
-    { id: "excel_bom",     label: "Excel BOM",       sublabel: "Reçete İthalatı",       type: "source",  x: cols[0], y: row(0, 5) },
-    { id: "excel_sales",   label: "Excel Satış",     sublabel: "3 Yıllık Satış",        type: "source",  x: cols[0], y: row(1, 5) },
-    { id: "excel_stock",   label: "Excel Stok",      sublabel: "Stok Sayım",            type: "source",  x: cols[0], y: row(2, 5) },
-    { id: "manual_entry",  label: "Manuel Giriş",    sublabel: "Stok Hareketi",         type: "source",  x: cols[0], y: row(3, 5) },
-    { id: "agent_wb",      label: "Agent Write-back", sublabel: "Karar → Veri",         type: "source",  x: cols[0], y: row(4, 5) },
-
-    // ── DATA STORES (Column 1) ──
-    { id: "products",       label: "Ürünler",         sublabel: "products",           type: "store", table: "products",         x: cols[1], y: row(0, 6) },
-    { id: "bom_items",      label: "BOM Ağacı",       sublabel: "bom_items",          type: "store", table: "bom_items",        x: cols[1], y: row(1, 6) },
-    { id: "comp_stock",     label: "Bileşen Stok",    sublabel: "component_stock",    type: "store", table: "component_stock",  x: cols[1], y: row(2, 6) },
-    { id: "sales_hist",     label: "Satış Geçmişi",   sublabel: "sales_history",      type: "store", table: "sales_history",    x: cols[1], y: row(3, 6) },
-    { id: "stock_moves",    label: "Stok Hareketleri", sublabel: "stock_movements",   type: "store", table: "stock_movements_v2", x: cols[1], y: row(4, 6) },
-    { id: "season_idx",     label: "Mevsimsel İndeks", sublabel: "seasonal_indices",  type: "store", table: "seasonal_indices",  x: cols[1], y: row(5, 6) },
-
-    // ── ENGINES (Column 2) ──
-    { id: "dse",         label: "DSE",              sublabel: "Mevsimsellik Motoru",      type: "engine", x: cols[2], y: row(0, 6) },
-    { id: "ate",         label: "ATE",              sublabel: "Adaptif Eşik Motoru",      type: "engine", x: cols[2], y: row(1, 6) },
-    { id: "intel",       label: "Intelligence",     sublabel: "Bileşen İstihbarat",       type: "engine", x: cols[2], y: row(2, 6) },
-    { id: "impact",      label: "Impact Engine",    sublabel: "Etki Yayılım Motoru",      type: "engine", x: cols[2], y: row(3, 6) },
-    { id: "whatif",      label: "What-If",          sublabel: "Senaryo Simülatörü",       type: "engine", x: cols[2], y: row(4, 6) },
-    { id: "validation",  label: "Validation",       sublabel: "10 Kural Motoru",          type: "engine", x: cols[2], y: row(5, 6) },
-
-    // ── KNOWLEDGE (Column 3) ──
-    { id: "ole",         label: "OLE",              sublabel: "Öğrenme Motoru",           type: "engine", table: "outcome_tracking",  x: cols[3], y: row(0, 3) },
-    { id: "adm",         label: "ADM",              sublabel: "Agent Hafıza",             type: "engine", table: "agent_memory",      x: cols[3], y: row(1, 3) },
-    { id: "tvt",         label: "TVT",              sublabel: "Token Değer Takibi",       type: "engine", table: "token_metrics",     x: cols[3], y: row(2, 3) },
-
-    // ── OUTPUTS (Column 4) ──
-    { id: "ceo_agent",   label: "CEO Agent",        sublabel: "24 Tool · 4 Mod",          type: "output", x: cols[4], y: row(0, 4) },
-    { id: "alerts",      label: "Uyarılar",         sublabel: "validation_alerts",        type: "output", table: "validation_alerts",   x: cols[4], y: row(1, 4) },
-    { id: "suggestions", label: "Satın Alma",       sublabel: "purchase_suggestions",     type: "output", table: "purchase_suggestions", x: cols[4], y: row(2, 4) },
-    { id: "plans",       label: "Üretim Planları",  sublabel: "production_plans",         type: "output", table: "production_plans",     x: cols[4], y: row(3, 4) },
-
-    // ── ONTOLOGY TRIANGLE (Center-bottom overlay) ──
-    { id: "ont_miktar",  label: "MİKTAR",           sublabel: "X Ekseni",                 type: "ontology", x: 0.60, y: 0.72 },
-    { id: "ont_sure",    label: "SÜRE",             sublabel: "Y Ekseni",                 type: "ontology", x: 0.52, y: 0.88 },
-    { id: "ont_bilesen", label: "BİLEŞEN",          sublabel: "Z Ekseni",                 type: "ontology", x: 0.68, y: 0.88 },
-  ];
-
-  const edges: PipelineEdge[] = [
-    // Sources → Data Stores
-    { from: "excel_bom",    to: "bom_items",    label: "import",  animated: true },
-    { from: "excel_bom",    to: "products",     label: "import" },
-    { from: "excel_sales",  to: "sales_hist",   label: "import",  animated: true },
-    { from: "excel_stock",  to: "comp_stock",   label: "import",  animated: true },
-    { from: "manual_entry", to: "stock_moves",  label: "create",  animated: true },
-    { from: "manual_entry", to: "comp_stock",   label: "update" },
-    { from: "agent_wb",     to: "stock_moves",  label: "writeback" },
-
-    // Data Stores → Engines
-    { from: "sales_hist",  to: "dse",         label: "EWMA",     animated: true },
-    { from: "dse",         to: "season_idx",  label: "indeksler", animated: true },
-    { from: "comp_stock",  to: "intel",       label: "stok verisi" },
-    { from: "bom_items",   to: "intel",       label: "reçete" },
-    { from: "season_idx",  to: "intel",       label: "mevsimsel", animated: true },
-    { from: "products",    to: "intel",       label: "ürün bilgi" },
-    { from: "intel",       to: "ate",         label: "urgency" },
-    { from: "comp_stock",  to: "impact",      label: "stok delta" },
-    { from: "stock_moves", to: "impact",      label: "hareket" },
-    { from: "intel",       to: "whatif",      label: "kapasite" },
-    { from: "season_idx",  to: "whatif",      label: "talep" },
-    { from: "ate",         to: "validation",  label: "eşikler" },
-    { from: "intel",       to: "validation",  label: "risk skoru" },
-
-    // Engines → Outputs
-    { from: "intel",       to: "ceo_agent",    label: "istihbarat", animated: true },
-    { from: "whatif",      to: "ceo_agent",    label: "simülasyon" },
-    { from: "impact",      to: "ceo_agent",    label: "etki analiz" },
-    { from: "validation",  to: "alerts",       label: "uyarı",      animated: true },
-    { from: "ceo_agent",   to: "suggestions",  label: "öneri",      animated: true },
-    { from: "ceo_agent",   to: "plans",        label: "plan" },
-
-    // Knowledge ↔ Agent (feedback loops)
-    { from: "ole",  to: "ceo_agent", label: "güven skoru" },
-    { from: "adm",  to: "ceo_agent", label: "hafıza recall" },
-    { from: "tvt",  to: "ceo_agent", label: "V/T metrik" },
-    { from: "ceo_agent", to: "ole",  label: "sonuç takip" },
-    { from: "ceo_agent", to: "adm",  label: "embedding" },
-    { from: "ceo_agent", to: "tvt",  label: "token log" },
-
-    // Write-back loop (the SDDI feedback)
-    { from: "ceo_agent",  to: "agent_wb",    label: "karar →",    animated: true },
-    { from: "stock_moves", to: "comp_stock",  label: "güncelle",   animated: true },
-
-    // Ontology triangle edges (conceptual)
-    { from: "ont_miktar",  to: "ont_sure",    label: "tükenme·whatif·sipariş" },
-    { from: "ont_sure",    to: "ont_bilesen", label: "istihbarat·risk·adaptif" },
-    { from: "ont_bilesen", to: "ont_miktar",  label: "kapasite·BOM·cross" },
-  ];
-
-  return { nodes, edges };
-}
-
-/* ═══════════════════════════════════════════════════════════
-   CANVAS RENDERER
-   ═══════════════════════════════════════════════════════════ */
-
-const NODE_W = 140;
-const NODE_H = 56;
-
-function getNodeColor(type: NodeType): string {
-  return C[type] || C.accent;
-}
-
-function getNodeShape(type: NodeType): "rect" | "hexagon" | "diamond" {
-  if (type === "engine") return "hexagon";
-  if (type === "ontology") return "diamond";
-  return "rect";
-}
-
-interface LiveStats {
-  tables: Record<string, { count: number; lastUpdate: string | null }>;
-  flows: Array<{ source_type: string; cnt: number; last_ts: string }>;
-  pipelines: Array<{ name: string; pipeline_type: string; enabled: boolean; last_status: string }>;
-}
-
-function drawNode(
-  ctx: CanvasRenderingContext2D, node: PipelineNode,
-  isHovered: boolean, isSelected: boolean, isDragging: boolean,
-  stats: LiveStats | null,
-) {
-  const color = getNodeColor(node.type);
-  const shape = getNodeShape(node.type);
-  const x = node.x - NODE_W / 2;
-  const y = node.y - NODE_H / 2;
-
-  // Glow for hovered/selected
-  if (isHovered || isSelected) {
-    ctx.shadowColor = color;
-    ctx.shadowBlur = 20;
-  }
-
-  ctx.beginPath();
-  if (shape === "hexagon") {
-    // Hexagon for engines
-    const hw = NODE_W / 2, hh = NODE_H / 2;
-    const cx = node.x, cy = node.y;
-    ctx.moveTo(cx - hw, cy);
-    ctx.lineTo(cx - hw * 0.65, cy - hh);
-    ctx.lineTo(cx + hw * 0.65, cy - hh);
-    ctx.lineTo(cx + hw, cy);
-    ctx.lineTo(cx + hw * 0.65, cy + hh);
-    ctx.lineTo(cx - hw * 0.65, cy + hh);
-    ctx.closePath();
-  } else if (shape === "diamond") {
-    // Diamond for ontology
-    const hw = NODE_W / 2 * 0.75, hh = NODE_H / 2 * 1.1;
-    ctx.moveTo(node.x, node.y - hh);
-    ctx.lineTo(node.x + hw, node.y);
-    ctx.lineTo(node.x, node.y + hh);
-    ctx.lineTo(node.x - hw, node.y);
-    ctx.closePath();
-  } else {
-    // Rounded rect for sources/stores/outputs
-    const r = 10;
-    ctx.moveTo(x + r, y);
-    ctx.lineTo(x + NODE_W - r, y);
-    ctx.quadraticCurveTo(x + NODE_W, y, x + NODE_W, y + r);
-    ctx.lineTo(x + NODE_W, y + NODE_H - r);
-    ctx.quadraticCurveTo(x + NODE_W, y + NODE_H, x + NODE_W - r, y + NODE_H);
-    ctx.lineTo(x + r, y + NODE_H);
-    ctx.quadraticCurveTo(x, y + NODE_H, x, y + NODE_H - r);
-    ctx.lineTo(x, y + r);
-    ctx.quadraticCurveTo(x, y, x + r, y);
-  }
-
-  // Fill
-  ctx.fillStyle = isDragging ? color + "25" : color + "12";
-  ctx.fill();
-  ctx.strokeStyle = isSelected ? color : color + "80";
-  ctx.lineWidth = isSelected ? 2 : 1;
-  ctx.stroke();
-  ctx.shadowBlur = 0;
-
-  // Label
-  ctx.font = "bold 11px 'Outfit', sans-serif";
-  ctx.fillStyle = color;
-  ctx.textAlign = "center";
-  ctx.textBaseline = "middle";
-  ctx.fillText(node.label, node.x, node.y - 6);
-
-  // Sublabel
-  if (node.sublabel) {
-    ctx.font = "9px 'Outfit', sans-serif";
-    ctx.fillStyle = C.dim;
-    ctx.fillText(node.sublabel, node.x, node.y + 10);
-  }
-
-  // Live stats badge
-  if (stats && node.table && stats.tables[node.table]) {
-    const count = stats.tables[node.table].count;
-    if (count > 0) {
-      const badge = fmt(count);
-      ctx.font = "bold 8px 'Outfit', sans-serif";
-      const bw = ctx.measureText(badge).width + 8;
-      const bx = node.x + NODE_W / 2 - bw / 2 - 4;
-      const by = node.y - NODE_H / 2 - 6;
-      ctx.beginPath();
-      const br = 4, bh = 14;
-      ctx.moveTo(bx + br, by);
-      ctx.lineTo(bx + bw - br, by);
-      ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + br);
-      ctx.lineTo(bx + bw, by + bh - br);
-      ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - br, by + bh);
-      ctx.lineTo(bx + br, by + bh);
-      ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - br);
-      ctx.lineTo(bx, by + br);
-      ctx.quadraticCurveTo(bx, by, bx + br, by);
-      ctx.closePath();
-      ctx.fillStyle = color + "30";
-      ctx.fill();
-      ctx.fillStyle = color;
-      ctx.textAlign = "center";
-      ctx.fillText(badge, bx + bw / 2, by + 8);
-    }
-  }
-}
-
-function drawEdge(
-  ctx: CanvasRenderingContext2D,
-  fromNode: PipelineNode, toNode: PipelineNode,
-  edge: PipelineEdge, isHighlighted: boolean,
-) {
-  const fromColor = getNodeColor(fromNode.type);
-  const toColor = getNodeColor(toNode.type);
-
-  // Calculate connection points (from center to center, clipped to node edge)
-  const dx = toNode.x - fromNode.x;
-  const dy = toNode.y - fromNode.y;
-  const dist = Math.sqrt(dx * dx + dy * dy);
-  if (dist < 1) return;
-
-  // Start/end offset from center
-  const startOff = 40;
-  const endOff = 40;
-  const sx = fromNode.x + (dx / dist) * startOff;
-  const sy = fromNode.y + (dy / dist) * startOff;
-  const ex = toNode.x - (dx / dist) * endOff;
-  const ey = toNode.y - (dy / dist) * endOff;
-
-  // Draw edge line
-  ctx.beginPath();
-  ctx.moveTo(sx, sy);
-
-  // Bezier curve for organic feel
-  const midX = (sx + ex) / 2;
-  const midY = (sy + ey) / 2;
-  const perpX = -(ey - sy) * 0.1;
-  const perpY = (ex - sx) * 0.1;
-  ctx.quadraticCurveTo(midX + perpX, midY + perpY, ex, ey);
-
-  ctx.strokeStyle = isHighlighted ? fromColor + "60" : "rgba(255,255,255,0.06)";
-  ctx.lineWidth = isHighlighted ? 1.5 : 0.5;
-  ctx.stroke();
-
-  // Arrowhead
-  const angle = Math.atan2(ey - (midY + perpY), ex - (midX + perpX));
-  const arrowLen = 6;
-  ctx.beginPath();
-  ctx.moveTo(ex, ey);
-  ctx.lineTo(ex - arrowLen * Math.cos(angle - 0.4), ey - arrowLen * Math.sin(angle - 0.4));
-  ctx.lineTo(ex - arrowLen * Math.cos(angle + 0.4), ey - arrowLen * Math.sin(angle + 0.4));
-  ctx.closePath();
-  ctx.fillStyle = isHighlighted ? toColor + "60" : "rgba(255,255,255,0.08)";
-  ctx.fill();
-
-  // Flow animation dots
-  if (edge.animated || isHighlighted) {
-    const t = (Date.now() % 3000) / 3000;
-    // Evaluate point on the quadratic bezier
-    const t1 = 1 - t;
-    const dotX = t1 * t1 * sx + 2 * t1 * t * (midX + perpX) + t * t * ex;
-    const dotY = t1 * t1 * sy + 2 * t1 * t * (midY + perpY) + t * t * ey;
-    ctx.beginPath();
-    ctx.arc(dotX, dotY, 2.5, 0, Math.PI * 2);
-    ctx.fillStyle = fromColor;
-    ctx.globalAlpha = 0.7;
-    ctx.fill();
-    ctx.globalAlpha = 1;
-  }
-
-  // Edge label (at midpoint)
-  if (edge.label && isHighlighted) {
-    ctx.font = "8px 'Outfit', sans-serif";
-    ctx.fillStyle = C.dim;
-    ctx.textAlign = "center";
-    ctx.fillText(edge.label, midX + perpX, midY + perpY - 6);
-  }
-}
-
-function drawCanvas(
-  ctx: CanvasRenderingContext2D, width: number, height: number,
-  nodes: PipelineNode[], edges: PipelineEdge[],
-  hoveredNode: string | null, selectedNode: string | null,
-  dragNode: string | null, stats: LiveStats | null,
-) {
-  ctx.clearRect(0, 0, width, height);
-
-  // Grid dots
-  ctx.fillStyle = "rgba(255,255,255,0.02)";
-  for (let x = 20; x < width; x += 30) {
-    for (let y = 20; y < height; y += 30) {
-      ctx.beginPath();
-      ctx.arc(x, y, 0.5, 0, Math.PI * 2);
-      ctx.fill();
-    }
-  }
-
-  // Column labels (ratio-based)
-  ctx.font = "9px 'Outfit', sans-serif";
-  ctx.textAlign = "center";
-  ctx.fillStyle = C.dim;
-  const colX = [0.07, 0.27, 0.50, 0.70, 0.92].map(r => r * width);
-  const colLabels = ["VERİ KAYNAKLARI", "VERİ HAVUZLARI", "MOTORLAR", "BİLGİ KATMANI", "ÇIKTILAR / AKSİYON"];
-  for (let i = 0; i < colLabels.length; i++) {
-    ctx.fillText(colLabels[i], colX[i], 40);
-  }
-
-  // Section dividers
-  ctx.strokeStyle = "rgba(255,255,255,0.03)";
-  ctx.lineWidth = 1;
-  ctx.setLineDash([4, 4]);
-  const dividers = [0.17, 0.385, 0.60, 0.81].map(r => r * width);
-  for (const x of dividers) {
-    ctx.beginPath();
-    ctx.moveTo(x, 50);
-    ctx.lineTo(x, height - 30);
-    ctx.stroke();
-  }
-  ctx.setLineDash([]);
-
-  // Ontology triangle background
-  const ontNodes = nodes.filter(n => n.type === "ontology");
-  if (ontNodes.length === 3) {
-    ctx.beginPath();
-    ctx.moveTo(ontNodes[0].x, ontNodes[0].y);
-    ctx.lineTo(ontNodes[1].x, ontNodes[1].y);
-    ctx.lineTo(ontNodes[2].x, ontNodes[2].y);
-    ctx.closePath();
-    ctx.fillStyle = C.accent + "06";
-    ctx.fill();
-    ctx.strokeStyle = C.accent + "15";
-    ctx.lineWidth = 1;
-    ctx.stroke();
-  }
-
-  // Build node map
-  const nodeMap = new Map(nodes.map(n => [n.id, n]));
-
-  // Connected edges for highlight
-  const connectedEdges = new Set<number>();
-  if (hoveredNode || selectedNode) {
-    const target = selectedNode || hoveredNode;
-    edges.forEach((e, i) => {
-      if (e.from === target || e.to === target) connectedEdges.add(i);
-    });
-  }
-
-  // Edges
-  edges.forEach((edge, i) => {
-    const from = nodeMap.get(edge.from);
-    const to = nodeMap.get(edge.to);
-    if (!from || !to) return;
-    drawEdge(ctx, from, to, edge, connectedEdges.has(i));
-  });
-
-  // Nodes
-  for (const node of nodes) {
-    drawNode(ctx, node, hoveredNode === node.id, selectedNode === node.id, dragNode === node.id, stats);
-  }
-
-  // Legend
-  const legendY = height - 30;
-  const types: Array<{ type: NodeType; label: string }> = [
-    { type: "source", label: "Veri Kaynağı" },
-    { type: "store", label: "Veri Havuzu" },
-    { type: "engine", label: "Motor" },
-    { type: "output", label: "Çıktı" },
-    { type: "ontology", label: "Ontology" },
-  ];
-  let legendX = 16;
-  ctx.font = "9px 'Outfit', sans-serif";
-  ctx.textAlign = "left";
-  for (const t of types) {
-    ctx.beginPath();
-    ctx.arc(legendX, legendY, 4, 0, Math.PI * 2);
-    ctx.fillStyle = getNodeColor(t.type);
-    ctx.fill();
-    ctx.fillStyle = C.dim;
-    ctx.fillText(t.label, legendX + 10, legendY + 3);
-    legendX += ctx.measureText(t.label).width + 28;
-  }
-}
-
-/* ═══════════════════════════════════════════════════════════
-   MAIN PAGE COMPONENT
-   ═══════════════════════════════════════════════════════════ */
-
+/* ── Main Component ── */
 export default function LineagePage() {
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
-  const animRef = useRef<number>(0);
-  const sizeRef = useRef({ w: 1200, h: 800 });
+  const [selected, setSelected] = useState<string | null>(null);
+  const [hovered, setHovered] = useState<string | null>(null);
+  const [containerW, setContainerW] = useState(900);
 
-  const { selectedSku: sku } = useSKU();
+  // Measure container
+  const measuredRef = useCallback((el: HTMLDivElement | null) => {
+    if (el) {
+      const w = el.getBoundingClientRect().width;
+      if (w > 100) setContainerW(w);
+      const ro = new ResizeObserver((entries) => {
+        for (const e of entries) {
+          if (e.contentRect.width > 100) setContainerW(e.contentRect.width);
+        }
+      });
+      ro.observe(el);
+    }
+  }, []);
 
-  // Pipeline blueprint (mutable positions for drag)
-  const [blueprint] = useState(() => createPipelineBlueprint());
-  const nodesRef = useRef<PipelineNode[]>(blueprint.nodes);
-  const edgesRef = useRef<PipelineEdge[]>(blueprint.edges);
-  const scaledRef = useRef(false); // track if we've done initial scale
-
-  const [selectedNode, setSelectedNode] = useState<string | null>(null);
-  const [hoveredNode, setHoveredNode] = useState<string | null>(null);
-  const [dragNode, setDragNode] = useState<string | null>(null);
-  const dragOffsetRef = useRef({ dx: 0, dy: 0 });
-
-  // Live stats from backend
-  const { data: stats } = useQuery<LiveStats>({
+  // Stats
+  const { data: stats } = useQuery<{
+    tables: Record<string, { count: number; lastUpdate: string | null }>;
+    flows: Array<{ source_type: string; cnt: number }>;
+    pipelines: Array<{ name: string; last_status: string }>;
+  }>({
     queryKey: ["/api/foundry/lineage/graph/stats"],
     queryFn: () => apiRequest("GET", "/api/foundry/lineage/graph/stats").then(r => r.json()),
     staleTime: 30000,
     retry: false,
   });
 
-  // Resize canvas
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    const container = containerRef.current;
-    if (!canvas || !container) return;
-
-    const resize = () => {
-      const dpr = window.devicePixelRatio || 1;
-      const rect = container.getBoundingClientRect();
-      canvas.width = rect.width * dpr;
-      canvas.height = rect.height * dpr;
-      canvas.style.width = `${rect.width}px`;
-      canvas.style.height = `${rect.height}px`;
-      const ctx = canvas.getContext("2d");
-      if (ctx) ctx.scale(dpr, dpr);
-      sizeRef.current = { w: rect.width, h: rect.height };
-
-      // Scale ratio-based positions to actual canvas size (only on first render)
-      if (!scaledRef.current && rect.width > 100 && rect.height > 100) {
-        for (const node of nodesRef.current) {
-          node.x = node.x * rect.width;
-          node.y = node.y * rect.height;
-        }
-        scaledRef.current = true;
-      }
-    };
-    resize();
-    window.addEventListener("resize", resize);
-    return () => window.removeEventListener("resize", resize);
-  }, []);
-
-  // Animation loop
-  useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-
-    let running = true;
-    const tick = () => {
-      if (!running) return;
-      const { w, h } = sizeRef.current;
-      const dpr = window.devicePixelRatio || 1;
-      ctx.save();
-      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-      drawCanvas(ctx, w, h, nodesRef.current, edgesRef.current, hoveredNode, selectedNode, dragNode, stats ?? null);
-      ctx.restore();
-      animRef.current = requestAnimationFrame(tick);
-    };
-    tick();
-    return () => { running = false; cancelAnimationFrame(animRef.current); };
-  }, [hoveredNode, selectedNode, dragNode, stats]);
-
-  // Mouse helpers
-  const getMousePos = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const rect = e.currentTarget.getBoundingClientRect();
-    return { mx: e.clientX - rect.left, my: e.clientY - rect.top };
-  }, []);
-
-  const findNodeAt = useCallback((mx: number, my: number): PipelineNode | null => {
-    // Reverse order so top-drawn nodes get picked first
-    for (let i = nodesRef.current.length - 1; i >= 0; i--) {
-      const n = nodesRef.current[i];
-      if (Math.abs(mx - n.x) < NODE_W / 2 + 4 && Math.abs(my - n.y) < NODE_H / 2 + 4) return n;
+  // Node positions map
+  const posMap = useMemo(() => {
+    const m = new Map<string, { x: number; y: number }>();
+    for (const n of NODES) {
+      const { x, y } = nodePos(n, containerW);
+      m.set(n.id, { x, y });
     }
-    return null;
-  }, []);
+    return m;
+  }, [containerW]);
 
-  const handleMouseMove = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { mx, my } = getMousePos(e);
-
-    // Dragging
-    if (dragNode) {
-      const node = nodesRef.current.find(n => n.id === dragNode);
-      if (node) {
-        node.x = mx - dragOffsetRef.current.dx;
-        node.y = my - dragOffsetRef.current.dy;
-      }
-      return;
-    }
-
-    const node = findNodeAt(mx, my);
-    setHoveredNode(node?.id || null);
-    e.currentTarget.style.cursor = node ? "grab" : "default";
-  }, [dragNode, findNodeAt, getMousePos]);
-
-  const handleMouseDown = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    const { mx, my } = getMousePos(e);
-    const node = findNodeAt(mx, my);
-    if (node) {
-      setDragNode(node.id);
-      dragOffsetRef.current = { dx: mx - node.x, dy: my - node.y };
-      e.currentTarget.style.cursor = "grabbing";
-    }
-  }, [findNodeAt, getMousePos]);
-
-  const handleMouseUp = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (dragNode) {
-      // If barely moved, treat as click
-      setDragNode(null);
-      e.currentTarget.style.cursor = "grab";
-    }
-  }, [dragNode]);
-
-  const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
-    if (dragNode) return; // don't select while dragging
-    const { mx, my } = getMousePos(e);
-    const node = findNodeAt(mx, my);
-    setSelectedNode(prev => node?.id === prev ? null : (node?.id || null));
-  }, [dragNode, findNodeAt, getMousePos]);
-
-  // Selected node details
-  const selectedNodeData = useMemo(() => {
-    if (!selectedNode) return null;
-    return nodesRef.current.find(n => n.id === selectedNode) || null;
-  }, [selectedNode]);
-
-  // Connected nodes for selected
+  // Selected node info
+  const selectedNode = useMemo(() => NODES.find(n => n.id === selected) || null, [selected]);
   const connections = useMemo(() => {
-    if (!selectedNode) return { incoming: [] as PipelineEdge[], outgoing: [] as PipelineEdge[] };
-    const incoming = edgesRef.current.filter(e => e.to === selectedNode);
-    const outgoing = edgesRef.current.filter(e => e.from === selectedNode);
-    return { incoming, outgoing };
-  }, [selectedNode]);
+    if (!selected) return { inn: [] as PEdge[], out: [] as PEdge[] };
+    return {
+      inn: EDGES.filter(e => e.to === selected),
+      out: EDGES.filter(e => e.from === selected),
+    };
+  }, [selected]);
 
-  // Summary stats
+  // Connected node ids for highlight
+  const highlightIds = useMemo(() => {
+    const target = hovered || selected;
+    if (!target) return new Set<string>();
+    const ids = new Set<string>([target]);
+    for (const e of EDGES) {
+      if (e.from === target) ids.add(e.to);
+      if (e.to === target) ids.add(e.from);
+    }
+    return ids;
+  }, [hovered, selected]);
+
   const totalRecords = useMemo(() => {
-    if (!stats) return 0;
-    return Object.values(stats.tables).reduce((sum, t) => sum + t.count, 0);
+    if (!stats?.tables) return 0;
+    return Object.values(stats.tables).reduce((s, t) => s + t.count, 0);
   }, [stats]);
 
   return (
     <div style={{ background: C.bg, minHeight: "100vh", color: C.white, fontFamily: mono }}>
       <TopNav connected={true} />
-      <style>{`
-        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
-      `}</style>
 
       <div style={{ display: "flex", height: "calc(100vh - 48px)" }}>
-        {/* ═══ LEFT: Info Panel ═══ */}
+        {/* ═══ LEFT PANEL ═══ */}
         <div style={{
-          width: 300, borderRight: `1px solid ${C.border}`, padding: 20,
-          overflowY: "auto", display: "flex", flexDirection: "column", gap: 16,
+          width: 280, minWidth: 280, borderRight: `1px solid ${C.border}`, padding: 16,
+          overflowY: "auto", display: "flex", flexDirection: "column", gap: 12,
         }}>
-          {/* Header */}
           <div>
-            <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.5 }}>
-              LINEAGE CANVAS
-            </div>
-            <div style={{ fontSize: 18, fontWeight: 400, color: C.white, marginTop: 4 }}>
-              Veri Akış Haritası
-            </div>
-            <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>
-              Palantir SDDI — Software Defined Data Integration
+            <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.5 }}>LINEAGE CANVAS</div>
+            <div style={{ fontSize: 16, fontWeight: 400, color: C.white, marginTop: 4 }}>Veri Akış Haritası</div>
+            <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>Palantir SDDI</div>
+          </div>
+
+          {/* Stats */}
+          <div style={{ padding: 12, borderRadius: 10, background: C.surface, border: `1px solid ${C.border}` }}>
+            <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>SİSTEM</div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6 }}>
+              {[
+                { label: "KAYIT", value: stats ? fmt(totalRecords) : "...", color: C.accent },
+                { label: "BAĞLANTI", value: String(EDGES.length), color: C.purple },
+                { label: "DÜĞÜM", value: String(NODES.length), color: C.blue },
+                { label: "AKIŞ", value: stats?.flows ? String(stats.flows.length) : "...", color: C.ok },
+              ].map((s, i) => (
+                <div key={i} style={{ padding: 6, borderRadius: 6, background: C.bg }}>
+                  <div style={{ fontSize: 7, color: C.dim }}>{s.label}</div>
+                  <div style={{ fontSize: 16, fontWeight: 400, color: s.color }}>{s.value}</div>
+                </div>
+              ))}
             </div>
           </div>
 
-          {/* Overall Stats */}
-          <div style={{
-            padding: 16, borderRadius: 12, background: C.surface,
-            border: `1px solid ${C.border}`,
-          }}>
-            <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>SİSTEM GENEL</div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
-                <div style={{ fontSize: 8, color: C.dim }}>TOPLAM KAYIT</div>
-                <div style={{ fontSize: 18, fontWeight: 400, color: C.accent }}>{stats ? fmt(totalRecords) : "—"}</div>
-              </div>
-              <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
-                <div style={{ fontSize: 8, color: C.dim }}>BAĞLANTI</div>
-                <div style={{ fontSize: 18, fontWeight: 400, color: C.purple }}>{edgesRef.current.length}</div>
-              </div>
-              <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
-                <div style={{ fontSize: 8, color: C.dim }}>DÜĞÜM</div>
-                <div style={{ fontSize: 18, fontWeight: 400, color: C.blue }}>{nodesRef.current.length}</div>
-              </div>
-              <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
-                <div style={{ fontSize: 8, color: C.dim }}>VERİ AKIŞI</div>
-                <div style={{ fontSize: 18, fontWeight: 400, color: C.ok }}>{stats?.flows?.length ?? "—"}</div>
-              </div>
-            </div>
-          </div>
-
-          {/* Data Flow Types */}
+          {/* Flow types */}
           {stats?.flows && stats.flows.length > 0 && (
-            <div style={{
-              padding: 16, borderRadius: 12, background: C.surface,
-              border: `1px solid ${C.border}`,
-            }}>
-              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>VERİ AKIŞ TİPLERİ</div>
+            <div style={{ padding: 12, borderRadius: 10, background: C.surface, border: `1px solid ${C.border}` }}>
+              <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1, marginBottom: 6 }}>VERİ AKIŞ TİPLERİ</div>
               {stats.flows.map((f: any, i: number) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 6, fontSize: 10 }}>
+                <div key={i} style={{ display: "flex", justifyContent: "space-between", marginBottom: 4, fontSize: 10 }}>
                   <span style={{ color: C.mid }}>{f.source_type}</span>
-                  <span style={{ color: C.white }}>{fmt(f.cnt)} kayıt</span>
+                  <span style={{ color: C.white }}>{fmt(f.cnt)}</span>
                 </div>
               ))}
             </div>
           )}
 
-          {/* Pipeline Health */}
-          {stats?.pipelines && stats.pipelines.length > 0 && (
+          {/* Selected node */}
+          {selectedNode && (
             <div style={{
-              padding: 16, borderRadius: 12, background: C.surface,
-              border: `1px solid ${C.border}`,
+              padding: 12, borderRadius: 10,
+              background: C[selectedNode.type] + "08",
+              border: `1px solid ${C[selectedNode.type]}25`,
             }}>
-              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginBottom: 8 }}>PIPELINE DURUMU</div>
-              {stats.pipelines.map((p: any, i: number) => (
-                <div key={i} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                  <span style={{ fontSize: 10, color: C.mid }}>{p.name}</span>
-                  <span style={{
-                    fontSize: 8, padding: "2px 6px", borderRadius: 4,
-                    background: p.last_status === "completed" ? C.okDim : p.last_status === "failed" ? C.errDim : C.surface,
-                    color: p.last_status === "completed" ? C.ok : p.last_status === "failed" ? C.err : C.dim,
-                  }}>
-                    {p.last_status || "bekliyor"}
-                  </span>
-                </div>
-              ))}
-            </div>
-          )}
+              <div style={{ fontSize: 8, color: C[selectedNode.type], letterSpacing: 1, marginBottom: 6 }}>SEÇİLİ DÜĞÜM</div>
+              <div style={{ fontSize: 14, fontWeight: 400 }}>{selectedNode.label}</div>
+              <div style={{ fontSize: 10, color: C.dim }}>{selectedNode.sub}</div>
 
-          {/* Selected Node Details */}
-          {selectedNodeData && (
-            <div style={{
-              padding: 16, borderRadius: 12,
-              background: getNodeColor(selectedNodeData.type) + "08",
-              border: `1px solid ${getNodeColor(selectedNodeData.type)}20`,
-            }}>
-              <div style={{ fontSize: 9, color: getNodeColor(selectedNodeData.type), letterSpacing: 1, marginBottom: 8 }}>
-                SEÇİLİ DÜĞÜM
-              </div>
-              <div style={{ fontSize: 14, fontWeight: 400, color: C.white }}>{selectedNodeData.label}</div>
-              <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>{selectedNodeData.sublabel}</div>
-              <div style={{ fontSize: 9, color: C.mid, marginTop: 2 }}>
-                Tip: {selectedNodeData.type === "source" ? "Veri Kaynağı" :
-                  selectedNodeData.type === "store" ? "Veri Havuzu" :
-                  selectedNodeData.type === "engine" ? "Motor" :
-                  selectedNodeData.type === "output" ? "Çıktı" : "Ontology"}
-              </div>
-
-              {/* Live stats for table */}
-              {selectedNodeData.table && stats?.tables[selectedNodeData.table] && (
-                <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: C.bg }}>
+              {selectedNode.table && stats?.tables[selectedNode.table] && (
+                <div style={{ marginTop: 8, padding: 8, borderRadius: 6, background: C.bg }}>
                   <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10 }}>
-                    <span style={{ color: C.dim }}>Kayıt Sayısı</span>
-                    <span style={{ color: C.white, fontWeight: 400 }}>{fmt(stats.tables[selectedNodeData.table].count)}</span>
+                    <span style={{ color: C.dim }}>Kayıt</span>
+                    <span style={{ color: C.white }}>{fmt(stats.tables[selectedNode.table].count)}</span>
                   </div>
-                  {stats.tables[selectedNodeData.table].lastUpdate && (
-                    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, marginTop: 4 }}>
-                      <span style={{ color: C.dim }}>Son Güncelleme</span>
-                      <span style={{ color: C.mid }}>
-                        {new Date(stats.tables[selectedNodeData.table].lastUpdate!).toLocaleDateString("tr-TR")}
-                      </span>
-                    </div>
-                  )}
                 </div>
               )}
 
-              {/* Connections */}
-              {connections.incoming.length > 0 && (
-                <div style={{ marginTop: 12 }}>
-                  <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1, marginBottom: 4 }}>GELEN VERİ ({connections.incoming.length})</div>
-                  {connections.incoming.map((e, i) => {
-                    const fromNode = nodesRef.current.find(n => n.id === e.from);
-                    return (
-                      <div key={i} style={{ fontSize: 10, color: C.mid, marginBottom: 2 }}>
-                        <span style={{ color: getNodeColor(fromNode?.type || "store") }}>{fromNode?.label}</span>
-                        {e.label && <span style={{ color: C.dim }}> ({e.label})</span>}
-                      </div>
-                    );
+              {connections.inn.length > 0 && (
+                <div style={{ marginTop: 8 }}>
+                  <div style={{ fontSize: 7, color: C.dim, letterSpacing: 1, marginBottom: 3 }}>GELEN ({connections.inn.length})</div>
+                  {connections.inn.map((e, i) => {
+                    const from = NODES.find(n => n.id === e.from);
+                    return <div key={i} style={{ fontSize: 9, color: C.mid }}><span style={{ color: C[from?.type || "store"] }}>{from?.label}</span> {e.label && `(${e.label})`}</div>;
                   })}
                 </div>
               )}
-              {connections.outgoing.length > 0 && (
-                <div style={{ marginTop: 8 }}>
-                  <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1, marginBottom: 4 }}>GİDEN VERİ ({connections.outgoing.length})</div>
-                  {connections.outgoing.map((e, i) => {
-                    const toNode = nodesRef.current.find(n => n.id === e.to);
-                    return (
-                      <div key={i} style={{ fontSize: 10, color: C.mid, marginBottom: 2 }}>
-                        <span style={{ color: getNodeColor(toNode?.type || "store") }}>{toNode?.label}</span>
-                        {e.label && <span style={{ color: C.dim }}> ({e.label})</span>}
-                      </div>
-                    );
+              {connections.out.length > 0 && (
+                <div style={{ marginTop: 6 }}>
+                  <div style={{ fontSize: 7, color: C.dim, letterSpacing: 1, marginBottom: 3 }}>GİDEN ({connections.out.length})</div>
+                  {connections.out.map((e, i) => {
+                    const to = NODES.find(n => n.id === e.to);
+                    return <div key={i} style={{ fontSize: 9, color: C.mid }}><span style={{ color: C[to?.type || "store"] }}>{to?.label}</span> {e.label && `(${e.label})`}</div>;
                   })}
                 </div>
               )}
             </div>
           )}
 
-          {/* Instructions */}
-          <div style={{ fontSize: 9, color: C.dim, lineHeight: 1.6, marginTop: "auto", padding: "12px 0" }}>
-            Sürükle: Düğüm taşı &middot; Tıkla: Detay gör &middot; Animasyon: Canlı veri akışı
+          <div style={{ fontSize: 8, color: C.dim, marginTop: "auto" }}>
+            Düğüme tıkla: detay gör
           </div>
         </div>
 
-        {/* ═══ RIGHT: Canvas ═══ */}
-        <div ref={containerRef} style={{ flex: 1, position: "relative" }}>
-          <canvas
-            ref={canvasRef}
-            style={{ display: "block" }}
-            onMouseMove={handleMouseMove}
-            onMouseDown={handleMouseDown}
-            onMouseUp={handleMouseUp}
-            onClick={handleClick}
-          />
-
-          {/* Title overlay */}
-          <div style={{
-            position: "absolute", top: 12, left: 20,
-            fontSize: 9, color: C.dim, letterSpacing: 1,
-          }}>
-            GRISEUS SDDI — SOFTWARE DEFINED DATA INTEGRATION
+        {/* ═══ RIGHT: Pipeline Graph ═══ */}
+        <div ref={measuredRef} style={{ flex: 1, position: "relative", overflow: "auto" }}>
+          {/* Column headers */}
+          <div style={{ display: "flex", padding: "12px 0", position: "sticky", top: 0, zIndex: 5, background: C.bg }}>
+            {COL_LABELS.map((label, i) => {
+              const colW = (containerW - COL_GAP * (COL_COUNT + 1)) / COL_COUNT;
+              const left = COL_GAP + i * (colW + COL_GAP);
+              return (
+                <div key={i} style={{
+                  position: "absolute", left, width: colW,
+                  textAlign: "center", fontSize: 9, color: C.dim, letterSpacing: 1,
+                }}>
+                  {label}
+                </div>
+              );
+            })}
           </div>
 
-          {/* Ontology triangle label */}
-          <div style={{
-            position: "absolute", bottom: 60, right: 20,
-            fontSize: 9, color: C.accent + "60", letterSpacing: 1,
+          {/* SVG edges */}
+          <svg style={{
+            position: "absolute", top: 0, left: 0,
+            width: containerW, height: 600,
+            pointerEvents: "none", zIndex: 1,
           }}>
-            ONTOLOGY TRIANGLE — MİKTAR × SÜRE × BİLEŞEN
+            <defs>
+              <marker id="arrow" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="5" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 3 L 0 6 z" fill="rgba(255,255,255,0.15)" />
+              </marker>
+              <marker id="arrow-hi" viewBox="0 0 10 6" refX="10" refY="3" markerWidth="8" markerHeight="5" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 3 L 0 6 z" fill={C.accent} />
+              </marker>
+            </defs>
+            {EDGES.map((edge, i) => {
+              const fp = posMap.get(edge.from);
+              const tp = posMap.get(edge.to);
+              if (!fp || !tp) return null;
+              const isHi = highlightIds.has(edge.from) && highlightIds.has(edge.to);
+              // Bezier curve
+              const mx = (fp.x + tp.x) / 2;
+              const my = (fp.y + tp.y) / 2;
+              const dx = tp.x - fp.x;
+              const dy = tp.y - fp.y;
+              const cpx = mx - dy * 0.08;
+              const cpy = my + dx * 0.08;
+              return (
+                <g key={i}>
+                  <path
+                    d={`M ${fp.x} ${fp.y} Q ${cpx} ${cpy} ${tp.x} ${tp.y}`}
+                    fill="none"
+                    stroke={isHi ? C.accent + "50" : "rgba(255,255,255,0.06)"}
+                    strokeWidth={isHi ? 1.5 : 0.7}
+                    markerEnd={isHi ? "url(#arrow-hi)" : "url(#arrow)"}
+                  />
+                  {/* Animated dot for live edges */}
+                  {(edge.live || isHi) && (
+                    <circle r="3" fill={isHi ? C.accent : C.ok} opacity="0.7">
+                      <animateMotion
+                        dur={`${2 + i % 3}s`}
+                        repeatCount="indefinite"
+                        path={`M ${fp.x} ${fp.y} Q ${cpx} ${cpy} ${tp.x} ${tp.y}`}
+                      />
+                    </circle>
+                  )}
+                </g>
+              );
+            })}
+          </svg>
+
+          {/* Node cards */}
+          {NODES.map(node => {
+            const pos = posMap.get(node.id);
+            if (!pos) return null;
+            const color = C[node.type];
+            const isHi = highlightIds.has(node.id);
+            const isSel = selected === node.id;
+            const count = node.table ? (stats?.tables[node.table]?.count ?? 0) : 0;
+            return (
+              <div
+                key={node.id}
+                onClick={() => setSelected(prev => prev === node.id ? null : node.id)}
+                onMouseEnter={() => setHovered(node.id)}
+                onMouseLeave={() => setHovered(null)}
+                style={{
+                  position: "absolute",
+                  left: pos.x - NODE_W / 2,
+                  top: pos.y - NODE_H / 2,
+                  width: NODE_W,
+                  height: NODE_H,
+                  borderRadius: node.type === "engine" ? 16 : node.type === "ontology" ? 24 : 10,
+                  background: isHi ? color + "15" : color + "08",
+                  border: `1px solid ${isSel ? color : isHi ? color + "50" : color + "20"}`,
+                  cursor: "pointer",
+                  zIndex: 2,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.15s ease",
+                  boxShadow: isSel ? `0 0 20px ${color}30` : "none",
+                }}
+              >
+                <div style={{ fontSize: 11, fontWeight: 500, color, lineHeight: 1.2 }}>{node.label}</div>
+                {node.sub && <div style={{ fontSize: 8, color: C.dim, marginTop: 1 }}>{node.sub}</div>}
+                {/* Record count badge */}
+                {count != null && count > 0 && (
+                  <div style={{
+                    position: "absolute", top: -8, right: -4,
+                    padding: "1px 6px", borderRadius: 8, fontSize: 8, fontWeight: 600,
+                    background: color + "25", color, border: `1px solid ${color}40`,
+                  }}>
+                    {fmt(count)}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+
+          {/* Title */}
+          <div style={{
+            position: "absolute", bottom: 12, left: 16,
+            fontSize: 8, color: C.dim, letterSpacing: 1, zIndex: 3,
+          }}>
+            GRISEUS SDDI — SOFTWARE DEFINED DATA INTEGRATION
           </div>
         </div>
       </div>
