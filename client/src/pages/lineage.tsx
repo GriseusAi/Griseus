@@ -53,47 +53,52 @@ interface PipelineEdge {
   animated?: boolean;
 }
 
-// Initial layout positions (user can drag to rearrange)
+// Initial layout: positions as ratios (0..1) of canvas size — scales to any screen
+// User can drag to rearrange at runtime
 function createPipelineBlueprint(): { nodes: PipelineNode[]; edges: PipelineEdge[] } {
+  // Ratio-based layout: 5 columns, rows spread vertically
+  const cols = [0.07, 0.27, 0.50, 0.70, 0.92]; // source, store, engine, knowledge, output
+  const row = (i: number, total: number) => 0.08 + (i / Math.max(total - 1, 1)) * 0.82;
+
   const nodes: PipelineNode[] = [
-    // ── SOURCES (Left side — Data enters here) ──
-    { id: "excel_bom",     label: "Excel BOM",       sublabel: "Reçete İthalatı",       type: "source",  x: 80,   y: 120 },
-    { id: "excel_sales",   label: "Excel Satış",     sublabel: "3 Yıllık Satış",        type: "source",  x: 80,   y: 240 },
-    { id: "excel_stock",   label: "Excel Stok",      sublabel: "Stok Sayım",            type: "source",  x: 80,   y: 360 },
-    { id: "manual_entry",  label: "Manuel Giriş",    sublabel: "Stok Hareketi",         type: "source",  x: 80,   y: 480 },
-    { id: "agent_wb",      label: "Agent Write-back", sublabel: "Karar → Veri",         type: "source",  x: 80,   y: 600 },
+    // ── SOURCES (Column 0) ──
+    { id: "excel_bom",     label: "Excel BOM",       sublabel: "Reçete İthalatı",       type: "source",  x: cols[0], y: row(0, 5) },
+    { id: "excel_sales",   label: "Excel Satış",     sublabel: "3 Yıllık Satış",        type: "source",  x: cols[0], y: row(1, 5) },
+    { id: "excel_stock",   label: "Excel Stok",      sublabel: "Stok Sayım",            type: "source",  x: cols[0], y: row(2, 5) },
+    { id: "manual_entry",  label: "Manuel Giriş",    sublabel: "Stok Hareketi",         type: "source",  x: cols[0], y: row(3, 5) },
+    { id: "agent_wb",      label: "Agent Write-back", sublabel: "Karar → Veri",         type: "source",  x: cols[0], y: row(4, 5) },
 
-    // ── DATA STORES (Center-left — Raw data tables) ──
-    { id: "products",       label: "Ürünler",         sublabel: "products",           type: "store", table: "products",         x: 320,  y: 80 },
-    { id: "bom_items",      label: "BOM Ağacı",       sublabel: "bom_items",          type: "store", table: "bom_items",        x: 320,  y: 200 },
-    { id: "comp_stock",     label: "Bileşen Stok",    sublabel: "component_stock",    type: "store", table: "component_stock",  x: 320,  y: 320 },
-    { id: "sales_hist",     label: "Satış Geçmişi",   sublabel: "sales_history",      type: "store", table: "sales_history",    x: 320,  y: 440 },
-    { id: "stock_moves",    label: "Stok Hareketleri", sublabel: "stock_movements",   type: "store", table: "stock_movements_v2", x: 320, y: 560 },
-    { id: "season_idx",     label: "Mevsimsel İndeks", sublabel: "seasonal_indices",  type: "store", table: "seasonal_indices",  x: 320, y: 680 },
+    // ── DATA STORES (Column 1) ──
+    { id: "products",       label: "Ürünler",         sublabel: "products",           type: "store", table: "products",         x: cols[1], y: row(0, 6) },
+    { id: "bom_items",      label: "BOM Ağacı",       sublabel: "bom_items",          type: "store", table: "bom_items",        x: cols[1], y: row(1, 6) },
+    { id: "comp_stock",     label: "Bileşen Stok",    sublabel: "component_stock",    type: "store", table: "component_stock",  x: cols[1], y: row(2, 6) },
+    { id: "sales_hist",     label: "Satış Geçmişi",   sublabel: "sales_history",      type: "store", table: "sales_history",    x: cols[1], y: row(3, 6) },
+    { id: "stock_moves",    label: "Stok Hareketleri", sublabel: "stock_movements",   type: "store", table: "stock_movements_v2", x: cols[1], y: row(4, 6) },
+    { id: "season_idx",     label: "Mevsimsel İndeks", sublabel: "seasonal_indices",  type: "store", table: "seasonal_indices",  x: cols[1], y: row(5, 6) },
 
-    // ── ENGINES (Center — Transform & Analyze) ──
-    { id: "dse",         label: "DSE",              sublabel: "Mevsimsellik Motoru",      type: "engine", x: 580, y: 120 },
-    { id: "ate",         label: "ATE",              sublabel: "Adaptif Eşik Motoru",      type: "engine", x: 580, y: 240 },
-    { id: "intel",       label: "Intelligence",     sublabel: "Bileşen İstihbarat",       type: "engine", x: 580, y: 360 },
-    { id: "impact",      label: "Impact Engine",    sublabel: "Etki Yayılım Motoru",      type: "engine", x: 580, y: 480 },
-    { id: "whatif",      label: "What-If",          sublabel: "Senaryo Simülatörü",       type: "engine", x: 580, y: 600 },
-    { id: "validation",  label: "Validation",       sublabel: "10 Kural Motoru",          type: "engine", x: 580, y: 720 },
+    // ── ENGINES (Column 2) ──
+    { id: "dse",         label: "DSE",              sublabel: "Mevsimsellik Motoru",      type: "engine", x: cols[2], y: row(0, 6) },
+    { id: "ate",         label: "ATE",              sublabel: "Adaptif Eşik Motoru",      type: "engine", x: cols[2], y: row(1, 6) },
+    { id: "intel",       label: "Intelligence",     sublabel: "Bileşen İstihbarat",       type: "engine", x: cols[2], y: row(2, 6) },
+    { id: "impact",      label: "Impact Engine",    sublabel: "Etki Yayılım Motoru",      type: "engine", x: cols[2], y: row(3, 6) },
+    { id: "whatif",      label: "What-If",          sublabel: "Senaryo Simülatörü",       type: "engine", x: cols[2], y: row(4, 6) },
+    { id: "validation",  label: "Validation",       sublabel: "10 Kural Motoru",          type: "engine", x: cols[2], y: row(5, 6) },
 
-    // ── KNOWLEDGE (Center-right — Learning layer) ──
-    { id: "ole",         label: "OLE",              sublabel: "Öğrenme Motoru",           type: "engine", table: "outcome_tracking",  x: 800, y: 160 },
-    { id: "adm",         label: "ADM",              sublabel: "Agent Hafıza",             type: "engine", table: "agent_memory",      x: 800, y: 300 },
-    { id: "tvt",         label: "TVT",              sublabel: "Token Değer Takibi",       type: "engine", table: "token_metrics",     x: 800, y: 440 },
+    // ── KNOWLEDGE (Column 3) ──
+    { id: "ole",         label: "OLE",              sublabel: "Öğrenme Motoru",           type: "engine", table: "outcome_tracking",  x: cols[3], y: row(0, 3) },
+    { id: "adm",         label: "ADM",              sublabel: "Agent Hafıza",             type: "engine", table: "agent_memory",      x: cols[3], y: row(1, 3) },
+    { id: "tvt",         label: "TVT",              sublabel: "Token Değer Takibi",       type: "engine", table: "token_metrics",     x: cols[3], y: row(2, 3) },
 
-    // ── OUTPUTS (Right side — Actions & Decisions) ──
-    { id: "ceo_agent",   label: "CEO Agent",        sublabel: "24 Tool · 4 Mod",          type: "output", x: 1040, y: 200 },
-    { id: "alerts",      label: "Uyarılar",         sublabel: "validation_alerts",        type: "output", table: "validation_alerts",   x: 1040, y: 360 },
-    { id: "suggestions", label: "Satın Alma",       sublabel: "purchase_suggestions",     type: "output", table: "purchase_suggestions", x: 1040, y: 500 },
-    { id: "plans",       label: "Üretim Planları",  sublabel: "production_plans",         type: "output", table: "production_plans",     x: 1040, y: 640 },
+    // ── OUTPUTS (Column 4) ──
+    { id: "ceo_agent",   label: "CEO Agent",        sublabel: "24 Tool · 4 Mod",          type: "output", x: cols[4], y: row(0, 4) },
+    { id: "alerts",      label: "Uyarılar",         sublabel: "validation_alerts",        type: "output", table: "validation_alerts",   x: cols[4], y: row(1, 4) },
+    { id: "suggestions", label: "Satın Alma",       sublabel: "purchase_suggestions",     type: "output", table: "purchase_suggestions", x: cols[4], y: row(2, 4) },
+    { id: "plans",       label: "Üretim Planları",  sublabel: "production_plans",         type: "output", table: "production_plans",     x: cols[4], y: row(3, 4) },
 
-    // ── ONTOLOGY TRIANGLE (Overlay — the heart) ──
-    { id: "ont_miktar",  label: "MİKTAR",           sublabel: "X Ekseni",                 type: "ontology", x: 700, y: 560 },
-    { id: "ont_sure",    label: "SÜRE",             sublabel: "Y Ekseni",                 type: "ontology", x: 610, y: 700 },
-    { id: "ont_bilesen", label: "BİLEŞEN",          sublabel: "Z Ekseni",                 type: "ontology", x: 790, y: 700 },
+    // ── ONTOLOGY TRIANGLE (Center-bottom overlay) ──
+    { id: "ont_miktar",  label: "MİKTAR",           sublabel: "X Ekseni",                 type: "ontology", x: 0.60, y: 0.72 },
+    { id: "ont_sure",    label: "SÜRE",             sublabel: "Y Ekseni",                 type: "ontology", x: 0.52, y: 0.88 },
+    { id: "ont_bilesen", label: "BİLEŞEN",          sublabel: "Z Ekseni",                 type: "ontology", x: 0.68, y: 0.88 },
   ];
 
   const edges: PipelineEdge[] = [
@@ -255,7 +260,17 @@ function drawNode(
       const bx = node.x + NODE_W / 2 - bw / 2 - 4;
       const by = node.y - NODE_H / 2 - 6;
       ctx.beginPath();
-      ctx.roundRect(bx, by, bw, 14, 4);
+      const br = 4, bh = 14;
+      ctx.moveTo(bx + br, by);
+      ctx.lineTo(bx + bw - br, by);
+      ctx.quadraticCurveTo(bx + bw, by, bx + bw, by + br);
+      ctx.lineTo(bx + bw, by + bh - br);
+      ctx.quadraticCurveTo(bx + bw, by + bh, bx + bw - br, by + bh);
+      ctx.lineTo(bx + br, by + bh);
+      ctx.quadraticCurveTo(bx, by + bh, bx, by + bh - br);
+      ctx.lineTo(bx, by + br);
+      ctx.quadraticCurveTo(bx, by, bx + br, by);
+      ctx.closePath();
       ctx.fillStyle = color + "30";
       ctx.fill();
       ctx.fillStyle = color;
@@ -355,21 +370,22 @@ function drawCanvas(
     }
   }
 
-  // Column labels
+  // Column labels (ratio-based)
   ctx.font = "9px 'Outfit', sans-serif";
   ctx.textAlign = "center";
   ctx.fillStyle = C.dim;
-  ctx.fillText("VERİ KAYNAKLARI", 80, 40);
-  ctx.fillText("VERİ HAVUZLARI", 320, 40);
-  ctx.fillText("MOTORLAR", 580, 40);
-  ctx.fillText("BİLGİ KATMANI", 800, 40);
-  ctx.fillText("ÇIKTILAR / AKSİYON", 1040, 40);
+  const colX = [0.07, 0.27, 0.50, 0.70, 0.92].map(r => r * width);
+  const colLabels = ["VERİ KAYNAKLARI", "VERİ HAVUZLARI", "MOTORLAR", "BİLGİ KATMANI", "ÇIKTILAR / AKSİYON"];
+  for (let i = 0; i < colLabels.length; i++) {
+    ctx.fillText(colLabels[i], colX[i], 40);
+  }
 
   // Section dividers
   ctx.strokeStyle = "rgba(255,255,255,0.03)";
   ctx.lineWidth = 1;
   ctx.setLineDash([4, 4]);
-  for (const x of [200, 450, 690, 920]) {
+  const dividers = [0.17, 0.385, 0.60, 0.81].map(r => r * width);
+  for (const x of dividers) {
     ctx.beginPath();
     ctx.moveTo(x, 50);
     ctx.lineTo(x, height - 30);
@@ -456,6 +472,7 @@ export default function LineagePage() {
   const [blueprint] = useState(() => createPipelineBlueprint());
   const nodesRef = useRef<PipelineNode[]>(blueprint.nodes);
   const edgesRef = useRef<PipelineEdge[]>(blueprint.edges);
+  const scaledRef = useRef(false); // track if we've done initial scale
 
   const [selectedNode, setSelectedNode] = useState<string | null>(null);
   const [hoveredNode, setHoveredNode] = useState<string | null>(null);
@@ -486,6 +503,15 @@ export default function LineagePage() {
       const ctx = canvas.getContext("2d");
       if (ctx) ctx.scale(dpr, dpr);
       sizeRef.current = { w: rect.width, h: rect.height };
+
+      // Scale ratio-based positions to actual canvas size (only on first render)
+      if (!scaledRef.current && rect.width > 100 && rect.height > 100) {
+        for (const node of nodesRef.current) {
+          node.x = node.x * rect.width;
+          node.y = node.y * rect.height;
+        }
+        scaledRef.current = true;
+      }
     };
     resize();
     window.addEventListener("resize", resize);
