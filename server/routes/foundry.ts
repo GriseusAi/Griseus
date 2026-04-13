@@ -636,4 +636,67 @@ router.post("/scenarios/compare", async (req: Request, res: Response) => {
   }
 });
 
+// ══════════════════════════════════════════════════════════════════════
+// 6. LINEAGE GRAPH — Live pipeline stats for SDDI canvas
+// ══════════════════════════════════════════════════════════════════════
+
+router.get("/lineage/graph/stats", async (_req: Request, res: Response) => {
+  try {
+    // Table record counts + last update
+    const tables = [
+      "products", "bom_items", "component_stock", "sales_history",
+      "stock_movements_v2", "seasonal_indices", "validation_alerts",
+      "purchase_suggestions", "custom_rules", "audit_log",
+      "outcome_tracking", "token_metrics", "agent_memory",
+      "data_lineage", "pipeline_definitions", "pipeline_runs",
+      "data_snapshots", "scenarios", "production_plans",
+      "chat_sessions", "chat_messages", "tenant_profiles",
+    ];
+
+    const stats: Record<string, { count: number; lastUpdate: string | null }> = {};
+
+    for (const table of tables) {
+      try {
+        const countResult = await db.execute(sql`SELECT COUNT(*)::int as cnt FROM ${sql.identifier(table)}`);
+        const lastResult = await db.execute(
+          sql`SELECT MAX(COALESCE(updated_at, created_at, imported_at)) as last_ts FROM ${sql.identifier(table)}`
+        ).catch(() => ({ rows: [{ last_ts: null }] }));
+        stats[table] = {
+          count: (countResult.rows[0] as any)?.cnt ?? 0,
+          lastUpdate: (lastResult.rows[0] as any)?.last_ts ?? null,
+        };
+      } catch {
+        stats[table] = { count: 0, lastUpdate: null };
+      }
+    }
+
+    // Lineage flow stats: group by source_type
+    const flowStats = await db.execute(sql`
+      SELECT source_type, COUNT(*)::int as cnt, MAX(created_at) as last_ts
+      FROM data_lineage
+      GROUP BY source_type
+      ORDER BY cnt DESC
+    `);
+
+    // Pipeline health
+    const pipelineHealth = await db.execute(sql`
+      SELECT pd.name, pd.pipeline_type, pd.enabled, pd.last_status,
+             pd.last_run_at, pr.records_processed, pr.records_failed
+      FROM pipeline_definitions pd
+      LEFT JOIN pipeline_runs pr ON pr.pipeline_id = pd.id
+        AND pr.id = (SELECT MAX(id) FROM pipeline_runs WHERE pipeline_id = pd.id)
+      ORDER BY pd.id
+    `);
+
+    res.json({
+      tables: stats,
+      flows: flowStats.rows,
+      pipelines: pipelineHealth.rows,
+      generatedAt: new Date().toISOString(),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 export default router;
