@@ -39,6 +39,19 @@ interface CapacityData {
 
 interface StockData { product: string; components: BomComponent[] }
 
+interface SeasonalMonth { month: string; index: number; baseline: number }
+interface DemandMonth { month: string; demand: number; baseline: number }
+interface IntelligenceData {
+  ontology: {
+    currentMonth: string;
+    currentSeasonalIndex: number;
+    winterRiskCount: number;
+    avgDaysDifference: number;
+    seasonalIndices: SeasonalMonth[];
+    monthlyDemand: DemandMonth[];
+  };
+}
+
 /* ═══════════════════════════════════════════════════════════
    GRAPH ENGINE — Pure Canvas force-directed layout
    No external graph lib dependency, full control
@@ -220,9 +233,19 @@ function runSimulation(components: BomComponent[], targetQty: number): SimResult
    CANVAS RENDERER — Draws the force graph
    ═══════════════════════════════════════════════════════════ */
 
-function getNodeColor(node: GNode, sim: SimResult | null): string {
+function getNodeColor(node: GNode, sim: SimResult | null, seasonalDailyDemand?: number): string {
   if (node.isProduct) return C.accent;
   if (!sim) {
+    // Mevsimsel renklendirme: bu ayın günlük talebine göre kaç gün yeter?
+    if (seasonalDailyDemand && seasonalDailyDemand > 0 && node.required > 0) {
+      const dailyComponentNeed = seasonalDailyDemand * node.required;
+      const daysOfStock = dailyComponentNeed > 0 ? node.stock / dailyComponentNeed : 999;
+      if (daysOfStock < 7) return C.err;       // 1 haftadan az = kritik
+      if (daysOfStock < 15) return C.warn;     // 2 haftadan az = uyarı
+      if (daysOfStock < 30) return C.blue;     // 1 aydan az = dikkat
+      return C.ok;                              // 1 ay+ = yeterli
+    }
+    // Fallback: orijinal statik renklendirme
     if (node.status === "critical") return C.err;
     if (node.status === "warning") return C.warn;
     if (node.status === "ok") return C.blue;
@@ -247,6 +270,7 @@ function drawGraph(
   ctx: CanvasRenderingContext2D, nodes: GNode[], edges: GEdge[],
   width: number, height: number, hoveredNode: string | null,
   selectedNode: string | null, sim: SimResult | null, simQty: number,
+  seasonalDailyDemand?: number,
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -301,7 +325,7 @@ function drawGraph(
   // Nodes
   for (const n of nodes) {
     const r = getNodeRadius(n);
-    const color = getNodeColor(n, sim);
+    const color = getNodeColor(n, sim, seasonalDailyDemand);
     const isHovered = hoveredNode === n.id;
     const isSelected = selectedNode === n.id;
 
@@ -383,16 +407,24 @@ function drawGraph(
     }
   }
 
-  // Legend
+  // Legend — mevsimsel vs statik
   ctx.font = "9px 'Outfit', sans-serif";
   ctx.textAlign = "left";
-  const legendItems = [
-    { color: C.accent, label: "Ürün" },
-    { color: C.ok, label: "Bol Stok" },
-    { color: C.blue, label: "Yeterli" },
-    { color: C.warn, label: "Düşük" },
-    { color: C.err, label: "Kritik / Darboğaz" },
-  ];
+  const legendItems = !sim && seasonalDailyDemand
+    ? [
+        { color: C.accent, label: "Ürün" },
+        { color: C.ok, label: "30+ gün yeter" },
+        { color: C.blue, label: "15-30 gün" },
+        { color: C.warn, label: "7-15 gün" },
+        { color: C.err, label: "<7 gün (kritik)" },
+      ]
+    : [
+        { color: C.accent, label: "Ürün" },
+        { color: C.ok, label: "Bol Stok" },
+        { color: C.blue, label: "Yeterli" },
+        { color: C.warn, label: "Düşük" },
+        { color: C.err, label: "Kritik / Darboğaz" },
+      ];
   for (let i = 0; i < legendItems.length; i++) {
     const lx = 16, ly = height - 80 + i * 16;
     ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
@@ -455,6 +487,12 @@ export default function OntologyPage() {
     staleTime: 5000,
   });
 
+  const { data: intelData } = useQuery<IntelligenceData>({
+    queryKey: [`/api/bom/${sku}/intelligence`],
+    queryFn: () => apiRequest("GET", `/api/bom/${sku}/intelligence`).then(r => r.json()),
+    staleTime: 30000,
+  });
+
   // Resize canvas to container with DPR (Retina support)
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -502,6 +540,38 @@ export default function OntologyPage() {
     setSimResult(runSimulation(stockData.components, simQty));
   }, [simQty, stockData]);
 
+  // Seasonal context for current month
+  const seasonal = useMemo(() => {
+    if (!intelData?.ontology) return null;
+    const o = intelData.ontology;
+    const monthIdx = new Date().getMonth(); // 0-indexed
+    const demandThisMonth = o.monthlyDemand[monthIdx]?.demand ?? 0;
+    const indexThisMonth = o.currentSeasonalIndex;
+    const daysInMonth = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31][monthIdx];
+    const dayOfMonth = new Date().getDate();
+    const daysRemaining = daysInMonth - dayOfMonth;
+    const dailyDemand = demandThisMonth / daysInMonth;
+    const remainingDemand = Math.round(dailyDemand * daysRemaining);
+    // Peak and trough months
+    const peakMonth = o.seasonalIndices.reduce((max, m) => m.index > max.index ? m : max, o.seasonalIndices[0]);
+    const troughMonth = o.seasonalIndices.reduce((min, m) => m.index < min.index ? m : min, o.seasonalIndices[0]);
+    return {
+      monthLabel: o.currentMonth,
+      index: indexThisMonth,
+      demand: demandThisMonth,
+      dailyDemand: Math.round(dailyDemand * 10) / 10,
+      daysRemaining,
+      remainingDemand,
+      peakMonth: peakMonth.month,
+      peakIndex: peakMonth.index,
+      troughMonth: troughMonth.month,
+      troughIndex: troughMonth.index,
+      isAboveAvg: indexThisMonth > 1,
+      allIndices: o.seasonalIndices,
+      allDemand: o.monthlyDemand,
+    };
+  }, [intelData]);
+
   // Animation loop
   useEffect(() => {
     if (!graphReady) return;
@@ -518,13 +588,13 @@ export default function OntologyPage() {
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       simulateForces(nodesRef.current, edgesRef.current, w, h);
-      drawGraph(ctx, nodesRef.current, edgesRef.current, w, h, hoveredNode, selectedNode, simResult, simQty);
+      drawGraph(ctx, nodesRef.current, edgesRef.current, w, h, hoveredNode, selectedNode, simResult, simQty, seasonal?.dailyDemand);
       ctx.restore();
       animRef.current = requestAnimationFrame(tick);
     };
     tick();
     return () => { running = false; cancelAnimationFrame(animRef.current); };
-  }, [graphReady, hoveredNode, selectedNode, simResult, simQty]);
+  }, [graphReady, hoveredNode, selectedNode, simResult, simQty, seasonal]);
 
   // Mouse interaction
   const findNodeAt = useCallback((mx: number, my: number): GNode | null => {
@@ -613,6 +683,75 @@ export default function OntologyPage() {
             </div>
           )}
 
+          {/* ═══ SEASONAL CONTEXT ═══ */}
+          {seasonal && (
+            <div style={{
+              padding: 16, borderRadius: 12,
+              background: seasonal.isAboveAvg ? C.warnDim : C.surface,
+              border: `1px solid ${seasonal.isAboveAvg ? C.warnBorder : C.border}`,
+            }}>
+              <div style={{ fontSize: 9, color: seasonal.isAboveAvg ? C.warn : C.dim, letterSpacing: 1, marginBottom: 10 }}>
+                MEVSIMSEL BAĞLAM
+              </div>
+
+              {/* Current month highlight */}
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 8 }}>
+                <span style={{ fontSize: 22, fontWeight: 400, color: seasonal.isAboveAvg ? C.warn : C.ok }}>
+                  {seasonal.monthLabel}
+                </span>
+                <span style={{ fontSize: 14, color: C.mid }}>×</span>
+                <span style={{
+                  fontSize: 22, fontWeight: 400,
+                  color: seasonal.index > 1.3 ? C.err : seasonal.index > 1 ? C.warn : seasonal.index > 0.7 ? C.ok : C.blue,
+                }}>
+                  {seasonal.index.toFixed(2)}
+                </span>
+              </div>
+
+              {/* Monthly demand */}
+              <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: 10 }}>
+                <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
+                  <div style={{ fontSize: 8, color: C.dim }}>AYLIK TALEP</div>
+                  <div style={{ fontSize: 16, fontWeight: 400, color: C.white }}>{fmt(seasonal.demand)}</div>
+                  <div style={{ fontSize: 8, color: C.dim }}>{seasonal.dailyDemand}/gün</div>
+                </div>
+                <div style={{ padding: 8, borderRadius: 8, background: C.bg }}>
+                  <div style={{ fontSize: 8, color: C.dim }}>KALAN ({seasonal.daysRemaining} GÜN)</div>
+                  <div style={{ fontSize: 16, fontWeight: 400, color: C.white }}>{fmt(seasonal.remainingDemand)}</div>
+                  <div style={{ fontSize: 8, color: C.dim }}>adet beklenen</div>
+                </div>
+              </div>
+
+              {/* 12-month mini spark bar */}
+              <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1, marginBottom: 4 }}>12 AY PROFİLİ</div>
+              <div style={{ display: "flex", gap: 2, alignItems: "flex-end", height: 32, marginBottom: 8 }}>
+                {seasonal.allIndices.map((m, i) => {
+                  const isCurrentMonth = i === new Date().getMonth();
+                  const barH = Math.max(4, (m.index / seasonal.peakIndex) * 28);
+                  const barColor = isCurrentMonth ? C.accent : m.index > 1.3 ? C.err : m.index > 1 ? C.warn : m.index > 0.7 ? C.ok : C.blue;
+                  return (
+                    <div key={i} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center" }}>
+                      <div style={{
+                        width: "100%", height: barH, borderRadius: 2,
+                        background: barColor, opacity: isCurrentMonth ? 1 : 0.5,
+                        border: isCurrentMonth ? `1px solid ${C.accent}` : "none",
+                      }} />
+                      <div style={{ fontSize: 7, color: isCurrentMonth ? C.accent : C.dim, marginTop: 2 }}>
+                        {m.month}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Peak / trough */}
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 9 }}>
+                <span style={{ color: C.err }}>Zirve: {seasonal.peakMonth} ({seasonal.peakIndex.toFixed(2)})</span>
+                <span style={{ color: C.blue }}>Dip: {seasonal.troughMonth} ({seasonal.troughIndex.toFixed(2)})</span>
+              </div>
+            </div>
+          )}
+
           {/* ═══ SIMULATION SLIDER ═══ */}
           <div style={{
             padding: 16, borderRadius: 12,
@@ -646,6 +785,17 @@ export default function OntologyPage() {
                   {v === 0 ? "Sıfırla" : `${v} adet`}
                 </button>
               ))}
+              {/* Seasonal demand preset */}
+              {seasonal && seasonal.demand > 0 && (
+                <button onClick={() => setSimQty(seasonal.demand)} style={{
+                  padding: "4px 10px", borderRadius: 6, fontSize: 10,
+                  background: simQty === seasonal.demand ? C.warn + "30" : C.warnDim,
+                  border: `1px solid ${simQty === seasonal.demand ? C.warn + "60" : C.warnBorder}`,
+                  color: C.warn, cursor: "pointer", fontFamily: mono,
+                }}>
+                  {seasonal.monthLabel} talebi ({fmt(seasonal.demand)})
+                </button>
+              )}
             </div>
           </div>
 
@@ -668,6 +818,39 @@ export default function OntologyPage() {
               {simResult.bottleneck && (
                 <div style={{ fontSize: 10, color: C.err, marginBottom: 8 }}>
                   Darboğaz: {simResult.bottleneck.name} (max {fmt(simResult.bottleneck.maxProducts)})
+                </div>
+              )}
+
+              {/* Seasonal insight */}
+              {seasonal && (
+                <div style={{
+                  padding: 10, borderRadius: 8, marginBottom: 8,
+                  background: C.bg, border: `1px solid ${C.border}`,
+                }}>
+                  <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1, marginBottom: 6 }}>
+                    MEVSIMSEL ANALİZ — {seasonal.monthLabel} (×{seasonal.index.toFixed(2)})
+                  </div>
+                  {(() => {
+                    const gap = seasonal.demand - simQty;
+                    const coveragePct = seasonal.demand > 0 ? Math.round((simQty / seasonal.demand) * 100) : 0;
+                    const daysOfStock = seasonal.dailyDemand > 0 ? Math.round(simResult.maxProducible / seasonal.dailyDemand) : 0;
+                    return (
+                      <>
+                        <div style={{ fontSize: 11, color: C.mid, marginBottom: 4 }}>
+                          Bu ay beklenen talep: <span style={{ color: C.white, fontWeight: 400 }}>{fmt(seasonal.demand)}</span> adet
+                        </div>
+                        <div style={{ fontSize: 11, color: gap > 0 ? C.err : C.ok, marginBottom: 4 }}>
+                          {gap > 0
+                            ? `${fmt(simQty)} üretirsen ${fmt(gap)} adet açık kalır (%${coveragePct} karşılanır)`
+                            : `${fmt(simQty)} üretim aylık talebi %${coveragePct} karşılar (+${fmt(Math.abs(gap))} fazla)`
+                          }
+                        </div>
+                        <div style={{ fontSize: 10, color: C.dim }}>
+                          Max üretilebilir ({fmt(simResult.maxProducible)}) = {daysOfStock} günlük talep
+                        </div>
+                      </>
+                    );
+                  })()}
                 </div>
               )}
 
@@ -732,6 +915,36 @@ export default function OntologyPage() {
                   </div>
                 </div>
               </div>
+
+              {/* Seasonal detail for this component */}
+              {seasonal && selectedComp.requiredPerUnit > 0 && (
+                <div style={{ marginTop: 12, padding: 10, borderRadius: 8, background: C.bg }}>
+                  <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1, marginBottom: 4 }}>MEVSIMSEL GÖRÜNÜM</div>
+                  {(() => {
+                    const dailyNeed = seasonal.dailyDemand * selectedComp.requiredPerUnit;
+                    const daysOfStock = dailyNeed > 0 ? Math.round(selectedComp.currentStock / dailyNeed) : 999;
+                    const color = daysOfStock < 7 ? C.err : daysOfStock < 15 ? C.warn : daysOfStock < 30 ? C.blue : C.ok;
+                    const monthlyNeed = Math.round(seasonal.demand * selectedComp.requiredPerUnit);
+                    return (
+                      <>
+                        <div style={{ fontSize: 11, color: C.mid }}>
+                          {seasonal.monthLabel} talebi: <span style={{ color: C.white }}>{fmt(monthlyNeed)}</span> {selectedComp.unit}/ay
+                        </div>
+                        <div style={{ fontSize: 13, fontWeight: 400, marginTop: 4, color }}>
+                          {daysOfStock > 90 ? "90+ gün yeter" : `${daysOfStock} gün yeter`}
+                        </div>
+                        {/* Mini progress bar: days of stock / 30 */}
+                        <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.05)", marginTop: 6 }}>
+                          <div style={{
+                            width: `${Math.min((daysOfStock / 30) * 100, 100)}%`, height: "100%", borderRadius: 2,
+                            background: color, transition: "width 0.3s",
+                          }} />
+                        </div>
+                      </>
+                    );
+                  })()}
+                </div>
+              )}
 
               {/* Sim detail for this component */}
               {selectedSimComp && (
