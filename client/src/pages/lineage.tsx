@@ -127,23 +127,29 @@ function nodePos(node: PNode, containerW: number) {
 
 /* ── Main Component ── */
 export default function LineagePage() {
-  const containerRef = useRef<HTMLDivElement>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [hovered, setHovered] = useState<string | null>(null);
   const [containerW, setContainerW] = useState(900);
+  const containerElRef = useRef<HTMLDivElement | null>(null);
+  const roRef = useRef<ResizeObserver | null>(null);
 
-  // Measure container
+  // Measure container with ref callback
   const measuredRef = useCallback((el: HTMLDivElement | null) => {
-    if (el) {
+    if (roRef.current) { roRef.current.disconnect(); roRef.current = null; }
+    containerElRef.current = el;
+    if (!el) return;
+    try {
       const w = el.getBoundingClientRect().width;
       if (w > 100) setContainerW(w);
-      const ro = new ResizeObserver((entries) => {
-        for (const e of entries) {
-          if (e.contentRect.width > 100) setContainerW(e.contentRect.width);
-        }
+      roRef.current = new ResizeObserver((entries) => {
+        try {
+          for (const e of entries) {
+            if (e.contentRect.width > 100) setContainerW(e.contentRect.width);
+          }
+        } catch {}
       });
-      ro.observe(el);
-    }
+      roRef.current.observe(el);
+    } catch {}
   }, []);
 
   // Stats
@@ -341,15 +347,11 @@ export default function LineagePage() {
                     strokeWidth={isHi ? 1.5 : 0.7}
                     markerEnd={isHi ? "url(#arrow-hi)" : "url(#arrow)"}
                   />
-                  {/* Animated dot for live edges */}
-                  {(edge.live || isHi) && (
-                    <circle r="3" fill={isHi ? C.accent : C.ok} opacity="0.7">
-                      <animateMotion
-                        dur={`${2 + i % 3}s`}
-                        repeatCount="indefinite"
-                        path={`M ${fp.x} ${fp.y} Q ${cpx} ${cpy} ${tp.x} ${tp.y}`}
-                      />
-                    </circle>
+                  {/* Live edge indicator */}
+                  {edge.live && (
+                    <circle cx={fp.x + (tp.x - fp.x) * 0.5} cy={fp.y + (tp.y - fp.y) * 0.5} r="3"
+                      fill={C.ok} opacity="0.5"
+                    />
                   )}
                 </g>
               );
