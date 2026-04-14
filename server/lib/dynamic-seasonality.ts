@@ -120,19 +120,18 @@ export async function getDynamicIndices(
     console.error("[DSE] Index fetch error:", err);
   }
 
-  // Fallback: for MAIN_SKU use static indices, for others compute from sales_history
-  if (sku !== MAIN_SKU) {
-    try {
-      const { demand, annual } = await getMonthlyDemandForSku(sku);
-      if (annual > 0) {
-        const avg = annual / 12;
-        const computed = demand.map(d => d / avg);
-        indexCache.set(key, computed);
-        return computed;
-      }
-    } catch (err) {
-      console.error("[DSE] Fallback index computation error for", sku, err);
+  // Octopus: hicbir SKU ozel degil. Tum urunler once sales_history'den hesaplamayi
+  // dener, veri yoksa ortak STATIC_INDICES fallback. MAIN_SKU eski ayricaligi kaldirildi.
+  try {
+    const { demand, annual } = await getMonthlyDemandForSku(sku);
+    if (annual > 0) {
+      const avg = annual / 12;
+      const computed = demand.map(d => d / avg);
+      indexCache.set(key, computed);
+      return computed;
     }
+  } catch (err) {
+    console.error("[DSE] Fallback index computation error for", sku, err);
   }
   return [...STATIC_INDICES];
 }

@@ -11,6 +11,7 @@ import { db } from "../db";
 import { products, bomItems, componentStock, salesHistory } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { recordLineage, createSnapshot } from "./foundry";
+import { broadcastEntityChanged } from "../ws";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -104,6 +105,8 @@ router.post("/bulk/products", async (req: Request, res: Response) => {
         sourceType: "import", sourceName: "Bulk product import",
         actor: "import", metadata: { created, skipped, total: items.length },
       }).catch(() => {});
+      // Octopus WS: tek atom degisti, tum client'lar haberdar
+      broadcastEntityChanged({ event: "entity_changed", entities: ["products"], count: created, source: "bulk_import" });
     }
 
     res.json({ success: true, created, skipped, total: items.length });
@@ -159,6 +162,7 @@ router.post("/bulk/bom", async (req: Request, res: Response) => {
         sourceType: "import", sourceName: `Bulk BOM import: ${sku}`,
         actor: "import", metadata: { sku, created, total: items.length, tiers: Array.from(new Set(items.map(i => i.tier))) },
       }).catch(() => {});
+      broadcastEntityChanged({ event: "entity_changed", entities: ["bom_items"], scope: sku, count: created, source: "bulk_import" });
     }
 
     res.json({ success: true, sku, created, total: items.length });
@@ -211,6 +215,8 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
         sourceType: "import", sourceName: "Bulk stock import (shared pool)",
         actor: "import", metadata: { created, updated, total: items.length, uniqueCodes: items.length },
       }).catch(() => {});
+      // Octopus Y.2 — tek havuz degisti, N cihazin tumu canli guncelensin
+      broadcastEntityChanged({ event: "entity_changed", entities: ["component_stock"], count: created + updated, source: "bulk_import" });
     }
 
     res.json({ success: true, created, updated, total: items.length });
@@ -268,9 +274,14 @@ router.post("/bulk/sales", async (req: Request, res: Response) => {
       }
     }
 
-    // DSE güncelle (fire-and-forget)
-    bulkUpdateFromSalesHistory("cukurova", sku).catch(err =>
-      console.error("[bulk/sales] DSE update error:", err));
+    // DSE güncelle (fire-and-forget) — tamamlandiginda WS yayini at
+    bulkUpdateFromSalesHistory("cukurova", sku)
+      .then(() => broadcastEntityChanged({
+        event: "entity_changed",
+        entities: ["sales_history", "seasonal_indices"],
+        scope: sku, source: "bulk_import",
+      }))
+      .catch(err => console.error("[bulk/sales] DSE update error:", err));
 
     res.json({ success: true, sku, created, updated, total: data.length });
   } catch (err: any) {

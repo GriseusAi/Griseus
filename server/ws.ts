@@ -46,6 +46,26 @@ export function broadcastImpactPropagation(payload: {
   });
 }
 
+/**
+ * Bulk mutasyonlar için jenerik "entity degisti, refetch" sinyali.
+ * Octopus prensibi: bir atom degistigi anda TUM client'lar haberdar olmali.
+ */
+export function broadcastEntityChanged(payload: {
+  event: "entity_changed";
+  entities: Array<"products" | "bom_items" | "component_stock" | "sales_history" | "seasonal_indices">;
+  scope?: string;  // opsiyonel — etkilenen sku/kod/pool
+  count?: number;  // etkilenen satir sayisi
+  source?: string; // "bulk_import", "admin_edit", "agent_action", vb.
+}) {
+  if (!wss) return;
+  const msg = JSON.stringify(payload);
+  wss.clients.forEach((client) => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(msg);
+    }
+  });
+}
+
 export function broadcastProactiveAlert(payload: {
   event: "proactive_alert";
   alerts: Array<{
