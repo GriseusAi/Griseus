@@ -1,4 +1,4 @@
-import { useState, useMemo, useEffect } from "react";
+import React, { useState, useMemo, useEffect } from "react";
 import { useSKU } from "@/lib/sku-context";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { useRoute, useLocation } from "wouter";
@@ -34,7 +34,9 @@ const GLOBAL_STYLES = `
 interface BomComponent {
   code: string; name: string; requiredPerUnit: number; unit: string;
   tier: number; parentComponentCode: string | null;
-  currentStock: number; maxProducts: number | null; status: string;
+  currentStock: number; rawStock?: number; maxProducts: number | null; status: string;
+  isSubAssembly?: boolean;
+  children?: BomComponent[];
 }
 
 interface Bottleneck {
@@ -84,6 +86,39 @@ interface SimulationData {
   shortages: Array<{ code: string; name: string; need: number; have: number; shortage: number }>;
   materialsNeeded: Array<{ code: string; name: string; need: number; have: number; remaining: number; mustAssemble?: number; tier: number }>;
   subAssemblyStatus: Record<string, SubAssembly>;
+}
+
+/* ── Recursive drill-down row ── */
+function ChildRowUI({ child, depth }: { child: BomComponent; depth: number }) {
+  const [open, setOpen] = useState(false);
+  const hasKids = (child.children?.length ?? 0) > 0;
+  const color = child.status === "critical" ? "#ef4444" : child.status === "warning" ? "#fbbf24" : child.status === "ok" ? "#818cf8" : "#34d399";
+  return (
+    <>
+      <div style={{
+        display: "grid", gridTemplateColumns: "70px 1fr 90px 80px 80px 90px 80px",
+        gap: 8, padding: "6px 12px", borderBottom: "1px solid rgba(255,255,255,0.04)",
+        background: "rgba(255,255,255,0.015)",
+        paddingLeft: 12 + depth * 20,
+        cursor: hasKids ? "pointer" : "default",
+      }}
+        onClick={() => hasKids && setOpen(p => !p)}
+      >
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "rgba(255,255,255,0.55)" }}>
+          {hasKids ? (open ? "▾ " : "▸ ") : "└ "}{child.code}
+        </div>
+        <div style={{ fontSize: 11, color: "rgba(255,255,255,0.78)" }}>{child.name}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 11, color: "#cbd5e1" }}>{child.requiredPerUnit}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 10, color: "rgba(255,255,255,0.35)" }}>{child.unit}</div>
+        <div style={{ fontFamily: "monospace", fontSize: 11, color }}>
+          {child.currentStock % 1 === 0 ? child.currentStock : child.currentStock.toFixed(2)}
+        </div>
+        <div style={{ fontFamily: "monospace", fontSize: 11, color: "rgba(255,255,255,0.55)" }}>{child.maxProducts ?? "—"}</div>
+        <div style={{ fontSize: 9, fontFamily: "monospace", color, opacity: 0.7 }}>T{child.tier}</div>
+      </div>
+      {open && hasKids && child.children!.map(gc => <ChildRowUI key={gc.code} child={gc} depth={depth + 1} />)}
+    </>
+  );
 }
 
 /* ── Status helpers ── */
@@ -177,21 +212,20 @@ export default function UrunIstihbarat() {
   const stock = stockQuery.data;
   const intel = intelQuery.data;
 
-  // Sort components for tree view
+  // Components are already tier=1 only (backend filter). Yarı-mamüllerin alt bileşenleri
+  // children[] alaninda embedded — drill-down expand ile goruntulenir.
   const sortedComponents = useMemo(() => {
-    if (!stock?.components) return [];
-    const tier1 = stock.components.filter(c => c.tier === 1);
-    const tier2 = stock.components.filter(c => c.tier === 2);
-    const tier3 = stock.components.filter(c => c.tier === 3);
-    // Group: tier 2 with its children, then tier 1
-    const result: BomComponent[] = [];
-    for (const sa of tier2) {
-      result.push(sa);
-      result.push(...tier3.filter(c => c.parentComponentCode === sa.code));
-    }
-    result.push(...tier1);
-    return result;
+    return stock?.components || [];
   }, [stock]);
+
+  const [expandedRows, setExpandedRows] = useState<Set<string>>(new Set());
+  const toggleExpand = (code: string) => {
+    setExpandedRows(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      return next;
+    });
+  };
 
   const topBottleneck = capacity?.bottlenecks?.[0];
   const [expandedReasoning, setExpandedReasoning] = useState<string | null>(null);
@@ -429,62 +463,70 @@ export default function UrunIstihbarat() {
             ))}
           </div>
 
-          {/* Table Rows */}
+          {/* Table Rows — tier=1 only, yari-mamuller expand ile alt bilesenleri gosterir */}
           {sortedComponents
-            .filter(c => showAllComponents || c.status === "critical" || c.status === "warning" || c.tier === 2)
+            .filter(c => showAllComponents || c.status === "critical" || c.status === "warning" || c.isSubAssembly)
             .map((c) => {
               const statusColor = getStatusColor(c.status);
-              const isSub = c.tier === 3;
-              const isSubAssembly = c.tier === 2;
+              const isSubAssembly = c.isSubAssembly && (c.children?.length ?? 0) > 0;
+              const isExpanded = expandedRows.has(c.code);
               return (
-                <div key={c.code} style={{
-                  display: "grid", gridTemplateColumns: "70px 1fr 90px 80px 80px 90px 80px",
-                  gap: 8, padding: "8px 12px", borderBottom: `1px solid ${C.border}`,
-                  background: isSubAssembly ? C.accentDim : isSub ? "rgba(255,255,255,0.01)" : "transparent",
-                  paddingLeft: isSub ? 32 : 12,
-                  transition: "background 0.15s",
-                }}
-                  onMouseEnter={e => { if (!isSubAssembly && !isSub) e.currentTarget.style.background = C.surfaceHover; }}
-                  onMouseLeave={e => { if (!isSubAssembly && !isSub) e.currentTarget.style.background = "transparent"; }}
-                >
-                  <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>
-                    {isSub ? "└ " : ""}{c.code}
-                  </div>
-                  <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
-                    {c.name}
-                    {isSubAssembly && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL</span>}
-                  </div>
-                  <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
-                    {c.requiredPerUnit}
-                  </div>
-                  <div style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>
-                    {c.unit}
-                  </div>
+                <React.Fragment key={c.code}>
                   <div style={{
-                    fontFamily: mono, fontSize: 12, fontWeight: 400,
-                    color: c.currentStock < 0 ? C.err : c.currentStock === 0 ? C.err : c.currentStock < 100 ? C.warn : C.white,
-                  }}>
-                    {c.currentStock < 0 && "⚠️ "}
-                    {c.currentStock % 1 === 0 ? c.currentStock : c.currentStock.toFixed(2)}
-                  </div>
-                  <div style={{
-                    fontFamily: mono, fontSize: 12, fontWeight: 400,
-                    color: c.maxProducts === null ? C.dim :
-                      c.maxProducts === 0 ? C.err :
-                      c.maxProducts < 50 ? C.err :
-                      c.maxProducts < 200 ? C.warn : C.ok,
-                  }}>
-                    {c.maxProducts ?? "—"}
-                  </div>
-                  <div>
-                    <span style={{
-                      fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
-                      borderRadius: 4, background: getStatusBg(c.status), color: statusColor,
+                    display: "grid", gridTemplateColumns: "70px 1fr 90px 80px 80px 90px 80px",
+                    gap: 8, padding: "8px 12px", borderBottom: isExpanded ? "none" : `1px solid ${C.border}`,
+                    background: isSubAssembly ? C.accentDim : "transparent",
+                    transition: "background 0.15s",
+                    cursor: isSubAssembly ? "pointer" : "default",
+                  }}
+                    onClick={() => isSubAssembly && toggleExpand(c.code)}
+                    onMouseEnter={e => { if (!isSubAssembly) e.currentTarget.style.background = C.surfaceHover; }}
+                    onMouseLeave={e => { if (!isSubAssembly) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>
+                      {isSubAssembly && <span style={{ marginRight: 4, color: C.accent }}>{isExpanded ? "▾" : "▸"}</span>}
+                      {c.code}
+                    </div>
+                    <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
+                      {c.name}
+                      {isSubAssembly && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL ({c.children!.length} alt)</span>}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>{c.requiredPerUnit}</div>
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>{c.unit}</div>
+                    <div style={{
+                      fontFamily: mono, fontSize: 12, fontWeight: 400,
+                      color: c.currentStock < 0 ? C.err : c.currentStock === 0 ? C.err : c.currentStock < 100 ? C.warn : C.white,
                     }}>
-                      {getStatusLabel(c.status)}
-                    </span>
+                      {c.currentStock < 0 && "⚠️ "}
+                      {c.currentStock % 1 === 0 ? c.currentStock : c.currentStock.toFixed(2)}
+                      {c.rawStock !== undefined && c.currentStock > c.rawStock && (
+                        <span style={{ fontSize: 9, color: C.dim, marginLeft: 4 }}>({c.rawStock}+{(c.currentStock - c.rawStock).toFixed(0)})</span>
+                      )}
+                    </div>
+                    <div style={{
+                      fontFamily: mono, fontSize: 12, fontWeight: 400,
+                      color: c.maxProducts === null ? C.dim :
+                        c.maxProducts === 0 ? C.err :
+                        c.maxProducts < 50 ? C.err :
+                        c.maxProducts < 200 ? C.warn : C.ok,
+                    }}>
+                      {c.maxProducts ?? "—"}
+                    </div>
+                    <div>
+                      <span style={{
+                        fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
+                        borderRadius: 4, background: getStatusBg(c.status), color: statusColor,
+                      }}>
+                        {getStatusLabel(c.status)}
+                      </span>
+                    </div>
                   </div>
-                </div>
+
+                  {/* Drill-down: alt bileşenler (recursive) */}
+                  {isExpanded && isSubAssembly && c.children!.map(child => (
+                    <ChildRowUI key={child.code} child={child} depth={1} />
+                  ))}
+                </React.Fragment>
               );
             })}
         </motion.div>

@@ -59,8 +59,10 @@ interface Movement {
 interface BomComponent {
   code: string; name: string; requiredPerUnit: number; unit: string;
   tier: number; parentComponentCode: string | null;
-  currentStock: number; maxProducts: number | null;
+  currentStock: number; rawStock?: number; maxProducts: number | null;
   status: "critical" | "warning" | "ok" | "abundant" | "N/A";
+  isSubAssembly?: boolean;
+  children?: BomComponent[];
 }
 interface Capacity {
   product: string; maxProducible: number;
@@ -194,49 +196,60 @@ function CapacityGauge({ capacity, sku }: { capacity: Capacity | undefined; sku:
 
 /* ── Component Card (Ontology Object) ── */
 function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onClick: () => void; isFlashing: boolean }) {
+  const [expanded, setExpanded] = useState(false);
   const isNegative = comp.currentStock < 0;
   const statusColor = isNegative ? C.err : comp.status === "critical" ? C.err : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok;
   const statusBg = isNegative ? C.errDim : comp.status === "critical" ? C.errDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim;
   const statusLabel = isNegative ? "NEGATİF" : comp.status === "critical" ? "KRİTİK" : comp.status === "warning" ? "DÜŞÜK" : comp.status === "ok" ? "YETERLİ" : "BOL";
   const maxP = comp.maxProducts ?? 0;
-  // Bar: percentage of 500 max for visual
   const barPct = Math.min(maxP / 500, 1);
+  const hasChildren = comp.isSubAssembly && (comp.children?.length ?? 0) > 0;
+  const monteFark = comp.rawStock !== undefined && comp.currentStock > comp.rawStock
+    ? comp.currentStock - comp.rawStock : 0;
 
   return (
     <div
       className={isFlashing ? "stock-flash" : ""}
-      onClick={onClick}
+      onClick={() => { if (hasChildren) setExpanded(p => !p); else onClick(); }}
       style={{
-        background: C.surface, border: `1px solid ${C.border}`, borderRadius: 12,
+        background: C.surface, border: `1px solid ${expanded ? statusColor + "60" : C.border}`, borderRadius: 12,
         padding: "10px 12px", cursor: "pointer", position: "relative", overflow: "hidden", ...glass,
         transition: "all 0.15s",
+        gridColumn: expanded ? "1 / -1" : "auto",
       }}
       onMouseEnter={(e) => { e.currentTarget.style.background = C.surfaceHover; e.currentTarget.style.borderColor = statusColor + "40"; }}
-      onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = C.border; }}
+      onMouseLeave={(e) => { e.currentTarget.style.background = C.surface; e.currentTarget.style.borderColor = expanded ? statusColor + "60" : C.border; }}
     >
-      {/* Top status bar */}
       <div style={{ position: "absolute", top: 0, left: 0, right: 0, height: 2, background: statusColor, opacity: 0.6 }} />
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
-        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 400, color: C.white, letterSpacing: 0.5 }}>{comp.code}</div>
+        <div style={{ fontFamily: mono, fontSize: 11, fontWeight: 400, color: C.white, letterSpacing: 0.5 }}>
+          {comp.code}
+          {hasChildren && (
+            <span style={{ marginLeft: 6, fontSize: 9, color: statusColor, opacity: 0.7 }}>
+              {expanded ? "▾" : "▸"} {comp.children!.length} alt
+            </span>
+          )}
+        </div>
         <div style={{
           fontSize: 7, fontFamily: mono, fontWeight: 400, letterSpacing: 0.8,
           padding: "2px 5px", borderRadius: 4, background: statusBg, color: statusColor,
         }}>
-          {statusLabel}
+          {hasChildren ? "YARI MAMÜL" : statusLabel}
         </div>
       </div>
       <div style={{ fontSize: 10, color: C.dim, marginBottom: 8, height: 28, overflow: "hidden", lineHeight: "14px" }}>
         {comp.name}
       </div>
 
-      {/* Stock info */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
         <div>
           <div style={{ fontSize: 18, fontWeight: 400, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
             {fmt(comp.currentStock)}
           </div>
-          <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>{comp.unit} stok</div>
+          <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>
+            {comp.unit} {monteFark > 0 ? `(${comp.rawStock}+${monteFark} monte)` : "stok"}
+          </div>
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 12, fontWeight: 400, fontFamily: mono, color: C.mid, lineHeight: 1 }}>
@@ -246,7 +259,6 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
         </div>
       </div>
 
-      {/* Capacity bar */}
       <div style={{ marginTop: 6, height: 3, borderRadius: 2, background: "rgba(255,255,255,0.04)" }}>
         <div style={{
           width: `${barPct * 100}%`, height: "100%", borderRadius: 2,
@@ -254,13 +266,52 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
         }} />
       </div>
 
-      {/* Tier badge */}
-      {comp.tier > 1 && (
+      {/* Drill-down: alt bileşenler */}
+      {expanded && hasChildren && (
         <div style={{
-          position: "absolute", bottom: 6, right: 8, fontSize: 8, fontFamily: mono,
-          color: C.dim, opacity: 0.5,
+          marginTop: 12, paddingTop: 10, borderTop: `1px dashed ${C.border}`,
+          display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8,
         }}>
-          T{comp.tier}
+          {comp.children!.map(ch => (
+            <ChildRow key={ch.code} child={ch} depth={1} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ── Recursive child row for drill-down ── */
+function ChildRow({ child, depth }: { child: BomComponent; depth: number }) {
+  const [open, setOpen] = useState(false);
+  const color = child.status === "critical" ? C.err : child.status === "warning" ? C.warn : child.status === "ok" ? C.blue : C.ok;
+  const hasKids = (child.children?.length ?? 0) > 0;
+  return (
+    <div style={{
+      background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 8,
+      padding: "8px 10px", marginLeft: depth * 8,
+    }}
+      onClick={(e) => { e.stopPropagation(); if (hasKids) setOpen(p => !p); }}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div style={{ fontFamily: mono, fontSize: 10, color: C.white }}>
+          {hasKids && <span style={{ color, marginRight: 4 }}>{open ? "▾" : "▸"}</span>}
+          {child.code}
+          <span style={{ fontSize: 8, color: C.dim, marginLeft: 6 }}>T{child.tier}</span>
+        </div>
+        <div style={{ fontFamily: mono, fontSize: 11, color }}>
+          {fmt(child.currentStock)} {child.unit}
+        </div>
+      </div>
+      <div style={{ fontSize: 9, color: C.dim, marginTop: 3, lineHeight: "12px" }}>
+        {child.name}
+      </div>
+      <div style={{ fontSize: 8, color: C.dim, marginTop: 2, fontFamily: mono }}>
+        {child.requiredPerUnit} {child.unit}/ürün · {child.maxProducts === null ? "—" : fmt(child.maxProducts)} ürün yeter
+      </div>
+      {open && hasKids && (
+        <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: `1px dashed ${C.border}` }}>
+          {child.children!.map(gc => <ChildRow key={gc.code} child={gc} depth={depth + 1} />)}
         </div>
       )}
     </div>

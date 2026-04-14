@@ -196,10 +196,36 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
   }
 
   // Dashboard flat stok goruntusu: sadece tier=1 (root-level) bilesenler gorunur.
-  // Alt bileşenler (tier 2+) yari-mamulun icinde gizli — "Alt bilesenleri goster" drill-down ile acilir.
-  // Or: BH 50 brulor (tier 1) = 58 stok gorunur, icinde 07250004 vb. gorunmez.
-  // Bu ELT.7-11 dashboard'undaki davranisla birebir aynidir (seed-gss20p.ts da zaten flat tier 1).
+  // Alt bileşenler (tier 2+) yari-mamulun icinde children[] olarak embedded —
+  // UI "Alt bilesenleri goster" drill-down ile acar.
+  // Or: BH 50 brulor (tier 1) = 58 stok gorunur, icinde 07250004 vb. children'da.
   const tier1Items = items.filter(i => i.tier === 1);
+
+  // Recursive child-tree builder: tier>=2 satirlari parent'a bagla
+  function buildChildren(parentCode: string): any[] {
+    return items
+      .filter(x => x.parentComponentCode === parentCode)
+      .map(c => {
+        const grandChildren = buildChildren(c.code);
+        const cMax = c.requiredQty > 0 ? Math.floor(c.currentStock / c.requiredQty) : null;
+        return {
+          code: c.code,
+          name: c.name,
+          requiredPerUnit: c.requiredQty,
+          unit: c.unit,
+          tier: c.tier,
+          parentComponentCode: c.parentComponentCode,
+          currentStock: c.currentStock,
+          maxProducts: cMax,
+          status:
+            c.currentStock === 0 ? "critical" :
+            c.currentStock < 50 ? "critical" :
+            c.currentStock < 150 ? "warning" :
+            c.currentStock < 400 ? "ok" : "abundant",
+          children: grandChildren,
+        };
+      });
+  }
 
   res.json({
     product: sku,
@@ -231,8 +257,11 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
         tier: i.tier,
         parentComponentCode: i.parentComponentCode,
         currentStock: effectiveStock,
+        rawStock: i.currentStock,
         maxProducts,
         status,
+        isSubAssembly: hasChildren,
+        children: hasChildren ? buildChildren(i.code) : [],
       };
     }),
   });
