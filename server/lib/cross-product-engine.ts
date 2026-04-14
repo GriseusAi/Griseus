@@ -102,6 +102,10 @@ export interface CrossProductAnalysis {
 
 export async function findSharedComponents(): Promise<SharedComponent[]> {
   // Hangi component_code birden fazla parent_product_sku'da geçiyor?
+  // Octopus prensibi: HER tier'da bakılır (tier=1 direct, tier=2 alt bileşen,
+  // tier=3 alt-alt). Bir bilesen hangi seviyede olursa olsun N cihazda
+  // paylasiliyorsa cross-product havuza girer. Eskiden WHERE tier=1 OR tier=2
+  // vardi, tier=3 bilesenler (or: 28.005 Flex Contasi 4 BH cihazinda) gorunmuyordu.
   const rows = await db.execute(sql`
     SELECT
       b.component_code,
@@ -109,6 +113,7 @@ export async function findSharedComponents(): Promise<SharedComponent[]> {
       b.unit,
       b.parent_product_sku,
       b.required_quantity,
+      b.tier,
       p.name as product_name,
       COALESCE(cs.current_stock, 0) as current_stock
     FROM bom_items b
@@ -117,11 +122,9 @@ export async function findSharedComponents(): Promise<SharedComponent[]> {
     WHERE b.component_code IN (
       SELECT component_code
       FROM bom_items
-      WHERE tier = 1 OR tier = 2
       GROUP BY component_code
       HAVING COUNT(DISTINCT parent_product_sku) > 1
     )
-    AND (b.tier = 1 OR b.tier = 2)
     ORDER BY b.component_code, b.parent_product_sku
   `);
 
