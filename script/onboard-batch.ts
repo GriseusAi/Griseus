@@ -64,10 +64,14 @@ type Device = {
 const FOOTER_KEYWORDS = ["Toplam Maliyet", "Malzeme Maliyeti", "Maliyet Katkısı", "Hammadde Toplamı"];
 // İşçilik satırları: fiziksel bileşen değil, sadece maliyet muhasebesi için Excel'e eklenmiş.
 // BOM'a ve stok havuzuna ALINMAMALI — alınırsa "alarm: 0 stok, bileşen bitti" halüsinasyonu olur.
+// Keyword ROOT kullanılıyor ki suffix formları (işçiliği, işçiliğe, işciliği) de yakalansın.
 // Örnek: "20.068 BH Reflektör Büküm İşçiliği", "26.098 BH 4" yanma borusu flanş ve kaynak işciliği"
-const LABOR_KEYWORDS = ["işcilik", "işçilik"];
+const LABOR_KEYWORDS = ["işçili", "işcili"];
 
 function indentLevel(raw: string): number {
+  // Excel 5 bosluk = 1 seviye. Excel'de ilk seviye bilesen indent=1 (5 bosluk).
+  // Griseus convention (seed-gss20p.ts): direkt materials = tier:1, alt bilesenler = tier:2,
+  // alt-alt = tier:3. Yani tier = indentLevel birebir (lvl+1 DEGIL).
   const m = raw.match(/^(\s*)/);
   return Math.floor((m?.[1].length || 0) / 5);
 }
@@ -109,10 +113,13 @@ function parseDevice(filePath: string): Device {
     if (!qty || qty <= 0) continue;
     // İşçilik satırları: fiziksel bileşen değil → BOM ve stok havuzu DIŞINDA kalmalı.
     // Bunları almak "alarm: 0 stok, işçilik bitti!" gibi false-positive doğurur.
-    if (LABOR_KEYWORDS.some(k => itemName.toLowerCase().includes(k))) continue;
+    // DİKKAT: toLocaleLowerCase('tr') şart — default toLowerCase() Turkish İ'yi i̇ (combining dot) yapar,
+    // "işçili" substring'i yakalayamaz. 'tr' locale doğru i üretir.
+    const nameTr = itemName.toLocaleLowerCase('tr');
+    if (LABOR_KEYWORDS.some(k => nameTr.includes(k))) continue;
 
-    const lvl = indentLevel(rawCode);        // 0, 1, 2, 3
-    const tier = lvl + 1;                    // Griseus: tier 1 = direct child
+    const lvl = indentLevel(rawCode);        // Excel: 1=direct, 2=sub, 3=sub-sub
+    const tier = lvl;                        // Griseus convention: tier birebir
     const parentCode = tier === 1 ? null : stack[tier - 2] || null;
 
     items.push({ code, name: itemName, qty, unit, tier, parentCode });
