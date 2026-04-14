@@ -186,6 +186,11 @@ export async function ensureTables() {
       VALUES ('cukurova', 'Çukurova Isı Sistemleri')
       ON CONFLICT (tenant_id) DO NOTHING;
     `);
+    // Octopus fix: bom_items.component_code UNIQUE constraint KALDIRIL (ayni bilesen birden
+    // fazla cihazda kullanilabilmeli — cross-product paylasim mimarisinin temeli). Ayrica
+    // ayni bilesen ayni cihazin farkli tier'larinda da gecebiliyor (or. 91409408). Unique
+    // yok, (parent_product_sku, component_code) index'i yeterli.
+    await pool.query(`ALTER TABLE bom_items DROP CONSTRAINT IF EXISTS bom_items_component_code_unique`);
     console.log("[db] validation_alerts + custom_rules + audit_log + outcome_tracking + token_metrics + tenant_profiles + alert_interactions tabloları hazır");
   } catch (err) {
     console.error("[db] Tablo oluşturma hatası:", err);
