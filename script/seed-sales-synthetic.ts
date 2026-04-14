@@ -34,6 +34,8 @@ const DEVICES: Record<string, Arketype> = {
 
   // ELT ailesi — elite küçük seramik. Ofis/mağaza kış. phaseShift=+2 → Ekim pik.
   "ELT.5-7": { scale: 0.70, phaseShift: 2, growth: 0.04, variance: 0.15, category: "ELT-seramik" },
+  // ELT.7-11 — ELT.5-7'nin buyuk kardesi (7-11 kW, daha yuksek guc). Ayni kategori.
+  "ELT.7-11": { scale: 0.85, phaseShift: 2, growth: 0.05, variance: 0.14, category: "ELT-seramik-büyük" },
 
   // GSA ailesi — duvar tipi elektrikli, ev/ofis. Kış pik (Kas-Oca), yaz dip (Haz-Ağu).
   // phaseShift=+3 → Ağustos pik → Kasım pik
