@@ -152,6 +152,15 @@ router.post("/bulk/bom", async (req: Request, res: Response) => {
       created++;
     }
 
+    // Lineage — batch trace (Palantir Foundry continuous write-back principle)
+    if (created > 0) {
+      recordLineage({
+        entity: "bom_items", entityId: sku,
+        sourceType: "import", sourceName: `Bulk BOM import: ${sku}`,
+        actor: "import", metadata: { sku, created, total: items.length, tiers: Array.from(new Set(items.map(i => i.tier))) },
+      }).catch(() => {});
+    }
+
     res.json({ success: true, sku, created, total: items.length });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
@@ -193,6 +202,15 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
         });
         created++;
       }
+    }
+
+    // Lineage — cross-product pool update (Octopus Y.2 binding)
+    if (created + updated > 0) {
+      recordLineage({
+        entity: "component_stock", entityId: "pool",
+        sourceType: "import", sourceName: "Bulk stock import (shared pool)",
+        actor: "import", metadata: { created, updated, total: items.length, uniqueCodes: items.length },
+      }).catch(() => {});
     }
 
     res.json({ success: true, created, updated, total: items.length });
