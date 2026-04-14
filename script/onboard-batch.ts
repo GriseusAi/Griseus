@@ -62,6 +62,10 @@ type Device = {
 // ═════════════════════════════════════ PARSE ═════════════════════════════════════
 
 const FOOTER_KEYWORDS = ["Toplam Maliyet", "Malzeme Maliyeti", "Maliyet Katkısı", "Hammadde Toplamı"];
+// İşçilik satırları: fiziksel bileşen değil, sadece maliyet muhasebesi için Excel'e eklenmiş.
+// BOM'a ve stok havuzuna ALINMAMALI — alınırsa "alarm: 0 stok, bileşen bitti" halüsinasyonu olur.
+// Örnek: "20.068 BH Reflektör Büküm İşçiliği", "26.098 BH 4" yanma borusu flanş ve kaynak işciliği"
+const LABOR_KEYWORDS = ["işcilik", "işçilik"];
 
 function indentLevel(raw: string): number {
   const m = raw.match(/^(\s*)/);
@@ -103,6 +107,9 @@ function parseDevice(filePath: string): Device {
     // qty=0 üretim-dışı satır (etiket/maliyet kalemi) — server da zaten atıyor (import.ts:141).
     // Adapter tarafında atmak parse/DB sayilari birebir eslesmesini saglar.
     if (!qty || qty <= 0) continue;
+    // İşçilik satırları: fiziksel bileşen değil → BOM ve stok havuzu DIŞINDA kalmalı.
+    // Bunları almak "alarm: 0 stok, işçilik bitti!" gibi false-positive doğurur.
+    if (LABOR_KEYWORDS.some(k => itemName.toLowerCase().includes(k))) continue;
 
     const lvl = indentLevel(rawCode);        // 0, 1, 2, 3
     const tier = lvl + 1;                    // Griseus: tier 1 = direct child
