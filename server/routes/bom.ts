@@ -67,7 +67,11 @@ function computeSubAssemblyCapacity(
 }
 
 function computeProductionCapacity(allItems: BomRow[]) {
-  const tier1and2 = allItems.filter((i) => i.tier === 1 || i.tier === 2);
+  // SADECE tier=1 bilesenler uretim darbogazi olabilir. Tier 2+ sub-part'lar
+  // tier=1 yari-mamulun computeSubAssemblyCapacity'sinde zaten hesaba giriyor.
+  // Onlari ayrica bagimsiz saymak CIFT SAYIM'dir (or: BH 50 brulor 58 stokta hazir,
+  // ama sub-part 07250004 stok=0 → eski kod min(58, 0)=0 diyordu → YANLIS).
+  const tier1 = allItems.filter((i) => i.tier === 1);
   const bottlenecks: Array<{
     code: string; name: string; tier: number; stock: number;
     required: number; maxProducts: number; note?: string;
@@ -77,15 +81,16 @@ function computeProductionCapacity(allItems: BomRow[]) {
   const subAssemblyStatus: Record<string, any> = {};
   let maxProducible = Infinity;
 
-  for (const item of tier1and2) {
+  for (const item of tier1) {
     let effectiveStock = item.currentStock;
     let note: string | undefined;
 
-    if (item.tier === 2) {
+    // Yari-mamul mu? Bu tier=1 bilesenin alt bileseni var mi?
+    const hasChildren = allItems.some(i => i.parentComponentCode === item.code);
+    if (hasChildren) {
       const sub = computeSubAssemblyCapacity(item.code, allItems);
-      const totalAvailable = item.currentStock + sub.producible;
-      effectiveStock = totalAvailable;
-      note = `YARI MAMÜL — alt bileşenlerden ${sub.producible} adet üretilebilir`;
+      effectiveStock = item.currentStock + sub.producible;
+      note = `YARI MAMÜL — hazır stok: ${item.currentStock} + alt bileşenlerden: ${sub.producible}`;
       subAssemblyStatus[item.code] = {
         name: item.name,
         currentStock: item.currentStock,
@@ -101,7 +106,7 @@ function computeProductionCapacity(allItems: BomRow[]) {
 
     const reasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
       { order: 1, cause: `${item.code} ${item.name} analiz edildi`, data: { tier: item.tier } },
-      { order: 2, cause: `Efektif stok: ${effectiveStock} adet${item.tier === 2 ? ` (DB: ${item.currentStock} + alt bileşenlerden monte: ${effectiveStock - item.currentStock})` : ""}`, data: { effectiveStock, rawStock: item.currentStock } },
+      { order: 2, cause: `Efektif stok: ${effectiveStock} adet${effectiveStock !== item.currentStock ? ` (hazır: ${item.currentStock} + alt bileşenden monte: ${effectiveStock - item.currentStock})` : ""}`, data: { effectiveStock, rawStock: item.currentStock } },
       { order: 3, cause: `Birim başına gerekli: ${item.requiredQty} adet`, data: { required: item.requiredQty } },
       { order: 4, cause: `Maksimum üretilebilir: ${maxProducts} = ⌊${effectiveStock} / ${item.requiredQty}⌋`, data: { maxProducts } },
     ];
@@ -190,16 +195,50 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
     return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
+  // Parent effective-stock hesabi helper — tier 2+ leaf'lerin "kritik mi degil mi"yi
+  // parent tier=1 yari-mamulun effective'ine bakarak belirlemek icin
+  function parentEffective(childCode: string): number | null {
+    const child = items.find(x => x.code === childCode);
+    if (!child?.parentComponentCode) return null;
+    const parent = items.find(x => x.code === child.parentComponentCode);
+    if (!parent) return null;
+    const sub = computeSubAssemblyCapacity(parent.code, items);
+    return parent.currentStock + sub.producible;
+  }
+
   res.json({
     product: sku,
     components: items.map((i) => {
-      // Yarı mamül (tier 2): efektif stok = mevcut + alt bileşenlerden monte edilebilir
+      // Efektif stok: yari-mamul ise (alt bileseni VAR) hazir + alt bilesenden monte
+      const hasChildren = items.some(x => x.parentComponentCode === i.code);
       let effectiveStock = i.currentStock;
-      if (i.tier === 2) {
+      if (hasChildren) {
         const sub = computeSubAssemblyCapacity(i.code, items);
         effectiveStock = i.currentStock + sub.producible;
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
+
+      // Status hesabi — tier 2+ leaf (parent'i var, kendi children'i yok):
+      //   parent'in effective stoku urun icin yeterli ise "kritik degil, ok"
+      //   (Octopus: parent hazir brulor stokta, sub-part tedarikte bekleyen degil bloker)
+      let status: string;
+      if (effectiveStock < 0) status = "critical";
+      else if (maxProducts === null) status = "N/A";
+      else if (i.tier >= 2 && !hasChildren && maxProducts === 0) {
+        // Tier 2+ leaf + kendi stok 0 → parent'in durumuna bak
+        const parentEff = parentEffective(i.code);
+        if (parentEff !== null && parentEff >= i.requiredQty) {
+          status = "ok"; // Parent yari-mamul/bilesen hazir, sub-part bloker degil
+        } else {
+          status = "critical"; // Parent da sikintida → gercek kritik
+        }
+      }
+      else if (maxProducts === 0) status = "critical";
+      else if (maxProducts < 50) status = "critical";
+      else if (maxProducts < 150) status = "warning";
+      else if (maxProducts < 400) status = "ok";
+      else status = "abundant";
+
       return {
         code: i.code,
         name: i.name,
@@ -209,13 +248,7 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
         parentComponentCode: i.parentComponentCode,
         currentStock: effectiveStock,
         maxProducts,
-        status:
-          effectiveStock < 0 ? "critical" :
-          maxProducts === null ? "N/A" :
-          maxProducts === 0 ? "critical" :
-          maxProducts < 50 ? "critical" :
-          maxProducts < 150 ? "warning" :
-          maxProducts < 400 ? "ok" : "abundant",
+        status,
       };
     }),
   });
