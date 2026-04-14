@@ -72,8 +72,9 @@ function parseDevice(filePath: string): Device {
   const buf = readFileSync(filePath);
   const wb = XLSX.read(buf, { type: "buffer", cellText: true, cellDates: false });
   const sheet = wb.Sheets[wb.SheetNames[0]];
-  // raw:false önemli — leading whitespace preserved
-  const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "", raw: false });
+  // raw:true — numeric degerler Turkce locale formatindan bozulmadan alinsin
+  // (raw:false ile "6,236." → NaN). Leading whitespace Stok Kodu stringlerinde korunur.
+  const rows = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "", raw: true });
 
   if (rows.length < 2) throw new Error(`${filePath}: çok az satır`);
 
@@ -99,6 +100,9 @@ function parseDevice(filePath: string): Device {
     // Footer satırları: "Toplam Maliyet" gibi metin ya code ya name kolonuna yazılmış olabilir
     if (FOOTER_KEYWORDS.some(k => code.includes(k) || itemName.includes(k))) continue;
     if (!itemName) continue;
+    // qty=0 üretim-dışı satır (etiket/maliyet kalemi) — server da zaten atıyor (import.ts:141).
+    // Adapter tarafında atmak parse/DB sayilari birebir eslesmesini saglar.
+    if (!qty || qty <= 0) continue;
 
     const lvl = indentLevel(rawCode);        // 0, 1, 2, 3
     const tier = lvl + 1;                    // Griseus: tier 1 = direct child
@@ -243,7 +247,7 @@ async function verify(devices: Device[], snapshotId: number | null) {
   console.log("\n[A] BOM tree render — her cihaz API'den okunabiliyor mu");
   for (const d of devices) {
     const bom = await get(`/api/bom/${encodeURIComponent(d.sku)}`);
-    const count = Array.isArray(bom) ? bom.length : (bom?.items?.length ?? 0);
+    const count = bom?.totalComponents ?? (Array.isArray(bom) ? bom.length : (bom?.items?.length ?? 0));
     const expected = d.items.length;
     const ok = count >= expected;
     console.log(`  ${ok ? "✓" : "✗"} ${d.sku.padEnd(14)} BOM ${count}/${expected}`);
