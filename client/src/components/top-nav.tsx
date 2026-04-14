@@ -30,7 +30,6 @@ function useNavItems() {
     { path: `/stok/urun/${selectedSku}`, label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
     { path: "/sihir", label: "Sihir", icon: "\u2B21" },
     { path: "/ontology", label: "Ontology", icon: "\u25C8" },
-    { path: "/lineage", label: "LineAge", icon: "\u29BF" },
   ];
 }
 
