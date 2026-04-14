@@ -195,20 +195,15 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
     return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
-  // Parent effective-stock hesabi helper — tier 2+ leaf'lerin "kritik mi degil mi"yi
-  // parent tier=1 yari-mamulun effective'ine bakarak belirlemek icin
-  function parentEffective(childCode: string): number | null {
-    const child = items.find(x => x.code === childCode);
-    if (!child?.parentComponentCode) return null;
-    const parent = items.find(x => x.code === child.parentComponentCode);
-    if (!parent) return null;
-    const sub = computeSubAssemblyCapacity(parent.code, items);
-    return parent.currentStock + sub.producible;
-  }
+  // Dashboard flat stok goruntusu: sadece tier=1 (root-level) bilesenler gorunur.
+  // Alt bileşenler (tier 2+) yari-mamulun icinde gizli — "Alt bilesenleri goster" drill-down ile acilir.
+  // Or: BH 50 brulor (tier 1) = 58 stok gorunur, icinde 07250004 vb. gorunmez.
+  // Bu ELT.7-11 dashboard'undaki davranisla birebir aynidir (seed-gss20p.ts da zaten flat tier 1).
+  const tier1Items = items.filter(i => i.tier === 1);
 
   res.json({
     product: sku,
-    components: items.map((i) => {
+    components: tier1Items.map((i) => {
       // Efektif stok: yari-mamul ise (alt bileseni VAR) hazir + alt bilesenden monte
       const hasChildren = items.some(x => x.parentComponentCode === i.code);
       let effectiveStock = i.currentStock;
@@ -218,21 +213,10 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
 
-      // Status hesabi — tier 2+ leaf (parent'i var, kendi children'i yok):
-      //   parent'in effective stoku urun icin yeterli ise "kritik degil, ok"
-      //   (Octopus: parent hazir brulor stokta, sub-part tedarikte bekleyen degil bloker)
+      // Status: tier=1 icin sadelestirildi — tier 2+ zaten listeye girmiyor.
       let status: string;
       if (effectiveStock < 0) status = "critical";
       else if (maxProducts === null) status = "N/A";
-      else if (i.tier >= 2 && !hasChildren && maxProducts === 0) {
-        // Tier 2+ leaf + kendi stok 0 → parent'in durumuna bak
-        const parentEff = parentEffective(i.code);
-        if (parentEff !== null && parentEff >= i.requiredQty) {
-          status = "ok"; // Parent yari-mamul/bilesen hazir, sub-part bloker degil
-        } else {
-          status = "critical"; // Parent da sikintida → gercek kritik
-        }
-      }
       else if (maxProducts === 0) status = "critical";
       else if (maxProducts < 50) status = "critical";
       else if (maxProducts < 150) status = "warning";
