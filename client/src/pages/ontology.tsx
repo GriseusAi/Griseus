@@ -29,6 +29,8 @@ interface BomComponent {
   code: string; name: string; requiredPerUnit: number; unit: string;
   tier: number; parentComponentCode: string | null;
   currentStock: number; maxProducts: number | null; status: string;
+  isSubAssembly?: boolean;
+  children?: BomComponent[];
 }
 
 interface CapacityData {
@@ -67,7 +69,12 @@ interface GNode {
 
 interface GEdge { source: string; target: string; label: string; qty: number }
 
-function buildGraph(components: BomComponent[], sku: string): { nodes: GNode[]; edges: GEdge[] } {
+function buildGraph(
+  components: BomComponent[],
+  sku: string,
+  expandedSubs: Set<string>,
+  parentPositions?: Map<string, { x: number; y: number }>
+): { nodes: GNode[]; edges: GEdge[] } {
   const nodes: GNode[] = [];
   const edges: GEdge[] = [];
 
@@ -79,20 +86,36 @@ function buildGraph(components: BomComponent[], sku: string): { nodes: GNode[]; 
   });
 
   for (const c of components) {
+    const isSub = !!(c.isSubAssembly && c.children && c.children.length > 0);
+    const prev = parentPositions?.get(c.code);
     nodes.push({
-      id: c.code, label: `${c.code}\n${c.name}`, tier: c.tier,
+      id: c.code, label: `${c.code}\n${c.name}`, tier: 1,
       stock: c.currentStock, required: c.requiredPerUnit, maxProducts: c.maxProducts,
       status: c.status, unit: c.unit,
-      x: (Math.random() - 0.5) * 600, y: (Math.random() - 0.5) * 400,
-      vx: 0, vy: 0, parentCode: c.parentComponentCode,
-      isSubAssembly: c.tier === 2,
+      x: prev?.x ?? (Math.random() - 0.5) * 600,
+      y: prev?.y ?? (Math.random() - 0.5) * 400,
+      vx: 0, vy: 0, parentCode: null,
+      isSubAssembly: isSub,
     });
+    edges.push({ source: sku, target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
 
-    // Edge: parent → child
-    if (c.tier === 1 || c.tier === 2) {
-      edges.push({ source: sku, target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
-    } else if (c.tier === 3 && c.parentComponentCode) {
-      edges.push({ source: c.parentComponentCode, target: c.code, label: `×${c.requiredPerUnit}`, qty: c.requiredPerUnit });
+    // Children: sadece yari-mamul expand edildiyse
+    if (isSub && expandedSubs.has(c.code) && c.children) {
+      for (const child of c.children) {
+        const childPrev = parentPositions?.get(child.code);
+        // Child başlangıç pozisyonu parent'ın yakınında
+        const parentNode = nodes.find(n => n.id === c.code);
+        nodes.push({
+          id: child.code, label: `${child.code}\n${child.name}`, tier: 2,
+          stock: child.currentStock, required: child.requiredPerUnit,
+          maxProducts: child.maxProducts, status: child.status, unit: child.unit,
+          x: childPrev?.x ?? (parentNode?.x ?? 0) + (Math.random() - 0.5) * 100,
+          y: childPrev?.y ?? (parentNode?.y ?? 0) + 80 + (Math.random() - 0.5) * 40,
+          vx: 0, vy: 0, parentCode: c.code,
+          isSubAssembly: false,
+        });
+        edges.push({ source: c.code, target: child.code, label: `×${child.requiredPerUnit}`, qty: child.requiredPerUnit });
+      }
     }
   }
 
@@ -233,28 +256,20 @@ function runSimulation(components: BomComponent[], targetQty: number): SimResult
    CANVAS RENDERER — Draws the force graph
    ═══════════════════════════════════════════════════════════ */
 
-function getNodeColor(node: GNode, sim: SimResult | null, seasonalDailyDemand?: number): string {
+function getNodeColor(node: GNode, sim: SimResult | null): string {
   if (node.isProduct) return C.accent;
   if (!sim) {
-    // Mevsimsel renklendirme: bu ayın günlük talebine göre kaç gün yeter?
-    if (seasonalDailyDemand && seasonalDailyDemand > 0 && node.required > 0) {
-      const dailyComponentNeed = seasonalDailyDemand * node.required;
-      const daysOfStock = dailyComponentNeed > 0 ? node.stock / dailyComponentNeed : 999;
-      if (daysOfStock < 7) return C.err;       // 1 haftadan az = kritik
-      if (daysOfStock < 15) return C.warn;     // 2 haftadan az = uyarı
-      if (daysOfStock < 30) return C.blue;     // 1 aydan az = dikkat
-      return C.ok;                              // 1 ay+ = yeterli
-    }
-    // Fallback: orijinal statik renklendirme
+    // Stok durumu sayfasi ile AYNI status-based renklendirme (cross-page octopus consistency)
     if (node.status === "critical") return C.err;
     if (node.status === "warning") return C.warn;
     if (node.status === "ok") return C.blue;
-    return C.ok;
+    if (node.status === "abundant") return C.ok;
+    return C.dim; // "N/A" veya bilinmeyen status
   }
   const sc = sim.components.find(c => c.code === node.id);
   if (!sc) return C.dim;
-  if (sc.surplus < 0) return C.err;  // Stok yetersiz = kırmızı
-  if (sc.isBottleneck) return C.warn; // En zayıf halka ama yeterli = turuncu
+  if (sc.surplus < 0) return C.err;
+  if (sc.isBottleneck) return C.warn;
   if (sc.utilizationPct > 80) return C.blue;
   return C.ok;
 }
@@ -270,7 +285,7 @@ function drawGraph(
   ctx: CanvasRenderingContext2D, nodes: GNode[], edges: GEdge[],
   width: number, height: number, hoveredNode: string | null,
   selectedNode: string | null, sim: SimResult | null, simQty: number,
-  seasonalDailyDemand?: number,
+  expandedSubs: Set<string>,
 ) {
   ctx.clearRect(0, 0, width, height);
 
@@ -325,7 +340,7 @@ function drawGraph(
   // Nodes
   for (const n of nodes) {
     const r = getNodeRadius(n);
-    const color = getNodeColor(n, sim, seasonalDailyDemand);
+    const color = getNodeColor(n, sim);
     const isHovered = hoveredNode === n.id;
     const isSelected = selectedNode === n.id;
 
@@ -394,6 +409,25 @@ function drawGraph(
       ctx.textBaseline = "middle";
       ctx.fillText(n.stock > 9999 ? `${(n.stock / 1000).toFixed(1)}k` : String(Math.round(n.stock)), n.x, n.y);
       ctx.textBaseline = "alphabetic";
+
+      // Yari-mamul için expand/collapse işareti (kuzeydoğu köşesi)
+      if (n.isSubAssembly) {
+        const isExpanded = expandedSubs.has(n.id);
+        const bx = n.x + r - 2, by = n.y - r + 2;
+        ctx.beginPath();
+        ctx.arc(bx, by, 7, 0, Math.PI * 2);
+        ctx.fillStyle = C.accent;
+        ctx.fill();
+        ctx.strokeStyle = C.bg;
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.font = "bold 10px 'Outfit', sans-serif";
+        ctx.fillStyle = C.white;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(isExpanded ? "−" : "+", bx, by + 0.5);
+        ctx.textBaseline = "alphabetic";
+      }
     } else {
       ctx.font = "bold 13px 'Outfit', sans-serif";
       ctx.fillStyle = C.accent;
@@ -407,18 +441,10 @@ function drawGraph(
     }
   }
 
-  // Legend — mevsimsel vs statik
+  // Legend — status-based (stok durumu ile ayni)
   ctx.font = "9px 'Outfit', sans-serif";
   ctx.textAlign = "left";
-  const legendItems = !sim && seasonalDailyDemand
-    ? [
-        { color: C.accent, label: "Ürün" },
-        { color: C.ok, label: "30+ gün yeter" },
-        { color: C.blue, label: "15-30 gün" },
-        { color: C.warn, label: "7-15 gün" },
-        { color: C.err, label: "<7 gün (kritik)" },
-      ]
-    : [
+  const legendItems = [
         { color: C.accent, label: "Ürün" },
         { color: C.ok, label: "Bol Stok" },
         { color: C.blue, label: "Yeterli" },
@@ -452,6 +478,7 @@ export default function OntologyPage() {
   const [simResult, setSimResult] = useState<SimResult | null>(null);
   const [graphReady, setGraphReady] = useState(false);
   const [lastUpdate, setLastUpdate] = useState<string | null>(null);
+  const [expandedSubs, setExpandedSubs] = useState<Set<string>>(new Set());
   const qc = useQueryClient();
 
   // WebSocket — live blood flow: stock changes pump to all organs instantly
@@ -471,6 +498,7 @@ export default function OntologyPage() {
     setSimQty(0);
     setSimResult(null);
     setSelectedNode(null);
+    setExpandedSubs(new Set());
     setGraphReady(false);
   }, [sku]);
 
@@ -518,18 +546,21 @@ export default function OntologyPage() {
     return () => window.removeEventListener("resize", resize);
   }, []);
 
-  // Build graph when data arrives
+  // Build graph when data OR expansion changes
   useEffect(() => {
     if (!stockData?.components) return;
-    const { nodes, edges } = buildGraph(stockData.components, sku);
+    // Preserve existing positions to avoid jarring re-layout on expand/collapse
+    const prev = new Map(nodesRef.current.map(n => [n.id, { x: n.x, y: n.y }]));
+    const { nodes, edges } = buildGraph(stockData.components, sku, expandedSubs, prev);
     nodesRef.current = nodes;
     edgesRef.current = edges;
 
-    // Run initial layout iterations
+    // Run layout iterations — fewer if we already have positions, more for fresh
     const { w, h } = sizeRef.current;
-    for (let i = 0; i < 150; i++) simulateForces(nodes, edges, w, h);
+    const iterations = prev.size > 0 ? 40 : 150;
+    for (let i = 0; i < iterations; i++) simulateForces(nodes, edges, w, h);
     setGraphReady(true);
-  }, [stockData]);
+  }, [stockData, expandedSubs, sku]);
 
   // Run simulation when qty changes
   useEffect(() => {
@@ -588,13 +619,13 @@ export default function OntologyPage() {
       ctx.save();
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
       simulateForces(nodesRef.current, edgesRef.current, w, h);
-      drawGraph(ctx, nodesRef.current, edgesRef.current, w, h, hoveredNode, selectedNode, simResult, simQty, seasonal?.dailyDemand);
+      drawGraph(ctx, nodesRef.current, edgesRef.current, w, h, hoveredNode, selectedNode, simResult, simQty, expandedSubs);
       ctx.restore();
       animRef.current = requestAnimationFrame(tick);
     };
     tick();
     return () => { running = false; cancelAnimationFrame(animRef.current); };
-  }, [graphReady, hoveredNode, selectedNode, simResult, simQty, seasonal]);
+  }, [graphReady, hoveredNode, selectedNode, simResult, simQty, expandedSubs]);
 
   // Mouse interaction
   const findNodeAt = useCallback((mx: number, my: number): GNode | null => {
@@ -621,6 +652,15 @@ export default function OntologyPage() {
   const handleClick = useCallback((e: React.MouseEvent<HTMLCanvasElement>) => {
     const { mx, my } = getMousePos(e);
     const node = findNodeAt(mx, my);
+    if (node?.isSubAssembly) {
+      // Yari-mamul: toggle expand/collapse
+      setExpandedSubs(prev => {
+        const next = new Set(prev);
+        if (next.has(node.id)) next.delete(node.id);
+        else next.add(node.id);
+        return next;
+      });
+    }
     setSelectedNode(prev => node?.id === prev ? null : (node?.id || null));
   }, [findNodeAt, getMousePos]);
 
