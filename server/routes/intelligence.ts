@@ -42,6 +42,9 @@ export interface ComponentIntelligence {
   seasonalReorderPoint: number;
   currentSeasonalRate: number;
   peakSeasonalRate: number;
+  // Yari-mamul drill-down
+  isSubAssembly?: boolean;
+  children?: ComponentIntelligence[];
 }
 
 // ═══════════════════════════════════════════════════════════
@@ -161,100 +164,107 @@ export async function computeComponentIntelligence(sku: string): Promise<{
 
   const dailySalesRate = salesLast30 / 30;
 
-  const components: ComponentIntelligence[] = items
-    .filter(i => i.tier === 1 || i.tier === 2)
-    .map(item => {
-      // Yarı mamül (tier 2): efektif stok = mevcut + alt bileşenlerden monte edilebilir
-      let effectiveStock = item.currentStock;
-      if (item.tier === 2) {
-        const sub = computeSubAssemblyCapacity(item.code, items);
-        effectiveStock = item.currentStock + sub.producible;
-      }
-      const dailyBurn = dailySalesRate * item.requiredQty;
-      const weeklyBurn = dailyBurn * 7;
-      const daysToStockout = dailyBurn > 0 ? Math.floor(effectiveStock / dailyBurn) : null;
-      const reorderPoint = Math.ceil(dailyBurn * T.leadTimeDays);
-      const suggestedOrderQty = Math.max(0, Math.ceil(dailyBurn * 30) - Math.floor(effectiveStock));
+  // Helper — item icin tam intelligence hesapla. perProductQty: urun basina kac adet
+  // gerektiginin duz toplami (parent × self.qty). Yari-mamul alt bileseni icin parent
+  // zinciri carpilmasi yapilir. hasSubChildren: alt bileseni var mi (yari-mamul mu).
+  const computeItemIntel = (item: typeof items[number], perProductQty: number, hasSubChildren: boolean): ComponentIntelligence => {
+    let effectiveStock = item.currentStock;
+    if (hasSubChildren) {
+      const sub = computeSubAssemblyCapacity(item.code, items);
+      effectiveStock = item.currentStock + sub.producible;
+    }
+    const dailyBurn = dailySalesRate * perProductQty;
+    const weeklyBurn = dailyBurn * 7;
+    const daysToStockout = dailyBurn > 0 ? Math.floor(effectiveStock / dailyBurn) : null;
+    const reorderPoint = Math.ceil(dailyBurn * T.leadTimeDays);
+    const suggestedOrderQty = Math.max(0, Math.ceil(dailyBurn * 30) - Math.floor(effectiveStock));
 
-      // Trend: compare last 14 days vs previous 14 days burn rate
-      const burnLast14 = (salesLast14 / 14) * item.requiredQty;
-      const burnPrev14 = (salesPrev14 / 14) * item.requiredQty;
-      let trendRatio = burnPrev14 > 0 ? burnLast14 / burnPrev14 : 1;
-      trendRatio = Math.round(trendRatio * 100) / 100;
-      const trend: "accelerating" | "stable" | "decelerating" =
-        trendRatio > 1.2 ? "accelerating" : trendRatio < 0.8 ? "decelerating" : "stable";
+    const burnLast14 = (salesLast14 / 14) * perProductQty;
+    const burnPrev14 = (salesPrev14 / 14) * perProductQty;
+    let trendRatio = burnPrev14 > 0 ? burnLast14 / burnPrev14 : 1;
+    trendRatio = Math.round(trendRatio * 100) / 100;
+    const trend: "accelerating" | "stable" | "decelerating" =
+      trendRatio > 1.2 ? "accelerating" : trendRatio < 0.8 ? "decelerating" : "stable";
 
-      // Palantir Ontology — Seasonal calculations (use effectiveStock for tier 2) — DSE dinamik
-      const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? dynYearlyTotal / 365 * item.requiredQty : 0);
-      const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate, dynIndices);
+    const effectiveDailyRate = dailyBurn > 0 ? dailyBurn : (effectiveStock > 0 ? dynYearlyTotal / 365 * perProductQty : 0);
+    const seasonal = seasonalForwardWalk(effectiveStock, effectiveDailyRate, dynIndices);
 
-      // Urgency: prefer seasonal forward-walk over simple daysToStockout (ATE adaptif eşikler)
-      const urgencyFromSeasonal: "critical" | "warning" | "ok" | "abundant" =
-        effectiveStock <= 0 ? "critical"
-        : seasonal.days <= T.urgencyCriticalDays ? "critical"
-        : seasonal.days <= T.urgencyWarningDays ? "warning"
-        : seasonal.days <= T.urgencyOkDays ? "ok"
-        : "abundant";
+    const urgencyFromSeasonal: "critical" | "warning" | "ok" | "abundant" =
+      effectiveStock <= 0 ? "critical"
+      : seasonal.days <= T.urgencyCriticalDays ? "critical"
+      : seasonal.days <= T.urgencyWarningDays ? "warning"
+      : seasonal.days <= T.urgencyOkDays ? "ok"
+      : "abundant";
 
-      // If we have actual sales data, also check linear burn rate (ATE adaptif)
-      const urgencyFromLinear: "critical" | "warning" | "ok" | "abundant" =
-        daysToStockout === null ? "abundant"
-        : daysToStockout < T.linearCriticalDays ? "critical"
-        : daysToStockout < T.linearWarningDays ? "warning"
-        : daysToStockout < T.linearOkDays ? "ok" : "abundant";
+    const urgencyFromLinear: "critical" | "warning" | "ok" | "abundant" =
+      daysToStockout === null ? "abundant"
+      : daysToStockout < T.linearCriticalDays ? "critical"
+      : daysToStockout < T.linearWarningDays ? "warning"
+      : daysToStockout < T.linearOkDays ? "ok" : "abundant";
 
-      // Take the worse of the two signals
-      const urgencyRank = { critical: 0, warning: 1, ok: 2, abundant: 3 } as const;
-      const urgency = urgencyRank[urgencyFromSeasonal] <= urgencyRank[urgencyFromLinear]
-        ? urgencyFromSeasonal : urgencyFromLinear;
-      const currentMonthIdx = new Date().getMonth();
-      const currentSeasonalRate = effectiveDailyRate * dynIndices[currentMonthIdx];
-      const peakSeasonalRate = effectiveDailyRate * Math.max(...dynIndices);
-      const seasonalReorderPt = Math.ceil(reorderPoint * dynIndices[currentMonthIdx]);
+    const urgencyRank = { critical: 0, warning: 1, ok: 2, abundant: 3 } as const;
+    const urgency = urgencyRank[urgencyFromSeasonal] <= urgencyRank[urgencyFromLinear]
+      ? urgencyFromSeasonal : urgencyFromLinear;
+    const currentMonthIdx = new Date().getMonth();
+    const currentSeasonalRate = effectiveDailyRate * dynIndices[currentMonthIdx];
+    const peakSeasonalRate = effectiveDailyRate * Math.max(...dynIndices);
+    const seasonalReorderPt = Math.ceil(reorderPoint * dynIndices[currentMonthIdx]);
 
-      // Depletion risk based on HOW SOON stock runs out (ATE adaptif eşikler)
-      const depRisk = effectiveStock <= 0 ? "KRİTİK" as const
-        : seasonal.days <= T.urgencyCriticalDays ? "KRİTİK" as const
-        : seasonal.days <= T.urgencyWarningDays ? "YÜKSEK" as const
-        : seasonal.days <= T.urgencyOkDays ? "ORTA" as const
-        : "DÜŞÜK" as const;
+    const depRisk = effectiveStock <= 0 ? "KRİTİK" as const
+      : seasonal.days <= T.urgencyCriticalDays ? "KRİTİK" as const
+      : seasonal.days <= T.urgencyWarningDays ? "YÜKSEK" as const
+      : seasonal.days <= T.urgencyOkDays ? "ORTA" as const
+      : "DÜŞÜK" as const;
 
-      const winterStress = effectiveStock > 0 && seasonal.depletionMonth !== null && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= T.urgencyWarningDays;
+    const winterStress = effectiveStock > 0 && seasonal.depletionMonth !== null && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= T.urgencyWarningDays;
 
-      // Reasoning chain: neden bu urgency seviyesinde?
-      const urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
-        { order: 1, cause: `Efektif stok: ${effectiveStock} ${item.unit}${item.tier === 2 ? " (yarı mamül — alt bileşenlerden monte edilebilir)" : ""}`, data: { effectiveStock, tier: item.tier } },
-        { order: 2, cause: `Mevsimsel forward-walk: ${effectiveStock > 0 ? (seasonal.neverDepletes ? "3+ yıl (uzak vadeli)" : `${seasonal.days} gün`) : "0 gün"} → ${urgencyFromSeasonal}`, data: { seasonalDays: effectiveStock > 0 ? seasonal.days : 0, seasonalUrgency: urgencyFromSeasonal } },
-      ];
-      if (daysToStockout !== null) {
-        urgencyReasoning.push({ order: 3, cause: `Lineer tüketim hızı: ${daysToStockout} gün → ${urgencyFromLinear}`, data: { daysToStockout, linearUrgency: urgencyFromLinear } });
-      }
-      urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `İki sinyalin kötüsü alındı → ${urgency.toUpperCase()}`, data: { finalUrgency: urgency } });
-      if (winterStress && seasonal.depletionMonth !== null) {
-        urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `Kış stresi: stok ${MONTH_LABELS[seasonal.depletionMonth]} ${seasonal.depletionYear}'de tükenecek — kış talebi yüksek`, data: { depletionMonth: MONTH_LABELS[seasonal.depletionMonth] } });
-      }
+    const urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
+      { order: 1, cause: `Efektif stok: ${effectiveStock} ${item.unit}${hasSubChildren ? " (yarı mamül — alt bileşenlerden monte edilebilir)" : ""}`, data: { effectiveStock, tier: item.tier } },
+      { order: 2, cause: `Mevsimsel forward-walk: ${effectiveStock > 0 ? (seasonal.neverDepletes ? "3+ yıl (uzak vadeli)" : `${seasonal.days} gün`) : "0 gün"} → ${urgencyFromSeasonal}`, data: { seasonalDays: effectiveStock > 0 ? seasonal.days : 0, seasonalUrgency: urgencyFromSeasonal } },
+    ];
+    if (daysToStockout !== null) {
+      urgencyReasoning.push({ order: 3, cause: `Lineer tüketim hızı: ${daysToStockout} gün → ${urgencyFromLinear}`, data: { daysToStockout, linearUrgency: urgencyFromLinear } });
+    }
+    urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `İki sinyalin kötüsü alındı → ${urgency.toUpperCase()}`, data: { finalUrgency: urgency } });
+    if (winterStress && seasonal.depletionMonth !== null) {
+      urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `Kış stresi: stok ${MONTH_LABELS[seasonal.depletionMonth]} ${seasonal.depletionYear}'de tükenecek — kış talebi yüksek`, data: { depletionMonth: MONTH_LABELS[seasonal.depletionMonth] } });
+    }
 
-      return {
-        code: item.code, name: item.name, tier: item.tier, unit: item.unit,
-        currentStock: effectiveStock, requiredPerUnit: item.requiredQty,
-        dailyBurnRate: Math.round(dailyBurn * 100) / 100,
-        weeklyBurnRate: Math.round(weeklyBurn * 100) / 100,
-        daysToStockout, reorderPoint,
-        isAboveReorderPoint: effectiveStock > reorderPoint,
-        trend, trendRatio, suggestedOrderQty, urgency, urgencyReasoning,
-        // Seasonal fields
-        seasonalDays: effectiveStock > 0 ? seasonal.days : 0,
-        seasonalDifference: daysToStockout !== null && effectiveStock > 0 && !seasonal.neverDepletes ? seasonal.days - daysToStockout : null,
-        depletionMonth: effectiveStock > 0 && seasonal.depletionMonth !== null ? MONTH_LABELS[seasonal.depletionMonth] : null,
-        depletionYear: effectiveStock > 0 && seasonal.depletionYear !== null ? seasonal.depletionYear : null,
-        depletionRisk: effectiveStock > 0 ? depRisk : "KRİTİK",
-        winterStress,
-        seasonalReorderPoint: seasonalReorderPt,
-        currentSeasonalRate: Math.round(currentSeasonalRate * 100) / 100,
-        peakSeasonalRate: Math.round(peakSeasonalRate * 100) / 100,
-      };
-    })
-    .sort((a, b) => (a.seasonalDays ?? 9999) - (b.seasonalDays ?? 9999));
+    return {
+      code: item.code, name: item.name, tier: item.tier, unit: item.unit,
+      currentStock: effectiveStock, requiredPerUnit: perProductQty,
+      dailyBurnRate: Math.round(dailyBurn * 100) / 100,
+      weeklyBurnRate: Math.round(weeklyBurn * 100) / 100,
+      daysToStockout, reorderPoint,
+      isAboveReorderPoint: effectiveStock > reorderPoint,
+      trend, trendRatio, suggestedOrderQty, urgency, urgencyReasoning,
+      seasonalDays: effectiveStock > 0 ? seasonal.days : 0,
+      seasonalDifference: daysToStockout !== null && effectiveStock > 0 && !seasonal.neverDepletes ? seasonal.days - daysToStockout : null,
+      depletionMonth: effectiveStock > 0 && seasonal.depletionMonth !== null ? MONTH_LABELS[seasonal.depletionMonth] : null,
+      depletionYear: effectiveStock > 0 && seasonal.depletionYear !== null ? seasonal.depletionYear : null,
+      depletionRisk: effectiveStock > 0 ? depRisk : "KRİTİK",
+      winterStress,
+      seasonalReorderPoint: seasonalReorderPt,
+      currentSeasonalRate: Math.round(currentSeasonalRate * 100) / 100,
+      peakSeasonalRate: Math.round(peakSeasonalRate * 100) / 100,
+    };
+  };
+
+  // Top-level: parent'i olmayan bilesenler. Aile tutarsizligi (BH tier=1, ELT tier=2)
+  // parentComponentCode ile normalize. Child'lar drill-down icin nested.
+  const topLevel = items.filter(i => !i.parentComponentCode);
+  const components: ComponentIntelligence[] = topLevel.map(item => {
+    const childItems = items.filter(x => x.parentComponentCode === item.code);
+    const hasChildren = childItems.length > 0;
+    const intel = computeItemIntel(item, item.requiredQty, hasChildren);
+    if (hasChildren) {
+      intel.isSubAssembly = true;
+      intel.children = childItems.map(child =>
+        computeItemIntel(child, item.requiredQty * child.requiredQty, false)
+      );
+    }
+    return intel;
+  }).sort((a, b) => (a.seasonalDays ?? 9999) - (b.seasonalDays ?? 9999));
 
   // Ontology summary
   const winterRiskCount = components.filter(c => c.winterStress).length;

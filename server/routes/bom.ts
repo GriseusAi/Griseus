@@ -67,11 +67,11 @@ function computeSubAssemblyCapacity(
 }
 
 function computeProductionCapacity(allItems: BomRow[]) {
-  // SADECE tier=1 bilesenler uretim darbogazi olabilir. Tier 2+ sub-part'lar
-  // tier=1 yari-mamulun computeSubAssemblyCapacity'sinde zaten hesaba giriyor.
-  // Onlari ayrica bagimsiz saymak CIFT SAYIM'dir (or: BH 50 brulor 58 stokta hazir,
-  // ama sub-part 07250004 stok=0 → eski kod min(58, 0)=0 diyordu → YANLIS).
-  const tier1 = allItems.filter((i) => i.tier === 1);
+  // Top-level bilesenler (parentComponentCode=null) uretim darbogazi olabilir.
+  // Child'lar (parent'i olan) sub-assembly capacity'de hesaba giriyor, burada
+  // ayrica saymak CIFT SAYIM'dir. Aileler arasi tier tutarsizligi: BH yari-mamul
+  // tier=1, ELT yari-mamul tier=2. Her iki durumda da parent'siz olan top-level.
+  const tier1 = allItems.filter((i) => !i.parentComponentCode);
   const bottlenecks: Array<{
     code: string; name: string; tier: number; stock: number;
     required: number; maxProducts: number; note?: string;
@@ -195,11 +195,11 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
     return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
-  // Dashboard flat stok goruntusu: sadece tier=1 (root-level) bilesenler gorunur.
-  // Alt bileşenler (tier 2+) yari-mamulun icinde children[] olarak embedded —
-  // UI "Alt bilesenleri goster" drill-down ile acar.
-  // Or: BH 50 brulor (tier 1) = 58 stok gorunur, icinde 07250004 vb. children'da.
-  const tier1Items = items.filter(i => i.tier === 1);
+  // Dashboard flat stok goruntusu: top-level bilesenler (parentComponentCode=null) gorunur.
+  // Aileler arasi veri tutarsizligi: BH ailesi yari-mamul tier=1 (children tier=2),
+  // ELT ailesi yari-mamul tier=2 (children tier=3). Ikisi de top-level — parent'siz
+  // olanlari al, tier'dan bagimsiz. Children[] rekursif olarak dallanir.
+  const tier1Items = items.filter(i => !i.parentComponentCode);
 
   // Recursive child-tree builder: tier>=2 satirlari parent'a bagla
   function buildChildren(parentCode: string): any[] {

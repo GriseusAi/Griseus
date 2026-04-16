@@ -583,92 +583,104 @@ export default function UrunIstihbarat() {
             ))}
           </div>
 
-          {/* Intelligence Rows — Seasonal Only */}
+          {/* Intelligence Rows — Seasonal Only, yari-mamul drill-down */}
           {intel?.components.map((c: any) => {
-            const urgencyColor = c.urgency === "critical" ? C.err : c.urgency === "warning" ? C.warn : c.urgency === "ok" ? C.blue : C.ok;
-            const urgencyBg = c.urgency === "critical" ? C.errDim : c.urgency === "warning" ? C.warnDim : c.urgency === "ok" ? C.blueDim : C.okDim;
-            const urgencyLabel = c.urgency === "critical" ? "KRİTİK" : c.urgency === "warning" ? "DİKKAT" : c.urgency === "ok" ? "YETERLİ" : "BOL";
-            const riskColor = c.depletionRisk === "KRİTİK" ? C.err : c.depletionRisk === "YÜKSEK" ? C.warn : c.depletionRisk === "ORTA" ? C.blue : C.ok;
-            const isExpanded = expandedReasoning === c.code;
+            const renderIntelRow = (row: any, depth: number = 0) => {
+              const urgencyColor = row.urgency === "critical" ? C.err : row.urgency === "warning" ? C.warn : row.urgency === "ok" ? C.blue : C.ok;
+              const urgencyBg = row.urgency === "critical" ? C.errDim : row.urgency === "warning" ? C.warnDim : row.urgency === "ok" ? C.blueDim : C.okDim;
+              const urgencyLabel = row.urgency === "critical" ? "KRİTİK" : row.urgency === "warning" ? "DİKKAT" : row.urgency === "ok" ? "YETERLİ" : "BOL";
+              const riskColor = row.depletionRisk === "KRİTİK" ? C.err : row.depletionRisk === "YÜKSEK" ? C.warn : row.depletionRisk === "ORTA" ? C.blue : C.ok;
+              const isReasoningExpanded = expandedReasoning === row.code;
+              const isDrillExpanded = expandedRows.has(row.code);
+              const isSub = row.isSubAssembly && (row.children?.length ?? 0) > 0;
 
-            return (
-              <div key={c.code}>
-                <div style={{
-                  display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
-                  gap: 8, padding: "8px 12px", borderBottom: isExpanded ? "none" : `1px solid ${C.border}`,
-                  background: c.urgency === "critical" ? C.errDim : c.winterStress ? "rgba(249,115,22,0.03)" : "transparent",
-                  transition: "background 0.15s",
-                }}
-                  onMouseEnter={e => { if (c.urgency !== "critical") e.currentTarget.style.background = C.surfaceHover; }}
-                  onMouseLeave={e => { if (c.urgency !== "critical") e.currentTarget.style.background = c.winterStress ? "rgba(249,115,22,0.03)" : "transparent"; }}
-                >
-                  <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>{c.code}</div>
-                  <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
-                    {c.name}
-                    {c.tier === 2 && <span style={{ fontSize: 8, color: C.accent, fontFamily: mono }}>YARI MAMÜL</span>}
-                    {c.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
-                  </div>
-                  <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
-                    {c.dailyBurnRate}
-                  </div>
-                  {/* Kaç Gün (seasonal) */}
+              return (
+                <div key={row.code}>
                   <div style={{
-                    fontFamily: mono, fontSize: 13, fontWeight: 600,
-                    color: c.seasonalDays === 0 ? C.err
-                      : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
-                      : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.ok,
-                  }}>
-                    {c.seasonalDays === null ? "—"
-                      : c.seasonalDays > 1095 ? "3+yıl"
-                      : `${c.seasonalDays}g`}
-                  </div>
-                  {/* Sipariş Noktası (seasonal) */}
-                  <div style={{
-                    fontFamily: mono, fontSize: 11,
-                    color: c.currentStock > c.seasonalReorderPoint ? C.ok : C.err,
-                  }}>
-                    {c.seasonalReorderPoint}
-                    {c.currentStock <= c.seasonalReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
-                  </div>
-                  {/* Bitiş Ayı */}
-                  <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
-                    {c.depletionMonth
-                      ? `${c.depletionMonth} ${c.depletionYear}`
-                      : c.currentStock > 0 && c.seasonalDays !== null && c.seasonalDays > 1095
-                        ? "Uzak vadeli"
-                        : "—"}
-                  </div>
-                  <div>
-                    <span
-                      onClick={() => c.urgencyReasoning && setExpandedReasoning(prev => prev === c.code ? null : c.code)}
-                      style={{
-                        fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
-                        borderRadius: 4, background: isExpanded ? urgencyColor : urgencyBg,
-                        color: isExpanded ? "#000" : urgencyColor,
-                        cursor: c.urgencyReasoning ? "pointer" : "default",
-                        transition: "all 0.15s",
-                      }}>
-                      {urgencyLabel} {c.urgencyReasoning ? (isExpanded ? "▾" : "▸") : ""}
-                    </span>
-                  </div>
-                </div>
-                {isExpanded && c.urgencyReasoning && (
-                  <div style={{
-                    padding: "8px 16px 12px", background: "rgba(255,255,255,0.02)",
-                    borderBottom: `1px solid ${C.border}`, borderLeft: `2px solid ${urgencyColor}`,
-                  }}>
-                    <div style={{ fontSize: 8, fontFamily: mono, color: C.accent, letterSpacing: 0.5, marginBottom: 4 }}>
-                      SEBEP ZİNCİRİ — {c.code} {c.name}
+                    display: "grid", gridTemplateColumns: "70px 1fr 80px 80px 80px 70px 80px",
+                    gap: 8, padding: "8px 12px", borderBottom: isReasoningExpanded || isDrillExpanded ? "none" : `1px solid ${C.border}`,
+                    background: depth > 0 ? "rgba(255,255,255,0.015)" : (row.urgency === "critical" ? C.errDim : row.winterStress ? "rgba(249,115,22,0.03)" : isSub ? C.accentDim : "transparent"),
+                    borderLeft: depth > 0 ? `2px solid ${C.accent}` : "none",
+                    paddingLeft: depth > 0 ? 12 + depth * 16 : 12,
+                    transition: "background 0.15s",
+                    cursor: isSub ? "pointer" : "default",
+                  }}
+                    onClick={() => isSub && toggleExpand(row.code)}
+                    onMouseEnter={e => { if (row.urgency !== "critical" && !isSub && depth === 0) e.currentTarget.style.background = C.surfaceHover; }}
+                    onMouseLeave={e => { if (row.urgency !== "critical" && !isSub && depth === 0) e.currentTarget.style.background = row.winterStress ? "rgba(249,115,22,0.03)" : "transparent"; }}
+                  >
+                    <div style={{ fontFamily: mono, fontSize: 11, color: C.mid }}>
+                      {isSub && <span style={{ marginRight: 4, color: C.accent }}>{isDrillExpanded ? "▾" : "▸"}</span>}
+                      {row.code}
                     </div>
-                    {c.urgencyReasoning.map((step: any, i: number) => (
-                      <div key={i} style={{ fontSize: 10, color: C.mid, lineHeight: 1.7, paddingLeft: 8 }}>
-                        {step.order}. {step.cause}
-                      </div>
-                    ))}
+                    <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
+                      {row.name}
+                      {isSub && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL ({row.children.length} alt)</span>}
+                      {depth > 0 && <span style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>alt bileşen</span>}
+                      {row.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>
+                      {row.dailyBurnRate}
+                    </div>
+                    <div style={{
+                      fontFamily: mono, fontSize: 13, fontWeight: 600,
+                      color: row.seasonalDays === 0 ? C.err
+                        : row.seasonalDays !== null && row.seasonalDays < 30 ? C.err
+                        : row.seasonalDays !== null && row.seasonalDays < 90 ? C.warn : C.ok,
+                    }}>
+                      {row.seasonalDays === null ? "—"
+                        : row.seasonalDays > 1095 ? "3+yıl"
+                        : `${row.seasonalDays}g`}
+                    </div>
+                    <div style={{
+                      fontFamily: mono, fontSize: 11,
+                      color: row.currentStock > row.seasonalReorderPoint ? C.ok : C.err,
+                    }}>
+                      {row.seasonalReorderPoint}
+                      {row.currentStock <= row.seasonalReorderPoint && <span style={{ color: C.err, fontSize: 9 }}> !</span>}
+                    </div>
+                    <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
+                      {row.depletionMonth
+                        ? `${row.depletionMonth} ${row.depletionYear}`
+                        : row.currentStock > 0 && row.seasonalDays !== null && row.seasonalDays > 1095
+                          ? "Uzak vadeli"
+                          : "—"}
+                    </div>
+                    <div>
+                      <span
+                        onClick={(e) => { e.stopPropagation(); row.urgencyReasoning && setExpandedReasoning(prev => prev === row.code ? null : row.code); }}
+                        style={{
+                          fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "2px 8px",
+                          borderRadius: 4, background: isReasoningExpanded ? urgencyColor : urgencyBg,
+                          color: isReasoningExpanded ? "#000" : urgencyColor,
+                          cursor: row.urgencyReasoning ? "pointer" : "default",
+                          transition: "all 0.15s",
+                        }}>
+                        {urgencyLabel} {row.urgencyReasoning ? (isReasoningExpanded ? "▾" : "▸") : ""}
+                      </span>
+                    </div>
                   </div>
-                )}
-              </div>
-            );
+                  {isReasoningExpanded && row.urgencyReasoning && (
+                    <div style={{
+                      padding: "8px 16px 12px", background: "rgba(255,255,255,0.02)",
+                      borderBottom: `1px solid ${C.border}`, borderLeft: `2px solid ${urgencyColor}`,
+                    }}>
+                      <div style={{ fontSize: 8, fontFamily: mono, color: C.accent, letterSpacing: 0.5, marginBottom: 4 }}>
+                        SEBEP ZİNCİRİ — {row.code} {row.name}
+                      </div>
+                      {row.urgencyReasoning.map((step: any, i: number) => (
+                        <div key={i} style={{ fontSize: 10, color: C.mid, lineHeight: 1.7, paddingLeft: 8 }}>
+                          {step.order}. {step.cause}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {isDrillExpanded && isSub && row.children.map((ch: any) => renderIntelRow(ch, depth + 1))}
+                </div>
+              );
+            };
+
+            return renderIntelRow(c);
           })}
 
           {!intel && (
