@@ -660,6 +660,34 @@ export const ontologyFunctionTypes = pgTable("ontology_function_types", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+// Orchestrator — autonomous octopus-chain auditor (every ~30 min + on data mutations)
+export const orchestratorRuns = pgTable("orchestrator_runs", {
+  id: serial("id").primaryKey(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  trigger: text("trigger").notNull(), // "scheduled" | "data_ingestion" | "manual"
+  triggerDetail: text("trigger_detail"),
+  durationMs: integer("duration_ms").notNull().default(0),
+  // Per-layer: "green" | "yellow" | "red" | "skip"
+  layerMutation: text("layer_mutation"),
+  layerSelfIntel: text("layer_self_intel"),
+  layerCrossProduct: text("layer_cross_product"),
+  layerDownstream: text("layer_downstream"),
+  layerUiCoherence: text("layer_ui_coherence"),
+  layerWsBroadcast: text("layer_ws_broadcast"),
+  layerAgent: text("layer_agent"),
+  layerOntology: text("layer_ontology"),
+  layerValidation: text("layer_validation"),
+  layerSeasonal: text("layer_seasonal"),
+  // Findings
+  greenCount: integer("green_count").notNull().default(0),
+  yellowCount: integer("yellow_count").notNull().default(0),
+  redCount: integer("red_count").notNull().default(0),
+  findings: jsonb("findings").$type<Array<{ layer: string; severity: string; message: string; sku?: string; data?: any }>>().default([]),
+  summary: text("summary"),
+});
+
+export type OrchestratorRun = typeof orchestratorRuns.$inferSelect;
+
 // TypeScript interface for property definitions
 export interface OntologyProperty {
   type: "string" | "number" | "boolean" | "date" | "json";

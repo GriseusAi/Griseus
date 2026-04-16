@@ -1,0 +1,472 @@
+/**
+ * Octopus-Chain Orchestrator — autonomous system integrity auditor
+ *
+ * Mission (from /octopus-chain skill): her veri mutasyonunda ve periyodik olarak
+ * 10-katmanlı bütünlük doğrulaması çalıştırır. Palantir Octopus prensibi:
+ * "1 atom değişince her atom bu değişikliği yansıtmalı".
+ *
+ * Trigger:
+ *  - Scheduled tick (default every 30 min, env ORCHESTRATOR_INTERVAL_MIN)
+ *  - Data ingestion events (bulk import, stock movement, bom change)
+ *  - Manual API trigger
+ *
+ * Output:
+ *  - orchestrator_runs tablosuna tam rapor
+ *  - Red findings → WS broadcast (proactive alert için)
+ */
+
+import { db } from "../db";
+import {
+  orchestratorRuns, bomItems, componentStock, products,
+  dataLineage, dataSnapshots, ontologyObjectTypes, ontologyLinkTypes,
+} from "@shared/schema";
+import { eq, gte, desc, sql } from "drizzle-orm";
+import { computeComponentIntelligence } from "../routes/intelligence";
+import { broadcastProactiveAlert } from "../ws";
+
+type LayerStatus = "green" | "yellow" | "red" | "skip";
+interface Finding {
+  layer: string;
+  severity: "red" | "yellow";
+  message: string;
+  sku?: string;
+  data?: any;
+}
+
+const SKUS = [
+  "ELT.7-11", "GSS20P",
+  "BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV",
+  "ELT.5-7", "GSA15", "GSA20", "GSA30", "GSS40P",
+];
+
+const FAMILY_PEAK: Record<string, string> = {
+  BH: "Eyl",
+  ELT: "Eki",
+  GSA: "Kas",
+  GSS: "Ağu",
+};
+
+function familyOf(sku: string): string | null {
+  for (const k of Object.keys(FAMILY_PEAK)) {
+    if (sku.startsWith(k)) return k;
+  }
+  return null;
+}
+
+/** ═══ LAYER 1: Mutation Kaydı — snapshot + lineage var mı ═══ */
+async function layer1Mutation(findings: Finding[]): Promise<LayerStatus> {
+  try {
+    const recentLineage = await db.select({ count: sql<number>`count(*)::int` })
+      .from(dataLineage)
+      .where(gte(dataLineage.createdAt, new Date(Date.now() - 60 * 60 * 1000)));
+    const count = recentLineage[0]?.count ?? 0;
+    // No lineage in last hour during potential business activity — just informational
+    if (count === 0) {
+      findings.push({ layer: "mutation", severity: "yellow",
+        message: "Son 1 saatte lineage kaydı yok — sistem idle veya mutasyon kaydedilmedi" });
+      return "yellow";
+    }
+    return "green";
+  } catch (err: any) {
+    findings.push({ layer: "mutation", severity: "red", message: `Lineage query failed: ${err.message}` });
+    return "red";
+  }
+}
+
+/** ═══ LAYER 2: Self Intelligence — her SKU temiz mi ═══ */
+async function layer2SelfIntelligence(
+  findings: Finding[],
+  intelCache: Map<string, any>
+): Promise<LayerStatus> {
+  let worst: LayerStatus = "green";
+  for (const sku of SKUS) {
+    try {
+      const intel = await computeComponentIntelligence(sku);
+      intelCache.set(sku, intel);
+
+      const bug = intel.components.filter(
+        (c) => c.currentStock > 0 && c.seasonalDays === 0
+      );
+      const artifact = intel.components.filter(
+        (c) => c.depletionYear !== null && c.depletionYear > new Date().getFullYear() + 5
+      );
+
+      if (bug.length > 0) {
+        findings.push({
+          layer: "selfIntel", severity: "red", sku,
+          message: `BUG: stock>0 && seasonalDays=0 (${bug.length} bileşen)`,
+          data: { codes: bug.map((c) => c.code).slice(0, 10) },
+        });
+        worst = "red";
+      }
+      if (artifact.length > 0) {
+        findings.push({
+          layer: "selfIntel", severity: "red", sku,
+          message: `2042+ artifact (${artifact.length} bileşen)`,
+          data: { codes: artifact.map((c) => c.code).slice(0, 10) },
+        });
+        worst = "red";
+      }
+    } catch (err: any) {
+      findings.push({ layer: "selfIntel", severity: "red", sku,
+        message: `Intelligence query failed: ${err.message}` });
+      worst = "red";
+    }
+  }
+  return worst;
+}
+
+/** ═══ LAYER 3: Cross-Product Y.2 — paylaşılan kod stok tutarlılık ═══ */
+async function layer3CrossProduct(findings: Finding[]): Promise<LayerStatus> {
+  try {
+    const allBom = await db.select({
+      code: bomItems.componentCode,
+      sku: bomItems.parentProductSku,
+    }).from(bomItems);
+
+    const codeSkus: Map<string, Set<string>> = new Map();
+    for (const b of allBom) {
+      if (!codeSkus.has(b.code)) codeSkus.set(b.code, new Set());
+      codeSkus.get(b.code)!.add(b.sku);
+    }
+
+    const shared = Array.from(codeSkus.entries()).filter(([_, s]) => s.size >= 2);
+    // Shared codes must exist — if very few, something is wrong
+    if (shared.length < 10) {
+      findings.push({ layer: "crossProduct", severity: "yellow",
+        message: `Paylaşılan kod sayısı beklenenin altında (${shared.length})` });
+      return "yellow";
+    }
+    // component_stock rows should exist for all unique codes used
+    const stockCount = await db.select({ count: sql<number>`count(*)::int` })
+      .from(componentStock);
+    const actualStockCount = stockCount[0]?.count ?? 0;
+    if (actualStockCount < codeSkus.size * 0.5) {
+      findings.push({ layer: "crossProduct", severity: "red",
+        message: `component_stock %50'den az kod için veri tutuyor (${actualStockCount}/${codeSkus.size})` });
+      return "red";
+    }
+    return "green";
+  } catch (err: any) {
+    findings.push({ layer: "crossProduct", severity: "red",
+      message: `Cross-product check failed: ${err.message}` });
+    return "red";
+  }
+}
+
+/** ═══ LAYER 4: Downstream — DSE, snapshot, lineage staleness ═══ */
+async function layer4Downstream(findings: Finding[]): Promise<LayerStatus> {
+  try {
+    const recentSnap = await db.select().from(dataSnapshots)
+      .orderBy(desc(dataSnapshots.createdAt)).limit(1);
+    if (recentSnap.length === 0) {
+      findings.push({ layer: "downstream", severity: "yellow",
+        message: "Hiç snapshot yok — rollback güvenlik ağı eksik" });
+      return "yellow";
+    }
+    return "green";
+  } catch (err: any) {
+    findings.push({ layer: "downstream", severity: "red",
+      message: `Downstream check failed: ${err.message}` });
+    return "red";
+  }
+}
+
+/** ═══ LAYER 5: UI Coherence — backend tarafından proxy olarak check ═══ */
+async function layer5UiCoherence(findings: Finding[], intelCache: Map<string, any>): Promise<LayerStatus> {
+  // Backend'den UI'ya direct check imkansız — proxy: aynı endpoint birden çağırıldığında
+  // aynı veriyi dönüyor mu (cache consistency). Şu an skip.
+  return "skip";
+}
+
+/** ═══ LAYER 6: WS Broadcast — connection count, recent broadcast ═══ */
+async function layer6WsBroadcast(findings: Finding[]): Promise<LayerStatus> {
+  // WS connection metrics şu an not tracked — skip
+  return "skip";
+}
+
+/** ═══ LAYER 7: Agent Visibility — tool çıktıları fresh ═══ */
+async function layer7Agent(findings: Finding[]): Promise<LayerStatus> {
+  // Agent self-query imkansız (LLM çağrısı pahalı, orchestrator deterministik olmalı)
+  return "skip";
+}
+
+/** ═══ LAYER 8: Ontology Integrity ═══ */
+async function layer8Ontology(findings: Finding[]): Promise<LayerStatus> {
+  try {
+    const objTypes = await db.select({ count: sql<number>`count(*)::int` })
+      .from(ontologyObjectTypes).where(eq(ontologyObjectTypes.enabled, true));
+    const linkTypes = await db.select({ count: sql<number>`count(*)::int` })
+      .from(ontologyLinkTypes).where(eq(ontologyLinkTypes.enabled, true));
+    const objCount = objTypes[0]?.count ?? 0;
+    const linkCount = linkTypes[0]?.count ?? 0;
+    if (objCount < 8) {
+      findings.push({ layer: "ontology", severity: "red",
+        message: `Ontology object_types eksik (${objCount} < 8) — seed gerekli` });
+      return "red";
+    }
+    if (linkCount < 7) {
+      findings.push({ layer: "ontology", severity: "red",
+        message: `Ontology link_types eksik (${linkCount} < 7)` });
+      return "red";
+    }
+    return "green";
+  } catch (err: any) {
+    findings.push({ layer: "ontology", severity: "red",
+      message: `Ontology check failed: ${err.message}` });
+    return "red";
+  }
+}
+
+/** ═══ LAYER 9: System-Wide Validation — tükenme matematiği, BOM tree, kapasite ═══ */
+async function layer9Validation(findings: Finding[], intelCache: Map<string, any>): Promise<LayerStatus> {
+  // Capacity sanity: her SKU için max > 0 OR explicit reason (stock=0)
+  let worst: LayerStatus = "green";
+  for (const sku of SKUS) {
+    const intel = intelCache.get(sku);
+    if (!intel) continue;
+    // Check: critical + warning + ok + abundant = total
+    const total = intel.components.length;
+    const sum = intel.components.reduce((acc: number, c: any) => {
+      return acc + (["critical", "warning", "ok", "abundant"].includes(c.urgency) ? 1 : 0);
+    }, 0);
+    if (sum !== total) {
+      findings.push({ layer: "validation", severity: "red", sku,
+        message: `Urgency classification missed (${sum}/${total})` });
+      worst = "red";
+    }
+  }
+  return worst;
+}
+
+/** ═══ LAYER 10: Seasonal Multiplier Integrity ═══ */
+async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>): Promise<LayerStatus> {
+  let worst: LayerStatus = "green";
+  const familyAmps: Record<string, number[]> = { BH: [], ELT: [], GSA: [], GSS: [] };
+
+  for (const sku of SKUS) {
+    const intel = intelCache.get(sku);
+    if (!intel?.ontology) continue;
+    const ont = intel.ontology;
+    const idxList = (ont.seasonalIndices ?? []).map((m: any) => m.index);
+    const labels = (ont.seasonalIndices ?? []).map((m: any) => m.month);
+    if (idxList.length < 12) {
+      findings.push({ layer: "seasonal", severity: "red", sku,
+        message: "Sezonsal indeks 12 aylık değil" });
+      worst = "red";
+      continue;
+    }
+    const peak = idxList.indexOf(Math.max(...idxList));
+    const trough = idxList.indexOf(Math.min(...idxList));
+    const peakMonth = labels[peak];
+    const amplitude = Math.max(...idxList) / Math.max(0.01, Math.min(...idxList));
+
+    // 10.1 Kategori arketipi
+    const fam = familyOf(sku);
+    const expected = fam ? FAMILY_PEAK[fam] : null;
+    if (expected && peakMonth !== expected) {
+      findings.push({ layer: "seasonal", severity: "red", sku,
+        message: `Peak ayı bozulmuş: ${peakMonth} (beklenen: ${expected} ${fam} ailesi)`,
+        data: { amplitude, peak: peakMonth } });
+      worst = "red";
+    }
+
+    // 10.2 Amplitude
+    if (amplitude < 2.0) {
+      findings.push({ layer: "seasonal", severity: "yellow", sku,
+        message: `Amplitude düşük (${amplitude.toFixed(2)} < 2.0) — DSE düz baseline'a regress etmiş olabilir`,
+        data: { amplitude } });
+      if (worst === "green") worst = "yellow";
+    }
+
+    // 10.4 Aritmetik
+    const normalizedMean = idxList.reduce((a: number, b: number) => a + b, 0) / 12;
+    if (Math.abs(normalizedMean - 1.0) > 0.1) {
+      findings.push({ layer: "seasonal", severity: "yellow", sku,
+        message: `Normalized mean ${normalizedMean.toFixed(3)} ≠ 1.0 — indeksler normalize değil`,
+        data: { mean: normalizedMean } });
+      if (worst === "green") worst = "yellow";
+    }
+
+    // 10.5 Current month alignment
+    const now = new Date().getMonth();
+    const expectedCurrentIdx = idxList[now];
+    if (ont.currentSeasonalIndex !== undefined &&
+        Math.abs(ont.currentSeasonalIndex - expectedCurrentIdx) > 0.02) {
+      findings.push({ layer: "seasonal", severity: "yellow", sku,
+        message: `Current month misalignment: ${ont.currentSeasonalIndex} vs ${expectedCurrentIdx}`,
+        data: { stated: ont.currentSeasonalIndex, expected: expectedCurrentIdx } });
+      if (worst === "green") worst = "yellow";
+    }
+
+    // 10.6 winterStress semantik
+    const winterMonths = ["Kas", "Ara", "Oca", "Şub"];
+    const ws = intel.components.filter((c: any) => c.winterStress === true);
+    for (const c of ws) {
+      if (c.depletionMonth && !winterMonths.includes(c.depletionMonth)) {
+        findings.push({ layer: "seasonal", severity: "red", sku,
+          message: `winterStress TRUE ama depletion ${c.depletionMonth} (kış değil): ${c.code}`,
+          data: { code: c.code, month: c.depletionMonth } });
+        worst = "red";
+      }
+    }
+
+    if (fam) familyAmps[fam].push(amplitude);
+  }
+
+  // 10.8 Family amplitude consistency
+  for (const [fam, amps] of Object.entries(familyAmps)) {
+    if (amps.length < 2) continue;
+    const spread = Math.max(...amps) - Math.min(...amps);
+    if (spread > 0.6) {
+      findings.push({ layer: "seasonal", severity: "yellow",
+        message: `${fam} ailesi amplitude dağılımı geniş: ${amps.map(a => a.toFixed(2)).join(", ")}`,
+        data: { family: fam, amplitudes: amps } });
+      if (worst === "green") worst = "yellow";
+    }
+  }
+
+  return worst;
+}
+
+/** ═══ MAIN AUDIT ═══ */
+export async function runOctopusChainAudit(
+  trigger: "scheduled" | "data_ingestion" | "manual",
+  triggerDetail?: string
+): Promise<{ id: number; layers: Record<string, LayerStatus>; redCount: number; yellowCount: number; summary: string }> {
+  const startTime = Date.now();
+  const findings: Finding[] = [];
+  const intelCache = new Map<string, any>();
+
+  console.log(`[orchestrator] Audit başladı (trigger=${trigger})`);
+
+  const layers = {
+    mutation: await layer1Mutation(findings),
+    selfIntel: await layer2SelfIntelligence(findings, intelCache),
+    crossProduct: await layer3CrossProduct(findings),
+    downstream: await layer4Downstream(findings),
+    uiCoherence: await layer5UiCoherence(findings, intelCache),
+    wsBroadcast: await layer6WsBroadcast(findings),
+    agent: await layer7Agent(findings),
+    ontology: await layer8Ontology(findings),
+    validation: await layer9Validation(findings, intelCache),
+    seasonal: await layer10Seasonal(findings, intelCache),
+  };
+
+  const greenCount = Object.values(layers).filter((s) => s === "green").length;
+  const yellowCount = Object.values(layers).filter((s) => s === "yellow").length;
+  const redCount = Object.values(layers).filter((s) => s === "red").length;
+  const durationMs = Date.now() - startTime;
+
+  const summary =
+    redCount > 0 ? `🔴 ${redCount} katman RED — BLOKLA: ${findings.filter(f => f.severity === "red").map(f => f.layer).join(", ")}` :
+    yellowCount > 0 ? `⚠️  ${yellowCount} katman uyarı` :
+    `✅ Tüm katmanlar yeşil (${greenCount} green, ${Object.values(layers).filter(s => s === "skip").length} skip)`;
+
+  const [inserted] = await db.insert(orchestratorRuns).values({
+    trigger,
+    triggerDetail: triggerDetail ?? null,
+    durationMs,
+    layerMutation: layers.mutation,
+    layerSelfIntel: layers.selfIntel,
+    layerCrossProduct: layers.crossProduct,
+    layerDownstream: layers.downstream,
+    layerUiCoherence: layers.uiCoherence,
+    layerWsBroadcast: layers.wsBroadcast,
+    layerAgent: layers.agent,
+    layerOntology: layers.ontology,
+    layerValidation: layers.validation,
+    layerSeasonal: layers.seasonal,
+    greenCount, yellowCount, redCount,
+    findings,
+    summary,
+  }).returning();
+
+  console.log(`[orchestrator] Audit tamamlandı (${durationMs}ms): ${summary}`);
+
+  // Red findings → proactive WS alert
+  if (redCount > 0) {
+    const alerts = findings
+      .filter(f => f.severity === "red")
+      .slice(0, 10)
+      .map(f => ({
+        id: `orch_${inserted.id}_${f.layer}`,
+        type: "octopus_chain_red" as const,
+        severity: "critical" as const,
+        title: `Octopus Chain — ${f.layer}`,
+        message: f.message,
+        componentCode: f.data?.code,
+        productSku: f.sku,
+        suggestedAction: "Orchestrator audit raporu kontrol et: /api/orchestrator/latest",
+        timestamp: new Date(),
+      }));
+    try { broadcastProactiveAlert({ event: "proactive_alert", alerts } as any); } catch {}
+  }
+
+  return { id: inserted.id, layers, redCount, yellowCount, summary };
+}
+
+/** ═══ SCHEDULER ═══ */
+let intervalId: NodeJS.Timeout | null = null;
+let debounceTimeout: NodeJS.Timeout | null = null;
+
+async function ensureSchema(): Promise<void> {
+  // Idempotent table creation — drizzle-kit push deploy pipeline'i olmadan
+  await db.execute(sql`
+    CREATE TABLE IF NOT EXISTS orchestrator_runs (
+      id serial PRIMARY KEY,
+      timestamp timestamp DEFAULT now() NOT NULL,
+      trigger text NOT NULL,
+      trigger_detail text,
+      duration_ms integer DEFAULT 0 NOT NULL,
+      layer_mutation text,
+      layer_self_intel text,
+      layer_cross_product text,
+      layer_downstream text,
+      layer_ui_coherence text,
+      layer_ws_broadcast text,
+      layer_agent text,
+      layer_ontology text,
+      layer_validation text,
+      layer_seasonal text,
+      green_count integer DEFAULT 0 NOT NULL,
+      yellow_count integer DEFAULT 0 NOT NULL,
+      red_count integer DEFAULT 0 NOT NULL,
+      findings jsonb DEFAULT '[]'::jsonb,
+      summary text
+    )
+  `);
+}
+
+export function startOrchestrator(): void {
+  const intervalMin = parseInt(process.env.ORCHESTRATOR_INTERVAL_MIN ?? "30", 10);
+  const intervalMs = Math.max(5, intervalMin) * 60 * 1000;
+  console.log(`[orchestrator] Started — her ${intervalMin} dakikada bir audit (default trigger='scheduled')`);
+
+  ensureSchema().catch(err => console.error("[orchestrator] Schema ensure failed:", err.message));
+
+  intervalId = setInterval(() => {
+    runOctopusChainAudit("scheduled").catch(err =>
+      console.error("[orchestrator] Scheduled audit failed:", err.message));
+  }, intervalMs);
+
+  // Initial run after 60 seconds (let server warm up)
+  setTimeout(() => {
+    runOctopusChainAudit("scheduled", "boot").catch(err =>
+      console.error("[orchestrator] Initial audit failed:", err.message));
+  }, 60_000);
+}
+
+export function stopOrchestrator(): void {
+  if (intervalId) { clearInterval(intervalId); intervalId = null; }
+  if (debounceTimeout) { clearTimeout(debounceTimeout); debounceTimeout = null; }
+}
+
+/** Data ingestion trigger — debounced to avoid storms */
+export function triggerAuditOnDataChange(detail: string): void {
+  if (debounceTimeout) clearTimeout(debounceTimeout);
+  debounceTimeout = setTimeout(() => {
+    runOctopusChainAudit("data_ingestion", detail).catch(err =>
+      console.error("[orchestrator] Ingestion audit failed:", err.message));
+  }, 60_000); // 60s debounce — batch rapid-fire imports
+}

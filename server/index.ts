@@ -1,6 +1,7 @@
 import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { startPipelineScheduler } from "./lib/pipeline-scheduler";
+import { startOrchestrator } from "./lib/orchestrator";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import session from "express-session";
@@ -206,5 +207,7 @@ app.use((req, res, next) => {
     log(`serving on port ${port}`);
     // Start pipeline scheduler after server is ready
     startPipelineScheduler();
+    // Start octopus-chain orchestrator (every ORCHESTRATOR_INTERVAL_MIN min, default 30)
+    startOrchestrator();
   });
 })();

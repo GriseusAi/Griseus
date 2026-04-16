@@ -1,0 +1,22 @@
+CREATE TABLE "orchestrator_runs" (
+	"id" serial PRIMARY KEY NOT NULL,
+	"timestamp" timestamp DEFAULT now() NOT NULL,
+	"trigger" text NOT NULL,
+	"trigger_detail" text,
+	"duration_ms" integer DEFAULT 0 NOT NULL,
+	"layer_mutation" text,
+	"layer_self_intel" text,
+	"layer_cross_product" text,
+	"layer_downstream" text,
+	"layer_ui_coherence" text,
+	"layer_ws_broadcast" text,
+	"layer_agent" text,
+	"layer_ontology" text,
+	"layer_validation" text,
+	"layer_seasonal" text,
+	"green_count" integer DEFAULT 0 NOT NULL,
+	"yellow_count" integer DEFAULT 0 NOT NULL,
+	"red_count" integer DEFAULT 0 NOT NULL,
+	"findings" jsonb DEFAULT '[]'::jsonb,
+	"summary" text
+);

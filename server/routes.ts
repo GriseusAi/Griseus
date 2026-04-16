@@ -21,6 +21,7 @@ import outcomeRouter from "./routes/outcome";
 import chatHistoryRouter from "./routes/chat-history";
 import foundryRouter from "./routes/foundry";
 import ontologyRouter from "./routes/ontology";
+import orchestratorRouter from "./routes/orchestrator";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
@@ -47,6 +48,7 @@ export async function registerRoutes(
   app.use("/api/v1", chatHistoryRouter);
   app.use("/api/foundry", foundryRouter);
   app.use("/api/ontology", ontologyRouter);
+  app.use("/api/orchestrator", orchestratorRouter);
 
   // Auto-seed ontology on first boot (idempotent)
   seedOntology().catch(err => console.error("[ontology] Seed error:", err.message));

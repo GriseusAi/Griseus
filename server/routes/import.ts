@@ -12,6 +12,7 @@ import { products, bomItems, componentStock, salesHistory } from "@shared/schema
 import { eq, and, sql } from "drizzle-orm";
 import { recordLineage, createSnapshot } from "./foundry";
 import { broadcastEntityChanged } from "../ws";
+import { triggerAuditOnDataChange } from "../lib/orchestrator";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -163,6 +164,7 @@ router.post("/bulk/bom", async (req: Request, res: Response) => {
         actor: "import", metadata: { sku, created, total: items.length, tiers: Array.from(new Set(items.map(i => i.tier))) },
       }).catch(() => {});
       broadcastEntityChanged({ event: "entity_changed", entities: ["bom_items"], scope: sku, count: created, source: "bulk_import" });
+      triggerAuditOnDataChange(`bulk/bom ${sku} ${created}c`);
     }
 
     res.json({ success: true, sku, created, total: items.length });
@@ -217,6 +219,8 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
       }).catch(() => {});
       // Octopus Y.2 — tek havuz degisti, N cihazin tumu canli guncelensin
       broadcastEntityChanged({ event: "entity_changed", entities: ["component_stock"], count: created + updated, source: "bulk_import" });
+      // Orchestrator → auto octopus-chain audit (debounced 60s)
+      triggerAuditOnDataChange(`bulk/stock ${created}c/${updated}u`);
     }
 
     res.json({ success: true, created, updated, total: items.length });
