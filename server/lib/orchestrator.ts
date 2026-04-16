@@ -321,8 +321,9 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
     if (amps.length < 2) continue;
     const spread = Math.max(...amps) - Math.min(...amps);
     const meanAmp = amps.reduce((a,b)=>a+b,0) / amps.length;
-    // Relative spread > %40 anlamlı dağılım
-    if (meanAmp > 0 && (spread / meanAmp) > 0.4) {
+    // Relative spread > %50 anlamlı drift (sub-family varyansı için tolerans; Cukurova
+    // verisinde ELT.7-11 buyuk proje vs ELT.5-7 ofis farki dogal %40-50 spread uretir).
+    if (meanAmp > 0 && (spread / meanAmp) > 0.5) {
       findings.push({ layer: "seasonal", severity: "yellow",
         message: `${fam} ailesi amplitude dağılımı geniş: ${amps.map(a => a.toFixed(2)).join(", ")}`,
         data: { family: fam, amplitudes: amps } });
