@@ -24,6 +24,7 @@ import { eq, gte, desc, sql } from "drizzle-orm";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { broadcastProactiveAlert } from "../ws";
 import Anthropic from "@anthropic-ai/sdk";
+import { OCTOPUS_CHAIN_CONFIG, familyOfSku, expectedPeakMonth } from "@shared/octopus-chain-config";
 
 type LayerStatus = "green" | "yellow" | "red" | "skip";
 interface Finding {
@@ -34,34 +35,17 @@ interface Finding {
   data?: any;
 }
 
-const SKUS = [
-  "ELT.7-11", "GSS20P",
-  "BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV",
-  "ELT.5-7", "GSA15", "GSA20", "GSA30", "GSS40P",
-];
-
-// Month labels system-wide olarak ASCII ("Agu", "Sub") — seasonal-constants.ts MONTH_LABELS ile aynı
-const FAMILY_PEAK: Record<string, string> = {
-  BH: "Eyl",
-  ELT: "Eki",
-  GSA: "Kas",
-  GSS: "Agu",
-};
-const WINTER_MONTH_LABELS = ["Kas", "Ara", "Oca", "Sub"] as const;
-
-function familyOf(sku: string): string | null {
-  for (const k of Object.keys(FAMILY_PEAK)) {
-    if (sku.startsWith(k)) return k;
-  }
-  return null;
-}
+// SKU listesi, aile arketipleri, threshold'lar — @shared/octopus-chain-config
+// /octopus-chain skill file ile senkron. Tek kaynak, drift yok.
+const SKUS = OCTOPUS_CHAIN_CONFIG.skus;
+const WINTER_MONTH_LABELS = OCTOPUS_CHAIN_CONFIG.winterMonths;
 
 /** ═══ LAYER 1: Mutation Kaydı — snapshot + lineage var mı ═══ */
 async function layer1Mutation(findings: Finding[]): Promise<LayerStatus> {
   try {
     const recentLineage = await db.select({ count: sql<number>`count(*)::int` })
       .from(dataLineage)
-      .where(gte(dataLineage.createdAt, new Date(Date.now() - 60 * 60 * 1000)));
+      .where(gte(dataLineage.createdAt, new Date(Date.now() - OCTOPUS_CHAIN_CONFIG.mutation.recencyHours * 60 * 60 * 1000)));
     const count = recentLineage[0]?.count ?? 0;
     // No lineage in last hour during potential business activity — just informational
     if (count === 0) {
@@ -91,7 +75,7 @@ async function layer2SelfIntelligence(
         (c) => c.currentStock > 0 && c.seasonalDays === 0
       );
       const artifact = intel.components.filter(
-        (c) => c.depletionYear !== null && c.depletionYear > new Date().getFullYear() + 5
+        (c) => c.depletionYear !== null && c.depletionYear > new Date().getFullYear() + OCTOPUS_CHAIN_CONFIG.depletionHorizon.artifactYearOffset
       );
 
       if (bug.length > 0) {
@@ -203,14 +187,14 @@ async function layer8Ontology(findings: Finding[]): Promise<LayerStatus> {
       .from(ontologyLinkTypes).where(eq(ontologyLinkTypes.enabled, true));
     const objCount = objTypes[0]?.count ?? 0;
     const linkCount = linkTypes[0]?.count ?? 0;
-    if (objCount < 8) {
+    if (objCount < OCTOPUS_CHAIN_CONFIG.ontology.minObjectTypes) {
       findings.push({ layer: "ontology", severity: "red",
-        message: `Ontology object_types eksik (${objCount} < 8) — seed gerekli` });
+        message: `Ontology object_types eksik (${objCount} < ${OCTOPUS_CHAIN_CONFIG.ontology.minObjectTypes}) — seed gerekli` });
       return "red";
     }
-    if (linkCount < 7) {
+    if (linkCount < OCTOPUS_CHAIN_CONFIG.ontology.minLinkTypes) {
       findings.push({ layer: "ontology", severity: "red",
-        message: `Ontology link_types eksik (${linkCount} < 7)` });
+        message: `Ontology link_types eksik (${linkCount} < ${OCTOPUS_CHAIN_CONFIG.ontology.minLinkTypes})` });
       return "red";
     }
     return "green";
@@ -245,7 +229,10 @@ async function layer9Validation(findings: Finding[], intelCache: Map<string, any
 /** ═══ LAYER 10: Seasonal Multiplier Integrity ═══ */
 async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>): Promise<LayerStatus> {
   let worst: LayerStatus = "green";
-  const familyAmps: Record<string, number[]> = { BH: [], ELT: [], GSA: [], GSS: [] };
+  // Config'den aile listesi — yeni aile eklenince otomatik denetlenir
+  const familyAmps: Record<string, number[]> = Object.fromEntries(
+    Object.keys(OCTOPUS_CHAIN_CONFIG.familyArchetypes).map(f => [f, []])
+  );
 
   for (const sku of SKUS) {
     const intel = intelCache.get(sku);
@@ -264,9 +251,9 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
     const peakMonth = labels[peak];
     const amplitude = Math.max(...idxList) / Math.max(0.01, Math.min(...idxList));
 
-    // 10.1 Kategori arketipi
-    const fam = familyOf(sku);
-    const expected = fam ? FAMILY_PEAK[fam] : null;
+    // 10.1 Kategori arketipi (config'den)
+    const fam = familyOfSku(sku);
+    const expected = expectedPeakMonth(sku);
     if (expected && peakMonth !== expected) {
       findings.push({ layer: "seasonal", severity: "red", sku,
         message: `Peak ayı bozulmuş: ${peakMonth} (beklenen: ${expected} ${fam} ailesi)`,
@@ -274,28 +261,31 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
       worst = "red";
     }
 
-    // 10.2 Amplitude
-    if (amplitude < 2.0) {
+    // 10.2 Amplitude (config threshold)
+    const minAmp = OCTOPUS_CHAIN_CONFIG.seasonalThresholds.minAmplitude;
+    if (amplitude < minAmp) {
       findings.push({ layer: "seasonal", severity: "yellow", sku,
-        message: `Amplitude düşük (${amplitude.toFixed(2)} < 2.0) — DSE düz baseline'a regress etmiş olabilir`,
+        message: `Amplitude düşük (${amplitude.toFixed(2)} < ${minAmp}) — DSE düz baseline'a regress etmiş olabilir`,
         data: { amplitude } });
       if (worst === "green") worst = "yellow";
     }
 
-    // 10.4 Aritmetik
+    // 10.4 Aritmetik (config tolerance)
+    const normTol = OCTOPUS_CHAIN_CONFIG.seasonalThresholds.normalizedMeanTolerance;
     const normalizedMean = idxList.reduce((a: number, b: number) => a + b, 0) / 12;
-    if (Math.abs(normalizedMean - 1.0) > 0.1) {
+    if (Math.abs(normalizedMean - 1.0) > normTol) {
       findings.push({ layer: "seasonal", severity: "yellow", sku,
-        message: `Normalized mean ${normalizedMean.toFixed(3)} ≠ 1.0 — indeksler normalize değil`,
+        message: `Normalized mean ${normalizedMean.toFixed(3)} ≠ 1.0 (±${normTol}) — indeksler normalize değil`,
         data: { mean: normalizedMean } });
       if (worst === "green") worst = "yellow";
     }
 
-    // 10.5 Current month alignment
+    // 10.5 Current month alignment (config tolerance)
+    const alignTol = OCTOPUS_CHAIN_CONFIG.seasonalThresholds.currentMonthAlignmentTolerance;
     const now = new Date().getMonth();
     const expectedCurrentIdx = idxList[now];
     if (ont.currentSeasonalIndex !== undefined &&
-        Math.abs(ont.currentSeasonalIndex - expectedCurrentIdx) > 0.02) {
+        Math.abs(ont.currentSeasonalIndex - expectedCurrentIdx) > alignTol) {
       findings.push({ layer: "seasonal", severity: "yellow", sku,
         message: `Current month misalignment: ${ont.currentSeasonalIndex} vs ${expectedCurrentIdx}`,
         data: { stated: ont.currentSeasonalIndex, expected: expectedCurrentIdx } });
@@ -316,14 +306,13 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
     if (fam) familyAmps[fam].push(amplitude);
   }
 
-  // 10.8 Family amplitude consistency
+  // 10.8 Family amplitude consistency (config threshold)
+  const spreadRatio = OCTOPUS_CHAIN_CONFIG.seasonalThresholds.familyAmplitudeSpreadRatio;
   for (const [fam, amps] of Object.entries(familyAmps)) {
     if (amps.length < 2) continue;
     const spread = Math.max(...amps) - Math.min(...amps);
     const meanAmp = amps.reduce((a,b)=>a+b,0) / amps.length;
-    // Relative spread > %50 anlamlı drift (sub-family varyansı için tolerans; Cukurova
-    // verisinde ELT.7-11 buyuk proje vs ELT.5-7 ofis farki dogal %40-50 spread uretir).
-    if (meanAmp > 0 && (spread / meanAmp) > 0.5) {
+    if (meanAmp > 0 && (spread / meanAmp) > spreadRatio) {
       findings.push({ layer: "seasonal", severity: "yellow",
         message: `${fam} ailesi amplitude dağılımı geniş: ${amps.map(a => a.toFixed(2)).join(", ")}`,
         data: { family: fam, amplitudes: amps } });
