@@ -23,6 +23,7 @@ import {
 import { eq, gte, desc, sql } from "drizzle-orm";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { broadcastProactiveAlert } from "../ws";
+import Anthropic from "@anthropic-ai/sdk";
 
 type LayerStatus = "green" | "yellow" | "red" | "skip";
 interface Finding {
@@ -332,11 +333,60 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
   return worst;
 }
 
+/** ═══ OPUS DIAGNOSIS ═══ — Claude-kalite root cause analizi */
+let _anthropicClient: Anthropic | null = null;
+function getAnthropic(): Anthropic | null {
+  const key = process.env.ANTHROPIC_API_KEY;
+  if (!key) return null;
+  if (!_anthropicClient) _anthropicClient = new Anthropic({ apiKey: key });
+  return _anthropicClient;
+}
+
+async function invokeOpusDiagnosis(findings: Finding[]): Promise<string | null> {
+  const anthropic = getAnthropic();
+  if (!anthropic || findings.length === 0) return null;
+  try {
+    const system = `Sen Griseus (griseus.io) orchestrator'ısın — Palantir-style Türk HVAC üretim platformunun zincir doğrulayıcısı.
+
+Bağlam:
+- 11 aktif SKU: ELT.7-11, GSS20P, BH (50/55 × ST/UT), ELT.5-7, GSA (15/20/30), GSS40P
+- Octopus prensibi: 1 atom değişince her atom bu değişikliği yansıtmalı
+- Sezonsallık kategori arketipleri (KİLİTLİ): BH→Eylül peak (sanayi), ELT→Ekim (seramik ofis), GSA→Kasım (duvar ev), GSS→Ağustos (portatif)
+- 10-katman audit: mutation, selfIntel, crossProduct, downstream, uiCoherence, wsBroadcast, agent, ontology, validation, seasonal
+- Mevcut endpoint'ler düzeltme için: /api/ontology/seed (re-seed), /api/import/bulk/stock (re-sync), /api/import/bulk/sales (DSE tetikler)
+
+Görevin: Deterministik audit'in bulduğu sorunları analiz et. Her sorun için:
+1. Kök neden (veri mi, kod mu, sentetik mi, Çukurova sahadan mı?)
+2. Ciddiyet (gerçek iş etkisi mi, muhtemel bug mi, sinyal gürültüsü mü?)
+3. Önerilen düzeltme (mevcut endpoint/procedure ile — KOD YAZMA)
+
+Türkçe yaz, 200-400 token. Net ve aksiyona dönük ol. Panik yaratma, kanıta dayalı yaz.`;
+
+    const userMsg = `10-katman audit ${findings.length} finding buldu:\n\n${findings.map(f =>
+      `- [${f.severity.toUpperCase()} ${f.layer}] ${f.sku ?? "GLOBAL"}: ${f.message}${f.data ? ` (data: ${JSON.stringify(f.data).slice(0, 200)})` : ""}`
+    ).join("\n")}\n\nAnalizini ver.`;
+
+    const model = process.env.ORCHESTRATOR_MODEL ?? "claude-opus-4-6";
+    const response = await anthropic.messages.create({
+      model,
+      max_tokens: 800,
+      system,
+      messages: [{ role: "user", content: userMsg }],
+    });
+
+    const block = response.content.find(b => b.type === "text");
+    return block?.type === "text" ? block.text : null;
+  } catch (err: any) {
+    console.error("[orchestrator] Opus diagnosis failed:", err.message);
+    return `Opus çağrısı başarısız: ${err.message}`;
+  }
+}
+
 /** ═══ MAIN AUDIT ═══ */
 export async function runOctopusChainAudit(
   trigger: "scheduled" | "data_ingestion" | "manual",
   triggerDetail?: string
-): Promise<{ id: number; layers: Record<string, LayerStatus>; redCount: number; yellowCount: number; summary: string }> {
+): Promise<{ id: number; layers: Record<string, LayerStatus>; redCount: number; yellowCount: number; summary: string; diagnosis?: string | null }> {
   const startTime = Date.now();
   const findings: Finding[] = [];
   const intelCache = new Map<string, any>();
@@ -366,6 +416,9 @@ export async function runOctopusChainAudit(
     yellowCount > 0 ? `⚠️  ${yellowCount} katman uyarı` :
     `✅ Tüm katmanlar yeşil (${greenCount} green, ${Object.values(layers).filter(s => s === "skip").length} skip)`;
 
+  // Opus diagnosis for red/yellow findings (Claude-kalite root cause)
+  const diagnosis = (redCount + yellowCount > 0) ? await invokeOpusDiagnosis(findings) : null;
+
   const [inserted] = await db.insert(orchestratorRuns).values({
     trigger,
     triggerDetail: triggerDetail ?? null,
@@ -382,31 +435,27 @@ export async function runOctopusChainAudit(
     layerSeasonal: layers.seasonal,
     greenCount, yellowCount, redCount,
     findings,
-    summary,
+    summary: diagnosis ? `${summary}\n\n— Opus Diagnosis —\n${diagnosis}` : summary,
   }).returning();
 
   console.log(`[orchestrator] Audit tamamlandı (${durationMs}ms): ${summary}`);
 
-  // Red findings → proactive WS alert
-  if (redCount > 0) {
-    const alerts = findings
-      .filter(f => f.severity === "red")
-      .slice(0, 10)
-      .map(f => ({
-        id: `orch_${inserted.id}_${f.layer}`,
-        type: "octopus_chain_red" as const,
-        severity: "critical" as const,
-        title: `Octopus Chain — ${f.layer}`,
-        message: f.message,
-        componentCode: f.data?.code,
-        productSku: f.sku,
-        suggestedAction: "Orchestrator audit raporu kontrol et: /api/orchestrator/latest",
-        timestamp: new Date(),
-      }));
+  // Red + yellow findings → proactive WS alert (zil ikonuna)
+  if (redCount + yellowCount > 0) {
+    const headMsg = diagnosis ? diagnosis.slice(0, 240) : summary;
+    const alerts = [{
+      id: `orch_${inserted.id}_summary`,
+      type: redCount > 0 ? "octopus_chain_red" : "octopus_chain_yellow",
+      severity: redCount > 0 ? "critical" as const : "warning" as const,
+      title: `Octopus Chain — ${redCount > 0 ? `${redCount} RED` : `${yellowCount} UYARI`}`,
+      message: headMsg,
+      suggestedAction: `Detay: /api/orchestrator/runs/${inserted.id}`,
+      timestamp: new Date(),
+    }];
     try { broadcastProactiveAlert({ event: "proactive_alert", alerts } as any); } catch {}
   }
 
-  return { id: inserted.id, layers, redCount, yellowCount, summary };
+  return { id: inserted.id, layers, redCount, yellowCount, summary, diagnosis };
 }
 
 /** ═══ SCHEDULER ═══ */
@@ -442,7 +491,7 @@ async function ensureSchema(): Promise<void> {
 }
 
 export function startOrchestrator(): void {
-  const intervalMin = parseInt(process.env.ORCHESTRATOR_INTERVAL_MIN ?? "30", 10);
+  const intervalMin = parseInt(process.env.ORCHESTRATOR_INTERVAL_MIN ?? "180", 10);
   const intervalMs = Math.max(5, intervalMin) * 60 * 1000;
   console.log(`[orchestrator] Started — her ${intervalMin} dakikada bir audit (default trigger='scheduled')`);
 
