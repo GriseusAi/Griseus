@@ -39,12 +39,14 @@ const SKUS = [
   "ELT.5-7", "GSA15", "GSA20", "GSA30", "GSS40P",
 ];
 
+// Month labels system-wide olarak ASCII ("Agu", "Sub") — seasonal-constants.ts MONTH_LABELS ile aynı
 const FAMILY_PEAK: Record<string, string> = {
   BH: "Eyl",
   ELT: "Eki",
   GSA: "Kas",
-  GSS: "Ağu",
+  GSS: "Agu",
 };
+const WINTER_MONTH_LABELS = ["Kas", "Ara", "Oca", "Sub"] as const;
 
 function familyOf(sku: string): string | null {
   for (const k of Object.keys(FAMILY_PEAK)) {
@@ -299,11 +301,10 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
       if (worst === "green") worst = "yellow";
     }
 
-    // 10.6 winterStress semantik
-    const winterMonths = ["Kas", "Ara", "Oca", "Şub"];
+    // 10.6 winterStress semantik (ASCII month labels)
     const ws = intel.components.filter((c: any) => c.winterStress === true);
     for (const c of ws) {
-      if (c.depletionMonth && !winterMonths.includes(c.depletionMonth)) {
+      if (c.depletionMonth && !WINTER_MONTH_LABELS.includes(c.depletionMonth as any)) {
         findings.push({ layer: "seasonal", severity: "red", sku,
           message: `winterStress TRUE ama depletion ${c.depletionMonth} (kış değil): ${c.code}`,
           data: { code: c.code, month: c.depletionMonth } });
@@ -318,7 +319,9 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
   for (const [fam, amps] of Object.entries(familyAmps)) {
     if (amps.length < 2) continue;
     const spread = Math.max(...amps) - Math.min(...amps);
-    if (spread > 0.6) {
+    const meanAmp = amps.reduce((a,b)=>a+b,0) / amps.length;
+    // Relative spread > %40 anlamlı dağılım
+    if (meanAmp > 0 && (spread / meanAmp) > 0.4) {
       findings.push({ layer: "seasonal", severity: "yellow",
         message: `${fam} ailesi amplitude dağılımı geniş: ${amps.map(a => a.toFixed(2)).join(", ")}`,
         data: { family: fam, amplitudes: amps } });
