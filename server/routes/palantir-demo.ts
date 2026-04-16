@@ -129,14 +129,15 @@ router.get("/6-ay-plan", async (_req: Request, res: Response) => {
       const mevsimIndex = Math.round((talep / (ANNUAL_DEMAND / 12)) * 100) / 100;
       const donemTipi = mevsimIndex > 1.2 ? "YOGUN" : mevsimIndex < 0.8 ? "DUSUK" : "NORMAL";
       if (tukenenler.length > 0 && offset <= 3) {
-        kritikUyarilar.push(`${MONTH_NAMES[ay]}: ${tukenenler.length} parca tukenecek! En kritik: ${enKritik.kod} (${enKritik.depletionMonth} ${enKritik.depletionYear})`);
+        const enKritikTarih = enKritik.depletionMonth && enKritik.depletionYear ? `${enKritik.depletionMonth} ${enKritik.depletionYear}` : "uzak vadeli";
+        kritikUyarilar.push(`${MONTH_NAMES[ay]}: ${tukenenler.length} parca tukenecek! En kritik: ${enKritik.kod} (${enKritikTarih})`);
       }
       plan.push({
         ay: MONTH_NAMES[ay], ayNo: ay + 1, tapinenTalep: talep, mevsimsellik: donemTipi, mevsimIndex,
         mamulStokProjeksiyonu: Math.round(kumStok),
         tukenenBilesenSayisi: tukenenler.length,
         tukenenler: tukenenler.map(t => ({ kod: t.kod, ad: t.ad, kalanStok: t.kalanStok, bitisAy: t.depletionMonth, bitisYil: t.depletionYear })),
-        enKritikBilesen: enKritik ? `${enKritik.kod} — ${enKritik.depletionMonth} ${enKritik.depletionYear}` : "-",
+        enKritikBilesen: enKritik ? `${enKritik.kod} — ${enKritik.depletionMonth && enKritik.depletionYear ? `${enKritik.depletionMonth} ${enKritik.depletionYear}` : "uzak vadeli"}` : "-",
         strateji: mevsimIndex > 1.2 ? "Onceki ayda stok biriktirmis olmasin" : mevsimIndex < 0.5 ? "Fazla uret, gelecek yogun aya hazirlan" : "Normal uretim temposu",
       });
     }

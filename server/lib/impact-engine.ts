@@ -248,7 +248,8 @@ export async function computeImpactPropagation(
       } else if (capacityChanged && after.maxProducible < before.maxProducible) {
         headline = `Üretim kapasitesi ${before.maxProducible} → ${after.maxProducible} adete düştü`;
       } else if (hasWinterStress && topShift) {
-        headline = `${topShift.code} kış sezonunda risk altında — ${topShift.depletionMonth} ${topShift.depletionYear}`;
+        const tarih = topShift.depletionMonth && topShift.depletionYear ? `${topShift.depletionMonth} ${topShift.depletionYear}` : "yakın vadede";
+        headline = `${topShift.code} kış sezonunda risk altında — ${tarih}`;
       } else if (urgencyShifts.length > 0) {
         headline = `${urgencyShifts.length} bileşen etkilendi — sistem güncellendi`;
       } else {

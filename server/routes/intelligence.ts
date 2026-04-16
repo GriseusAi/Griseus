@@ -49,12 +49,15 @@ export interface ComponentIntelligence {
 // (constants imported from ../lib/seasonal-constants)
 // ═══════════════════════════════════════════════════════════
 
+const FAR_HORIZON_DAYS = 1095; // 3 yıl: bu eşiği aşan tükenme "uzak vadeli" sayılır
+
 function seasonalForwardWalk(stock: number, dailyRate: number, indices?: number[]): {
   days: number;
-  depletionMonth: number;
-  depletionYear: number;
+  depletionMonth: number | null;
+  depletionYear: number | null;
+  neverDepletes: boolean;
 } {
-  if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear() };
+  if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear(), neverDepletes: false };
 
   const seasonalIdx = indices ?? [...SEASONAL_INDICES];
   const now = new Date();
@@ -76,10 +79,14 @@ function seasonalForwardWalk(stock: number, dailyRate: number, indices?: number[
     if (consumption >= remainingStock) {
       const daysUntilEmpty = adjustedRate > 0 ? remainingStock / adjustedRate : daysThisMonth;
       totalDays += Math.ceil(daysUntilEmpty);
+      if (totalDays > FAR_HORIZON_DAYS) {
+        return { days: totalDays, depletionMonth: null, depletionYear: null, neverDepletes: true };
+      }
       return {
         days: totalDays,
         depletionMonth: monthIndex,
         depletionYear: now.getFullYear() + yearOffset,
+        neverDepletes: false,
       };
     }
 
@@ -90,7 +97,7 @@ function seasonalForwardWalk(stock: number, dailyRate: number, indices?: number[
     monthIndex = (monthIndex + 1) % 12;
   }
 
-  return { days: totalDays, depletionMonth: monthIndex, depletionYear: now.getFullYear() + yearOffset };
+  return { days: totalDays, depletionMonth: null, depletionYear: null, neverDepletes: true };
 }
 
 // LEAD_TIME_DAYS artık constants.ts'den geliyor
@@ -212,18 +219,18 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         : seasonal.days <= T.urgencyOkDays ? "ORTA" as const
         : "DÜŞÜK" as const;
 
-      const winterStress = effectiveStock > 0 && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= T.urgencyWarningDays;
+      const winterStress = effectiveStock > 0 && seasonal.depletionMonth !== null && (WINTER_MONTHS as readonly number[]).includes(seasonal.depletionMonth) && seasonal.days <= T.urgencyWarningDays;
 
       // Reasoning chain: neden bu urgency seviyesinde?
       const urgencyReasoning: Array<{ order: number; cause: string; data?: Record<string, number | string> }> = [
         { order: 1, cause: `Efektif stok: ${effectiveStock} ${item.unit}${item.tier === 2 ? " (yarı mamül — alt bileşenlerden monte edilebilir)" : ""}`, data: { effectiveStock, tier: item.tier } },
-        { order: 2, cause: `Mevsimsel forward-walk: ${effectiveStock > 0 ? seasonal.days : 0} gün → ${urgencyFromSeasonal}`, data: { seasonalDays: effectiveStock > 0 ? seasonal.days : 0, seasonalUrgency: urgencyFromSeasonal } },
+        { order: 2, cause: `Mevsimsel forward-walk: ${effectiveStock > 0 ? (seasonal.neverDepletes ? "3+ yıl (uzak vadeli)" : `${seasonal.days} gün`) : "0 gün"} → ${urgencyFromSeasonal}`, data: { seasonalDays: effectiveStock > 0 ? seasonal.days : 0, seasonalUrgency: urgencyFromSeasonal } },
       ];
       if (daysToStockout !== null) {
         urgencyReasoning.push({ order: 3, cause: `Lineer tüketim hızı: ${daysToStockout} gün → ${urgencyFromLinear}`, data: { daysToStockout, linearUrgency: urgencyFromLinear } });
       }
       urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `İki sinyalin kötüsü alındı → ${urgency.toUpperCase()}`, data: { finalUrgency: urgency } });
-      if (winterStress) {
+      if (winterStress && seasonal.depletionMonth !== null) {
         urgencyReasoning.push({ order: urgencyReasoning.length + 1, cause: `Kış stresi: stok ${MONTH_LABELS[seasonal.depletionMonth]} ${seasonal.depletionYear}'de tükenecek — kış talebi yüksek`, data: { depletionMonth: MONTH_LABELS[seasonal.depletionMonth] } });
       }
 
@@ -237,9 +244,9 @@ export async function computeComponentIntelligence(sku: string): Promise<{
         trend, trendRatio, suggestedOrderQty, urgency, urgencyReasoning,
         // Seasonal fields
         seasonalDays: effectiveStock > 0 ? seasonal.days : 0,
-        seasonalDifference: daysToStockout !== null && effectiveStock > 0 ? seasonal.days - daysToStockout : null,
-        depletionMonth: effectiveStock > 0 ? MONTH_LABELS[seasonal.depletionMonth] : null,
-        depletionYear: effectiveStock > 0 ? seasonal.depletionYear : null,
+        seasonalDifference: daysToStockout !== null && effectiveStock > 0 && !seasonal.neverDepletes ? seasonal.days - daysToStockout : null,
+        depletionMonth: effectiveStock > 0 && seasonal.depletionMonth !== null ? MONTH_LABELS[seasonal.depletionMonth] : null,
+        depletionYear: effectiveStock > 0 && seasonal.depletionYear !== null ? seasonal.depletionYear : null,
         depletionRisk: effectiveStock > 0 ? depRisk : "KRİTİK",
         winterStress,
         seasonalReorderPoint: seasonalReorderPt,

@@ -14,11 +14,13 @@ import { getDynamicIndices, getDynamicTotals } from "./dynamic-seasonality";
 import { MAIN_SKU } from "./constants";
 import { getThresholds } from "./adaptive-thresholds";
 
+const FAR_HORIZON_DAYS = 1095; // 3 yıl sınırı — ötesi "uzak vadeli"
+
 // Forward-walk (same as intelligence.ts but standalone for virtual stock)
 function virtualForwardWalk(stock: number, dailyRate: number, dynIdx?: number[]): {
-  days: number; depletionMonth: number; depletionYear: number;
+  days: number; depletionMonth: number | null; depletionYear: number | null; neverDepletes: boolean;
 } {
-  if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear() };
+  if (stock <= 0 || dailyRate <= 0) return { days: 0, depletionMonth: new Date().getMonth(), depletionYear: new Date().getFullYear(), neverDepletes: false };
   const seasonalIdx = dynIdx ?? [...SEASONAL_INDICES];
   const now = new Date();
   let monthIndex = now.getMonth();
@@ -37,7 +39,10 @@ function virtualForwardWalk(stock: number, dailyRate: number, dynIdx?: number[])
     if (consumption >= remainingStock) {
       const daysUntilEmpty = adjustedRate > 0 ? remainingStock / adjustedRate : daysThisMonth;
       totalDays += Math.ceil(daysUntilEmpty);
-      return { days: totalDays, depletionMonth: monthIndex, depletionYear: now.getFullYear() + yearOffset };
+      if (totalDays > FAR_HORIZON_DAYS) {
+        return { days: totalDays, depletionMonth: null, depletionYear: null, neverDepletes: true };
+      }
+      return { days: totalDays, depletionMonth: monthIndex, depletionYear: now.getFullYear() + yearOffset, neverDepletes: false };
     }
 
     remainingStock -= consumption;
@@ -47,7 +52,7 @@ function virtualForwardWalk(stock: number, dailyRate: number, dynIdx?: number[])
     monthIndex = (monthIndex + 1) % 12;
   }
 
-  return { days: totalDays, depletionMonth: monthIndex, depletionYear: now.getFullYear() + yearOffset };
+  return { days: totalDays, depletionMonth: null, depletionYear: null, neverDepletes: true };
 }
 
 export type WhatIfScenario =
@@ -211,7 +216,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Pro
       : "abundant";
 
     const winterMonths = [10, 11, 0, 1];
-    const winterStress = afterStock > 0 && winterMonths.includes(afterWalk.depletionMonth) && afterWalk.days <= T.urgencyWarningDays;
+    const winterStress = afterStock > 0 && afterWalk.depletionMonth !== null && winterMonths.includes(afterWalk.depletionMonth) && afterWalk.days <= T.urgencyWarningDays;
 
     // Action needed?
     let actionNeeded: string | null = null;
@@ -239,8 +244,8 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Pro
       currentUrgency: comp.urgency,
       afterUrgency,
       urgencyChanged: comp.urgency !== afterUrgency,
-      depletionMonth: afterStock > 0 ? MONTH_LABELS[afterWalk.depletionMonth] : null,
-      depletionYear: afterStock > 0 ? afterWalk.depletionYear : null,
+      depletionMonth: afterStock > 0 && afterWalk.depletionMonth !== null ? MONTH_LABELS[afterWalk.depletionMonth] : null,
+      depletionYear: afterStock > 0 && afterWalk.depletionYear !== null ? afterWalk.depletionYear : null,
       winterStress,
       actionNeeded,
       orderQuantity,

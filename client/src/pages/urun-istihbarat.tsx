@@ -618,7 +618,9 @@ export default function UrunIstihbarat() {
                       : c.seasonalDays !== null && c.seasonalDays < 30 ? C.err
                       : c.seasonalDays !== null && c.seasonalDays < 90 ? C.warn : C.ok,
                   }}>
-                    {c.seasonalDays !== null ? `${c.seasonalDays}g` : "—"}
+                    {c.seasonalDays === null ? "—"
+                      : c.seasonalDays > 1095 ? "3+yıl"
+                      : `${c.seasonalDays}g`}
                   </div>
                   {/* Sipariş Noktası (seasonal) */}
                   <div style={{
@@ -630,7 +632,11 @@ export default function UrunIstihbarat() {
                   </div>
                   {/* Bitiş Ayı */}
                   <div style={{ fontFamily: mono, fontSize: 10, color: riskColor, fontWeight: 400 }}>
-                    {c.depletionMonth ? `${c.depletionMonth} ${c.depletionYear}` : "—"}
+                    {c.depletionMonth
+                      ? `${c.depletionMonth} ${c.depletionYear}`
+                      : c.currentStock > 0 && c.seasonalDays !== null && c.seasonalDays > 1095
+                        ? "Uzak vadeli"
+                        : "—"}
                   </div>
                   <div>
                     <span
