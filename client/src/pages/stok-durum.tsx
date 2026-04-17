@@ -701,10 +701,9 @@ export default function StokDurum() {
   });
 
   const activeAction = QUICK_ACTIONS.find(a => a.type === actionType);
-  const maxQty = actionType === "to_warehouse" ? (product?.inProduction ?? 0)
-    : actionType === "to_sales" ? (product?.inWarehouse ?? 0) : 9999;
+  // Her buton her an çalışsın — maxQty kaldırıldı, sadece pozitif sayı kontrolü
   const qtyNum = parseInt(actionQty, 10);
-  const canExecute = !isNaN(qtyNum) && qtyNum > 0 && qtyNum <= maxQty;
+  const canExecute = !isNaN(qtyNum) && qtyNum > 0;
 
   const filtered = filterType ? movements.filter(m => m.movementType === filterType) : movements;
 
@@ -770,9 +769,10 @@ export default function StokDurum() {
           <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
             {QUICK_ACTIONS.map(a => {
               const isActive = actionType === a.type;
-              const isDisabled = !product ||
-                (a.type === "to_warehouse" && product.inProduction === 0) ||
-                (a.type === "to_sales" && product.inWarehouse === 0);
+              // Her buton her an tıklanabilir — workflow dependency kaldırıldı
+              // (user: "üretim girişi yapılmadan depoya transfer edilemiyor
+              // - direk her butona her an giriş yapılabilsin")
+              const isDisabled = !product;
               return (
                 <button
                   key={a.type}
@@ -810,11 +810,10 @@ export default function StokDurum() {
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, color: activeAction.color, fontWeight: 400, marginBottom: 6 }}>
                       {activeAction.icon} {activeAction.desc}
-                      {maxQty < 9999 && <span style={{ color: C.mid, fontWeight: 400 }}> · maks {maxQty} adet</span>}
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
-                        type="number" min={1} max={maxQty} inputMode="numeric" placeholder="Adet"
+                        type="number" min={1} inputMode="numeric" placeholder="Adet"
                         value={actionQty} onChange={e => setActionQty(e.target.value)} autoFocus
                         style={{
                           width: 120, padding: "10px 12px", borderRadius: 10,
