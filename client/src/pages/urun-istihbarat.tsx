@@ -202,11 +202,24 @@ export default function UrunIstihbarat() {
     queryFn: () => fetch("/api/palantir/demo/6-ay-plan").then(r => r.json()),
   });
 
-  const MONTHLY_DEMAND = [0, 340, 278, 131, 222, 162, 234, 108, 269, 98, 169, 22, 325]; // PDF kaynak
   const MONTH_NAMES_SHORT = ["", "Oca", "Sub", "Mar", "Nis", "May", "Haz", "Tem", "Agu", "Eyl", "Eki", "Kas", "Ara"];
-  const SEASONAL_INDICES_FE = [1.73, 1.41, 0.67, 1.13, 0.82, 1.19, 0.55, 1.37, 0.50, 0.86, 0.11, 1.65]; // Oca-Ara (PDF kaynak)
   const currentMonth = new Date().getMonth() + 1;
+
+  // API'den dinamik monthlyDemand — intel.ontology.monthlyDemand
+  const MONTHLY_DEMAND = useMemo<number[]>(() => {
+    const md = (intelQuery.data as any)?.ontology?.monthlyDemand || [];
+    const arr = [0];
+    for (let i = 1; i <= 12; i++) {
+      const label = MONTH_NAMES_SHORT[i];
+      const row = md.find((x: any) => x.month === label);
+      arr.push(Math.round(row?.demand || 0));
+    }
+    return arr;
+  }, [intelQuery.data]);
+
   const thisMonthDemand = MONTHLY_DEMAND[currentMonth];
+  const yearlyTotal = MONTHLY_DEMAND.slice(1).reduce((a, b) => a + b, 0);
+  const monthlyAvg = yearlyTotal / 12;
 
   const capacity = capacityQuery.data;
   const stock = stockQuery.data;
@@ -367,14 +380,14 @@ export default function UrunIstihbarat() {
           }}
         >
           <div style={{ fontSize: 11, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1, marginBottom: 20 }}>
-            MEVSIMSEL TALEP PATERNI — 3 YIL ORTALAMASI (2023-2025)
+            MEVSIMSEL TALEP PATERNI — {sku} AYLIK DAĞILIM
           </div>
 
           {/* Bar chart */}
           <div style={{ display: "flex", gap: 8, alignItems: "flex-end", height: 220, marginBottom: 20 }}>
             {MONTHLY_DEMAND.slice(1).map((demand, i) => {
               const monthIndex = i + 1;
-              const maxDemand = 340;
+              const maxDemand = Math.max(1, ...MONTHLY_DEMAND.slice(1));
               const barHeight = (demand / maxDemand) * 170;
               const isCurrent = monthIndex === currentMonth;
               const barColor = isCurrent ? C.accent
@@ -419,13 +432,13 @@ export default function UrunIstihbarat() {
               padding: "8px 16px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`,
               fontSize: 12, fontFamily: mono, color: C.mid, fontWeight: 400,
             }}>
-              Yillik: 2,358 adet
+              Yillik: {yearlyTotal.toLocaleString("tr-TR")} adet
             </div>
             <div style={{
               padding: "8px 16px", borderRadius: 8, background: C.surface, border: `1px solid ${C.border}`,
               fontSize: 12, fontFamily: mono, color: C.mid, fontWeight: 400,
             }}>
-              Mevsim Endeksi: {(thisMonthDemand / 196.5).toFixed(2)}x
+              Mevsim Endeksi: {monthlyAvg > 0 ? (thisMonthDemand / monthlyAvg).toFixed(2) : "0.00"}x
             </div>
           </div>
         </motion.div>
