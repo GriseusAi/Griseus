@@ -241,7 +241,7 @@ router.get("/predict/:sku", async (req: Request, res: Response) => {
 
     // BOM verilerini çek
     const bomData = await getBomWithStock(sku);
-    const capacity = computeProductionCapacity(bomData);
+    const capacity = computeProductionCapacity(bomData, sku);
 
     // Her hedef ay için tahmin
     const predictions: Array<{

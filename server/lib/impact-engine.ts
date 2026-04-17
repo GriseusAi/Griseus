@@ -53,7 +53,7 @@ async function takeSnapshot(): Promise<SystemSnapshot> {
     getBomWithStock(SKU),
   ]);
 
-  const capacity = computeProductionCapacity(bomItems);
+  const capacity = computeProductionCapacity(bomItems, SKU);
   const components = new Map<string, SystemSnapshot["components"] extends Map<string, infer V> ? V : never>();
 
   if (intel) {

@@ -711,11 +711,12 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
       if (!sku) return { error: "sku parametresi gerekli (ör: 'ELT.7-11')" };
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
-      const capacity = computeProductionCapacity(items);
+      const capacity = computeProductionCapacity(items, sku);
       return {
         product: sku, maxProducible: capacity.maxProducible,
         bottlenecks: capacity.bottlenecks.slice(0, 10),
         subAssemblyStatus: capacity.subAssemblyStatus, total_components: items.length,
+        onDemandComponents: capacity.onDemandComponents,
       };
     }
 
@@ -725,7 +726,7 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
       const quantity = input.quantity || 100;
       const items = await getBomWithStock(sku);
       if (items.length === 0) return { error: `BOM bulunamadı: ${sku}` };
-      const capacity = computeProductionCapacity(items);
+      const capacity = computeProductionCapacity(items, sku);
       const canProduce = capacity.maxProducible >= quantity;
       const shortages: any[] = [];
       const materialsNeeded: any[] = [];
@@ -1496,7 +1497,7 @@ export async function buildLiveSnapshot(): Promise<string> {
       try {
         const bom = await getBomWithStock(prod.sku);
         if (bom.length > 0) {
-          const cap = computeProductionCapacity(bom);
+          const cap = computeProductionCapacity(bom, prod.sku);
           snapshot += `${prod.sku} kapasite: ${cap.maxProducible} adet (darboğaz: ${cap.bottlenecks[0]?.name || "-"})\n`;
         }
       } catch {}

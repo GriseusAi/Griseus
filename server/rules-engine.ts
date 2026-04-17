@@ -69,7 +69,7 @@ export async function evaluateRules(trigger: {
       getBomWithStock(sku).catch(() => null),
     ]);
     if (bomItems_data && bomItems_data.length > 0) {
-      capacity = computeProductionCapacity(bomItems_data);
+      capacity = computeProductionCapacity(bomItems_data, sku);
     }
   } catch (err) { console.error("[rules-engine] Rule evaluation error:", err); }
 

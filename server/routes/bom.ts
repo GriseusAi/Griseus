@@ -66,16 +66,26 @@ function computeSubAssemblyCapacity(
   };
 }
 
-function computeProductionCapacity(allItems: BomRow[]) {
+function computeProductionCapacity(allItems: BomRow[], sku?: string) {
   // Top-level bilesenler (parentComponentCode=null) uretim darbogazi olabilir.
   // Child'lar (parent'i olan) sub-assembly capacity'de hesaba giriyor, burada
   // ayrica saymak CIFT SAYIM'dir. Aileler arasi tier tutarsizligi: BH yari-mamul
   // tier=1, ELT yari-mamul tier=2. Her iki durumda da parent'siz olan top-level.
+  //
+  // BH ailesi on-demand kurali: BH BOM'undaki efektif stoku 0 olan bilesenler
+  // surekli tutulmuyor, ihtiyac uzerine siparis veriliyor. Bu yuzden bunlar
+  // uretilebilirligi sinirlamaz — bottleneck listesinden ayri bir onDemand
+  // listesine tasiniyor.
+  const isBH = sku?.startsWith("BH.") ?? false;
   const tier1 = allItems.filter((i) => !i.parentComponentCode);
   const bottlenecks: Array<{
     code: string; name: string; tier: number; stock: number;
     required: number; maxProducts: number; note?: string;
     reasoning?: Array<{ order: number; cause: string; data?: Record<string, number | string> }>;
+  }> = [];
+  const onDemandComponents: Array<{
+    code: string; name: string; tier: number; requiredQty: number;
+    hasChildren: boolean; reason: string;
   }> = [];
 
   const subAssemblyStatus: Record<string, any> = {};
@@ -98,6 +108,21 @@ function computeProductionCapacity(allItems: BomRow[]) {
         partBottleneck: sub.bottleneck,
         parts: sub.parts,
       };
+    }
+
+    // BH on-demand: efektif stok = 0 → darbogazdan dis, siparis uzerine tedarik
+    if (isBH && effectiveStock === 0) {
+      onDemandComponents.push({
+        code: item.code,
+        name: item.name,
+        tier: item.tier,
+        requiredQty: item.requiredQty,
+        hasChildren,
+        reason: hasChildren
+          ? "yarı-mamül + alt bileşen stokları 0 → ihtiyaç üzerine tedarik (BH ailesi kuralı)"
+          : "stok=0 → ihtiyaç üzerine tedarik (BH ailesi kuralı)",
+      });
+      continue;
     }
 
     const maxProducts = item.requiredQty > 0
@@ -135,6 +160,7 @@ function computeProductionCapacity(allItems: BomRow[]) {
     bottlenecks: bottlenecks.slice(0, 10),
     allBottlenecks: bottlenecks,
     subAssemblyStatus,
+    onDemandComponents,
   };
 }
 
@@ -277,13 +303,14 @@ router.get("/:sku/production-capacity", async (req: Request, res: Response) => {
     return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
-  const capacity = computeProductionCapacity(items);
+  const capacity = computeProductionCapacity(items, sku);
 
   res.json({
     product: sku,
     maxProducible: capacity.maxProducible,
     bottlenecks: capacity.bottlenecks,
     subAssemblyStatus: capacity.subAssemblyStatus,
+    onDemandComponents: capacity.onDemandComponents,
   });
 });
 
@@ -363,7 +390,7 @@ router.get("/:sku/simulate", async (req: Request, res: Response) => {
     return res.status(404).json({ error: `BOM bulunamadı: ${sku}` });
   }
 
-  const capacity = computeProductionCapacity(items);
+  const capacity = computeProductionCapacity(items, sku);
   const canProduce = capacity.maxProducible >= quantity;
 
   const shortages: Array<{ code: string; name: string; need: number; have: number; shortage: number }> = [];

@@ -115,7 +115,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Pro
     getBomWithStock(sku),
   ]);
 
-  const currentCapacity = computeProductionCapacity(bomItems);
+  const currentCapacity = computeProductionCapacity(bomItems, sku);
   const now = new Date();
   const currentMonthIdx = now.getMonth();
 
@@ -194,7 +194,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Pro
     ...item,
     currentStock: virtualStocks.get(item.code) ?? item.currentStock,
   }));
-  const afterCapacity = computeProductionCapacity(virtualBomItems);
+  const afterCapacity = computeProductionCapacity(virtualBomItems, sku);
 
   // Compute component-level impacts
   const componentImpacts: ComponentImpact[] = [];
