@@ -472,7 +472,8 @@ stockPocRouter.post("/movements/:id/undo", async (req, res) => {
         reverseInProduction = currentState.inProduction - qty;
         break;
       case "to_warehouse":
-        reverseInProduction = currentState.inProduction + qty;
+        // Yeni semantic: to_warehouse doğrudan depoya ekliyor (üretimden çekmiyor).
+        // Undo da simetrik: sadece depodan çek, üretime GERİ GÖNDERME.
         reverseInWarehouse = currentState.inWarehouse - qty;
         break;
       case "to_sales":
