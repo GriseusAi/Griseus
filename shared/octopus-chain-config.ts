@@ -101,8 +101,12 @@ export const OCTOPUS_CHAIN_CONFIG = {
    *  User'ın işaretlediği yeni değişken kodlar buraya eklenir.
    */
   bhVariableComponents: [
+    // Kategori A — pattern match (VA\d+H\d+[A-Z]): üretici orijinal kodu, Aaco fan serisi
     "VA4H50R", // Aaco Fan No:4 — BH.50ST/UT (fan opsiyonel)
     "VA5H70R", // Aaco Fan No:5 — BH.55ST/UT (fan opsiyonel)
+    // Kategori B — manuel override (user işaretli, pattern'e uymaz): iç stok kodu
+    // formatında ama opsiyonel/değişken davranışta
+    "03051101", // BH Alüminize Yanma Borusu (Transition Tube) — BH.50UT/55UT (opsiyonel)
   ] as string[],
 } as const;
 
