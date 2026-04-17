@@ -47,19 +47,39 @@ router.post("/execute", upload.single("file"), async (req: Request, res: Respons
     const result = await smartImport(req.file.buffer, { type, productSku });
 
     // Record lineage for this import
+    const finalType = result.detectedType || type;
+    const isCukurova = finalType === "cukurova_bom_stock";
     recordLineage({
-      entity: type === "sales_history" ? "sales_history" : "component_stock",
+      entity: isCukurova ? "component_stock+bom_items" : type === "sales_history" ? "sales_history" : "component_stock",
       entityId: productSku,
       sourceType: "import",
-      sourceName: `Excel import: ${req.file.originalname || "dosya"}`,
-      actor: "import",
-      metadata: { type, productSku, rowCount: result.imported || 0 },
+      sourceName: `Excel import: ${req.file.originalname || "dosya"} (${finalType})`,
+      actor: "cukurova_import",
+      metadata: { type: finalType, productSku, imported: result.imported, updated: result.updated, skipped: result.skipped },
     }).catch(() => {});
 
-    // DSE — Satış verisi import edildiyse mevsimsel indeksleri güncelle (fire-and-forget)
+    // DSE — Satış verisi import edildiyse mevsimsel indeksleri güncelle
     if (type === "sales_history" || type === "auto") {
       bulkUpdateFromSalesHistory("cukurova", productSku).catch(err =>
         console.error("[import] DSE update error:", err));
+    }
+
+    // Octopus zincir: veri değişti → tüm client'lar haberdar + orkestratör denetim
+    if (result.imported + result.updated > 0) {
+      const entities = isCukurova
+        ? ["component_stock", "bom_items"]
+        : finalType === "sales_history" ? ["sales_history"]
+        : finalType === "bom_update" ? ["bom_items"]
+        : ["component_stock"];
+      broadcastEntityChanged({
+        event: "entity_changed",
+        entities,
+        scope: productSku,
+        count: result.imported + result.updated,
+        source: "excel_import",
+      });
+      // Orkestratör → octopus-chain audit (60s debounce)
+      triggerAuditOnDataChange(`excel/${finalType} ${productSku} ${result.imported}i/${result.updated}u via ${req.file.originalname || "dosya"}`);
     }
 
     res.json(result);
