@@ -195,6 +195,7 @@ export async function updateSeasonalIndex(
   tenantId: string = "cukurova",
   sku: string,
   useFastLambda: boolean = false,
+  skuMonthlyAvg?: number,  // SKU-specific monthly avg — bulk update'den gelir, sparse SKU'larda normalize için
 ): Promise<{ anomalyDetected: boolean; anomalyReason: string | null }> {
   const lambda = useFastLambda ? FAST_LAMBDA : EWMA_LAMBDA;
 
@@ -210,10 +211,14 @@ export async function updateSeasonalIndex(
 
   const baselineDemand = MONTHLY_DEMAND[month];
   const baselineIndex = STATIC_INDICES[month];
+  // SKU kendi ölçeğinde normalize — sabit MONTHLY_AVG (196.5) fallback, ama bulk update'den
+  // SKU-specific avg gelirse onu kullan. Aksi halde düşük hacimli SKU'ların indices'i
+  // 0.01-0.3 arası saçma çıkıyor (ör GSA15 40 adet/yıl → Σindex=0.2 yerine Σ=12 olmalı).
+  const avg = skuMonthlyAvg && skuMonthlyAvg > 0 ? skuMonthlyAvg : MONTHLY_AVG;
 
   if (!existing) {
     // İlk kez — baseline'dan başlat
-    const newIndex = actualDemand / MONTHLY_AVG;
+    const newIndex = actualDemand / avg;
     await db.insert(seasonalIndices).values({
       tenantId,
       productSku: sku,
@@ -324,6 +329,16 @@ export async function bulkUpdateFromSalesHistory(
     .where(eq(salesHistory.productSku, sku))
     .orderBy(salesHistory.year, salesHistory.month);
 
+  // SKU-specific aylık ortalama — sparse/düşük hacimli SKU'ları doğru ölçekte
+  // normalize etmek için (ör GSA15 yıllık 40 adet → 40/12=3.33 avg). Aksi halde
+  // sabit MONTHLY_AVG=196.5 (BH.50ST placeholder) kullanılıp indices 0.01-0.3
+  // saçma çıkar, Σindex 12 yerine 0.2 olur.
+  const totalByYear: Record<number, number> = {};
+  for (const r of rows) totalByYear[r.year] = (totalByYear[r.year] || 0) + r.qty;
+  const years = Object.keys(totalByYear).length;
+  const grandTotal = Object.values(totalByYear).reduce((a, b) => a + b, 0);
+  const skuMonthlyAvg = years > 0 && grandTotal > 0 ? grandTotal / (12 * years) : undefined;
+
   let updated = 0;
   const anomalies: string[] = [];
 
@@ -331,7 +346,7 @@ export async function bulkUpdateFromSalesHistory(
     const monthIdx = row.month - 1; // salesHistory 1-indexed, biz 0-indexed
     if (monthIdx < 0 || monthIdx > 11) continue;
 
-    const result = await updateSeasonalIndex(monthIdx, row.qty, row.year, tenantId, sku);
+    const result = await updateSeasonalIndex(monthIdx, row.qty, row.year, tenantId, sku, false, skuMonthlyAvg);
     updated++;
     if (result.anomalyDetected && result.anomalyReason) {
       anomalies.push(result.anomalyReason);
