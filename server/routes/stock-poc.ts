@@ -258,18 +258,11 @@ stockPocRouter.post("/movements", async (req, res) => {
     }
 
     // ── STANDARD MOVEMENTS ───────────────────────────────────────
-
-    // Validate — can't go negative
-    if (movement_type === "to_warehouse" && currentLevel.inProduction < quantity) {
-      return res.status(400).json({
-        error: `Üretimde yeterli stok yok. Üretimde: ${currentLevel.inProduction}, İstenen: ${quantity}`,
-      });
-    }
-    if (movement_type === "to_sales" && currentLevel.inWarehouse < quantity) {
-      return res.status(400).json({
-        error: `Depoda yeterli stok yok. Depoda: ${currentLevel.inWarehouse}, İstenen: ${quantity}`,
-      });
-    }
+    // User semantic (2026-04-17):
+    //   produced       → inProduction += qty + BOM consumption (bileşenler düşer)
+    //   to_warehouse   → inWarehouse += qty DİREKT (üretimden çekmez, bileşenler etkilenmez)
+    //   to_sales       → inWarehouse -= qty, totalSold += qty
+    // to_warehouse artık inProduction'dan çekmiyor — doğrudan depo ekleme.
 
     const previousState = { ...currentLevel };
 
@@ -282,7 +275,7 @@ stockPocRouter.post("/movements", async (req, res) => {
         newInProduction += quantity;
         break;
       case "to_warehouse":
-        newInProduction -= quantity;
+        // Doğrudan depoya ekle — üretimden çekme, bileşen consumption yok
         newInWarehouse += quantity;
         break;
       case "to_sales":
