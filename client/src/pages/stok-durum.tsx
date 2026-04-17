@@ -198,8 +198,14 @@ function CapacityGauge({ capacity, sku }: { capacity: Capacity | undefined; sku:
 function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onClick: () => void; isFlashing: boolean }) {
   const [expanded, setExpanded] = useState(false);
   const isNegative = comp.currentStock < 0;
-  const statusColor = isNegative ? C.err : comp.status === "critical" ? C.err : comp.status === "variable" ? C.warn : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok;
-  const statusBg = isNegative ? C.errDim : comp.status === "critical" ? C.errDim : comp.status === "variable" ? C.warnDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim;
+  // Yarı-mamül ayrı palet — düşük/değişken turuncuyla boyanmaz
+  const isSub = !!comp.isSubAssembly;
+  const statusColor = isSub
+    ? (comp.status === "critical" ? C.err : C.blue)
+    : (isNegative ? C.err : comp.status === "critical" ? C.err : comp.status === "variable" ? C.warn : comp.status === "warning" ? C.warn : comp.status === "ok" ? C.blue : C.ok);
+  const statusBg = isSub
+    ? (comp.status === "critical" ? C.errDim : C.blueDim)
+    : (isNegative ? C.errDim : comp.status === "critical" ? C.errDim : comp.status === "variable" ? C.warnDim : comp.status === "warning" ? C.warnDim : comp.status === "ok" ? C.blueDim : C.okDim);
   const statusLabel = isNegative ? "NEGATİF" : comp.status === "critical" ? "KRİTİK" : comp.status === "variable" ? "DEĞİŞKEN" : comp.status === "warning" ? "DÜŞÜK" : comp.status === "ok" ? "YETERLİ" : "BOL";
   const maxP = comp.maxProducts ?? 0;
   const barPct = Math.min(maxP / 500, 1);

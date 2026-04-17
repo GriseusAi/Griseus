@@ -92,7 +92,12 @@ interface SimulationData {
 function ChildRowUI({ child, depth }: { child: BomComponent; depth: number }) {
   const [open, setOpen] = useState(false);
   const hasKids = (child.children?.length ?? 0) > 0;
-  const color = child.status === "critical" ? "#ef4444" : (child.status === "variable" || child.status === "warning") ? "#ea580c" : child.status === "ok" ? "#818cf8" : "#34d399";
+  // Yarı-mamül ayrı palet — turuncuyla boyanmaz
+  const isSubAssembly = (child.children?.length ?? 0) > 0 || child.isSubAssembly;
+  const color = child.status === "critical" ? "#ef4444"
+    : isSubAssembly ? "#818cf8"
+    : (child.status === "variable" || child.status === "warning") ? "#ea580c"
+    : child.status === "ok" ? "#818cf8" : "#34d399";
   return (
     <>
       <div style={{
