@@ -83,27 +83,31 @@ interface CukurovaMapping {
   miktar: string;
   birim: string;
   stokSeviyesi: string;
+  variant: "bom_stock" | "stock_only";  // bom_stock = full BOM+stok, stock_only = sadece stok bakiye
 }
 
-function detectCukurovaFormat(headers: string[]): CukurovaMapping | null {
-  // Normalize: lowercase, trim, collapse whitespace, strip dots, strip combining marks
-  const norm = (h: string) => h.trim().toLowerCase()
-    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")  // Strip combining diacritical marks
-    .replace(/İ/gi, "i").replace(/ı/g, "i")  // Turkish I normalization
+// Turkish character normalization helper
+function turkishNorm(h: string): string {
+  return h.trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")
+    .replace(/İ/gi, "i").replace(/ı/g, "i")
     .replace(/ş/g, "s").replace(/ö/g, "o").replace(/ü/g, "u")
     .replace(/ç/g, "c").replace(/ğ/g, "g")
     .replace(/\s+/g, "_").replace(/\./g, "");
+}
 
-  const normalized = headers.map(norm);
+function detectCukurovaFormat(headers: string[]): CukurovaMapping | null {
+  const normalized = headers.map(turkishNorm);
 
-  // Çukurova fingerprint: "stok_kodu" + "stok_ismi" + "miktar" + "stok_sevi" kolonları
   const stokKoduIdx = normalized.findIndex(h => h === "stok_kodu");
-  const stokIsmiIdx = normalized.findIndex(h => h.startsWith("stok_ism") || h.startsWith("stok_ism"));
+  const stokIsmiIdx = normalized.findIndex(h => h.startsWith("stok_ism"));
   const miktarIdx = normalized.findIndex(h => h === "miktar");
   const stokSeviIdx = normalized.findIndex(h => h.startsWith("stok_sevi"));
+  const stokBakiyeIdx = normalized.findIndex(h => h.startsWith("stok_bakiye"));
   const brIdx = normalized.findIndex(h => h === "br" || h === "birim");
   const siraNoIdx = normalized.findIndex(h => h === "sira_no" || h === "sira" || h.startsWith("sira_no"));
 
+  // Variant 1: Full BOM+Stok (Stok Kodu + Stok İsmi + Miktar + Stok Sevi.)
   if (stokKoduIdx >= 0 && stokIsmiIdx >= 0 && miktarIdx >= 0 && stokSeviIdx >= 0) {
     return {
       stokKodu: headers[stokKoduIdx],
@@ -112,23 +116,49 @@ function detectCukurovaFormat(headers: string[]): CukurovaMapping | null {
       miktar: headers[miktarIdx],
       birim: brIdx >= 0 ? headers[brIdx] : "",
       stokSeviyesi: headers[stokSeviIdx],
+      variant: "bom_stock",
     };
   }
+
+  // Variant 2: Stock-only (Stok Kodu + Stok İsmi + Stok Bakiyesi) — GSS20P gibi
+  if (stokKoduIdx >= 0 && stokIsmiIdx >= 0 && stokBakiyeIdx >= 0) {
+    return {
+      stokKodu: headers[stokKoduIdx],
+      stokIsmi: headers[stokIsmiIdx],
+      siraNo: "",
+      miktar: "",       // yok bu formatta
+      birim: "",
+      stokSeviyesi: headers[stokBakiyeIdx],
+      variant: "stock_only",
+    };
+  }
+
   return null;
+}
+
+// Yarı mamül tespiti: indent seviyesine göre parent-child ilişkisi
+// Çukurova ERP'de child bileşenler daha fazla leading space ile gelir (9+ vs 5)
+function detectIndentLevel(rawCode: string): number {
+  const leadingSpaces = rawCode.length - rawCode.trimStart().length;
+  // 0 spaces = ürün satırı, ~5 = tier 1, ~9+ = tier 2 (child)
+  if (leadingSpaces >= 8) return 2;
+  if (leadingSpaces >= 1) return 1;
+  return 0;  // ürünün kendisi
 }
 
 function mapColumns(headers: string[]): { mapping: Record<string, string>; type: ImportType; cukurovaMapping?: CukurovaMapping } {
   // 1. Çukurova format kontrolü — öncelikli (daha spesifik)
   const cukurova = detectCukurovaFormat(headers);
   if (cukurova) {
+    const mapping: Record<string, string> = {
+      componentCode: cukurova.stokKodu,
+      name: cukurova.stokIsmi,
+      stock: cukurova.stokSeviyesi,
+    };
+    if (cukurova.miktar) mapping.requiredQty = cukurova.miktar;
+    if (cukurova.birim) mapping.unit = cukurova.birim;
     return {
-      mapping: {
-        componentCode: cukurova.stokKodu,
-        name: cukurova.stokIsmi,
-        requiredQty: cukurova.miktar,
-        stock: cukurova.stokSeviyesi,
-        unit: cukurova.birim,
-      },
+      mapping,
       type: "cukurova_bom_stock",
       cukurovaMapping: cukurova,
     };
@@ -413,56 +443,84 @@ export async function smartImport(
       break;
     }
     case "cukurova_bom_stock": {
-      // Çukurova ERP formatı: BOM + Stok hibrit dosyası
-      // İlk satır ürünün kendisi (SKU satırı — Sıra No boş, Miktar=1)
-      // Son satır "Hammadde Toplamı" — skip
-      // Aradaki satırlar: bileşenler (BOM qty + stok seviyesi)
+      // Çukurova ERP formatı — 2 varyant:
+      // A) bom_stock: BOM + Stok hibrit (Stok Kodu/İsmi/Miktar/Stok Sevi.)
+      // B) stock_only: Sadece stok bakiye (Stok Kodu/İsmi/Stok Bakiyesi)
+      //
+      // Yarı mamül tespiti: indent >= 8 → child (tier 2), parent = son tier-1 satır
+      // İlk satır = ürünün kendisi (indent=0), son satırlar = toplamlar → skip
       if (!cukurovaMapping) break;
 
+      const isStockOnly = cukurovaMapping.variant === "stock_only";
       let bomUpdated = 0;
       let stockUpdated = 0;
+      let subAssemblyCount = 0;
+      let currentParentCode: string | null = null;
 
       for (let i = 0; i < rawData.length; i++) {
         const row = rawData[i];
-        const rawCode = String(row[cukurovaMapping.stokKodu] ?? "").trim();
+        const rawCodeField = String(row[cukurovaMapping.stokKodu] ?? "");
+        const rawCode = rawCodeField.trim();
         const name = String(row[cukurovaMapping.stokIsmi] ?? "").trim();
-        const siraNo = cukurovaMapping.siraNo ? String(row[cukurovaMapping.siraNo] ?? "").trim() : "";
-        const miktar = parseFloat(String(row[cukurovaMapping.miktar] ?? ""));
         const stokSeviyesi = parseFloat(String(row[cukurovaMapping.stokSeviyesi] ?? ""));
         const birim = cukurovaMapping.birim ? String(row[cukurovaMapping.birim] ?? "").trim() : "AD";
 
         // Skip: boş satır
         if (!rawCode) { skipped++; continue; }
 
-        // Skip: ürünün kendisi (ilk satır — Sıra No boş veya yok, genelde Miktar=1, ürün SKU'su)
-        if (i === 0 && !siraNo && miktar === 1) { skipped++; continue; }
-        // İlk satır bazen Sıra No kolonu olmayan formatta geliyor — stok seviyesi = mamul stok
-        if (i === 0 && rawCode === productSku) { skipped++; continue; }
-
-        // Skip: toplam satırları ("Hammadde Toplamı", "İşçilik Toplamı" vb.)
-        if (rawCode.toLowerCase().includes("toplam") || rawCode.toLowerCase().includes("toplami")) {
+        // Skip: toplam/maliyet satırları
+        const rawCodeLower = rawCode.toLowerCase();
+        if (rawCodeLower.includes("toplam") || rawCodeLower.includes("toplami") ||
+            rawCodeLower.includes("maliyet") || rawCodeLower.includes("malzeme")) {
           skipped++;
           continue;
         }
 
-        // Skip: sayısal olmayan miktar (alt toplamlar vb.)
-        if (isNaN(miktar)) { skipped++; continue; }
+        // Indent seviyesi — yarı mamül tespiti
+        const indentLevel = detectIndentLevel(rawCodeField);
 
-        // BOM güncelleme: requiredQuantity
-        const [bomExisting] = await db.select().from(bomItems)
-          .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
-
-        if (bomExisting) {
-          await db.update(bomItems)
-            .set({
-              requiredQuantity: String(miktar),
-              componentName: name || bomExisting.componentName,
-            })
-            .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
-          bomUpdated++;
+        // Skip: ürünün kendisi (indent=0, ilk satır genelde)
+        if (indentLevel === 0) {
+          skipped++;
+          continue;
         }
 
-        // Stok güncelleme: currentStock (Stok Sevi.)
+        // Tier belirleme
+        const isChild = indentLevel >= 2;
+        const tier = isChild ? 2 : 1;
+
+        if (!isChild) {
+          currentParentCode = rawCode;
+        }
+        if (isChild) {
+          subAssemblyCount++;
+        }
+
+        // --- BOM güncelleme (sadece bom_stock varyantında) ---
+        if (!isStockOnly && cukurovaMapping.miktar) {
+          const miktar = parseFloat(String(row[cukurovaMapping.miktar] ?? ""));
+          if (!isNaN(miktar)) {
+            const [bomExisting] = await db.select().from(bomItems)
+              .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
+
+            if (bomExisting) {
+              const updateData: Record<string, any> = {
+                requiredQuantity: String(miktar),
+                tier,
+              };
+              if (name) updateData.componentName = name;
+              if (isChild && currentParentCode) {
+                updateData.parentComponentCode = currentParentCode;
+              }
+              await db.update(bomItems)
+                .set(updateData)
+                .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
+              bomUpdated++;
+            }
+          }
+        }
+
+        // --- Stok güncelleme ---
         if (!isNaN(stokSeviyesi)) {
           const [stockExisting] = await db.select().from(componentStock)
             .where(eq(componentStock.componentCode, rawCode));
@@ -479,7 +537,6 @@ export async function smartImport(
               .where(eq(componentStock.componentCode, rawCode));
             stockUpdated++;
           } else {
-            // Yeni bileşen — stok kaydı oluştur
             await db.insert(componentStock).values({
               componentCode: rawCode,
               currentStock: String(stokSeviyesi),
@@ -493,14 +550,17 @@ export async function smartImport(
         updated++;
       }
 
-      // Override message for hybrid format
+      const variantLabel = isStockOnly ? "Stok Bakiye" : "BOM+Stok";
+      const subNote = subAssemblyCount > 0
+        ? ` ${subAssemblyCount} yarı mamül alt bileşeni tespit edildi (tier 2).`
+        : "";
       return {
         success: true,
         detectedType: finalType,
         totalRows: rawData.length,
         imported, updated, skipped,
         errors, anomalies, columnMapping: mapping, preview,
-        message: `Çukurova formatı: ${bomUpdated} BOM güncellendi, ${stockUpdated} stok güncellendi, ${imported} yeni stok kaydı, ${skipped} satır atlandı.`,
+        message: `Çukurova ${variantLabel}: ${bomUpdated} BOM, ${stockUpdated} stok güncellendi, ${imported} yeni kayıt, ${skipped} atlandı.${subNote}`,
       };
     }
   }
