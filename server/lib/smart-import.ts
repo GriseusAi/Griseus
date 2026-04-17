@@ -18,7 +18,7 @@ import { getMonthlyDemandForSku } from "./seasonal-constants";
 // TYPES
 // ══════════════════════════════════════════════════════════
 
-export type ImportType = "sales_history" | "component_stock" | "bom_update" | "auto";
+export type ImportType = "sales_history" | "component_stock" | "bom_update" | "cukurova_bom_stock" | "auto";
 
 export interface ImportResult {
   success: boolean;
@@ -62,7 +62,7 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   revenue: ["ciro", "gelir", "revenue", "tutar", "Revenue", "CIRO"],
   // Component stock
   componentCode: ["kod", "code", "bileşen", "bilesen", "component", "parca", "parça", "KOD", "Code"],
-  stock: ["stok", "stock", "miktar", "adet", "STOK", "Stock", "envanter"],
+  stock: ["stok", "stock", "STOK", "Stock", "envanter"],
   // BOM
   name: ["ad", "isim", "name", "bileşen_adı", "bilesen_adi", "Name", "AD"],
   requiredQty: ["gerekli", "required", "miktar_gerekli", "adet_gerekli", "qty"],
@@ -70,16 +70,92 @@ const COLUMN_ALIASES: Record<string, string[]> = {
   tier: ["tier", "seviye", "kademe", "TIER"],
 };
 
-function mapColumns(headers: string[]): { mapping: Record<string, string>; type: ImportType } {
+// ══════════════════════════════════════════════════════════
+// ÇUKUROVA FORMAT TESPİTİ
+// Çukurova ERP'sinden gelen XLS: Stok Kodu | Stok İsmi | Sıra No | Miktar | Br | Br.Maliyet | T.Maliyet | Stok Sevi.
+// Bu dosya hem BOM (Miktar = adet/ürün) hem Stok (Stok Sevi. = mevcut stok) içerir
+// ══════════════════════════════════════════════════════════
+
+interface CukurovaMapping {
+  stokKodu: string;
+  stokIsmi: string;
+  siraNo: string;
+  miktar: string;
+  birim: string;
+  stokSeviyesi: string;
+}
+
+function detectCukurovaFormat(headers: string[]): CukurovaMapping | null {
+  // Normalize: lowercase, trim, collapse whitespace, strip dots, strip combining marks
+  const norm = (h: string) => h.trim().toLowerCase()
+    .normalize("NFD").replace(/[\u0300-\u036f]/g, "")  // Strip combining diacritical marks
+    .replace(/İ/gi, "i").replace(/ı/g, "i")  // Turkish I normalization
+    .replace(/ş/g, "s").replace(/ö/g, "o").replace(/ü/g, "u")
+    .replace(/ç/g, "c").replace(/ğ/g, "g")
+    .replace(/\s+/g, "_").replace(/\./g, "");
+
+  const normalized = headers.map(norm);
+
+  // Çukurova fingerprint: "stok_kodu" + "stok_ismi" + "miktar" + "stok_sevi" kolonları
+  const stokKoduIdx = normalized.findIndex(h => h === "stok_kodu");
+  const stokIsmiIdx = normalized.findIndex(h => h.startsWith("stok_ism") || h.startsWith("stok_ism"));
+  const miktarIdx = normalized.findIndex(h => h === "miktar");
+  const stokSeviIdx = normalized.findIndex(h => h.startsWith("stok_sevi"));
+  const brIdx = normalized.findIndex(h => h === "br" || h === "birim");
+  const siraNoIdx = normalized.findIndex(h => h === "sira_no" || h === "sira" || h.startsWith("sira_no"));
+
+  if (stokKoduIdx >= 0 && stokIsmiIdx >= 0 && miktarIdx >= 0 && stokSeviIdx >= 0) {
+    return {
+      stokKodu: headers[stokKoduIdx],
+      stokIsmi: headers[stokIsmiIdx],
+      siraNo: siraNoIdx >= 0 ? headers[siraNoIdx] : "",
+      miktar: headers[miktarIdx],
+      birim: brIdx >= 0 ? headers[brIdx] : "",
+      stokSeviyesi: headers[stokSeviIdx],
+    };
+  }
+  return null;
+}
+
+function mapColumns(headers: string[]): { mapping: Record<string, string>; type: ImportType; cukurovaMapping?: CukurovaMapping } {
+  // 1. Çukurova format kontrolü — öncelikli (daha spesifik)
+  const cukurova = detectCukurovaFormat(headers);
+  if (cukurova) {
+    return {
+      mapping: {
+        componentCode: cukurova.stokKodu,
+        name: cukurova.stokIsmi,
+        requiredQty: cukurova.miktar,
+        stock: cukurova.stokSeviyesi,
+        unit: cukurova.birim,
+      },
+      type: "cukurova_bom_stock",
+      cukurovaMapping: cukurova,
+    };
+  }
+
+  // 2. Genel alias eşleme
   const mapping: Record<string, string> = {};
   const lowerHeaders = headers.map(h => h.trim().toLowerCase().replace(/\s+/g, "_"));
 
   for (const [canonical, aliases] of Object.entries(COLUMN_ALIASES)) {
     for (let i = 0; i < headers.length; i++) {
       const header = lowerHeaders[i];
-      if (aliases.some(a => a.toLowerCase() === header || header.includes(a.toLowerCase()))) {
+      // Exact match first, then includes — avoid "stok_kodu" matching "stok" alias
+      if (aliases.some(a => a.toLowerCase() === header)) {
         mapping[canonical] = headers[i];
         break;
+      }
+    }
+    // Fallback: includes match (only if no exact match found)
+    if (!mapping[canonical]) {
+      for (let i = 0; i < headers.length; i++) {
+        if (mapping[canonical]) break;
+        const header = lowerHeaders[i];
+        if (aliases.some(a => header.includes(a.toLowerCase()) && !Object.values(mapping).includes(headers[i]))) {
+          mapping[canonical] = headers[i];
+          break;
+        }
       }
     }
   }
@@ -145,24 +221,28 @@ function detectAnomalies(rows: Record<string, any>[], type: ImportType, mapping:
     }
   }
 
-  if (type === "component_stock") {
+  if (type === "component_stock" || type === "cukurova_bom_stock") {
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
       const stock = Number(row[mapping.stock]);
       const code = row[mapping.componentCode];
+      const rawCode = String(code ?? "").trim();
+
+      // Skip non-component rows (product line, totals)
+      if (!rawCode || rawCode.toLowerCase().includes("toplam")) continue;
 
       if (!isNaN(stock) && stock < 0) {
         anomalies.push({
           row: i + 2, column: mapping.stock, value: stock,
           expected: "≥ 0", severity: "critical",
-          reason: `${code} negatif stok değeri`,
+          reason: `${rawCode} negatif stok değeri`,
         });
       }
       if (!isNaN(stock) && stock > 50000) {
         anomalies.push({
           row: i + 2, column: mapping.stock, value: stock,
           expected: "< 50000", severity: "warning",
-          reason: `${code} stok değeri çok yüksek — doğruluğunu kontrol edin`,
+          reason: `${rawCode} stok değeri çok yüksek — doğruluğunu kontrol edin`,
         });
       }
     }
@@ -201,7 +281,7 @@ export async function smartImport(
 
   // Kolon eşleme
   const headers = Object.keys(rawData[0]);
-  const { mapping, type: detectedType } = mapColumns(headers);
+  const { mapping, type: detectedType, cukurovaMapping } = mapColumns(headers);
   const finalType = type === "auto" ? detectedType : type;
 
   if (finalType === "auto") {
@@ -332,6 +412,97 @@ export async function smartImport(
       }
       break;
     }
+    case "cukurova_bom_stock": {
+      // Çukurova ERP formatı: BOM + Stok hibrit dosyası
+      // İlk satır ürünün kendisi (SKU satırı — Sıra No boş, Miktar=1)
+      // Son satır "Hammadde Toplamı" — skip
+      // Aradaki satırlar: bileşenler (BOM qty + stok seviyesi)
+      if (!cukurovaMapping) break;
+
+      let bomUpdated = 0;
+      let stockUpdated = 0;
+
+      for (let i = 0; i < rawData.length; i++) {
+        const row = rawData[i];
+        const rawCode = String(row[cukurovaMapping.stokKodu] ?? "").trim();
+        const name = String(row[cukurovaMapping.stokIsmi] ?? "").trim();
+        const siraNo = cukurovaMapping.siraNo ? String(row[cukurovaMapping.siraNo] ?? "").trim() : "";
+        const miktar = parseFloat(String(row[cukurovaMapping.miktar] ?? ""));
+        const stokSeviyesi = parseFloat(String(row[cukurovaMapping.stokSeviyesi] ?? ""));
+        const birim = cukurovaMapping.birim ? String(row[cukurovaMapping.birim] ?? "").trim() : "AD";
+
+        // Skip: boş satır
+        if (!rawCode) { skipped++; continue; }
+
+        // Skip: ürünün kendisi (ilk satır — Sıra No boş veya yok, genelde Miktar=1, ürün SKU'su)
+        if (i === 0 && !siraNo && miktar === 1) { skipped++; continue; }
+        // İlk satır bazen Sıra No kolonu olmayan formatta geliyor — stok seviyesi = mamul stok
+        if (i === 0 && rawCode === productSku) { skipped++; continue; }
+
+        // Skip: toplam satırları ("Hammadde Toplamı", "İşçilik Toplamı" vb.)
+        if (rawCode.toLowerCase().includes("toplam") || rawCode.toLowerCase().includes("toplami")) {
+          skipped++;
+          continue;
+        }
+
+        // Skip: sayısal olmayan miktar (alt toplamlar vb.)
+        if (isNaN(miktar)) { skipped++; continue; }
+
+        // BOM güncelleme: requiredQuantity
+        const [bomExisting] = await db.select().from(bomItems)
+          .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
+
+        if (bomExisting) {
+          await db.update(bomItems)
+            .set({
+              requiredQuantity: String(miktar),
+              componentName: name || bomExisting.componentName,
+            })
+            .where(and(eq(bomItems.componentCode, rawCode), eq(bomItems.parentProductSku, productSku)));
+          bomUpdated++;
+        }
+
+        // Stok güncelleme: currentStock (Stok Sevi.)
+        if (!isNaN(stokSeviyesi)) {
+          const [stockExisting] = await db.select().from(componentStock)
+            .where(eq(componentStock.componentCode, rawCode));
+
+          if (stockExisting) {
+            await db.update(componentStock)
+              .set({
+                currentStock: String(stokSeviyesi),
+                unit: birim || stockExisting.unit,
+                lastCountedAt: new Date(),
+                lastCountedBy: "cukurova_import",
+                updatedAt: new Date(),
+              })
+              .where(eq(componentStock.componentCode, rawCode));
+            stockUpdated++;
+          } else {
+            // Yeni bileşen — stok kaydı oluştur
+            await db.insert(componentStock).values({
+              componentCode: rawCode,
+              currentStock: String(stokSeviyesi),
+              unit: birim || "AD",
+              lastCountedBy: "cukurova_import",
+            });
+            imported++;
+          }
+        }
+
+        updated++;
+      }
+
+      // Override message for hybrid format
+      return {
+        success: true,
+        detectedType: finalType,
+        totalRows: rawData.length,
+        imported, updated, skipped,
+        errors, anomalies, columnMapping: mapping, preview,
+        message: `Çukurova formatı: ${bomUpdated} BOM güncellendi, ${stockUpdated} stok güncellendi, ${imported} yeni stok kaydı, ${skipped} satır atlandı.`,
+      };
+    }
   }
 
   return {
@@ -349,5 +520,5 @@ export async function smartImport(
 // ══════════════════════════════════════════════════════════
 
 export async function analyzeFile(buffer: Buffer): Promise<ImportResult> {
-  return smartImport(buffer, { dryRun: true });
+  return smartImport(buffer, { dryRun: true, productSku: "__analyze__" });
 }

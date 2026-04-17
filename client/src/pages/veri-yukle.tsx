@@ -33,7 +33,7 @@ interface ProductOption {
   component_count: string;
 }
 
-type ImportType = "component_stock" | "bom_update" | "sales_history" | "auto";
+type ImportType = "component_stock" | "bom_update" | "sales_history" | "cukurova_bom_stock" | "auto";
 
 interface ImportResult {
   success: boolean;
@@ -50,6 +50,7 @@ interface ImportResult {
 }
 
 const IMPORT_TYPES: Array<{ key: ImportType; label: string; desc: string; icon: string; color: string }> = [
+  { key: "cukurova_bom_stock", label: "Cukurova ERP", desc: "BOM + Stok hibrit (Stok Kodu/Ismi/Miktar/Sevi.)", icon: "\u{1F3ED}", color: C.accent },
   { key: "component_stock", label: "Bilesen Stok", desc: "Bilesen stok miktarlarini guncelle", icon: "\u{1F4E6}", color: C.ok },
   { key: "bom_update", label: "BOM Recete", desc: "Urun agaci (BOM) miktarlarini guncelle", icon: "\u{1F9E9}", color: C.blue },
   { key: "sales_history", label: "Satis Gecmisi", desc: "Aylik satis verilerini yukle", icon: "\u{1F4C8}", color: C.purple },
@@ -320,7 +321,8 @@ function DeviceImportCard({ product }: { product: ProductOption }) {
                     border: `1px solid ${analysisResult.detectedType !== "auto" ? C.okBorder : C.warnBorder}`,
                   }}>
                     {analysisResult.detectedType !== "auto"
-                      ? `Tip: ${analysisResult.detectedType === "component_stock" ? "Bilesen Stok"
+                      ? `Tip: ${analysisResult.detectedType === "cukurova_bom_stock" ? "Cukurova ERP (BOM+Stok)"
+                        : analysisResult.detectedType === "component_stock" ? "Bilesen Stok"
                         : analysisResult.detectedType === "bom_update" ? "BOM Recete"
                         : analysisResult.detectedType === "sales_history" ? "Satis Gecmisi" : analysisResult.detectedType}`
                       : "Tip tespit edilemedi"}
