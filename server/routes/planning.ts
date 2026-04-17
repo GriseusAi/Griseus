@@ -1,6 +1,6 @@
 import { Router, type Request, type Response } from "express";
 import { db } from "../db";
-import { salesHistory, productionPlans, bomItems, componentStock } from "@shared/schema";
+import { salesHistory, productionPlans, bomItems, componentStock, seasonalIndices } from "@shared/schema";
 import { eq, and, sql, desc } from "drizzle-orm";
 import multer from "multer";
 import XLSX from "xlsx";
@@ -409,7 +409,9 @@ router.get("/history/:sku", async (req: Request, res: Response) => {
   }
 });
 
-// DELETE /api/planning/history/:sku — satış geçmişini temizle (re-import için)
+// DELETE /api/planning/history/:sku — satış geçmişini + DSE state'i temizle (re-import için)
+// EWMA zehirlenmesi: seasonal_indices tablosu eski dynamicDemand'ı saklar; sales DELETE tek başına yeterli değil.
+// Bu yüzden seasonal_indices kayıtlarını da siliyoruz ki bulkUpdateFromSalesHistory fresh başlasın.
 router.delete("/history/:sku", async (req: Request, res: Response) => {
   try {
     const sku = req.params.sku as string;
@@ -418,7 +420,17 @@ router.delete("/history/:sku", async (req: Request, res: Response) => {
       .where(eq(salesHistory.productSku, sku))
       .returning();
 
-    res.json({ success: true, deleted: deleted.length, message: `${sku} için ${deleted.length} kayıt silindi` });
+    const deletedSeasonal = await db
+      .delete(seasonalIndices)
+      .where(eq(seasonalIndices.productSku, sku))
+      .returning();
+
+    res.json({
+      success: true,
+      deleted: deleted.length,
+      deletedSeasonal: deletedSeasonal.length,
+      message: `${sku}: ${deleted.length} sales + ${deletedSeasonal.length} seasonal_indices silindi`,
+    });
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
