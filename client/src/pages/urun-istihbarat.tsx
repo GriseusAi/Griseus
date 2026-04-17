@@ -16,7 +16,8 @@ const C = {
   border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
   accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.20)",
   ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
-  warn: "#ea580c", warnDim: "rgba(234,88,12,0.08)", warnBorder: "rgba(234,88,12,0.25)",
+  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
+  variable: "#ea580c", variableDim: "rgba(234,88,12,0.08)", variableBorder: "rgba(234,88,12,0.25)",
   err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
   blue: "#60a5fa", blueDim: "rgba(96,165,250,0.06)", blueBorder: "rgba(96,165,250,0.15)",
   purple: "#a78bfa",
@@ -92,12 +93,12 @@ interface SimulationData {
 function ChildRowUI({ child, depth }: { child: BomComponent; depth: number }) {
   const [open, setOpen] = useState(false);
   const hasKids = (child.children?.length ?? 0) > 0;
-  // Yarı-mamül ayrı palet — turuncuyla boyanmaz
-  const isSubAssembly = (child.children?.length ?? 0) > 0 || child.isSubAssembly;
+  // Status → renk (tüm sistemde aynı): critical=kırmızı, warning=sarı, ok=mavi, abundant=yeşil, variable=koyu turuncu
   const color = child.status === "critical" ? "#ef4444"
-    : isSubAssembly ? "#818cf8"
-    : (child.status === "variable" || child.status === "warning") ? "#ea580c"
-    : child.status === "ok" ? "#818cf8" : "#34d399";
+    : child.status === "variable" ? "#ea580c"
+    : child.status === "warning" ? "#fbbf24"
+    : child.status === "ok" ? "#818cf8"
+    : "#34d399";
   return (
     <>
       <div style={{

@@ -301,14 +301,13 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
 
-      // BH variable bileşen — 2 kaynak: (a) config pattern match VA\d+H\d+[A-Z] (b) BH + stok=0 (on-demand)
-      // Her ikisi de UI'da "variable" (koyu turuncu) görünür, critical değil
-      const isBHSku = sku.startsWith("BH.");
-      const isConfigVariable = isBHVariableComponent(sku, i.code);
-      const isOnDemandVariable = isBHSku && !hasChildren && effectiveStock === 0;
-      const isVariable = isConfigVariable || isOnDemandVariable;
+      // "Variable" status SADECE config'te işaretlenmiş kodlar için (VA-pattern — Aaco fan).
+      // Kod pattern'inden belli bileşen, stok=0 ile karıştırılmamalı.
+      const isVariable = isBHVariableComponent(sku, i.code);
 
-      // Status: tier=1 icin sadelestirildi — tier 2+ zaten listeye girmiyor.
+      // Status — tüm sistemde aynı kural (ürün çeşidine göre değil, efektif stoka göre):
+      //   critical=kırmızı, warning=sarı, ok=mavi, abundant=yeşil
+      //   variable=koyu turuncu (opsiyonel kod pattern'inden belli)
       let status: string;
       if (isVariable) status = "variable";
       else if (effectiveStock < 0) status = "critical";
