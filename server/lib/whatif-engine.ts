@@ -127,7 +127,7 @@ export async function simulateWhatIf(scenario: WhatIfScenario, sku: string): Pro
   for (const item of bomItems) {
     let effectiveStock = item.currentStock;
     if (item.tier === 2) {
-      const sub = computeSubAssemblyCapacity(item.code, bomItems);
+      const sub = computeSubAssemblyCapacity(item.code, bomItems, sku);
       effectiveStock = item.currentStock + sub.producible;
     }
     virtualStocks.set(item.code, effectiveStock);

@@ -735,7 +735,7 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
         let effectiveStock = item.currentStock;
         let mustAssemble: number | undefined;
         if (item.tier === 2) {
-          const sub = computeSubAssemblyCapacity(item.code, items);
+          const sub = computeSubAssemblyCapacity(item.code, items, sku);
           effectiveStock = item.currentStock + sub.producible;
           if (item.currentStock < need) mustAssemble = Math.min(need - item.currentStock, sub.producible);
         }

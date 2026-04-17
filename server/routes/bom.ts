@@ -48,12 +48,28 @@ async function getBomWithStock(sku: string): Promise<BomRow[]> {
 
 function computeSubAssemblyCapacity(
   subAssemblyCode: string,
-  allItems: BomRow[]
+  allItems: BomRow[],
+  sku?: string
 ): { producible: number; bottleneck: string; parts: Array<{ code: string; name: string; stock: number; required: number; maxProducts: number }> } {
   const parts = allItems.filter((i) => i.parentComponentCode === subAssemblyCode);
   if (parts.length === 0) return { producible: 0, bottleneck: "alt bileşen yok", parts: [] };
 
-  const partDetails = parts.map((p) => {
+  const isBH = sku?.startsWith("BH.") ?? false;
+  // BH ailesi on-demand: alt bileşen stoku 0 ise siparişe tabi, bottleneck sayılmaz
+  const considered = isBH ? parts.filter((p) => p.currentStock > 0) : parts;
+
+  if (considered.length === 0) {
+    // Tüm alt bileşenler on-demand → alt montaj sınırlanmaz (Number.MAX_SAFE_INTEGER ile Infinity simülasyonu)
+    return {
+      producible: Number.MAX_SAFE_INTEGER,
+      bottleneck: "tüm alt bileşenler on-demand (BH ailesi kuralı)",
+      parts: parts.map((p) => ({
+        code: p.code, name: p.name, stock: p.currentStock, required: p.requiredQty, maxProducts: Number.MAX_SAFE_INTEGER,
+      })),
+    };
+  }
+
+  const partDetails = considered.map((p) => {
     const maxProducts = p.requiredQty > 0 ? Math.floor(p.currentStock / p.requiredQty) : Infinity;
     return { code: p.code, name: p.name, stock: p.currentStock, required: p.requiredQty, maxProducts };
   });
@@ -98,7 +114,7 @@ function computeProductionCapacity(allItems: BomRow[], sku?: string) {
     // Yari-mamul mu? Bu tier=1 bilesenin alt bileseni var mi?
     const hasChildren = allItems.some(i => i.parentComponentCode === item.code);
     if (hasChildren) {
-      const sub = computeSubAssemblyCapacity(item.code, allItems);
+      const sub = computeSubAssemblyCapacity(item.code, allItems, sku);
       effectiveStock = item.currentStock + sub.producible;
       note = `YARI MAMÜL — hazır stok: ${item.currentStock} + alt bileşenlerden: ${sub.producible}`;
       subAssemblyStatus[item.code] = {
@@ -260,7 +276,7 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
       const hasChildren = items.some(x => x.parentComponentCode === i.code);
       let effectiveStock = i.currentStock;
       if (hasChildren) {
-        const sub = computeSubAssemblyCapacity(i.code, items);
+        const sub = computeSubAssemblyCapacity(i.code, items, sku);
         effectiveStock = i.currentStock + sub.producible;
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
