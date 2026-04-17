@@ -29,6 +29,7 @@ import NotFound from "@/pages/not-found";
 import AdminPage from "@/pages/admin/index";
 import PalantirPage from "@/pages/palantir";
 import OntologyPage from "@/pages/ontology";
+import VeriYukle from "@/pages/veri-yukle";
 
 // Global agent panel context
 const AgentPanelContext = createContext<{
@@ -77,6 +78,7 @@ function App() {
           <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
           <Route path="/sihir" component={PalantirPage} />
           <Route path="/ontology" component={OntologyPage} />
+          <Route path="/veri-yukle" component={VeriYukle} />
           <Route path="/login" component={LoginPage} />
           <Route path="/admin" component={AdminPage} />
           <Route component={NotFound} />
