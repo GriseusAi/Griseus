@@ -555,6 +555,187 @@ function DeviceImportCard({ product }: { product: ProductOption }) {
 /* ═══════════════════════════════════════════════════════════
    MAIN PAGE
    ═══════════════════════════════════════════════════════════ */
+/* ═══════════════════════════════════════════════════════════
+   ORCHESTRATOR PANEL — Manuel denetim + son audit durumu
+   ═══════════════════════════════════════════════════════════ */
+interface AuditRun {
+  id: number;
+  timestamp: string;
+  trigger: string;
+  triggerDetail: string | null;
+  durationMs: number;
+  greenCount: number;
+  yellowCount: number;
+  redCount: number;
+  findings: Array<{ layer: string; severity: string; message: string; sku?: string }>;
+  summary: string;
+}
+
+function OrchestratorPanel() {
+  const qc = useQueryClient();
+  const [running, setRunning] = useState(false);
+
+  const { data: latest } = useQuery<AuditRun>({
+    queryKey: ["/api/orchestrator/latest"],
+    queryFn: () => fetch("/api/orchestrator/latest").then(r => r.json()),
+    refetchInterval: 30_000,
+  });
+
+  const runAudit = useMutation({
+    mutationFn: async () => {
+      setRunning(true);
+      const res = await fetch("/api/orchestrator/run-audit", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ detail: "manuel — veri yukle sayfasi" }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      setRunning(false);
+      qc.invalidateQueries({ queryKey: ["/api/orchestrator/latest"] });
+    },
+    onError: () => setRunning(false),
+  });
+
+  const statusColor = !latest ? C.dim
+    : latest.redCount > 0 ? C.err
+    : latest.yellowCount > 0 ? C.warn
+    : C.ok;
+
+  const statusLabel = !latest ? "Bilinmiyor"
+    : latest.redCount > 0 ? `${latest.redCount} RED`
+    : latest.yellowCount > 0 ? `${latest.yellowCount} UYARI`
+    : "TUM KATMANLAR YESIL";
+
+  const triggerLabel = !latest ? ""
+    : latest.trigger === "data_ingestion" ? "Veri Girisi"
+    : latest.trigger === "scheduled" ? "Zamanlanmis"
+    : "Manuel";
+
+  const timeAgo = (ts: string) => {
+    const diff = Date.now() - new Date(ts).getTime();
+    const min = Math.floor(diff / 60000);
+    if (min < 1) return "Az once";
+    if (min < 60) return `${min} dk once`;
+    const h = Math.floor(min / 60);
+    if (h < 24) return `${h} saat once`;
+    return `${Math.floor(h / 24)} gun once`;
+  };
+
+  return (
+    <div style={{
+      background: C.surface, border: `1px solid ${C.border}`, borderRadius: 16,
+      padding: "16px 20px", marginBottom: 20, ...glass,
+    }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+          <div style={{
+            width: 8, height: 8, borderRadius: "50%", background: statusColor,
+            boxShadow: `0 0 8px ${statusColor}60`,
+          }} />
+          <span style={{ fontSize: 10, fontFamily: mono, color: C.dim, letterSpacing: 1.5, fontWeight: 400 }}>
+            OCTOPUS-CHAIN ORCHESTRATOR
+          </span>
+        </div>
+        <button
+          onClick={() => runAudit.mutate()}
+          disabled={running}
+          style={{
+            padding: "8px 16px", borderRadius: 8, border: "none",
+            background: running ? C.dimmer : C.accentDim,
+            color: running ? C.dim : C.accent,
+            fontFamily: mono, fontSize: 11, fontWeight: 400, cursor: running ? "default" : "pointer",
+            display: "flex", alignItems: "center", gap: 6,
+            transition: "all 0.15s",
+          }}
+        >
+          {running ? (
+            <>
+              <div style={{
+                width: 12, height: 12, border: `2px solid ${C.accent}`,
+                borderTopColor: "transparent", borderRadius: "50%",
+                animation: "spin 0.8s linear infinite",
+              }} />
+              Denetleniyor...
+            </>
+          ) : (
+            <>
+              {"\u{1F50D}"} Manuel Denetim Baslat
+            </>
+          )}
+        </button>
+      </div>
+
+      {latest && (
+        <div style={{ display: "flex", gap: 16, alignItems: "center", flexWrap: "wrap" }}>
+          {/* Status badge */}
+          <div style={{
+            padding: "6px 12px", borderRadius: 8,
+            background: `${statusColor}12`, border: `1px solid ${statusColor}30`,
+          }}>
+            <div style={{ fontSize: 13, fontFamily: mono, color: statusColor, fontWeight: 400 }}>
+              {statusLabel}
+            </div>
+            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, marginTop: 2 }}>
+              {latest.greenCount}G / {latest.yellowCount}Y / {latest.redCount}R
+            </div>
+          </div>
+
+          {/* Katman sayilari */}
+          <div>
+            <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 2 }}>SON DENETIM</div>
+            <div style={{ fontSize: 11, color: C.mid }}>
+              {timeAgo(latest.timestamp)} — {triggerLabel}
+            </div>
+          </div>
+
+          <div>
+            <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 2 }}>SURE</div>
+            <div style={{ fontSize: 11, color: C.mid }}>
+              {(latest.durationMs / 1000).toFixed(1)}s
+            </div>
+          </div>
+
+          {latest.triggerDetail && (
+            <div style={{ flex: 1, minWidth: 120 }}>
+              <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 2 }}>DETAY</div>
+              <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, wordBreak: "break-all" }}>
+                {latest.triggerDetail}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Findings (if any) */}
+      {latest && latest.findings.length > 0 && (
+        <div style={{ marginTop: 10, padding: "8px 12px", borderRadius: 8, background: "rgba(0,0,0,0.2)", border: `1px solid ${C.border}` }}>
+          <div style={{ fontSize: 9, fontFamily: mono, color: C.dim, marginBottom: 4, letterSpacing: 0.5 }}>
+            BULGULAR ({latest.findings.length})
+          </div>
+          {latest.findings.slice(0, 5).map((f, i) => (
+            <div key={i} style={{ fontSize: 10, color: C.mid, lineHeight: 1.6, display: "flex", gap: 6 }}>
+              <span style={{
+                fontSize: 8, padding: "1px 4px", borderRadius: 3, flexShrink: 0, marginTop: 2,
+                background: f.severity === "red" ? C.errDim : C.warnDim,
+                color: f.severity === "red" ? C.err : C.warn,
+              }}>
+                {f.severity === "red" ? "RED" : "YELLOW"}
+              </span>
+              <span>{f.sku ? `[${f.sku}] ` : ""}{f.message}</span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   MAIN PAGE
+   ═══════════════════════════════════════════════════════════ */
 export default function VeriYukle() {
   const { data: products = [] } = useQuery<ProductOption[]>({
     queryKey: ["/api/products"],
@@ -633,6 +814,9 @@ export default function VeriYukle() {
             ))}
           </div>
         )}
+
+        {/* Orchestrator Panel */}
+        <OrchestratorPanel />
 
         {/* Bottom info */}
         <div style={{
