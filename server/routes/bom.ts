@@ -301,8 +301,12 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
 
-      // BH variable bileşen — stok düşük olsa bile "variable" statüsü (turuncu), critical değil
-      const isVariable = isBHVariableComponent(sku, i.code);
+      // BH variable bileşen — 2 kaynak: (a) config pattern match VA\d+H\d+[A-Z] (b) BH + stok=0 (on-demand)
+      // Her ikisi de UI'da "variable" (koyu turuncu) görünür, critical değil
+      const isBHSku = sku.startsWith("BH.");
+      const isConfigVariable = isBHVariableComponent(sku, i.code);
+      const isOnDemandVariable = isBHSku && !hasChildren && effectiveStock === 0;
+      const isVariable = isConfigVariable || isOnDemandVariable;
 
       // Status: tier=1 icin sadelestirildi — tier 2+ zaten listeye girmiyor.
       let status: string;
