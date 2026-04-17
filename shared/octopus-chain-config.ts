@@ -88,6 +88,22 @@ export const OCTOPUS_CHAIN_CONFIG = {
     minObjectTypes: 8,
     minLinkTypes: 7,
   },
+
+  /** BH ailesi DEĞİŞKEN bileşen listesi — bazen kullanılan opsiyonel parçalar.
+   *  Stok>0 olsa bile üretim kapasitesini sınırlamaz (user: "bu parçaları
+   *  bazen kullanıyoruz bazen kullanmıyoruz"). UI'da turuncu "DEĞİŞKEN"
+   *  etiketi ile gösterilir — kritik (kırmızı) yerine.
+   *
+   *  On-demand ile fark:
+   *    - on-demand = stok=0, siparişle tedarik
+   *    - variable  = stok>0 ama opsiyonel kullanım
+   *
+   *  User'ın işaretlediği yeni değişken kodlar buraya eklenir.
+   */
+  bhVariableComponents: [
+    "VA4H50R", // Aaco Fan No:4 — BH.50ST/UT (fan opsiyonel)
+    "VA5H70R", // Aaco Fan No:5 — BH.55ST/UT (fan opsiyonel)
+  ] as string[],
 } as const;
 
 /** Yardımcı: SKU → family key ("BH", "ELT", "GSA", "GSS") */
@@ -105,6 +121,12 @@ export function expectedPeakMonth(sku: string): string | null {
   if (override) return override.peakMonth;
   const fam = familyOfSku(sku);
   return fam ? OCTOPUS_CHAIN_CONFIG.familyArchetypes[fam].peakMonth : null;
+}
+
+/** Yardımcı: BH ailesi için bileşen değişken mi (opsiyonel kullanım) */
+export function isBHVariableComponent(sku: string, componentCode: string): boolean {
+  if (!sku.startsWith("BH.")) return false;
+  return (OCTOPUS_CHAIN_CONFIG.bhVariableComponents as readonly string[]).includes(componentCode);
 }
 
 /** Yardımcı: peak beklentisinin kaynağı nedir (ui/log için) */

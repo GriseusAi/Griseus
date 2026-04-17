@@ -92,7 +92,7 @@ interface SimulationData {
 function ChildRowUI({ child, depth }: { child: BomComponent; depth: number }) {
   const [open, setOpen] = useState(false);
   const hasKids = (child.children?.length ?? 0) > 0;
-  const color = child.status === "critical" ? "#ef4444" : child.status === "warning" ? "#fbbf24" : child.status === "ok" ? "#818cf8" : "#34d399";
+  const color = child.status === "critical" ? "#ef4444" : child.status === "variable" ? "#fb923c" : child.status === "warning" ? "#fbbf24" : child.status === "ok" ? "#818cf8" : "#34d399";
   return (
     <>
       <div style={{
@@ -145,6 +145,7 @@ function getStatusBg(status: string): string {
 function getStatusLabel(status: string): string {
   switch (status) {
     case "critical": return "KRİTİK";
+    case "variable": return "DEĞİŞKEN";
     case "warning": return "DİKKAT";
     case "ok": return "NORMAL";
     case "abundant": return "BOL";

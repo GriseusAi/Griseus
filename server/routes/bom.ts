@@ -5,6 +5,7 @@ import { eq, and } from "drizzle-orm";
 import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
 import { evaluateRules } from "../rules-engine";
 import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
+import { isBHVariableComponent } from "@shared/octopus-chain-config";
 
 const router = Router();
 
@@ -103,6 +104,10 @@ function computeProductionCapacity(allItems: BomRow[], sku?: string) {
     code: string; name: string; tier: number; requiredQty: number;
     hasChildren: boolean; reason: string;
   }> = [];
+  const variableComponents: Array<{
+    code: string; name: string; tier: number; requiredQty: number;
+    currentStock: number; reason: string;
+  }> = [];
 
   const subAssemblyStatus: Record<string, any> = {};
   let maxProducible = Infinity;
@@ -137,6 +142,20 @@ function computeProductionCapacity(allItems: BomRow[], sku?: string) {
         reason: hasChildren
           ? "yarı-mamül + alt bileşen stokları 0 → ihtiyaç üzerine tedarik (BH ailesi kuralı)"
           : "stok=0 → ihtiyaç üzerine tedarik (BH ailesi kuralı)",
+      });
+      continue;
+    }
+
+    // BH variable: user-işaretlenmiş opsiyonel bileşenler (stok>0 ama bazen kullanılan)
+    // darbogaz sayılmaz, variableComponents listesine taşınır
+    if (isBH && isBHVariableComponent(sku ?? "", item.code)) {
+      variableComponents.push({
+        code: item.code,
+        name: item.name,
+        tier: item.tier,
+        requiredQty: item.requiredQty,
+        currentStock: effectiveStock,
+        reason: "DEĞİŞKEN — bazen kullanılan opsiyonel bileşen (BH ailesi)",
       });
       continue;
     }
@@ -177,6 +196,7 @@ function computeProductionCapacity(allItems: BomRow[], sku?: string) {
     allBottlenecks: bottlenecks,
     subAssemblyStatus,
     onDemandComponents,
+    variableComponents,
   };
 }
 
@@ -281,9 +301,13 @@ router.get("/:sku/stock", async (req: Request, res: Response) => {
       }
       const maxProducts = i.requiredQty > 0 ? Math.floor(effectiveStock / i.requiredQty) : null;
 
+      // BH variable bileşen — stok düşük olsa bile "variable" statüsü (turuncu), critical değil
+      const isVariable = isBHVariableComponent(sku, i.code);
+
       // Status: tier=1 icin sadelestirildi — tier 2+ zaten listeye girmiyor.
       let status: string;
-      if (effectiveStock < 0) status = "critical";
+      if (isVariable) status = "variable";
+      else if (effectiveStock < 0) status = "critical";
       else if (maxProducts === null) status = "N/A";
       else if (maxProducts === 0) status = "critical";
       else if (maxProducts < 50) status = "critical";
@@ -327,6 +351,7 @@ router.get("/:sku/production-capacity", async (req: Request, res: Response) => {
     bottlenecks: capacity.bottlenecks,
     subAssemblyStatus: capacity.subAssemblyStatus,
     onDemandComponents: capacity.onDemandComponents,
+    variableComponents: capacity.variableComponents,
   });
 });
 
