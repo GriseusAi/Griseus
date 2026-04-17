@@ -21,14 +21,31 @@ export const OCTOPUS_CHAIN_CONFIG = {
     "GSS40P",
   ] as const,
 
-  /** Kategori arketipi peak ayları (KİLİTLİ — Cukurova sahası referans)
+  /** Kategori arketipi peak ayları — aile DEFAULT'u (fallback)
+   *  Tek SKU'lu veya placeholder/baseline referansında kullanılır.
    *  MONTH_LABELS ASCII: "Oca Sub Mar Nis May Haz Tem Agu Eyl Eki Kas Ara" */
   familyArchetypes: {
-    BH: { peakMonth: "Eyl", description: "sanayi montaj — Eylül pik" },
-    ELT: { peakMonth: "Eki", description: "seramik ofis — Ekim pik" },
-    GSA: { peakMonth: "Kas", description: "duvar ev — Kasım pik" },
-    GSS: { peakMonth: "Agu", description: "portatif — Ağustos pik" },
+    BH: { peakMonth: "Eyl", description: "sanayi montaj — Eylül pik (baseline)" },
+    ELT: { peakMonth: "Eki", description: "seramik ofis — Ekim pik (baseline)" },
+    GSA: { peakMonth: "Kas", description: "duvar ev — Kasım pik (baseline)" },
+    GSS: { peakMonth: "Agu", description: "portatif — Ağustos pik (baseline)" },
   } as Record<string, { peakMonth: string; description: string }>,
+
+  /** SKU-level peak overrides — gerçek Çukurova 2025 satış verisinden
+   *  türetilmiş. Aile default'u yerine bu kullanılır (expectedPeakMonth).
+   *  Yeni satış verisi geldikçe DSE yeniden hesaplar; periyodik olarak
+   *  intel.ontology.seasonalIndices peak'iyle karşılaştırılıp güncellenmeli.
+   *  Son güncelleme: 2026-04-17 (5 SKU 2025 import sonrası).
+   *
+   *  Burada olmayan SKU (ör BH.*, ELT.7-11, GSS20P, GSA30) familyArchetypes
+   *  default'una düşer.
+   */
+  skuPeakOverrides: {
+    "ELT.5-7": { peakMonth: "Eyl", note: "2025 Eyl=45, Eki=20 — ELT ofis projesi Eylül pik (ELT.7-11 Ekim aile default'u farklı)" },
+    "GSA15":   { peakMonth: "Eki", note: "2025 Eki=24 peak, sparse (yıllık 40) — güvenilirlik düşük, çok yıl data gelene dek dikkat" },
+    "GSA20":   { peakMonth: "Eki", note: "2025 Eki=109, Kas=79 ikincil — GSA aile Kasım'dan Ekim'e kaymış" },
+    "GSS40P":  { peakMonth: "Ara", note: "2025 Ara=85, Agu=69 — portatif büyük model kışa doğru pik (GSS20P Ağustos aile default)" },
+  } as Record<string, { peakMonth: string; note: string }>,
 
   /** winterStress semantic kontrolü için kış ayları (ASCII) */
   winterMonths: ["Kas", "Ara", "Oca", "Sub"] as const,
@@ -81,8 +98,21 @@ export function familyOfSku(sku: string): string | null {
   return null;
 }
 
-/** Yardımcı: SKU → beklenen peak ay etiketi */
+/** Yardımcı: SKU → beklenen peak ay etiketi
+ *  Öncelik: skuPeakOverrides > familyArchetypes default */
 export function expectedPeakMonth(sku: string): string | null {
+  const override = OCTOPUS_CHAIN_CONFIG.skuPeakOverrides[sku];
+  if (override) return override.peakMonth;
   const fam = familyOfSku(sku);
   return fam ? OCTOPUS_CHAIN_CONFIG.familyArchetypes[fam].peakMonth : null;
+}
+
+/** Yardımcı: peak beklentisinin kaynağı nedir (ui/log için) */
+export function peakExpectationSource(sku: string): { peakMonth: string; source: "sku_override" | "family_default"; note: string } | null {
+  const override = OCTOPUS_CHAIN_CONFIG.skuPeakOverrides[sku];
+  if (override) return { peakMonth: override.peakMonth, source: "sku_override", note: override.note };
+  const fam = familyOfSku(sku);
+  if (!fam) return null;
+  const arc = OCTOPUS_CHAIN_CONFIG.familyArchetypes[fam];
+  return { peakMonth: arc.peakMonth, source: "family_default", note: arc.description };
 }
