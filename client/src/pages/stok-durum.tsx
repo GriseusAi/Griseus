@@ -196,8 +196,16 @@ function CapacityGauge({ capacity, sku }: { capacity: Capacity | undefined; sku:
 }
 
 /* ── Component Card (Ontology Object) ── */
-function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onClick: () => void; isFlashing: boolean }) {
+function ComponentCard({ comp, onClick, isFlashing, onStockUpdate, isSaving }: {
+  comp: BomComponent;
+  onClick: () => void;
+  isFlashing: boolean;
+  onStockUpdate: (code: string, stock: number, unit: string) => void;
+  isSaving: boolean;
+}) {
   const [expanded, setExpanded] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState("");
   const isNegative = comp.currentStock < 0;
   // Status → renk (tüm sistemde aynı kural):
   //   critical=kırmızı · warning=sarı · ok=mavi · abundant=yeşil
@@ -247,13 +255,75 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
       </div>
 
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-end" }}>
-        <div>
-          <div style={{ fontSize: 18, fontWeight: 400, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
-            {fmt(comp.currentStock)}
-          </div>
-          <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>
-            {comp.unit} {monteFark > 0 ? `(${comp.rawStock}+${monteFark} monte)` : "stok"}
-          </div>
+        <div style={{ flex: 1, minWidth: 0 }}>
+          {editing ? (
+            <div style={{ display: "flex", alignItems: "center", gap: 4 }} onClick={e => e.stopPropagation()}>
+              <input
+                autoFocus
+                type="number"
+                value={editVal}
+                onChange={e => setEditVal(e.target.value)}
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    const v = parseFloat(editVal);
+                    if (!isNaN(v) && v >= 0) {
+                      onStockUpdate(comp.code, v, comp.unit);
+                      setEditing(false);
+                    }
+                  } else if (e.key === "Escape") {
+                    setEditing(false);
+                  }
+                }}
+                disabled={isSaving}
+                style={{
+                  width: 70, fontSize: 16, fontFamily: mono, fontWeight: 400,
+                  color: statusColor, background: "rgba(0,0,0,0.4)",
+                  border: `1px solid ${statusColor}60`, borderRadius: 6,
+                  padding: "4px 6px", outline: "none",
+                }}
+              />
+              <button
+                disabled={isSaving}
+                onClick={e => {
+                  e.stopPropagation();
+                  const v = parseFloat(editVal);
+                  if (!isNaN(v) && v >= 0) {
+                    onStockUpdate(comp.code, v, comp.unit);
+                    setEditing(false);
+                  }
+                }}
+                style={{
+                  fontSize: 14, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
+                  background: C.ok + "20", border: `1px solid ${C.okBorder}`, color: C.ok,
+                }}
+              >✓</button>
+              <button
+                onClick={e => { e.stopPropagation(); setEditing(false); }}
+                style={{
+                  fontSize: 14, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
+                  background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid,
+                }}
+              >✕</button>
+            </div>
+          ) : (
+            <div
+              onClick={e => {
+                e.stopPropagation();
+                setEditVal(String(comp.rawStock !== undefined ? comp.rawStock : comp.currentStock));
+                setEditing(true);
+              }}
+              title="Stok miktarını değiştir"
+              style={{ cursor: "pointer", display: "inline-block" }}
+            >
+              <div style={{ fontSize: 18, fontWeight: 400, fontFamily: mono, color: statusColor, lineHeight: 1 }}>
+                {fmt(comp.currentStock)}
+                <span style={{ fontSize: 9, color: C.dim, marginLeft: 4, opacity: 0.6 }}>✎</span>
+              </div>
+              <div style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>
+                {comp.unit} {monteFark > 0 ? `(${comp.rawStock}+${monteFark} monte)` : "stok"}
+              </div>
+            </div>
+          )}
         </div>
         <div style={{ textAlign: "right" }}>
           <div style={{ fontSize: 12, fontWeight: 400, fontFamily: mono, color: C.mid, lineHeight: 1 }}>
@@ -277,7 +347,7 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
           display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(220px, 1fr))", gap: 8,
         }}>
           {comp.children!.map(ch => (
-            <ChildRow key={ch.code} child={ch} depth={1} />
+            <ChildRow key={ch.code} child={ch} depth={1} onStockUpdate={onStockUpdate} isSaving={isSaving} />
           ))}
         </div>
       )}
@@ -286,8 +356,15 @@ function ComponentCard({ comp, onClick, isFlashing }: { comp: BomComponent; onCl
 }
 
 /* ── Recursive child row for drill-down ── */
-function ChildRow({ child, depth }: { child: BomComponent; depth: number }) {
+function ChildRow({ child, depth, onStockUpdate, isSaving }: {
+  child: BomComponent;
+  depth: number;
+  onStockUpdate: (code: string, stock: number, unit: string) => void;
+  isSaving: boolean;
+}) {
   const [open, setOpen] = useState(false);
+  const [editing, setEditing] = useState(false);
+  const [editVal, setEditVal] = useState("");
   const color = child.status === "critical" ? C.err : child.status === "warning" ? C.warn : child.status === "ok" ? C.blue : C.ok;
   const hasKids = (child.children?.length ?? 0) > 0;
   return (
@@ -303,9 +380,54 @@ function ChildRow({ child, depth }: { child: BomComponent; depth: number }) {
           {child.code}
           <span style={{ fontSize: 8, color: C.dim, marginLeft: 6 }}>T{child.tier}</span>
         </div>
-        <div style={{ fontFamily: mono, fontSize: 11, color }}>
-          {fmt(child.currentStock)} {child.unit}
-        </div>
+        {editing ? (
+          <div style={{ display: "flex", alignItems: "center", gap: 3 }} onClick={e => e.stopPropagation()}>
+            <input
+              autoFocus
+              type="number"
+              value={editVal}
+              onChange={e => setEditVal(e.target.value)}
+              onKeyDown={e => {
+                if (e.key === "Enter") {
+                  const v = parseFloat(editVal);
+                  if (!isNaN(v) && v >= 0) { onStockUpdate(child.code, v, child.unit); setEditing(false); }
+                } else if (e.key === "Escape") { setEditing(false); }
+              }}
+              disabled={isSaving}
+              style={{
+                width: 55, fontSize: 11, fontFamily: mono, color,
+                background: "rgba(0,0,0,0.4)", border: `1px solid ${color}60`,
+                borderRadius: 4, padding: "2px 4px", outline: "none",
+              }}
+            />
+            <button
+              disabled={isSaving}
+              onClick={e => {
+                e.stopPropagation();
+                const v = parseFloat(editVal);
+                if (!isNaN(v) && v >= 0) { onStockUpdate(child.code, v, child.unit); setEditing(false); }
+              }}
+              style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, cursor: "pointer", background: C.ok + "20", border: `1px solid ${C.okBorder}`, color: C.ok }}
+            >✓</button>
+            <button
+              onClick={e => { e.stopPropagation(); setEditing(false); }}
+              style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, cursor: "pointer", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid }}
+            >✕</button>
+          </div>
+        ) : (
+          <div
+            onClick={e => {
+              e.stopPropagation();
+              setEditVal(String(child.rawStock !== undefined ? child.rawStock : child.currentStock));
+              setEditing(true);
+            }}
+            title="Stok miktarını değiştir"
+            style={{ fontFamily: mono, fontSize: 11, color, cursor: "pointer" }}
+          >
+            {fmt(child.currentStock)} {child.unit}
+            <span style={{ fontSize: 8, color: C.dim, marginLeft: 3, opacity: 0.6 }}>✎</span>
+          </div>
+        )}
       </div>
       <div style={{ fontSize: 9, color: C.dim, marginTop: 3, lineHeight: "12px" }}>
         {child.name}
@@ -315,7 +437,7 @@ function ChildRow({ child, depth }: { child: BomComponent; depth: number }) {
       </div>
       {open && hasKids && (
         <div style={{ marginTop: 6, paddingLeft: 8, borderLeft: `1px dashed ${C.border}` }}>
-          {child.children!.map(gc => <ChildRow key={gc.code} child={gc} depth={depth + 1} />)}
+          {child.children!.map(gc => <ChildRow key={gc.code} child={gc} depth={depth + 1} onStockUpdate={onStockUpdate} isSaving={isSaving} />)}
         </div>
       )}
     </div>
@@ -700,6 +822,20 @@ export default function StokDurum() {
     onSuccess: () => { qc.invalidateQueries(); },
   });
 
+  // Component stok güncellemesi — bulk/stock otomatik octopus-chain audit tetikler
+  const componentStockMutation = useMutation({
+    mutationFn: async ({ code, stock, unit }: { code: string; stock: number; unit: string }) => {
+      const res = await apiRequest("POST", "/api/import/bulk/stock", {
+        items: [{ code, stock, unit }],
+      });
+      return res.json();
+    },
+    onSuccess: () => { qc.invalidateQueries(); },
+  });
+  const handleComponentStockUpdate = useCallback((code: string, stock: number, unit: string) => {
+    componentStockMutation.mutate({ code, stock, unit: unit || "AD" });
+  }, [componentStockMutation]);
+
   const activeAction = QUICK_ACTIONS.find(a => a.type === actionType);
   // Her buton her an çalışsın — maxQty kaldırıldı, sadece pozitif sayı kontrolü
   const qtyNum = parseInt(actionQty, 10);
@@ -900,6 +1036,8 @@ export default function StokDurum() {
                 comp={comp}
                 isFlashing={flashedCode === comp.code}
                 onClick={() => {/* future: drill-down */}}
+                onStockUpdate={handleComponentStockUpdate}
+                isSaving={componentStockMutation.isPending}
               />
             ))}
           </div>
