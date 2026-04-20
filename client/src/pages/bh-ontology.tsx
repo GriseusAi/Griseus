@@ -1152,6 +1152,31 @@ function ObjectInspector({
   const actions = actionsForObjectType(objType.apiName);
   const linkSpecs = linksForObjectType(objType.apiName);
 
+  // L4 Narrative — device'lar için de, kod component'in kendi id'si (subcomponent'te realCode kullan)
+  const narrativeCode = node.code || node.id;
+  const narrativeSku = node.kind === "device" ? node.sku : (node.usedBy[0] || "");
+  const qc = useQueryClient();
+  const narrativeQuery = useQuery<{ text: string; generatedAt: string; source: string; model?: string }>({
+    queryKey: [`/api/ontology/narrative/${narrativeCode}`, narrativeSku],
+    queryFn: async () => {
+      const url = `/api/ontology/narrative/${encodeURIComponent(narrativeCode)}${narrativeSku ? `?sku=${encodeURIComponent(narrativeSku)}` : ""}`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`narrative ${res.status}`);
+      return res.json();
+    },
+    staleTime: 5 * 60 * 1000,
+  });
+  const regenerateMutation = useMutation({
+    mutationFn: async () => {
+      const url = `/api/ontology/narrative/${encodeURIComponent(narrativeCode)}/regenerate${narrativeSku ? `?sku=${encodeURIComponent(narrativeSku)}` : ""}`;
+      const res = await apiRequest("POST", url);
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: [`/api/ontology/narrative/${narrativeCode}`] });
+    },
+  });
+
   // Bu node'a bağlı gerçek kenarlar (runtime linkler)
   const inbound = allLinks.filter(l => l.to === node.id);
   const outbound = allLinks.filter(l => l.from === node.id);
@@ -1213,6 +1238,65 @@ function ObjectInspector({
         <div><span style={{ color: C.mid }}>rid:</span> <span style={{ fontFamily: mono }}>{objType.rid}</span></div>
         <div><span style={{ color: C.mid }}>primaryKey:</span> <span style={{ fontFamily: mono }}>{objType.primaryKey}</span></div>
         <div><span style={{ color: C.mid }}>status:</span> <span style={{ color: objType.status === "ACTIVE" ? C.ok : C.warn, fontWeight: 500 }}>{objType.status}</span></div>
+      </div>
+
+      {/* L4 Narrative — Canlı ekosistem açıklaması */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
+          <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, fontWeight: 500 }}>
+            AÇIKLAMA
+            {narrativeQuery.data && (
+              <span style={{
+                marginLeft: 8, fontSize: 8, padding: "1px 6px", borderRadius: 3,
+                background: narrativeQuery.data.source === "ai" ? C.accentDim
+                  : narrativeQuery.data.source === "cache" ? "rgba(255,255,255,0.05)"
+                  : C.warnDim,
+                color: narrativeQuery.data.source === "ai" ? C.accent
+                  : narrativeQuery.data.source === "cache" ? C.mid
+                  : C.warn,
+                letterSpacing: 0.5, fontWeight: 500,
+              }}>
+                {narrativeQuery.data.source === "ai" ? "AI" :
+                 narrativeQuery.data.source === "cache" ? "CACHE" : "TEMPLATE"}
+              </span>
+            )}
+          </div>
+          <button
+            onClick={() => regenerateMutation.mutate()}
+            disabled={regenerateMutation.isPending || narrativeQuery.isLoading}
+            style={{
+              fontSize: 10, padding: "4px 8px", borderRadius: 4, cursor: "pointer",
+              background: C.surface, border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
+              opacity: regenerateMutation.isPending ? 0.5 : 1,
+            }}
+          >
+            {regenerateMutation.isPending ? "…" : "↻ Yenile"}
+          </button>
+        </div>
+        <div style={{
+          fontSize: 12, color: C.white, lineHeight: 1.55,
+          padding: "12px 14px", borderRadius: 8,
+          background: "linear-gradient(180deg, rgba(129,140,248,0.06), rgba(129,140,248,0.02))",
+          border: `1px solid ${C.accent}25`,
+          minHeight: 50,
+          fontFamily: mono,
+        }}>
+          {narrativeQuery.isLoading ? (
+            <span style={{ color: C.dim, fontStyle: "italic" }}>Durum analiz ediliyor…</span>
+          ) : narrativeQuery.isError ? (
+            <span style={{ color: C.err }}>Açıklama alınamadı: {(narrativeQuery.error as any)?.message}</span>
+          ) : (
+            <>
+              <span>{narrativeQuery.data?.text}</span>
+              {narrativeQuery.data?.generatedAt && (
+                <div style={{ fontSize: 8, color: C.dim, marginTop: 6, fontStyle: "italic" }}>
+                  {new Date(narrativeQuery.data.generatedAt).toLocaleString("tr-TR")}
+                  {narrativeQuery.data.model && ` · ${narrativeQuery.data.model}`}
+                </div>
+              )}
+            </>
+          )}
+        </div>
       </div>
 
       {/* Properties */}
