@@ -3,6 +3,12 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import {
+  BH_OBJECT_TYPES, BH_LINK_TYPES, BH_ACTION_TYPES,
+  objectTypeForKind, actionsForObjectType, linksForObjectType,
+  cardinalityLabel, ontologyMeta,
+  type ObjectTypeSpec, type ActionTypeSpec, type LinkTypeSpec,
+} from "@/lib/bh-ontology-schema";
 
 /* ═══════════════════════════════════════════════════════════
    BH ONTOLOGY CANVAS — Canlı Organizma (Tier 1)
@@ -81,6 +87,7 @@ interface GraphNode {
 
 interface GraphLink {
   from: string; to: string; required: number; tier: number;
+  linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
 const LAYOUT_KEY = "bh-ontology-layout-v3";
@@ -328,7 +335,7 @@ export default function BhOntologyPage() {
         }
         if (!n.usedBy.includes(sku)) n.usedBy.push(sku);
         (n.requiredByDevice as Record<string, number>)[sku] = c.requiredPerUnit;
-        linkList.push({ from: sku, to: c.code, required: c.requiredPerUnit, tier: 1 });
+        linkList.push({ from: sku, to: c.code, required: c.requiredPerUnit, tier: 1, linkTypeApiName: "consumes" });
       }
     });
 
@@ -354,7 +361,7 @@ export default function BhOntologyPage() {
               hasChildren: (child.children?.length ?? 0) > 0,
               childrenCount: child.children?.length ?? 0,
             });
-            linkList.push({ from: parentCode, to: nid, required: child.requiredPerUnit, tier: child.tier });
+            linkList.push({ from: parentCode, to: nid, required: child.requiredPerUnit, tier: child.tier, linkTypeApiName: "assembles" });
           }
         }
       }
@@ -430,6 +437,10 @@ export default function BhOntologyPage() {
     }
     return set;
   }, [hoveredId, links]);
+
+  /* Object inspector drawer */
+  const [inspectedId, setInspectedId] = useState<string | null>(null);
+  const inspectedNode = useMemo(() => inspectedId ? nodes.find(n => n.id === inspectedId) : null, [inspectedId, nodes]);
 
   /* L3 What-if dry-run */
   const [whatifOverrides, setWhatifOverrides] = useState<Record<string, number>>({});
@@ -558,8 +569,20 @@ export default function BhOntologyPage() {
           </div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 2 }}>Varlık Felsefesi — 4 Cihaz · Canlı Zincir</div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-            Hover → bağlıları vurgula · Tıkla → stok değiştir · Çift tıkla → What-if simüle · Sürükle → konum · Scroll → zoom
+            Hover → bağlıları vurgula · Tıkla → detay incele · Stok üstü → düzenle · ⚡ → What-if · +N → alt parça · Sürükle/Scroll
           </div>
+          {(() => {
+            const m = ontologyMeta();
+            return (
+              <div style={{ display: "flex", gap: 14, marginTop: 8, fontSize: 10, color: C.dim, fontFamily: mono, letterSpacing: 0.5 }}>
+                <span><span style={{ color: C.accent }}>{m.objectTypes}</span> object types</span>
+                <span>·</span>
+                <span><span style={{ color: C.accent }}>{m.linkTypes}</span> link types</span>
+                <span>·</span>
+                <span><span style={{ color: C.accent }}>{m.actionTypes}</span> action types ({m.activeActions} aktif)</span>
+              </div>
+            );
+          })()}
         </div>
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
           <Stat label="KRİTİK" value={problemCount.critical} color={C.err} />
@@ -584,6 +607,35 @@ export default function BhOntologyPage() {
           }}>Layout Sıfırla</button>
         </div>
       </div>
+
+      {/* Object Inspector drawer — sağ */}
+      {inspectedNode && (
+        <ObjectInspector
+          node={inspectedNode}
+          onClose={() => setInspectedId(null)}
+          onStartEdit={() => {
+            if (inspectedNode.kind === "device") return;
+            setEditingCode(inspectedNode.id);
+            setEditVal(String(inspectedNode.currentStock ?? 0));
+            setInspectedId(null);
+          }}
+          onStartWhatIf={() => {
+            if (inspectedNode.kind === "device") return;
+            setWhatifFocusCode(inspectedNode.id);
+            if (whatifOverrides[inspectedNode.id] === undefined) {
+              setWhatifOverrides(prev => ({ ...prev, [inspectedNode.id]: inspectedNode.currentStock ?? 0 }));
+            }
+          }}
+          onToggleExpand={() => {
+            if (inspectedNode.hasChildren) {
+              const code = inspectedNode.code || inspectedNode.id;
+              toggleExpanded(code);
+            }
+          }}
+          allNodes={nodes}
+          allLinks={links}
+        />
+      )}
 
       {/* Simülasyon paneli */}
       {whatifFocusCode && (
@@ -626,7 +678,7 @@ export default function BhOntologyPage() {
           </defs>
           <rect x={-viewport.x} y={-viewport.y} width={CANVAS_W / viewport.scale} height={CANVAS_H / viewport.scale} fill="url(#grid)" />
 
-          {/* Links — L5 Flow animation + L2 hover dim */}
+          {/* Links — L5 Flow animation + L2 hover dim + cardinality label */}
           {links.map((l, i) => {
             const pa = positions[l.from]; const pb = positions[l.to];
             if (!pa || !pb) return null;
@@ -638,15 +690,34 @@ export default function BhOntologyPage() {
             const midX = (pa.x + pb.x) / 2; const midY = (pa.y + pb.y) / 2;
             const curve = `M ${pa.x} ${pa.y + 30} Q ${midX} ${midY} ${pb.x} ${pb.y - 30}`;
             const flowClass = isProb ? "link-flow-critical" : nodeTo?.isShared ? "link-flow-shared" : "link-flow";
+            // Cardinality hesapla: device→component ONE_MANY, ama component shared ise MANY_MANY
+            const linkSpec = BH_LINK_TYPES[l.linkTypeApiName];
+            let cLabel = "";
+            if (l.linkTypeApiName === "consumes") cLabel = nodeTo?.isShared ? "N↔N" : "1→N";
+            else if (l.linkTypeApiName === "assembles") cLabel = "1→N";
+            // Label'ı sadece bağlı kanalda (hover ilişkili olduğunda) göster
+            const showLabel = connectedSet && (connectedSet.has(l.from) || connectedSet.has(l.to));
             return (
-              <path key={i} d={curve} fill="none"
-                stroke={stroke}
-                strokeWidth={isProb ? 2 : 1.2}
-                strokeDasharray="8 4"
-                className={flowClass}
-                opacity={opacity}
-                style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
-              />
+              <g key={i}>
+                <path d={curve} fill="none"
+                  stroke={stroke}
+                  strokeWidth={isProb ? 2.5 : 1.5}
+                  strokeDasharray="8 4"
+                  className={flowClass}
+                  opacity={opacity}
+                  style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
+                />
+                {showLabel && cLabel && (
+                  <g style={{ pointerEvents: "none" }} opacity={0.85}>
+                    <rect x={midX - 18} y={midY - 9} width={36} height={16} rx={4}
+                      fill="rgba(10,10,15,0.85)" stroke={stroke} strokeWidth={0.5}/>
+                    <text x={midX} y={midY + 3} textAnchor="middle"
+                      fill={stroke} fontSize={9} fontFamily={mono} fontWeight={500}>
+                      {cLabel}
+                    </text>
+                  </g>
+                )}
+              </g>
             );
           })}
 
@@ -666,6 +737,7 @@ export default function BhOntologyPage() {
                 dim={!isConnected}
                 pulsing={pulsing}
                 expanded={!!isExpanded}
+                isInspected={inspectedId === n.id}
                 editing={editingCode === n.id} editVal={editVal}
                 overrideStock={whatifOverrides[n.id]}
                 simulatedMax={simMax}
@@ -677,6 +749,7 @@ export default function BhOntologyPage() {
                 onToggleExpand={() => {
                   if (n.hasChildren) toggleExpanded(realCode);
                 }}
+                onStartInspect={() => setInspectedId(n.id)}
                 onStartEdit={() => {
                   if (n.kind === "device") return;
                   setEditingCode(n.id);
@@ -803,17 +876,18 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
    Node View — L1 kinetics + L2 dim + L3 override + pulse + expand
    ═══════════════════════════════════════════════════════════ */
 function NodeView({
-  node, x, y, dim, pulsing, expanded,
+  node, x, y, dim, pulsing, expanded, isInspected,
   editing, editVal,
   overrideStock, simulatedMax, simulatedBottleneckCode, simulationActive,
   onPointerDown, onMouseEnter, onMouseLeave,
-  onToggleExpand, onStartEdit, onStartWhatIf,
+  onToggleExpand, onStartInspect, onStartEdit, onStartWhatIf,
   onEditChange, onSaveEdit, onCancelEdit, saving,
 }: {
   node: GraphNode; x: number; y: number;
   dim: boolean;
   pulsing: boolean;
   expanded: boolean;
+  isInspected: boolean;
   editing: boolean; editVal: string;
   overrideStock?: number;
   simulatedMax?: number;
@@ -823,6 +897,7 @@ function NodeView({
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onToggleExpand: () => void;
+  onStartInspect: () => void;
   onStartEdit: () => void;
   onStartWhatIf: () => void;
   onEditChange: (v: string) => void;
@@ -842,6 +917,7 @@ function NodeView({
 
   const col = statusColor(node.status, node.isBottleneck);
   const vel = velocityIcon(node.dailyBurnRate, node.trend);
+  const objType = objectTypeForKind(node.kind as any);
 
   const deviceDelta = (isDevice && simulatedMax !== undefined && node.maxProducible !== undefined)
     ? simulatedMax - node.maxProducible : 0;
@@ -874,6 +950,11 @@ function NodeView({
         <rect x={-4} y={-4} width={w+8} height={h+8} rx={11}
           fill="none" stroke={C.variable} strokeWidth={1.5} strokeDasharray="2 2" opacity={0.9}/>
       )}
+      {/* Inspected — kalın yeşil çerçeve */}
+      {isInspected && (
+        <rect x={-5} y={-5} width={w+10} height={h+10} rx={12}
+          fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
+      )}
 
       <rect className={pulsing ? "flash-bg" : undefined}
         width={w} height={h} rx={10}
@@ -885,6 +966,14 @@ function NodeView({
 
       {isDevice ? (
         <>
+          {/* Device inspector ℹ top-left */}
+          <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+            <rect x={8} y={8} width={30} height={22} rx={5}
+              fill={isInspected ? C.okDim : C.accentDim} stroke={isInspected ? C.okBorder : C.accent + "40"} strokeWidth={1}/>
+            <text x={23} y={23} textAnchor="middle" fill={objType.displayMetadata.color} fontSize={14} fontFamily={mono} fontWeight={500}>
+              {objType.displayMetadata.icon}
+            </text>
+          </g>
           <text x={w/2} y={28} textAnchor="middle" fill={C.white} fontSize={17} fontFamily={mono} fontWeight={500}>
             {node.label}
           </text>
@@ -990,7 +1079,17 @@ function NodeView({
             )}
           </g>
 
-          {/* What-if button — DAHA BÜYÜK (32x22) */}
+          {/* Inspector (ℹ) button — sol üstte obj type icon'u tıklanabilir */}
+          <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+            <rect x={-10} y={4} width={30} height={22} rx={5}
+              fill={isInspected ? C.okDim : "rgba(52,211,153,0.06)"}
+              stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.18)"} strokeWidth={1}/>
+            <text x={5} y={19} textAnchor="middle" fill={objType.displayMetadata.color} fontSize={14} fontFamily={mono} fontWeight={500}>
+              {objType.displayMetadata.icon}
+            </text>
+          </g>
+
+          {/* What-if button — 32x22 */}
           <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
             <rect x={w - 40} y={4} width={32} height={22} rx={5}
               fill={C.variableDim} stroke={C.variableBorder} strokeWidth={1}/>
@@ -1031,5 +1130,204 @@ function NodeView({
         </>
       )}
     </g>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Object Inspector — Palantir Object Explorer tarzı sağ drawer
+   Full property sheet + link list + action menu
+   ═══════════════════════════════════════════════════════════ */
+function ObjectInspector({
+  node, onClose, onStartEdit, onStartWhatIf, onToggleExpand, allNodes, allLinks,
+}: {
+  node: GraphNode;
+  onClose: () => void;
+  onStartEdit: () => void;
+  onStartWhatIf: () => void;
+  onToggleExpand: () => void;
+  allNodes: GraphNode[];
+  allLinks: GraphLink[];
+}) {
+  const objType = objectTypeForKind(node.kind as any);
+  const actions = actionsForObjectType(objType.apiName);
+  const linkSpecs = linksForObjectType(objType.apiName);
+
+  // Bu node'a bağlı gerçek kenarlar (runtime linkler)
+  const inbound = allLinks.filter(l => l.to === node.id);
+  const outbound = allLinks.filter(l => l.from === node.id);
+
+  // Property değerleri — runtime node data'dan gel
+  const propValue = (apiName: string): string => {
+    const v: any = (node as any)[apiName];
+    if (v === null || v === undefined) return "—";
+    if (typeof v === "number") return v.toLocaleString("tr-TR");
+    if (typeof v === "boolean") return v ? "Evet" : "Hayır";
+    if (Array.isArray(v)) return v.length > 0 ? v.join(", ") : "—";
+    return String(v);
+  };
+
+  return (
+    <div style={{
+      position: "absolute", top: 140, right: 20, zIndex: 11,
+      width: 420, maxHeight: "calc(100vh - 180px)",
+      padding: "22px 24px", borderRadius: 14,
+      background: "rgba(10,10,15,0.97)", backdropFilter: "blur(18px)",
+      border: `1px solid ${objType.displayMetadata.color}40`,
+      boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+      overflowY: "auto", fontFamily: mono,
+    }}>
+      {/* Header */}
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 14 }}>
+        <div style={{ flex: 1 }}>
+          <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 6 }}>
+            <div style={{
+              width: 38, height: 38, borderRadius: 10,
+              background: objType.displayMetadata.color + "20",
+              border: `1px solid ${objType.displayMetadata.color}60`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 20, color: objType.displayMetadata.color, fontWeight: 500,
+            }}>{objType.displayMetadata.icon}</div>
+            <div>
+              <div style={{ fontSize: 10, color: objType.displayMetadata.color, letterSpacing: 1.5, fontWeight: 500 }}>
+                {objType.displayName.toUpperCase()}
+              </div>
+              <div style={{ fontSize: 17, color: C.white, marginTop: 1 }}>{node.label}</div>
+            </div>
+          </div>
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 4 }}>{node.sublabel}</div>
+          <div style={{ fontSize: 9, color: C.dim, marginTop: 6, fontStyle: "italic" }}>
+            {objType.displayMetadata.description}
+          </div>
+        </div>
+        <button onClick={onClose} style={{
+          background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+          cursor: "pointer", fontSize: 18, width: 36, height: 36, borderRadius: 8,
+        }}>✕</button>
+      </div>
+
+      {/* Meta */}
+      <div style={{ fontSize: 9, color: C.dim, marginBottom: 12, padding: "8px 10px",
+        background: "rgba(255,255,255,0.02)", borderRadius: 6, border: `1px solid ${C.border}`,
+        lineHeight: 1.6 }}>
+        <div><span style={{ color: C.mid }}>apiName:</span> <span style={{ color: C.white, fontFamily: mono }}>{objType.apiName}</span></div>
+        <div><span style={{ color: C.mid }}>rid:</span> <span style={{ fontFamily: mono }}>{objType.rid}</span></div>
+        <div><span style={{ color: C.mid }}>primaryKey:</span> <span style={{ fontFamily: mono }}>{objType.primaryKey}</span></div>
+        <div><span style={{ color: C.mid }}>status:</span> <span style={{ color: objType.status === "ACTIVE" ? C.ok : C.warn, fontWeight: 500 }}>{objType.status}</span></div>
+      </div>
+
+      {/* Properties */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, marginBottom: 8, fontWeight: 500 }}>
+          ÖZELLİKLER ({objType.properties.length})
+        </div>
+        <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+          {objType.properties
+            .filter(p => p.visibility !== "HIDDEN")
+            .map((p, i) => (
+              <div key={p.apiName} style={{
+                display: "flex", justifyContent: "space-between", alignItems: "center",
+                padding: "8px 12px", fontSize: 12,
+                background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
+                borderBottom: i < objType.properties.length - 1 ? `1px solid ${C.border}` : "none",
+              }}>
+                <div style={{ flex: 1 }}>
+                  <div style={{ color: C.white, fontSize: 12 }}>{p.displayName}</div>
+                  <div style={{ color: C.dim, fontSize: 9, marginTop: 1 }}>
+                    {p.apiName} · <span style={{ color: C.accent + "99" }}>{p.type}</span>
+                    {p.unit && <span> · {p.unit}</span>}
+                    {p.visibility === "PROMINENT" && <span style={{ color: C.ok, marginLeft: 6 }}>●</span>}
+                  </div>
+                </div>
+                <div style={{ color: C.white, fontFamily: mono, fontSize: 13, fontWeight: 500, textAlign: "right" }}>
+                  {propValue(p.apiName)}
+                  {p.unit && <span style={{ color: C.dim, fontSize: 10, marginLeft: 3 }}>{p.unit}</span>}
+                </div>
+              </div>
+            ))}
+        </div>
+      </div>
+
+      {/* Link Types */}
+      <div style={{ marginBottom: 16 }}>
+        <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, marginBottom: 8, fontWeight: 500 }}>
+          BAĞLANTI TİPLERİ ({linkSpecs.length})
+        </div>
+        {linkSpecs.map(({ link, side, role }) => {
+          const liveCount = side === "A"
+            ? outbound.filter(l => l.linkTypeApiName === link.apiName).length
+            : inbound.filter(l => l.linkTypeApiName === link.apiName).length;
+          return (
+            <div key={link.apiName + side} style={{
+              padding: "10px 12px", marginBottom: 6, borderRadius: 6,
+              background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
+            }}>
+              <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                <span style={{ fontSize: 12, color: C.white }}>{role.displayName}</span>
+                <span style={{ fontSize: 10, color: C.accent, fontFamily: mono,
+                  padding: "2px 8px", borderRadius: 4, background: C.accentDim }}>
+                  {cardinalityLabel(role.cardinality)}
+                </span>
+              </div>
+              <div style={{ fontSize: 10, color: C.dim, marginTop: 3 }}>
+                {link.sentence}
+              </div>
+              <div style={{ fontSize: 10, color: C.ok, marginTop: 4, fontFamily: mono }}>
+                → {liveCount} canlı bağlantı
+              </div>
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Actions — Palantir ActionType menü */}
+      {node.kind !== "device" && actions.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, marginBottom: 8, fontWeight: 500 }}>
+            AKSİYONLAR ({actions.filter(a => a.status === "ACTIVE").length} aktif / {actions.length})
+          </div>
+          <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+            {actions.map(a => (
+              <button
+                key={a.apiName}
+                disabled={a.status === "PLANNED"}
+                onClick={() => {
+                  if (a.apiName === "updateStock") onStartEdit();
+                  else if (a.apiName === "simulateStock") onStartWhatIf();
+                }}
+                style={{
+                  textAlign: "left", padding: "10px 14px", borderRadius: 8, cursor: a.status === "PLANNED" ? "not-allowed" : "pointer",
+                  background: a.status === "ACTIVE" ? "rgba(52,211,153,0.08)" : "rgba(255,255,255,0.02)",
+                  border: `1px solid ${a.status === "ACTIVE" ? C.okBorder : C.border}`,
+                  color: a.status === "ACTIVE" ? C.white : C.dim,
+                  fontFamily: mono, fontSize: 12,
+                  opacity: a.status === "PLANNED" ? 0.55 : 1,
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                }}
+              >
+                <div>
+                  <div style={{ fontWeight: 500 }}>{a.displayName}</div>
+                  <div style={{ fontSize: 9, color: C.dim, marginTop: 2 }}>{a.description}</div>
+                </div>
+                <span style={{
+                  fontSize: 8, padding: "2px 6px", borderRadius: 3,
+                  background: a.status === "ACTIVE" ? C.okDim : "rgba(255,255,255,0.04)",
+                  color: a.status === "ACTIVE" ? C.ok : C.mid,
+                  border: `1px solid ${a.status === "ACTIVE" ? C.okBorder : C.border}`,
+                }}>{a.status}</span>
+              </button>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {/* Drill-down buton (yarı mamül için) */}
+      {node.hasChildren && (
+        <button onClick={onToggleExpand} style={{
+          width: "100%", padding: "10px", borderRadius: 8, cursor: "pointer",
+          background: C.accentDim, border: `1px solid ${C.accent}40`, color: C.accent,
+          fontSize: 12, fontFamily: mono, fontWeight: 500,
+        }}>↕ Alt parçaları aç/kapat ({node.childrenCount})</button>
+      )}
+    </div>
   );
 }
