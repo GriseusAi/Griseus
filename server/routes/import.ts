@@ -300,13 +300,27 @@ router.post("/bulk/sales", async (req: Request, res: Response) => {
       }
     }
 
-    // DSE güncelle (fire-and-forget) — tamamlandiginda WS yayini at
+    // Lineage — satış verisi audit trail (Octopus L1 mutation layer)
+    if (created + updated > 0) {
+      recordLineage({
+        entity: "sales_history", entityId: sku,
+        sourceType: "import", sourceName: "Bulk sales import",
+        actor: "import",
+        metadata: { sku, created, updated, total: data.length, years: Array.from(new Set(data.map(r => r.year))) },
+      }).catch(() => {});
+    }
+
+    // DSE güncelle (fire-and-forget) — tamamlandiginda WS yayini + octopus audit
     bulkUpdateFromSalesHistory("cukurova", sku)
-      .then(() => broadcastEntityChanged({
-        event: "entity_changed",
-        entities: ["sales_history", "seasonal_indices"],
-        scope: sku, source: "bulk_import",
-      }))
+      .then(() => {
+        broadcastEntityChanged({
+          event: "entity_changed",
+          entities: ["sales_history", "seasonal_indices"],
+          scope: sku, source: "bulk_import",
+        });
+        // Orchestrator → auto octopus-chain audit (Layer 10 seasonal recompute)
+        triggerAuditOnDataChange(`bulk/sales ${sku} ${created}c/${updated}u`);
+      })
       .catch(err => console.error("[bulk/sales] DSE update error:", err));
 
     res.json({ success: true, sku, created, updated, total: data.length });

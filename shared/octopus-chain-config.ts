@@ -45,6 +45,12 @@ export const OCTOPUS_CHAIN_CONFIG = {
     "GSA15":   { peakMonth: "Eki", note: "2025 Eki=24 peak, sparse (yıllık 40) — güvenilirlik düşük, çok yıl data gelene dek dikkat" },
     "GSA20":   { peakMonth: "Eki", note: "2025 Eki=109, Kas=79 ikincil — GSA aile Kasım'dan Ekim'e kaymış" },
     "GSS40P":  { peakMonth: "Ara", note: "2025 Ara=85, Agu=69 — portatif büyük model kışa doğru pik (GSS20P Ağustos aile default)" },
+    // BH ailesi — 2026-04-20 import 2025 Çukurova verisi (yıllık 218/89/82/2)
+    // Aile default "Eyl" sanayi montaj baseline; gerçek veri SKU bazında farklı pik gösteriyor
+    "BH.55ST.SV": { peakMonth: "Eki", note: "2025 Eki=87, Tem=36, Kas=23 — büyük sanayi 55kW, Ekim ihale pattern (yıllık 218 = en yüksek BH hacmi)" },
+    "BH.50ST.SV": { peakMonth: "Ara", note: "2025 Ara=24, Tem=20, Kas=17 — küçük model, kışa doğru pik (yıllık 89)" },
+    "BH.55UT.SV": { peakMonth: "Ara", note: "2025 Ara=31, Kas=10, Eki=9 — U-tip kış pikli (yıllık 82)" },
+    "BH.50UT.SV": { peakMonth: "Eki", note: "2025 sparse yıllık=2 (Eki=2), güvenilirlik çok düşük — çok yıl veri gelene dek aile Eyl default'una yakın, Layer 10 amplitude alarmı normal" },
   } as Record<string, { peakMonth: string; note: string }>,
 
   /** winterStress semantic kontrolü için kış ayları (ASCII) */
