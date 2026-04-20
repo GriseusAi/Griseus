@@ -36,6 +36,16 @@ interface BomComponent {
   isSubAssembly?: boolean;
   children?: BomComponent[];
 }
+
+// Recursive subassembly → flat collection (for drill-down)
+function collectChildrenRecursive(comp: BomComponent, parentCode: string, acc: Array<{ child: BomComponent; parentCode: string }> = []): Array<{ child: BomComponent; parentCode: string }> {
+  if (!comp.children || comp.children.length === 0) return acc;
+  for (const c of comp.children) {
+    acc.push({ child: c, parentCode });
+    if (c.children && c.children.length > 0) collectChildrenRecursive(c, c.code, acc);
+  }
+  return acc;
+}
 interface BomResponse { product: string; components: BomComponent[] }
 interface Capacity {
   product: string; maxProducible: number;
@@ -49,7 +59,7 @@ interface IntelComponent {
 interface IntelResponse { components: IntelComponent[] }
 
 interface GraphNode {
-  id: string; kind: "device" | "component" | "subassembly";
+  id: string; kind: "device" | "component" | "subassembly" | "subcomponent";
   label: string; sublabel: string;
   sku?: string; code?: string;
   usedBy: string[];
@@ -58,20 +68,25 @@ interface GraphNode {
   unit?: string;
   /* L1 Kinetics */
   dailyBurnRate?: number;
-  daysLeft?: number | null;      // seasonalDays (mevsim-ağırlıklı)
+  daysLeft?: number | null;
   trend?: string;
   depletionMonth?: string | null;
   /* L3 Required per BH (for dry-run) */
   requiredByDevice?: Record<string, number>;
+  /* Drill-down: parent subassembly info */
+  parentSubCode?: string;
+  hasChildren?: boolean;
+  childrenCount?: number;
 }
 
 interface GraphLink {
   from: string; to: string; required: number; tier: number;
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v2";
-const CANVAS_W = 1800;
-const CANVAS_H = 1200;
+const LAYOUT_KEY = "bh-ontology-layout-v3";
+const EXPANDED_KEY = "bh-ontology-expanded-v1";
+const CANVAS_W = 2200;
+const CANVAS_H = 1600;
 
 function statusColor(s?: Status, isBottleneck?: boolean): { fg: string; bg: string; border: string } {
   if (isBottleneck) return { fg: C.err, bg: C.errDim, border: C.errBorder };
@@ -133,7 +148,8 @@ function dryRunCapacity(
 function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: number }> {
   const pos: Record<string, { x: number; y: number }> = {};
   const devices = nodes.filter(n => n.kind === "device");
-  const others = nodes.filter(n => n.kind !== "device");
+  const topLevel = nodes.filter(n => n.kind !== "device" && n.kind !== "subcomponent");
+  const subs = nodes.filter(n => n.kind === "subcomponent");
 
   const sortedDev = [...devices].sort((a, b) => {
     const a50 = a.sku!.includes("50") ? 0 : 1;
@@ -141,20 +157,20 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
     if (a50 !== b50) return a50 - b50;
     return a.sku!.localeCompare(b.sku!);
   });
-  const devY = 80;
+  const devY = 110;
   const devSpacing = CANVAS_W / (sortedDev.length + 1);
   sortedDev.forEach((d, i) => { pos[d.id] = { x: devSpacing * (i + 1), y: devY }; });
 
-  const shared = others.filter(n => n.isShared);
-  const unique = others.filter(n => !n.isShared);
+  const shared = topLevel.filter(n => n.isShared);
+  const unique = topLevel.filter(n => !n.isShared);
 
-  const sharedY = 280;
+  const sharedY = 360;
   const sharedCols = Math.max(1, Math.ceil(shared.length / 2));
   const sharedSpacing = CANVAS_W / (sharedCols + 1);
   shared.forEach((n, i) => {
     const col = i % sharedCols;
     const row = Math.floor(i / sharedCols);
-    pos[n.id] = { x: sharedSpacing * (col + 1), y: sharedY + row * 130 };
+    pos[n.id] = { x: sharedSpacing * (col + 1), y: sharedY + row * 160 };
   });
 
   const skuToUnique: Record<string, GraphNode[]> = {};
@@ -168,14 +184,30 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
   }
   sortedDev.forEach((d, di) => {
     const list = skuToUnique[d.sku!] || [];
-    const baseX = devSpacing * (di + 1) - 170;
-    const baseY = 600;
+    const baseX = devSpacing * (di + 1) - 200;
+    const baseY = 780;
     list.forEach((n, i) => {
       const col = i % 3;
       const row = Math.floor(i / 3);
-      pos[n.id] = { x: baseX + col * 120, y: baseY + row * 120 };
+      pos[n.id] = { x: baseX + col * 140, y: baseY + row * 150 };
     });
   });
+
+  // Subcomponent'ler: parent subassembly'nin altında fan-out
+  const byParent: Record<string, GraphNode[]> = {};
+  for (const s of subs) {
+    const p = s.parentSubCode || "_";
+    (byParent[p] = byParent[p] || []).push(s);
+  }
+  for (const [parentCode, children] of Object.entries(byParent)) {
+    const pp = pos[parentCode];
+    if (!pp) continue;
+    const totalW = (children.length - 1) * 160;
+    const startX = pp.x - totalW / 2;
+    children.forEach((c, i) => {
+      pos[c.id] = { x: startX + i * 160, y: pp.y + 180 };
+    });
+  }
 
   return pos;
 }
@@ -204,6 +236,44 @@ export default function BhOntologyPage() {
     useQuery<IntelResponse>({ queryKey: [`/api/bom/${sku}/intelligence`] })
   );
   const allLoaded = bomQueries.every(q => q.data) && capQueries.every(q => q.data) && intelQueries.every(q => q.data);
+
+  /* Drill-down: expanded subassemblies (persist) */
+  const [expandedSubs, setExpandedSubs] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem(EXPANDED_KEY);
+      if (raw) return new Set(JSON.parse(raw));
+    } catch {}
+    return new Set<string>();
+  });
+  const toggleExpanded = useCallback((code: string) => {
+    setExpandedSubs(prev => {
+      const next = new Set(prev);
+      if (next.has(code)) next.delete(code); else next.add(code);
+      try { localStorage.setItem(EXPANDED_KEY, JSON.stringify(Array.from(next))); } catch {}
+      return next;
+    });
+  }, []);
+
+  /* WS pulse — hangi kodlar yeni değişti */
+  const [pulseCodes, setPulseCodes] = useState<Map<string, number>>(new Map());
+  const triggerPulse = useCallback((codes: string[]) => {
+    const now = Date.now();
+    setPulseCodes(prev => {
+      const next = new Map(prev);
+      for (const c of codes) next.set(c, now);
+      return next;
+    });
+    setTimeout(() => {
+      setPulseCodes(prev => {
+        const next = new Map(prev);
+        for (const c of codes) {
+          const t = next.get(c);
+          if (t === now) next.delete(c);
+        }
+        return next;
+      });
+    }, 2000);
+  }, []);
 
   /* Graph model build (with intelligence merge) */
   const { nodes, links } = useMemo(() => {
@@ -234,16 +304,16 @@ export default function BhOntologyPage() {
       });
     });
 
-    // Tier-1 bileşen + link'ler
+    // Top-level bileşen + link'ler
     BH_SKUS.forEach((sku, i) => {
       const comps = bomQueries[i].data!.components;
-      const tier1 = comps.filter(c => c.tier === 1);
-      for (const c of tier1) {
+      for (const c of comps) {
         let n = nodeMap.get(c.code);
         if (!n) {
           const intel = intelByCode.get(c.code);
+          const hasCh = (c.children && c.children.length > 0) || c.isSubAssembly === true;
           n = {
-            id: c.code, kind: c.isSubAssembly ? "subassembly" : "component",
+            id: c.code, kind: hasCh ? "subassembly" : "component",
             label: c.code, sublabel: c.name, code: c.code, usedBy: [],
             currentStock: c.currentStock, status: c.status, unit: c.unit,
             dailyBurnRate: intel?.dailyBurnRate,
@@ -251,12 +321,42 @@ export default function BhOntologyPage() {
             trend: intel?.trend,
             depletionMonth: intel?.depletionMonth ?? null,
             requiredByDevice: {},
+            hasChildren: hasCh,
+            childrenCount: c.children?.length ?? 0,
           };
           nodeMap.set(c.code, n);
         }
         if (!n.usedBy.includes(sku)) n.usedBy.push(sku);
         (n.requiredByDevice as Record<string, number>)[sku] = c.requiredPerUnit;
         linkList.push({ from: sku, to: c.code, required: c.requiredPerUnit, tier: 1 });
+      }
+    });
+
+    // Drill-down: expanded yarı mamül children → subcomponent node + link (sub→child)
+    BH_SKUS.forEach((_, i) => {
+      const comps = bomQueries[i].data!.components;
+      for (const c of comps) {
+        if (!c.isSubAssembly || !c.children || !expandedSubs.has(c.code)) continue;
+        const flat = collectChildrenRecursive(c, c.code);
+        for (const { child, parentCode } of flat) {
+          const nid = `${parentCode}::${child.code}`;
+          if (!nodeMap.has(nid)) {
+            const intel = intelByCode.get(child.code);
+            nodeMap.set(nid, {
+              id: nid, kind: "subcomponent",
+              label: child.code, sublabel: child.name, code: child.code, usedBy: [parentCode],
+              currentStock: child.currentStock, status: child.status, unit: child.unit,
+              dailyBurnRate: intel?.dailyBurnRate,
+              daysLeft: intel?.seasonalDays ?? intel?.daysToStockout ?? null,
+              trend: intel?.trend,
+              depletionMonth: intel?.depletionMonth ?? null,
+              parentSubCode: parentCode,
+              hasChildren: (child.children?.length ?? 0) > 0,
+              childrenCount: child.children?.length ?? 0,
+            });
+            linkList.push({ from: parentCode, to: nid, required: child.requiredPerUnit, tier: child.tier });
+          }
+        }
       }
     });
 
@@ -274,7 +374,7 @@ export default function BhOntologyPage() {
     });
 
     return { nodes: Array.from(nodeMap.values()), links: linkList };
-  }, [allLoaded, bomQueries, capQueries, intelQueries]);
+  }, [allLoaded, bomQueries, capQueries, intelQueries, expandedSubs]);
 
   /* Layout */
   const [positions, setPositions] = useState<Record<string, { x: number; y: number }>>({});
@@ -359,15 +459,30 @@ export default function BhOntologyPage() {
     setEditingCode(null);
   };
 
-  /* WS live refresh */
-  const handleStockUpdate = useCallback(() => {
+  /* WS live refresh + pulse trigger */
+  const handleStockUpdate = useCallback((data: any) => {
     BH_SKUS.forEach(sku => {
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
     });
-  }, [qc]);
-  const { connected } = useStockWebSocket(handleStockUpdate, () => {}, () => {});
+    // Pulse: tüm BH SKU'ları yanında, event'te componentCode varsa onu da ışıklandır
+    const codes: string[] = [];
+    if (data?.productSku) codes.push(data.productSku);
+    if (data?.componentCode) codes.push(data.componentCode);
+    if (codes.length > 0) triggerPulse(codes);
+  }, [qc, triggerPulse]);
+  const handleImpact = useCallback((ev: any) => {
+    // impact_propagation event → affectedNodes'ları pulse et
+    const codes: string[] = [];
+    for (const imp of (ev?.impacts || [])) {
+      for (const n of (imp?.affectedNodes || [])) {
+        if (n.code) codes.push(n.code);
+      }
+    }
+    if (codes.length > 0) triggerPulse(codes);
+  }, [triggerPulse]);
+  const { connected } = useStockWebSocket(handleStockUpdate, () => {}, handleImpact);
 
   /* Viewport pan/zoom */
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
@@ -405,15 +520,33 @@ export default function BhOntologyPage() {
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: mono, overflow: "hidden" }}>
       <style>{`
-        @keyframes flow {
-          to { stroke-dashoffset: -24; }
-        }
-        @keyframes flowSlow {
-          to { stroke-dashoffset: -12; }
-        }
+        @keyframes flow { to { stroke-dashoffset: -24; } }
+        @keyframes flowSlow { to { stroke-dashoffset: -12; } }
         .link-flow { animation: flow 1.2s linear infinite; }
         .link-flow-shared { animation: flow 0.8s linear infinite; }
         .link-flow-critical { animation: flow 0.5s linear infinite; }
+
+        @keyframes pulseRing {
+          0%   { transform: scale(1);   opacity: 0.9; }
+          50%  { transform: scale(1.15); opacity: 0.4; }
+          100% { transform: scale(1.3); opacity: 0; }
+        }
+        @keyframes breathe {
+          0%, 100% { opacity: 0.3; }
+          50%      { opacity: 0.7; }
+        }
+        .pulse-ring { animation: pulseRing 1.8s ease-out 1; transform-origin: center; transform-box: fill-box; }
+        .breathe { animation: breathe 2.6s ease-in-out infinite; }
+
+        @keyframes flashBg {
+          0%   { fill: rgba(251,191,36,0.35); }
+          100% { fill: inherit; }
+        }
+        .flash-bg { animation: flashBg 1.4s ease-out 1; }
+
+        input[type=range]::-webkit-slider-thumb {
+          width: 20px; height: 20px; cursor: grab;
+        }
       `}</style>
       <TopNav connected={connected} />
 
@@ -435,13 +568,19 @@ export default function BhOntologyPage() {
           <Stat label="PAYLAŞIMLI" value={problemCount.shared} color={C.accent} />
           {simulationActive && (
             <button onClick={clearSimulation} style={{
-              padding: "6px 12px", borderRadius: 6, cursor: "pointer",
-              background: C.variableDim, border: `1px solid ${C.variableBorder}`, color: C.variable, fontSize: 11, fontFamily: mono,
+              padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
+              background: C.variableDim, border: `1px solid ${C.variableBorder}`, color: C.variable, fontSize: 13, fontFamily: mono,
             }}>⚡ Simülasyonu Kapat</button>
           )}
+          {expandedSubs.size > 0 && (
+            <button onClick={() => { setExpandedSubs(new Set()); localStorage.removeItem(EXPANDED_KEY); }} style={{
+              padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
+              background: C.accentDim, border: `1px solid ${C.accent}40`, color: C.accent, fontSize: 13, fontFamily: mono,
+            }}>↕ Alt Parçaları Kapat ({expandedSubs.size})</button>
+          )}
           <button onClick={resetLayout} style={{
-            padding: "6px 12px", borderRadius: 6, cursor: "pointer",
-            background: C.surface, border: `1px solid ${C.border}`, color: C.mid, fontSize: 11, fontFamily: mono,
+            padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
+            background: C.surface, border: `1px solid ${C.border}`, color: C.mid, fontSize: 13, fontFamily: mono,
           }}>Layout Sıfırla</button>
         </div>
       </div>
@@ -518,10 +657,15 @@ export default function BhOntologyPage() {
             const isConnected = !connectedSet || connectedSet.has(n.id);
             const simMax = n.kind === "device" && simulationActive ? simulatedCapacity[n.id!].max : undefined;
             const simBtc = n.kind === "device" && simulationActive ? simulatedCapacity[n.id!].bottleneckCode : undefined;
+            const realCode = n.code || n.id;
+            const pulsing = pulseCodes.has(realCode) || pulseCodes.has(n.id);
+            const isExpanded = n.hasChildren && expandedSubs.has(realCode);
             return (
               <NodeView
                 key={n.id} node={n} x={p.x} y={p.y}
                 dim={!isConnected}
+                pulsing={pulsing}
+                expanded={!!isExpanded}
                 editing={editingCode === n.id} editVal={editVal}
                 overrideStock={whatifOverrides[n.id]}
                 simulatedMax={simMax}
@@ -530,6 +674,9 @@ export default function BhOntologyPage() {
                 onPointerDown={(e) => handlePointerDown(e, n.id)}
                 onMouseEnter={() => setHoveredId(n.id)}
                 onMouseLeave={() => setHoveredId(null)}
+                onToggleExpand={() => {
+                  if (n.hasChildren) toggleExpanded(realCode);
+                }}
                 onStartEdit={() => {
                   if (n.kind === "device") return;
                   setEditingCode(n.id);
@@ -574,66 +721,69 @@ function WhatIfPanel({
 
   return (
     <div style={{
-      position: "absolute", top: 130, left: 16, zIndex: 10,
-      width: 360, padding: "14px 16px", borderRadius: 12,
-      background: "rgba(10,10,15,0.92)", backdropFilter: "blur(12px)",
+      position: "absolute", top: 140, left: 20, zIndex: 10,
+      width: 440, padding: "20px 22px", borderRadius: 14,
+      background: "rgba(10,10,15,0.95)", backdropFilter: "blur(16px)",
       border: `1px solid ${C.variableBorder}`,
+      boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
     }}>
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 8 }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 9, color: C.variable, letterSpacing: 1.5 }}>⚡ WHAT-IF SİMÜLASYON</div>
-          <div style={{ fontSize: 14, color: C.white, marginTop: 2 }}>{code}</div>
-          <div style={{ fontSize: 10, color: C.dim, marginTop: 1 }}>{node.sublabel}</div>
+          <div style={{ fontSize: 10, color: C.variable, letterSpacing: 1.8, fontWeight: 500 }}>⚡ WHAT-IF SİMÜLASYON</div>
+          <div style={{ fontSize: 18, color: C.white, marginTop: 4, fontFamily: mono }}>{code}</div>
+          <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{node.sublabel}</div>
         </div>
-        <button onClick={onClose} style={{ background: "none", border: "none", color: C.mid, cursor: "pointer", fontSize: 16 }}>✕</button>
+        <button onClick={onClose} style={{
+          background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+          cursor: "pointer", fontSize: 18, width: 36, height: 36, borderRadius: 8,
+        }}>✕</button>
       </div>
 
-      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: C.dim, margin: "10px 0 4px" }}>
-        <span>Gerçek: {fmt(original)}</span>
-        <span style={{ color: C.variable }}>Simüle: {fmt(current)}</span>
+      <div style={{ display: "flex", justifyContent: "space-between", fontSize: 12, color: C.dim, margin: "14px 0 8px" }}>
+        <span>Gerçek stok: <span style={{ color: C.white, fontFamily: mono }}>{fmt(original)}</span></span>
+        <span style={{ color: C.variable }}>Simüle: <span style={{ fontFamily: mono, fontWeight: 500 }}>{fmt(current)}</span></span>
       </div>
       <input type="range" min={0} max={maxSlider} value={current}
         onChange={e => setOverrides(prev => ({ ...prev, [code]: parseInt(e.target.value) }))}
-        style={{ width: "100%", accentColor: C.variable }}
+        style={{ width: "100%", accentColor: C.variable, height: 8, cursor: "grab" }}
       />
-      <div style={{ display: "flex", gap: 6, marginTop: 6 }}>
+      <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
         <input type="number" value={current} onChange={e => setOverrides(prev => ({ ...prev, [code]: parseFloat(e.target.value) || 0 }))}
-          style={{ flex: 1, fontSize: 12, fontFamily: mono, color: C.variable, background: "rgba(0,0,0,0.4)",
-            border: `1px solid ${C.variableBorder}`, borderRadius: 4, padding: "4px 8px", outline: "none" }}
+          style={{ flex: 1, fontSize: 16, fontFamily: mono, color: C.variable, background: "rgba(0,0,0,0.5)",
+            border: `1px solid ${C.variableBorder}`, borderRadius: 6, padding: "8px 12px", outline: "none", minHeight: 40 }}
         />
         <button onClick={() => setOverrides(prev => {
           const next = { ...prev }; delete next[code]; return next;
-        })} style={{ padding: "4px 10px", fontSize: 10, borderRadius: 4, cursor: "pointer",
-          background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+        })} style={{ padding: "8px 16px", fontSize: 13, borderRadius: 6, cursor: "pointer", minHeight: 40,
+          background: C.surface, border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
         }}>Sıfırla</button>
       </div>
 
-      <div style={{ marginTop: 14, paddingTop: 10, borderTop: `1px dashed ${C.border}` }}>
-        <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1.5, marginBottom: 6 }}>4 CİHAZ ETKİSİ</div>
+      <div style={{ marginTop: 18, paddingTop: 14, borderTop: `1px dashed ${C.border}` }}>
+        <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, marginBottom: 10, fontWeight: 500 }}>4 CİHAZ ETKİSİ</div>
         {(["BH.50ST.SV","BH.50UT.SV","BH.55ST.SV","BH.55UT.SV"] as const).map(sku => {
           const dev = nodes.find(n => n.id === sku);
           if (!dev) return null;
           const realMax = dev.maxProducible ?? 0;
           const simMax = simulatedCapacity[sku].max;
-          const btc = simulatedCapacity[sku].bottleneckCode;
           const delta = simMax - realMax;
           const dColor = delta > 0 ? C.ok : delta < 0 ? C.err : C.mid;
           const dSign = delta > 0 ? "+" : "";
           return (
-            <div key={sku} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 11, padding: "3px 0" }}>
-              <span style={{ color: C.mid, fontFamily: mono }}>{sku.replace("BH.", "").replace(".SV","")}</span>
+            <div key={sku} style={{ display: "flex", justifyContent: "space-between", alignItems: "center", fontSize: 13, padding: "6px 0" }}>
+              <span style={{ color: C.white, fontFamily: mono }}>{sku.replace("BH.", "").replace(".SV","")}</span>
               <span style={{ fontFamily: mono, color: C.dim }}>
-                {fmt(realMax)} → <span style={{ color: C.variable, fontWeight: 500 }}>{fmt(simMax)}</span>
-                <span style={{ color: dColor, marginLeft: 6 }}>({dSign}{delta})</span>
+                {fmt(realMax)} → <span style={{ color: C.variable, fontWeight: 500, fontSize: 14 }}>{fmt(simMax)}</span>
+                <span style={{ color: dColor, marginLeft: 8, fontWeight: 500 }}>({dSign}{delta})</span>
               </span>
             </div>
           );
         })}
-        {node.isBottleneck && <div style={{ fontSize: 9, color: C.err, marginTop: 6 }}>▲ Bu atom şu an en az 1 BH'de darboğaz</div>}
+        {node.isBottleneck && <div style={{ fontSize: 11, color: C.err, marginTop: 8 }}>▲ Bu atom şu an en az 1 BH'de darboğaz</div>}
       </div>
 
-      <div style={{ fontSize: 9, color: C.dim, marginTop: 10, fontStyle: "italic" }}>
-        Dry-run: DB'ye yazılmaz. Kapat ile tüm simülasyonlar temizlenir.
+      <div style={{ fontSize: 11, color: C.dim, marginTop: 14, fontStyle: "italic" }}>
+        Dry-run: DB'ye yazılmaz · Kapat ile simülasyon temizlenir
       </div>
     </div>
   );
@@ -642,25 +792,28 @@ function WhatIfPanel({
 /* ── Stat pill ── */
 function Stat({ label, value, color }: { label: string; value: number; color: string }) {
   return (
-    <div style={{ textAlign: "center" }}>
-      <div style={{ fontSize: 8, color: C.dim, letterSpacing: 1 }}>{label}</div>
-      <div style={{ fontSize: 18, color, fontFamily: mono, fontWeight: 400 }}>{value}</div>
+    <div style={{ textAlign: "center", minWidth: 60 }}>
+      <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.2, fontWeight: 500 }}>{label}</div>
+      <div style={{ fontSize: 22, color, fontFamily: mono, fontWeight: 500, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Node View — L1 kinetics + L2 dim + L3 override
+   Node View — L1 kinetics + L2 dim + L3 override + pulse + expand
    ═══════════════════════════════════════════════════════════ */
 function NodeView({
-  node, x, y, dim, editing, editVal,
+  node, x, y, dim, pulsing, expanded,
+  editing, editVal,
   overrideStock, simulatedMax, simulatedBottleneckCode, simulationActive,
   onPointerDown, onMouseEnter, onMouseLeave,
-  onStartEdit, onStartWhatIf,
+  onToggleExpand, onStartEdit, onStartWhatIf,
   onEditChange, onSaveEdit, onCancelEdit, saving,
 }: {
   node: GraphNode; x: number; y: number;
   dim: boolean;
+  pulsing: boolean;
+  expanded: boolean;
   editing: boolean; editVal: string;
   overrideStock?: number;
   simulatedMax?: number;
@@ -669,6 +822,7 @@ function NodeView({
   onPointerDown: (e: React.PointerEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
+  onToggleExpand: () => void;
   onStartEdit: () => void;
   onStartWhatIf: () => void;
   onEditChange: (v: string) => void;
@@ -678,8 +832,10 @@ function NodeView({
 }) {
   const isDevice = node.kind === "device";
   const isSub = node.kind === "subassembly";
-  const w = isDevice ? 190 : 180;
-  const h = isDevice ? 74 : 86;
+  const isSubComp = node.kind === "subcomponent";
+  // Daha büyük, kullanıcı dostu boyutlar
+  const w = isDevice ? 240 : isSubComp ? 200 : 230;
+  const h = isDevice ? 96 : isSubComp ? 106 : 118;
 
   const displayStock = overrideStock !== undefined ? overrideStock : (node.currentStock ?? 0);
   const isOverridden = overrideStock !== undefined && overrideStock !== node.currentStock;
@@ -687,23 +843,26 @@ function NodeView({
   const col = statusColor(node.status, node.isBottleneck);
   const vel = velocityIcon(node.dailyBurnRate, node.trend);
 
-  // Device simulated bottleneck gösterimi
   const deviceDelta = (isDevice && simulatedMax !== undefined && node.maxProducible !== undefined)
     ? simulatedMax - node.maxProducible : 0;
   const deviceDeltaColor = deviceDelta > 0 ? C.ok : deviceDelta < 0 ? C.err : C.mid;
 
   return (
     <g transform={`translate(${x - w/2}, ${y - h/2})`}
-       style={{ cursor: "grab", opacity: dim ? 0.25 : 1, transition: "opacity 0.2s" }}
+       style={{ cursor: "grab", opacity: dim ? 0.22 : 1, transition: "opacity 0.25s" }}
        onMouseEnter={onMouseEnter}
        onMouseLeave={onMouseLeave}
     >
+      {/* Pulse ring — WS güncellemesi geldiğinde bir kere çalar */}
+      {pulsing && (
+        <rect className="pulse-ring" x={-8} y={-8} width={w+16} height={h+16} rx={16}
+          fill="none" stroke={C.warn} strokeWidth={3} filter="url(#glow)"/>
+      )}
+
       {/* Bottleneck halo */}
       {node.isBottleneck && (
-        <rect x={-6} y={-6} width={w+12} height={h+12} rx={14}
-          fill="none" stroke={C.err} strokeWidth={2} opacity={0.5} filter="url(#glow)">
-          <animate attributeName="opacity" values="0.3;0.7;0.3" dur="2s" repeatCount="indefinite"/>
-        </rect>
+        <rect className="breathe" x={-6} y={-6} width={w+12} height={h+12} rx={14}
+          fill="none" stroke={C.err} strokeWidth={2} filter="url(#glow)"/>
       )}
       {/* Shared çift çerçeve */}
       {node.isShared && !isDevice && (
@@ -713,11 +872,12 @@ function NodeView({
       {/* Override indicator */}
       {isOverridden && (
         <rect x={-4} y={-4} width={w+8} height={h+8} rx={11}
-          fill="none" stroke={C.variable} strokeWidth={1.5} strokeDasharray="2 2" opacity={0.8}/>
+          fill="none" stroke={C.variable} strokeWidth={1.5} strokeDasharray="2 2" opacity={0.9}/>
       )}
 
-      <rect width={w} height={h} rx={8}
-        fill={isDevice ? "#111118" : col.bg}
+      <rect className={pulsing ? "flash-bg" : undefined}
+        width={w} height={h} rx={10}
+        fill={isDevice ? "#0f0f18" : col.bg}
         stroke={isDevice ? C.accent : col.border}
         strokeWidth={isDevice ? 2 : 1.5}
         onPointerDown={onPointerDown}
@@ -725,16 +885,16 @@ function NodeView({
 
       {isDevice ? (
         <>
-          <text x={w/2} y={22} textAnchor="middle" fill={C.white} fontSize={14} fontFamily={mono} fontWeight={500}>
+          <text x={w/2} y={28} textAnchor="middle" fill={C.white} fontSize={17} fontFamily={mono} fontWeight={500}>
             {node.label}
           </text>
-          <text x={w/2} y={42} textAnchor="middle" fill={C.accent} fontSize={10} fontFamily={mono}>
+          <text x={w/2} y={50} textAnchor="middle" fill={C.accent} fontSize={12} fontFamily={mono}>
             {node.sublabel}
           </text>
           {simulationActive && simulatedMax !== undefined && (
             <>
-              <line x1={20} y1={50} x2={w-20} y2={50} stroke={C.variableBorder} strokeDasharray="2 2" opacity={0.6} />
-              <text x={w/2} y={64} textAnchor="middle" fill={C.variable} fontSize={11} fontFamily={mono} fontWeight={500}>
+              <line x1={22} y1={60} x2={w-22} y2={60} stroke={C.variableBorder} strokeDasharray="3 2" opacity={0.6} />
+              <text x={w/2} y={80} textAnchor="middle" fill={C.variable} fontSize={13} fontFamily={mono} fontWeight={500}>
                 ⚡ sim: {fmt(simulatedMax)} <tspan fill={deviceDeltaColor}>
                   ({deviceDelta >= 0 ? "+" : ""}{deviceDelta})
                 </tspan>
@@ -745,104 +905,123 @@ function NodeView({
       ) : (
         <>
           {/* Status stripe */}
-          <rect width={w} height={3} fill={col.fg} opacity={0.7} rx={2}/>
+          <rect width={w} height={4} fill={col.fg} opacity={0.75} rx={2}/>
 
-          <text x={8} y={18} fill={C.white} fontSize={10} fontFamily={mono} fontWeight={500}
+          <text x={10} y={24} fill={C.white} fontSize={13} fontFamily={mono} fontWeight={500}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
           {isSub && (
-            <text x={w - 8} y={18} textAnchor="end" fill={C.accent} fontSize={7} fontFamily={mono}>
+            <text x={w - 10} y={24} textAnchor="end" fill={C.accent} fontSize={9} fontFamily={mono}>
               ⚙ YARI MAMÜL
             </text>
           )}
-          {node.isBottleneck && !isSub && (
-            <text x={w - 8} y={18} textAnchor="end" fill={C.err} fontSize={7} fontFamily={mono}>
+          {isSubComp && (
+            <text x={w - 10} y={24} textAnchor="end" fill={C.purple} fontSize={9} fontFamily={mono}>
+              ↳ ALT PARÇA
+            </text>
+          )}
+          {node.isBottleneck && !isSub && !isSubComp && (
+            <text x={w - 10} y={24} textAnchor="end" fill={C.err} fontSize={9} fontFamily={mono}>
               ▲ DARBOĞAZ
             </text>
           )}
 
-          <foreignObject x={8} y={22} width={w - 16} height={14}>
-            <div style={{ fontSize: 9, color: C.dim, fontFamily: mono, lineHeight: "12px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <foreignObject x={10} y={30} width={w - 20} height={16}>
+            <div style={{ fontSize: 11, color: C.dim, fontFamily: mono, lineHeight: "14px",
+              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
               {node.sublabel}
             </div>
           </foreignObject>
 
           {/* Stock (editable) */}
           {editing ? (
-            <foreignObject x={8} y={38} width={w - 16} height={26}>
-              <div style={{ display: "flex", alignItems: "center", gap: 3 }} onPointerDown={e => e.stopPropagation()}>
+            <foreignObject x={10} y={50} width={w - 20} height={32}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }} onPointerDown={e => e.stopPropagation()}>
                 <input autoFocus type="number" value={editVal}
                   onChange={e => onEditChange(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
                   disabled={saving}
-                  style={{ width: 70, fontSize: 12, fontFamily: mono, color: col.fg,
-                    background: "rgba(0,0,0,0.5)", border: `1px solid ${col.fg}60`, borderRadius: 4,
-                    padding: "2px 4px", outline: "none" }}
+                  style={{ width: 90, fontSize: 15, fontFamily: mono, color: col.fg,
+                    background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 5,
+                    padding: "4px 8px", outline: "none" }}
                 />
                 <button onClick={onSaveEdit} disabled={saving} style={{
-                  fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer",
-                  background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok,
+                  fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
+                  background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
                 }}>✓</button>
                 <button onClick={onCancelEdit} style={{
-                  fontSize: 11, padding: "2px 6px", borderRadius: 3, cursor: "pointer",
-                  background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid,
+                  fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
+                  background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                 }}>✕</button>
               </div>
             </foreignObject>
           ) : (
             <g onClick={onStartEdit} style={{ cursor: "pointer" }}>
-              <text x={8} y={54} fill={isOverridden ? C.variable : col.fg} fontSize={16} fontFamily={mono} fontWeight={500}>
+              <text x={10} y={72} fill={isOverridden ? C.variable : col.fg} fontSize={22} fontFamily={mono} fontWeight={500}>
                 {fmt(displayStock)}
               </text>
-              <text x={62} y={54} fill={C.dim} fontSize={9} fontFamily={mono}>
+              <text x={10 + String(fmt(displayStock)).length * 13 + 6} y={72} fill={C.dim} fontSize={11} fontFamily={mono}>
                 {node.unit || "AD"} ✎
               </text>
-              <text x={w - 8} y={54} textAnchor="end" fill={col.fg} fontSize={8} fontFamily={mono} opacity={0.8}>
+              <text x={w - 10} y={72} textAnchor="end" fill={col.fg} fontSize={10} fontFamily={mono} opacity={0.85}>
                 {statusLabel(node.status)}
               </text>
             </g>
           )}
 
-          {/* L1 Kinetics row — velocity + countdown */}
+          {/* L1 Kinetics row */}
           <g style={{ pointerEvents: "none" }}>
-            <text x={8} y={70} fill={vel.color} fontSize={11} fontFamily={mono} fontWeight={500}>
+            <text x={10} y={94} fill={vel.color} fontSize={14} fontFamily={mono} fontWeight={500}>
               {vel.icon}
             </text>
-            <text x={24} y={70} fill={C.dim} fontSize={8} fontFamily={mono}>
+            <text x={32} y={94} fill={C.dim} fontSize={10} fontFamily={mono}>
               {node.dailyBurnRate && node.dailyBurnRate > 0
                 ? `${node.dailyBurnRate.toFixed(1)}/gün`
                 : "durağan"}
             </text>
             {node.daysLeft !== null && node.daysLeft !== undefined && (
-              <text x={w - 8} y={70} textAnchor="end"
+              <text x={w - 10} y={94} textAnchor="end"
                 fill={node.daysLeft < 30 ? C.err : node.daysLeft < 90 ? C.warn : C.mid}
-                fontSize={8} fontFamily={mono}>
+                fontSize={10} fontFamily={mono}>
                 {node.daysLeft > 365 ? "> 1yıl" : `${Math.round(node.daysLeft)}g`}
                 {node.depletionMonth ? ` · ${node.depletionMonth}` : ""}
               </text>
             )}
           </g>
 
-          {/* What-if button */}
+          {/* What-if button — DAHA BÜYÜK (32x22) */}
           <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
-            <rect x={w - 24} y={2} width={20} height={14} rx={3}
-              fill={C.variableDim} stroke={C.variableBorder} strokeWidth={0.5}/>
-            <text x={w - 14} y={12} textAnchor="middle" fill={C.variable} fontSize={8} fontFamily={mono}>⚡</text>
+            <rect x={w - 40} y={4} width={32} height={22} rx={5}
+              fill={C.variableDim} stroke={C.variableBorder} strokeWidth={1}/>
+            <text x={w - 24} y={19} textAnchor="middle" fill={C.variable} fontSize={13} fontFamily={mono} fontWeight={500}>⚡</text>
           </g>
+
+          {/* Expand button — yarı mamül için (+/−) */}
+          {node.hasChildren && (
+            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} style={{ cursor: "pointer" }}>
+              <rect x={-10} y={h - 14} width={28} height={22} rx={5}
+                fill={expanded ? C.accentDim : C.surface}
+                stroke={expanded ? C.accent : C.border} strokeWidth={1}/>
+              <text x={4} y={h + 2} textAnchor="middle"
+                fill={expanded ? C.accent : C.mid} fontSize={13} fontFamily={mono} fontWeight={500}>
+                {expanded ? "−" : `+${node.childrenCount}`}
+              </text>
+            </g>
+          )}
 
           {/* usedBy badges */}
           {node.usedBy.length > 0 && (
-            <foreignObject x={0} y={h} width={w} height={14}>
-              <div style={{ display: "flex", gap: 2, paddingLeft: 4, flexWrap: "wrap" }}>
+            <foreignObject x={0} y={h} width={w} height={18}>
+              <div style={{ display: "flex", gap: 3, paddingLeft: 24, flexWrap: "wrap" }}>
                 {node.usedBy.map(sku => {
                   const abbr = sku.replace("BH.", "").replace(".SV", "");
                   return (
                     <span key={sku} style={{
-                      fontSize: 7, fontFamily: mono, padding: "1px 4px", borderRadius: 3,
+                      fontSize: 9, fontFamily: mono, padding: "2px 6px", borderRadius: 4,
                       background: node.isShared ? C.accentDim : "rgba(255,255,255,0.04)",
                       color: node.isShared ? C.accent : C.dim,
-                      border: `1px solid ${node.isShared ? C.accent + "30" : C.border}`,
+                      border: `1px solid ${node.isShared ? C.accent + "40" : C.border}`,
                     }}>{abbr}</span>
                   );
                 })}
