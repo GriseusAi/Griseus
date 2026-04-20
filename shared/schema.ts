@@ -161,6 +161,28 @@ export const purchaseSuggestions = pgTable("purchase_suggestions", {
 
 export type PurchaseSuggestion = typeof purchaseSuggestions.$inferSelect;
 
+// --- Stok Transferleri (L6 ontology action — tier/depo arası hareket) ---
+
+export const stockTransfers = pgTable("stock_transfers", {
+  id: serial("id").primaryKey(),
+  componentCode: text("component_code").notNull(),
+  componentName: text("component_name"),
+  fromLocation: text("from_location").notNull(),
+  toLocation: text("to_location").notNull(),
+  quantity: numeric("quantity").notNull(),
+  unit: text("unit").notNull().default("AD"),
+  status: text("status").notNull().default("pending"), // pending | in_transit | completed | cancelled
+  note: text("note"),
+  createdBy: text("created_by"),
+  createdAt: timestamp("created_at").defaultNow(),
+  completedAt: timestamp("completed_at"),
+}, (table) => [
+  index("stock_transfers_component_idx").on(table.componentCode),
+  index("stock_transfers_status_idx").on(table.status),
+]);
+
+export type StockTransfer = typeof stockTransfers.$inferSelect;
+
 // --- Satış Geçmişi (Tarihsel Veri — Excel/Netsis import) ---
 
 export const salesHistory = pgTable("sales_history", {

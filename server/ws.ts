@@ -52,7 +52,7 @@ export function broadcastImpactPropagation(payload: {
  */
 export function broadcastEntityChanged(payload: {
   event: "entity_changed";
-  entities: Array<"products" | "bom_items" | "component_stock" | "sales_history" | "seasonal_indices">;
+  entities: Array<"products" | "bom_items" | "component_stock" | "sales_history" | "seasonal_indices" | "purchase_suggestions" | "stock_transfers">;
   scope?: string;  // opsiyonel — etkilenen sku/kod/pool
   count?: number;  // etkilenen satir sayisi
   source?: string; // "bulk_import", "admin_edit", "agent_action", vb.

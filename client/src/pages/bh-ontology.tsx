@@ -1148,6 +1148,14 @@ function ObjectInspector({
   allNodes: GraphNode[];
   allLinks: GraphLink[];
 }) {
+  // Action form modal state
+  const [activeActionForm, setActiveActionForm] = useState<ActionTypeSpec | null>(null);
+  const [toastMsg, setToastMsg] = useState<{ text: string; kind: "ok" | "err" } | null>(null);
+  useEffect(() => {
+    if (!toastMsg) return;
+    const t = setTimeout(() => setToastMsg(null), 4000);
+    return () => clearTimeout(t);
+  }, [toastMsg]);
   const objType = objectTypeForKind(node.kind as any);
   const actions = actionsForObjectType(objType.apiName);
   const linkSpecs = linksForObjectType(objType.apiName);
@@ -1175,6 +1183,42 @@ function ObjectInspector({
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: [`/api/ontology/narrative/${narrativeCode}`] });
     },
+  });
+
+  // L6 Action history
+  const historyQuery = useQuery<{ code: string; total: number; actions: Array<{
+    kind: "placeOrder" | "transferStock"; id: number; at: string; status: string;
+    quantity: number; unit: string; detail: string; actor: string;
+  }> }>({
+    queryKey: [`/api/ontology/actions/history/${narrativeCode}`],
+    queryFn: async () => {
+      const res = await fetch(`/api/ontology/actions/history/${encodeURIComponent(narrativeCode)}?limit=8`);
+      if (!res.ok) throw new Error("history fetch failed");
+      return res.json();
+    },
+    enabled: node.kind !== "device",
+  });
+
+  // L6 Action execution
+  const executeActionMutation = useMutation({
+    mutationFn: async ({ action, values }: { action: ActionTypeSpec; values: Record<string, any> }) => {
+      const endpoint = action.apiName === "placeOrder" ? "/api/ontology/action/place-order"
+        : action.apiName === "transferStock" ? "/api/ontology/action/transfer-stock"
+        : null;
+      if (!endpoint) throw new Error(`${action.apiName} için endpoint yok`);
+      const res = await apiRequest("POST", endpoint, values);
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({ error: "HTTP " + res.status }));
+        throw new Error(body.error || "Hata");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setToastMsg({ text: data.message || "Aksiyon başarılı", kind: "ok" });
+      qc.invalidateQueries({ queryKey: [`/api/ontology/actions/history/${narrativeCode}`] });
+      setActiveActionForm(null);
+    },
+    onError: (err: any) => setToastMsg({ text: err.message || "Aksiyon hatası", kind: "err" }),
   });
 
   // Bu node'a bağlı gerçek kenarlar (runtime linkler)
@@ -1377,6 +1421,9 @@ function ObjectInspector({
                 onClick={() => {
                   if (a.apiName === "updateStock") onStartEdit();
                   else if (a.apiName === "simulateStock") onStartWhatIf();
+                  else if (a.apiName === "placeOrder" || a.apiName === "transferStock") {
+                    setActiveActionForm(a);
+                  }
                 }}
                 style={{
                   textAlign: "left", padding: "10px 14px", borderRadius: 8, cursor: a.status === "PLANNED" ? "not-allowed" : "pointer",
@@ -1404,6 +1451,48 @@ function ObjectInspector({
         </div>
       )}
 
+      {/* L6 — Son Aksiyonlar (action history) */}
+      {node.kind !== "device" && historyQuery.data && historyQuery.data.actions.length > 0 && (
+        <div style={{ marginBottom: 14 }}>
+          <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.8, marginBottom: 8, fontWeight: 500 }}>
+            SON AKSİYONLAR ({historyQuery.data.total})
+          </div>
+          <div style={{ border: `1px solid ${C.border}`, borderRadius: 8, overflow: "hidden" }}>
+            {historyQuery.data.actions.map((a, i) => {
+              const isOrder = a.kind === "placeOrder";
+              const statusColor = a.status === "completed" || a.status === "ordered" ? C.ok
+                : a.status === "pending" || a.status === "in_transit" ? C.warn
+                : a.status === "cancelled" || a.status === "rejected" ? C.err : C.mid;
+              return (
+                <div key={a.kind + a.id} style={{
+                  padding: "8px 12px",
+                  background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
+                  borderBottom: i < historyQuery.data!.actions.length - 1 ? `1px solid ${C.border}` : "none",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+                    <span style={{ fontSize: 11, color: C.white, fontFamily: mono }}>
+                      {isOrder ? "📦 Sipariş" : "↔ Transfer"}
+                      <span style={{ color: C.dim, marginLeft: 8 }}>
+                        {a.quantity} {a.unit}
+                      </span>
+                    </span>
+                    <span style={{
+                      fontSize: 8, padding: "2px 6px", borderRadius: 3,
+                      background: statusColor + "22", color: statusColor, border: `1px solid ${statusColor}44`,
+                      fontFamily: mono, fontWeight: 500, letterSpacing: 0.5,
+                    }}>{a.status.toUpperCase()}</span>
+                  </div>
+                  <div style={{ fontSize: 9, color: C.dim, marginTop: 3 }}>{a.detail}</div>
+                  <div style={{ fontSize: 8, color: C.dim, marginTop: 2, fontStyle: "italic" }}>
+                    {a.at ? new Date(a.at).toLocaleString("tr-TR") : ""} · {a.actor}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
       {/* Drill-down buton (yarı mamül için) */}
       {node.hasChildren && (
         <button onClick={onToggleExpand} style={{
@@ -1412,6 +1501,169 @@ function ObjectInspector({
           fontSize: 12, fontFamily: mono, fontWeight: 500,
         }}>↕ Alt parçaları aç/kapat ({node.childrenCount})</button>
       )}
+
+      {/* ActionForm modal */}
+      {activeActionForm && (
+        <ActionFormModal
+          action={activeActionForm}
+          defaultCode={node.code || node.id}
+          defaultUnit={node.unit || "AD"}
+          onClose={() => setActiveActionForm(null)}
+          onSubmit={(values) => executeActionMutation.mutate({ action: activeActionForm, values })}
+          submitting={executeActionMutation.isPending}
+        />
+      )}
+
+      {/* Toast (mini-notification) */}
+      {toastMsg && (
+        <div style={{
+          position: "fixed", bottom: 24, right: 24, zIndex: 20,
+          padding: "12px 18px", borderRadius: 10, fontFamily: mono, fontSize: 13,
+          background: toastMsg.kind === "ok" ? C.okDim : C.errDim,
+          border: `1px solid ${toastMsg.kind === "ok" ? C.okBorder : C.errBorder}`,
+          color: toastMsg.kind === "ok" ? C.ok : C.err,
+          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          maxWidth: 400,
+        }}>
+          {toastMsg.kind === "ok" ? "✓" : "✕"} {toastMsg.text}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   ActionFormModal — Palantir Action parameter dialog
+   Her parametre için input alanı (String/Integer/LocalDate)
+   ═══════════════════════════════════════════════════════════ */
+function ActionFormModal({
+  action, defaultCode, defaultUnit, onClose, onSubmit, submitting,
+}: {
+  action: ActionTypeSpec;
+  defaultCode: string;
+  defaultUnit: string;
+  onClose: () => void;
+  onSubmit: (values: Record<string, any>) => void;
+  submitting: boolean;
+}) {
+  const [values, setValues] = useState<Record<string, any>>(() => {
+    const v: Record<string, any> = { code: defaultCode };
+    for (const p of action.parameters) {
+      if (p.apiName === "code") v[p.apiName] = defaultCode;
+      else if (p.type === "Integer") v[p.apiName] = "";
+      else v[p.apiName] = "";
+    }
+    return v;
+  });
+
+  const setField = (k: string, v: any) => setValues(prev => ({ ...prev, [k]: v }));
+
+  const canSubmit = action.parameters.every(p => {
+    if (!p.required) return true;
+    const v = values[p.apiName];
+    if (p.type === "Integer" || p.type === "Double") return v !== "" && !isNaN(parseFloat(v));
+    return typeof v === "string" && v.trim().length > 0;
+  }) && !submitting;
+
+  const handleSubmit = () => {
+    const payload: Record<string, any> = {};
+    for (const p of action.parameters) {
+      const v = values[p.apiName];
+      if (v === "" || v === undefined) continue;
+      if (p.type === "Integer" || p.type === "Double") payload[p.apiName] = parseFloat(v);
+      else payload[p.apiName] = v;
+    }
+    onSubmit(payload);
+  };
+
+  return (
+    <div style={{
+      position: "fixed", inset: 0, zIndex: 50,
+      background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
+      display: "flex", alignItems: "center", justifyContent: "center",
+    }} onClick={onClose}>
+      <div
+        onClick={e => e.stopPropagation()}
+        style={{
+          width: 480, maxHeight: "85vh", overflowY: "auto",
+          padding: "24px 28px", borderRadius: 14,
+          background: "rgba(12,12,18,0.98)",
+          border: `1px solid ${C.ok}50`,
+          boxShadow: "0 16px 64px rgba(0,0,0,0.7)",
+          fontFamily: mono,
+        }}>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
+          <div>
+            <div style={{ fontSize: 10, color: C.ok, letterSpacing: 1.8, fontWeight: 500 }}>AKSİYON</div>
+            <div style={{ fontSize: 20, color: C.white, marginTop: 4 }}>{action.displayName}</div>
+            <div style={{ fontSize: 11, color: C.dim, marginTop: 4 }}>{action.description}</div>
+          </div>
+          <button onClick={onClose} style={{
+            background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+            cursor: "pointer", fontSize: 18, width: 36, height: 36, borderRadius: 8,
+          }}>✕</button>
+        </div>
+
+        {/* Parameter inputs */}
+        <div style={{ display: "flex", flexDirection: "column", gap: 14 }}>
+          {action.parameters.map(p => {
+            const val = values[p.apiName] ?? "";
+            return (
+              <div key={p.apiName}>
+                <label style={{ fontSize: 11, color: C.mid, fontFamily: mono, letterSpacing: 0.5 }}>
+                  {p.displayName}
+                  {p.required && <span style={{ color: C.err, marginLeft: 4 }}>*</span>}
+                  <span style={{ fontSize: 9, color: C.dim, marginLeft: 6 }}>({p.type})</span>
+                </label>
+                {p.description && (
+                  <div style={{ fontSize: 10, color: C.dim, marginTop: 2, fontStyle: "italic" }}>{p.description}</div>
+                )}
+                <input
+                  type={p.type === "Integer" || p.type === "Double" ? "number" : p.type === "LocalDate" ? "date" : "text"}
+                  value={val}
+                  onChange={e => setField(p.apiName, e.target.value)}
+                  disabled={p.apiName === "code"}
+                  placeholder={p.apiName === "code" ? defaultCode : ""}
+                  style={{
+                    width: "100%", marginTop: 6, padding: "10px 12px",
+                    fontSize: 14, fontFamily: mono, color: C.white,
+                    background: p.apiName === "code" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.5)",
+                    border: `1px solid ${C.border}`, borderRadius: 6, outline: "none",
+                    boxSizing: "border-box",
+                  }}
+                />
+              </div>
+            );
+          })}
+        </div>
+
+        {/* Submit row */}
+        <div style={{ display: "flex", gap: 10, marginTop: 20, justifyContent: "flex-end" }}>
+          <button onClick={onClose} style={{
+            padding: "10px 18px", borderRadius: 8, cursor: "pointer",
+            background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+            fontSize: 13, fontFamily: mono, minHeight: 40,
+          }}>İptal</button>
+          <button
+            disabled={!canSubmit}
+            onClick={handleSubmit}
+            style={{
+              padding: "10px 22px", borderRadius: 8, cursor: canSubmit ? "pointer" : "not-allowed",
+              background: canSubmit ? C.okDim : C.surface,
+              border: `1px solid ${canSubmit ? C.okBorder : C.border}`,
+              color: canSubmit ? C.ok : C.dim,
+              fontSize: 13, fontFamily: mono, fontWeight: 500, minHeight: 40,
+              opacity: submitting ? 0.6 : 1,
+            }}
+          >
+            {submitting ? "Gönderiliyor…" : `▶ ${action.displayName}`}
+          </button>
+        </div>
+
+        <div style={{ fontSize: 9, color: C.dim, marginTop: 12, fontStyle: "italic" }}>
+          Onaydan sonra lineage + WS broadcast çalışır. Geri alınamaz.
+        </div>
+      </div>
     </div>
   );
 }

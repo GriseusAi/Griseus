@@ -22,6 +22,7 @@ import chatHistoryRouter from "./routes/chat-history";
 import foundryRouter from "./routes/foundry";
 import ontologyRouter from "./routes/ontology";
 import ontologyNarrativeRouter from "./routes/ontology-narrative";
+import ontologyActionsRouter from "./routes/ontology-actions";
 import orchestratorRouter from "./routes/orchestrator";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
@@ -50,6 +51,7 @@ export async function registerRoutes(
   app.use("/api/foundry", foundryRouter);
   app.use("/api/ontology", ontologyRouter);
   app.use("/api/ontology", ontologyNarrativeRouter);
+  app.use("/api/ontology", ontologyActionsRouter);
   app.use("/api/orchestrator", orchestratorRouter);
 
   // Auto-seed ontology on first boot (idempotent)
