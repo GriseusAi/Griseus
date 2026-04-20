@@ -102,9 +102,9 @@ export const OCTOPUS_CHAIN_CONFIG = {
    */
   bhVariableComponents: [
     // Pattern eşleşmesi = aday (otomatik DEĞİL). Final karar user'da.
-    // VA4H50R pattern eşleşti + user ONAYLADI → variable (BH.50ST/UT)
+    // VA4H50R pattern eşleşti + user 2026-04-20 REVİZE: normal bileşen (zorunlu fan)
+    //   → variable DEĞİL, bottleneck olabilir (stok=10 → BH.50UT maxProducible=10)
     // VA5H70R pattern eşleşti + user REDDETTI → variable DEĞİL (zorunlu, BH.55'te)
-    "VA4H50R", // Aaco Fan No:4 — BH.50ST/UT (opsiyonel, user işareti)
     // Manuel override (pattern dışı, explicit user işareti):
     "03051101", // BH Alüminize Yanma Borusu Transition Tube — BH.50UT/55UT (opsiyonel)
   ] as string[],
