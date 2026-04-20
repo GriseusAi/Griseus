@@ -694,7 +694,7 @@ export default function OntologyPage() {
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: 10, marginBottom: 4 }}>
               <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, letterSpacing: 1.5, fontWeight: 400 }}>
-                ONTOLOGY DIAGRAM
+                LINEAGE DIAGRAM
               </div>
               <ProductSelector value={sku} onChange={setSku} />
             </div>

@@ -29,7 +29,7 @@ function useNavItems() {
     { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
     { path: `/stok/urun/${selectedSku}`, label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
     { path: "/sihir", label: "Sihir", icon: "\u2B21" },
-    { path: "/ontology", label: "Ontology", icon: "\u25C8" },
+    { path: "/ontology", label: "LineAge", icon: "\u25C8" },
     { path: "/veri-yukle", label: "Veri Y\u00FCkle", icon: "\u{1F4C2}" },
   ];
 }
