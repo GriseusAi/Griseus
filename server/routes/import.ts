@@ -206,6 +206,7 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
 
     let created = 0;
     let updated = 0;
+    const changedCodes: string[] = [];
 
     for (const item of items) {
       if (!item.code || item.stock === undefined || !item.unit) continue;
@@ -228,6 +229,7 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
         });
         created++;
       }
+      changedCodes.push(item.code);
     }
 
     // Lineage — cross-product pool update (Octopus Y.2 binding)
@@ -235,12 +237,12 @@ router.post("/bulk/stock", async (req: Request, res: Response) => {
       recordLineage({
         entity: "component_stock", entityId: "pool",
         sourceType: "import", sourceName: "Bulk stock import (shared pool)",
-        actor: "import", metadata: { created, updated, total: items.length, uniqueCodes: items.length },
+        actor: "import", metadata: { created, updated, total: items.length, uniqueCodes: items.length, codes: changedCodes },
       }).catch(() => {});
       // Octopus Y.2 — tek havuz degisti, N cihazin tumu canli guncelensin
       broadcastEntityChanged({ event: "entity_changed", entities: ["component_stock"], count: created + updated, source: "bulk_import" });
-      // Orchestrator → auto octopus-chain audit (debounced 60s)
-      triggerAuditOnDataChange(`bulk/stock ${created}c/${updated}u`);
+      // Orchestrator → auto octopus-chain audit (debounced, domino trace için kod listesi iletiliyor)
+      triggerAuditOnDataChange(`bulk/stock ${created}c/${updated}u`, { changedCodes });
     }
 
     res.json({ success: true, created, updated, total: items.length });

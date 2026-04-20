@@ -20,9 +20,10 @@ import {
   orchestratorRuns, bomItems, componentStock, products,
   dataLineage, dataSnapshots, ontologyObjectTypes, ontologyLinkTypes,
 } from "@shared/schema";
-import { eq, gte, desc, sql } from "drizzle-orm";
+import { eq, gte, desc, sql, inArray } from "drizzle-orm";
 import { computeComponentIntelligence } from "../routes/intelligence";
 import { broadcastProactiveAlert } from "../ws";
+import { getBomWithStock, computeProductionCapacity } from "../routes/bom";
 import Anthropic from "@anthropic-ai/sdk";
 import { OCTOPUS_CHAIN_CONFIG, familyOfSku, expectedPeakMonth } from "@shared/octopus-chain-config";
 
@@ -33,6 +34,12 @@ interface Finding {
   message: string;
   sku?: string;
   data?: any;
+}
+
+/** Audit bağlamı — hangi atomlar değişti? Layer 3 cross-product izlemesi için. */
+export interface AuditContext {
+  changedCodes?: string[];
+  skuHint?: string;
 }
 
 // SKU listesi, aile arketipleri, threshold'lar — @shared/octopus-chain-config
@@ -103,8 +110,15 @@ async function layer2SelfIntelligence(
   return worst;
 }
 
-/** ═══ LAYER 3: Cross-Product Y.2 — paylaşılan kod stok tutarlılık ═══ */
-async function layer3CrossProduct(findings: Finding[]): Promise<LayerStatus> {
+/** ═══ LAYER 3: Cross-Product Y.2 — paylaşılan kod stok tutarlılık ═══
+ *  Context'te değişen kodlar varsa: her kod için TÜM etkilenen SKU'ları listele
+ *  ve her birinin maxProducible'ını RECOMPUTE et — gerçek domino doğrulaması.
+ *  Context yoksa (scheduled): genel sanity (paylaşılan kod ≥ 10, stock ≥ %50).
+ */
+async function layer3CrossProduct(
+  findings: Finding[],
+  context?: AuditContext
+): Promise<LayerStatus> {
   try {
     const allBom = await db.select({
       code: bomItems.componentCode,
@@ -117,14 +131,13 @@ async function layer3CrossProduct(findings: Finding[]): Promise<LayerStatus> {
       codeSkus.get(b.code)!.add(b.sku);
     }
 
+    // ── General sanity ──
     const shared = Array.from(codeSkus.entries()).filter(([_, s]) => s.size >= 2);
-    // Shared codes must exist — if very few, something is wrong
     if (shared.length < 10) {
       findings.push({ layer: "crossProduct", severity: "yellow",
         message: `Paylaşılan kod sayısı beklenenin altında (${shared.length})` });
       return "yellow";
     }
-    // component_stock rows should exist for all unique codes used
     const stockCount = await db.select({ count: sql<number>`count(*)::int` })
       .from(componentStock);
     const actualStockCount = stockCount[0]?.count ?? 0;
@@ -133,6 +146,68 @@ async function layer3CrossProduct(findings: Finding[]): Promise<LayerStatus> {
         message: `component_stock %50'den az kod için veri tutuyor (${actualStockCount}/${codeSkus.size})` });
       return "red";
     }
+
+    // ── SPESIFIK atom izleme: context.changedCodes varsa domino propagation ──
+    if (context?.changedCodes && context.changedCodes.length > 0) {
+      const affectedSkus = new Set<string>();
+      const codeToSkus: Record<string, string[]> = {};
+      for (const code of context.changedCodes) {
+        const skus = codeSkus.get(code);
+        if (skus) {
+          const skuList = Array.from(skus);
+          codeToSkus[code] = skuList;
+          for (const s of skuList) affectedSkus.add(s);
+        }
+      }
+
+      if (affectedSkus.size === 0) {
+        findings.push({ layer: "crossProduct", severity: "yellow",
+          message: `Değişen ${context.changedCodes.length} kod hiçbir SKU BOM'unda yok — orphan stok kaydı` });
+        return "yellow";
+      }
+
+      // Her etkilenen SKU için maxProducible + bottleneck recompute et
+      const skuImpact: Record<string, { maxProducible: number; bottleneck: string | null; bottleneckCode: string | null }> = {};
+      let worstStatus: LayerStatus = "green";
+      for (const sku of Array.from(affectedSkus)) {
+        try {
+          const items = await getBomWithStock(sku);
+          const cap = computeProductionCapacity(items, sku);
+          const top = cap.bottlenecks[0];
+          skuImpact[sku] = {
+            maxProducible: cap.maxProducible,
+            bottleneck: top?.name ?? null,
+            bottleneckCode: top?.code ?? null,
+          };
+          // Değişen kodlardan biri yeni bottleneck oldu mu?
+          if (top && context.changedCodes.includes(top.code)) {
+            findings.push({ layer: "crossProduct", severity: "yellow", sku,
+              message: `${sku} darboğazı değişen atoma geçti: ${top.code} (${top.name}) stok=${top.stock} → max=${cap.maxProducible}`,
+              data: { code: top.code, newBottleneck: true } });
+            if (worstStatus === "green") worstStatus = "yellow";
+          }
+          // maxProducible=0 düştü mü?
+          if (cap.maxProducible === 0) {
+            findings.push({ layer: "crossProduct", severity: "red", sku,
+              message: `${sku} maxProducible=0 — üretim kilitlendi (değişen atom sonrası)`,
+              data: { changedCodes: context.changedCodes } });
+            worstStatus = "red";
+          }
+        } catch (err: any) {
+          findings.push({ layer: "crossProduct", severity: "red", sku,
+            message: `${sku} kapasite recompute hata: ${err.message}` });
+          worstStatus = "red";
+        }
+      }
+
+      // Her zaman info finding olarak domino haritası bırak (RED değil, trace)
+      findings.push({ layer: "crossProduct", severity: "yellow",
+        message: `Atom domino haritası: ${context.changedCodes.length} değişen kod → ${affectedSkus.size} SKU etkilendi`,
+        data: { codeToSkus, skuImpact } });
+
+      return worstStatus === "green" ? "yellow" : worstStatus;
+    }
+
     return "green";
   } catch (err: any) {
     findings.push({ layer: "crossProduct", severity: "red",
@@ -375,18 +450,21 @@ Türkçe yaz, 200-400 token. Net ve aksiyona dönük ol. Panik yaratma, kanıta 
 /** ═══ MAIN AUDIT ═══ */
 export async function runOctopusChainAudit(
   trigger: "scheduled" | "data_ingestion" | "manual",
-  triggerDetail?: string
+  triggerDetail?: string,
+  context?: AuditContext
 ): Promise<{ id: number; layers: Record<string, LayerStatus>; redCount: number; yellowCount: number; summary: string; diagnosis?: string | null }> {
   const startTime = Date.now();
   const findings: Finding[] = [];
   const intelCache = new Map<string, any>();
 
-  console.log(`[orchestrator] Audit başladı (trigger=${trigger})`);
+  const contextTag = context?.changedCodes?.length
+    ? ` [codes=${context.changedCodes.slice(0, 5).join(",")}${context.changedCodes.length > 5 ? "…" : ""}]` : "";
+  console.log(`[orchestrator] Audit başladı (trigger=${trigger})${contextTag}`);
 
   const layers = {
     mutation: await layer1Mutation(findings),
     selfIntel: await layer2SelfIntelligence(findings, intelCache),
-    crossProduct: await layer3CrossProduct(findings),
+    crossProduct: await layer3CrossProduct(findings, context),
     downstream: await layer4Downstream(findings),
     uiCoherence: await layer5UiCoherence(findings, intelCache),
     wsBroadcast: await layer6WsBroadcast(findings),
@@ -504,11 +582,26 @@ export function stopOrchestrator(): void {
   if (debounceTimeout) { clearTimeout(debounceTimeout); debounceTimeout = null; }
 }
 
-/** Data ingestion trigger — debounced to avoid storms */
-export function triggerAuditOnDataChange(detail: string): void {
+/** Data ingestion trigger — debounced to avoid storms.
+ *  Aynı pencere içinde gelen değişen kodlar birleşir, tek bir audit'te izlenir. */
+let pendingChangedCodes: Set<string> = new Set();
+let pendingDetail: string[] = [];
+export function triggerAuditOnDataChange(detail: string, context?: AuditContext): void {
+  if (context?.changedCodes) {
+    for (const c of context.changedCodes) pendingChangedCodes.add(c);
+  }
+  pendingDetail.push(detail);
   if (debounceTimeout) clearTimeout(debounceTimeout);
   debounceTimeout = setTimeout(() => {
-    runOctopusChainAudit("data_ingestion", detail).catch(err =>
+    const codes = Array.from(pendingChangedCodes);
+    const joinedDetail = pendingDetail.join(" | ");
+    pendingChangedCodes = new Set();
+    pendingDetail = [];
+    runOctopusChainAudit(
+      "data_ingestion",
+      joinedDetail,
+      codes.length > 0 ? { changedCodes: codes } : undefined,
+    ).catch(err =>
       console.error("[orchestrator] Ingestion audit failed:", err.message));
-  }, 60_000); // 60s debounce — batch rapid-fire imports
+  }, 10_000); // 10s debounce — hızlı inline edit için responsiv, rapid-fire'ı yine batch eder
 }
