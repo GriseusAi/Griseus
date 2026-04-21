@@ -31,7 +31,10 @@ const C = {
   purple: "#a78bfa",
   white: "#e8ecf4", mid: "#8b93a7", dim: "#4a5065", dimmer: "#1e2230",
 };
-const mono = "'Outfit', sans-serif";
+// Palantir uses Alliance No.1 (proprietary) — closest free substitute: Inter
+// with alternate-char OpenType features for more Alliance-like rendering.
+const mono = "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
+const INTER_FEATURES = "'cv11', 'ss01', 'ss02', 'cv02', 'cv03', 'cv04'"; // single-story a, alt g, flat l
 const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 const BH_SKUS = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"] as const;
@@ -102,7 +105,7 @@ const CANVAS_W = 2200;
 const CANVAS_H = 2400;
 
 const kbdStyle: React.CSSProperties = {
-  fontFamily: "'Outfit', sans-serif",
+  fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
   fontSize: 9,
   padding: "2px 6px",
   borderRadius: 4,
@@ -757,7 +760,15 @@ export default function BhOntologyPage() {
   }, [nodes, positions]);
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: mono, overflow: "hidden" }}>
+    <div style={{
+      minHeight: "100vh", background: C.bg, color: C.white,
+      fontFamily: mono,
+      fontFeatureSettings: INTER_FEATURES,
+      // @ts-ignore — valid CSS, TS may not know
+      WebkitFontSmoothing: "antialiased",
+      MozOsxFontSmoothing: "grayscale",
+      overflow: "hidden",
+    }}>
       <style>{`
         @keyframes flow { to { stroke-dashoffset: -24; } }
         @keyframes flowSlow { to { stroke-dashoffset: -12; } }
