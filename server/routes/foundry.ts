@@ -23,6 +23,7 @@ import {
 } from "@shared/schema";
 import { eq, desc, and, sql } from "drizzle-orm";
 import { simulateWhatIf, type WhatIfScenario } from "../lib/whatif-engine";
+import { broadcastEntityChanged } from "../ws";
 
 const router = Router();
 
@@ -602,6 +603,17 @@ router.post("/scenarios/:id/apply", async (req: Request, res: Response) => {
 
     // Mark scenario as applied
     await db.update(scenarios).set({ status: "applied", updatedAt: new Date() }).where(eq(scenarios.id, id));
+
+    // WS broadcast — tüm client'lar component_stock değişikliğini görsün,
+    // orchestrator otomatik audit tetiklesin
+    if (applied > 0) {
+      broadcastEntityChanged({
+        event: "entity_changed",
+        entities: ["component_stock"],
+        count: applied,
+        source: `scenario_apply_${id}`,
+      });
+    }
 
     res.json({ ok: true, applied, snapshotId });
   } catch (err: any) {
