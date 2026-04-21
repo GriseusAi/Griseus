@@ -172,8 +172,9 @@ router.post("/pipelines/:id/run", async (req: Request, res: Response) => {
         const stockRows = await db.select().from(componentStock);
         const issues: string[] = [];
         for (const row of stockRows) {
-          if (row.quantity !== null && row.quantity < 0) {
-            issues.push(`${row.componentCode}: negative stock (${row.quantity})`);
+          const stock = parseFloat(String(row.currentStock));
+          if (!isNaN(stock) && stock < 0) {
+            issues.push(`${row.componentCode}: negative stock (${row.currentStock})`);
           }
         }
         recordsProcessed = stockRows.length;
@@ -579,9 +580,9 @@ router.post("/scenarios/:id/apply", async (req: Request, res: Response) => {
     let applied = 0;
 
     for (const o of overrides) {
-      if (o.entity === "component_stock" && o.field === "quantity") {
+      if (o.entity === "component_stock" && (o.field === "quantity" || o.field === "currentStock")) {
         await db.update(componentStock)
-          .set({ quantity: parseInt(o.overrideValue) })
+          .set({ currentStock: String(parseFloat(o.overrideValue) || 0) })
           .where(eq(componentStock.componentCode, o.entityId));
         applied++;
 

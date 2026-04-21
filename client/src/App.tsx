@@ -30,6 +30,7 @@ import AdminPage from "@/pages/admin/index";
 import PalantirPage from "@/pages/palantir";
 import LineAgePage from "@/pages/ontology"; // lineage force-graph sayfası
 import BhOntologyPage from "@/pages/bh-ontology";
+import OntologySimulatePage from "@/pages/ontology-simulate";
 import VeriYukle from "@/pages/veri-yukle";
 
 // Global agent panel context
@@ -80,6 +81,7 @@ function App() {
           <Route path="/sihir" component={PalantirPage} />
           <Route path="/lineage" component={LineAgePage} />
           <Route path="/ontology" component={BhOntologyPage} />
+          <Route path="/ontology/simulate" component={OntologySimulatePage} />
           <Route path="/veri-yukle" component={VeriYukle} />
           <Route path="/login" component={LoginPage} />
           <Route path="/admin" component={AdminPage} />
