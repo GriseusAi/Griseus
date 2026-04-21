@@ -23,13 +23,49 @@ const C = {
 };
 const mono = "'Outfit', sans-serif";
 
-function useNavItems() {
+/* Tatlı ahtapot simgesi — Ontology için özel */
+function OctopusIcon({ size = 16 }: { size?: number }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24"
+      xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
+      {/* Kollar (rounded lines, radiating) */}
+      <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
+        <line x1="12" y1="10.5" x2="12" y2="3.5" />
+        <line x1="15.2" y1="10.5" x2="20" y2="6.3" />
+        <line x1="16" y1="13.2" x2="21.2" y2="13.8" />
+        <line x1="15" y1="15.6" x2="17.5" y2="20.5" />
+        <line x1="9"  y1="15.6" x2="6.5"  y2="20.5" />
+        <line x1="8"  y1="13.2" x2="2.8"  y2="13.8" />
+        <line x1="8.8" y1="10.5" x2="4" y2="6.3" />
+      </g>
+      {/* Merkez gövde */}
+      <circle cx="12" cy="12.5" r="3.2" fill="currentColor" />
+      {/* Baş — sağ-üste hafif eğik elips */}
+      <ellipse cx="14" cy="9.2" rx="2.3" ry="2.9" fill="currentColor"
+        transform="rotate(22 14 9.2)" />
+      {/* Gözler (beyaz kesim) */}
+      <ellipse cx="11.8" cy="11.1" rx="0.55" ry="0.85" fill="#ffffff" />
+      <ellipse cx="13.7" cy="10.5" rx="0.55" ry="0.85" fill="#ffffff"
+        transform="rotate(15 13.7 10.5)" />
+    </svg>
+  );
+}
+
+type NavItem = {
+  path: string;
+  label: string;
+  icon?: string;
+  iconNode?: React.ReactNode;
+  matchPrefix?: string;
+};
+
+function useNavItems(): NavItem[] {
   const { selectedSku } = useSKU();
   return [
     { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
     { path: `/stok/urun/${selectedSku}`, label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
     { path: "/sihir", label: "Sihir", icon: "\u2B21" },
-    { path: "/ontology", label: "Ontology", icon: "\u25C8" },
+    { path: "/ontology", label: "Ontology", iconNode: <OctopusIcon /> },
     { path: "/lineage", label: "LineAge", icon: "\u21DD" },
     { path: "/veri-yukle", label: "Veri Y\u00FCkle", icon: "\u{1F4C2}" },
   ];
@@ -116,7 +152,9 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
                 transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
               }}
             >
-              <span style={{ fontSize: 14 }}>{n.icon}</span>
+              <span style={{ fontSize: 14, display: "inline-flex", alignItems: "center" }}>
+                {n.iconNode ?? n.icon}
+              </span>
               <span className="nav-label">{n.label}</span>
             </button>
           );
