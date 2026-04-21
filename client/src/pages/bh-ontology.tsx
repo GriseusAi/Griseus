@@ -17,7 +17,10 @@ import {
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
+  // Palantir dark digital-twin palette — slight blue tint instead of pure black
+  bg: "#0a0e1a",
+  panelBg: "rgba(255,255,255,0.025)",
+  surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
   border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
   accent: "#818cf8", accentDim: "rgba(129,140,248,0.10)",
   ok: "#34d399", okDim: "rgba(52,211,153,0.08)", okBorder: "rgba(52,211,153,0.25)",
@@ -26,7 +29,7 @@ const C = {
   err: "#ef4444", errDim: "rgba(239,68,68,0.08)", errBorder: "rgba(239,68,68,0.30)",
   blue: "#60a5fa", blueDim: "rgba(96,165,250,0.08)", blueBorder: "rgba(96,165,250,0.25)",
   purple: "#a78bfa",
-  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#2a2a3a",
+  white: "#e8ecf4", mid: "#8b93a7", dim: "#4a5065", dimmer: "#1e2230",
 };
 const mono = "'Outfit', sans-serif";
 const fmt = (n: number) => n.toLocaleString("tr-TR");
@@ -118,6 +121,18 @@ function statusColor(s?: Status, isBottleneck?: boolean): { fg: string; bg: stri
     case "ok":        return { fg: C.blue, bg: C.blueDim, border: C.blueBorder };
     case "abundant":  return { fg: C.ok, bg: C.okDim, border: C.okBorder };
     default:          return { fg: C.mid, bg: C.surface, border: C.border };
+  }
+}
+/* Palantir-style gradient fill URL per status (refers to SVG <defs>) */
+function statusGradientUrl(s?: Status, isBottleneck?: boolean): string {
+  if (isBottleneck) return "url(#nodeCritical)";
+  switch (s) {
+    case "critical":  return "url(#nodeCritical)";
+    case "variable":  return "url(#nodeVariable)";
+    case "warning":   return "url(#nodeWarning)";
+    case "ok":        return "url(#nodeOk)";
+    case "abundant":  return "url(#nodeAbundant)";
+    default:          return "url(#nodeMid)";
   }
 }
 function statusLabel(s?: Status): string {
@@ -968,14 +983,98 @@ export default function BhOntologyPage() {
         >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
-              <path d="M 40 0 L 0 0 0 40" fill="none" stroke={C.dimmer} strokeWidth="0.5" />
+              <path d="M 40 0 L 0 0 0 40" fill="none" stroke={C.dimmer} strokeWidth="0.4" opacity="0.6" />
             </pattern>
             <filter id="glow">
               <feGaussianBlur stdDeviation="4" result="blur"/>
               <feMerge><feMergeNode in="blur"/><feMergeNode in="SourceGraphic"/></feMerge>
             </filter>
+            {/* Palantir-style gradient fills per status (top brighter → bottom darker) */}
+            {([
+              ["nodeCritical", "#ef4444"],
+              ["nodeWarning",  "#fbbf24"],
+              ["nodeVariable", "#ea580c"],
+              ["nodeOk",       "#60a5fa"],
+              ["nodeAbundant", "#34d399"],
+              ["nodeAccent",   "#818cf8"],
+              ["nodeMid",      "#7a7a90"],
+            ] as const).map(([id, col]) => (
+              <linearGradient key={id} id={id} x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%"  stopColor={col} stopOpacity="0.28" />
+                <stop offset="55%" stopColor={col} stopOpacity="0.12" />
+                <stop offset="100%" stopColor={col} stopOpacity="0.06" />
+              </linearGradient>
+            ))}
+            {/* Device header gradient — subtle blue panel */}
+            <linearGradient id="deviceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+              <stop offset="0%" stopColor="#1a2240" stopOpacity="0.9" />
+              <stop offset="100%" stopColor="#0f1322" stopOpacity="0.95" />
+            </linearGradient>
+            {/* Soft inner shadow for group backdrops */}
+            <filter id="panelShadow" x="-5%" y="-5%" width="110%" height="110%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="6"/>
+              <feOffset dx="0" dy="2" result="offsetblur"/>
+              <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
+              <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
           </defs>
           <rect x={-viewport.x} y={-viewport.y} width={CANVAS_W / viewport.scale} height={CANVAS_H / viewport.scale} fill="url(#grid)" />
+
+          {/* Palantir-style UNIT backdrops per device column (soft dark panel with border + label) */}
+          {allLoaded && (() => {
+            const devicesPosed = BH_SKUS
+              .map(sku => ({ sku, pos: positions[sku] }))
+              .filter(d => d.pos);
+            if (devicesPosed.length === 0) return null;
+            // Compute per-column bounds: x center per device; y extends from device top to lowest node in that column
+            const COL_WIDTH = 420;
+            const PADDING_X = 40;
+            const TOP_PAD = 60;
+            // Find max Y per column by scanning nodes with deviceSku match
+            const maxYByCol: Record<string, number> = {};
+            for (const n of nodes) {
+              const p = positions[n.id];
+              if (!p) continue;
+              const sku = n.deviceSku ?? (n.kind === "device" ? n.sku : undefined);
+              if (!sku) continue;
+              maxYByCol[sku] = Math.max(maxYByCol[sku] ?? 0, p.y + 100);
+            }
+            return (
+              <g style={{ pointerEvents: "none" }}>
+                {devicesPosed.map(({ sku, pos }, i) => {
+                  const centerX = pos!.x;
+                  const topY = pos!.y - 160; // above sales chart
+                  const bottomY = (maxYByCol[sku] ?? (pos!.y + 400)) + 40;
+                  const leftX = centerX - COL_WIDTH / 2;
+                  const widthRect = COL_WIDTH;
+                  const heightRect = bottomY - topY;
+                  return (
+                    <g key={sku}>
+                      <rect
+                        x={leftX} y={topY}
+                        width={widthRect} height={heightRect}
+                        rx={12}
+                        fill={C.panelBg}
+                        stroke="rgba(255,255,255,0.05)"
+                        strokeWidth={1}
+                      />
+                      {/* Unit label top-left — Palantir "Unit 1/2" pattern */}
+                      <g>
+                        <rect x={leftX + 14} y={topY + 10}
+                          width={78} height={22} rx={4}
+                          fill="rgba(20,26,42,0.85)"
+                          stroke="rgba(255,255,255,0.08)" strokeWidth={0.8} />
+                        <text x={leftX + 53} y={topY + 25} textAnchor="middle"
+                          fill={C.mid} fontSize={10} fontFamily={mono} fontWeight={600} letterSpacing={1.2}>
+                          UNIT {i + 1}
+                        </text>
+                      </g>
+                    </g>
+                  );
+                })}
+              </g>
+            );
+          })()}
 
           {/* Horizontal "shared" dashed lines between visual copies of same code */}
           {(() => {
@@ -1016,20 +1115,24 @@ export default function BhOntologyPage() {
             return segments;
           })()}
 
-          {/* Links — L5 Flow animation + L2 hover dim + cardinality label */}
+          {/* Links — Palantir digital-twin style: solid thin, rounded cap, soft color */}
           {links.map((l, i) => {
             const pa = positions[l.from]; const pb = positions[l.to];
             if (!pa || !pb) return null;
             const nodeTo = nodes.find(n => n.id === l.to);
             const nodeFrom = nodes.find(n => n.id === l.from);
             const isProb = nodeTo?.status === "critical" || nodeTo?.isBottleneck;
-            const stroke = isProb ? C.err : (nodeTo?.isShared ? C.accent : C.border);
+            const stroke = isProb ? "#ef4444aa" : "rgba(255,255,255,0.22)";
             const isConnected = !connectedSet || connectedSet.has(l.from) || connectedSet.has(l.to);
             const linkInFilter = !filterActive || ((nodeFrom && matchesFilter(nodeFrom)) || (nodeTo && matchesFilter(nodeTo)));
-            const opacity = (isProb ? 0.7 : nodeTo?.isShared ? 0.5 : 0.3) * (isConnected ? 1 : 0.15) * (linkInFilter ? 1 : 0.2);
+            const opacity = (isProb ? 0.9 : 0.6) * (isConnected ? 1 : 0.2) * (linkInFilter ? 1 : 0.2);
             const midX = (pa.x + pb.x) / 2; const midY = (pa.y + pb.y) / 2;
-            const curve = `M ${pa.x} ${pa.y + 30} Q ${midX} ${midY} ${pb.x} ${pb.y - 30}`;
-            const flowClass = isProb ? "link-flow-critical" : nodeTo?.isShared ? "link-flow-shared" : "link-flow";
+            // Softer curve, vertical-biased (Palantir uses gentle bezier)
+            const dx = Math.abs(pb.x - pa.x);
+            const dy = Math.abs(pb.y - pa.y);
+            const ctrlOffset = Math.min(40, dy * 0.3);
+            const curve = `M ${pa.x} ${pa.y + 28} C ${pa.x} ${pa.y + 28 + ctrlOffset}, ${pb.x} ${pb.y - 28 - ctrlOffset}, ${pb.x} ${pb.y - 28}`;
+            const flowClass = ""; // Palantir doesn't animate dashes
             // Cardinality hesapla: device→component ONE_MANY, ama component shared ise MANY_MANY
             const linkSpec = BH_LINK_TYPES[l.linkTypeApiName];
             let cLabel = "";
@@ -1041,9 +1144,8 @@ export default function BhOntologyPage() {
               <g key={i}>
                 <path d={curve} fill="none"
                   stroke={stroke}
-                  strokeWidth={isProb ? 2.5 : 1.5}
-                  strokeDasharray="8 4"
-                  className={flowClass}
+                  strokeWidth={isProb ? 2 : 1.3}
+                  strokeLinecap="round"
                   opacity={opacity}
                   style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
                 />
@@ -1527,31 +1629,34 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      {/* Main shape — different per kind */}
+      {/* Main shape — gradient fills (Palantir digital-twin style) */}
       {isSub || isSubComp ? (
         <circle
           className={pulsing ? "flash-bg" : undefined}
           cx={w / 2} cy={h / 2} r={w / 2 - 2}
-          fill={col.bg}
-          stroke={col.border}
-          strokeWidth={1.8}
+          fill={statusGradientUrl(node.status, node.isBottleneck)}
+          stroke={col.fg}
+          strokeWidth={1.2}
+          strokeOpacity={0.55}
           onPointerDown={onPointerDown}
         />
       ) : isVariable ? (
         <polygon
           className={pulsing ? "flash-bg" : undefined}
           points={`${w / 2},4 ${w - 4},${h - 4} 4,${h - 4}`}
-          fill={col.bg}
-          stroke={col.border}
-          strokeWidth={1.8}
+          fill={statusGradientUrl(node.status, node.isBottleneck)}
+          stroke={col.fg}
+          strokeWidth={1.2}
+          strokeOpacity={0.55}
           onPointerDown={onPointerDown}
         />
       ) : (
         <rect className={pulsing ? "flash-bg" : undefined}
-          width={w} height={h} rx={isComponent ? 6 : 10}
-          fill={isDevice ? "#0f0f18" : col.bg}
-          stroke={isDevice ? C.accent : col.border}
-          strokeWidth={isDevice ? 2 : 1.5}
+          width={w} height={h} rx={isDevice ? 8 : isComponent ? 6 : 10}
+          fill={isDevice ? "url(#deviceGrad)" : statusGradientUrl(node.status, node.isBottleneck)}
+          stroke={isDevice ? C.accent : col.fg}
+          strokeWidth={isDevice ? 1.4 : 1.2}
+          strokeOpacity={isDevice ? 0.7 : 0.55}
           onPointerDown={onPointerDown}
         />
       )}
