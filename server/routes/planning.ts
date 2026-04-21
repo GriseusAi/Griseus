@@ -6,6 +6,9 @@ import multer from "multer";
 import XLSX from "xlsx";
 import { getBomWithStock, computeProductionCapacity } from "./bom";
 import { MAIN_SKU } from "../lib/constants";
+import { recordLineage } from "./foundry";
+import { broadcastEntityChanged } from "../ws";
+import { bulkUpdateFromSalesHistory } from "../lib/dynamic-seasonality";
 
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
@@ -146,6 +149,101 @@ router.post("/import", upload.single("file"), async (req: Request, res: Response
   } catch (error: any) {
     console.error("[planning/import]", error);
     res.status(500).json({ error: error.message });
+  }
+});
+
+// ═══════════════════════════════════════════════════════════
+// SINGLE POINT SALES EDIT — cihaz mini-chart drag-to-edit için
+// ═══════════════════════════════════════════════════════════
+
+// POST /api/planning/point — tek (sku, year, month) satış değeri upsert
+router.post("/point", async (req: Request, res: Response) => {
+  try {
+    const { sku, year, month, quantity, source } = req.body ?? {};
+    // Validation
+    if (!sku || typeof sku !== "string") {
+      return res.status(400).json({ error: "sku gerekli (string)" });
+    }
+    const y = parseInt(String(year));
+    const m = parseInt(String(month));
+    const q = parseInt(String(quantity));
+    if (isNaN(y) || y < 2018 || y > 2035) {
+      return res.status(400).json({ error: "year 2018-2035 arası olmalı" });
+    }
+    if (isNaN(m) || m < 1 || m > 12) {
+      return res.status(400).json({ error: "month 1-12 arası olmalı" });
+    }
+    if (isNaN(q) || q < 0) {
+      return res.status(400).json({ error: "quantity >= 0 olmalı" });
+    }
+
+    // Upsert
+    const existing = await db
+      .select()
+      .from(salesHistory)
+      .where(
+        and(
+          eq(salesHistory.productSku, sku),
+          eq(salesHistory.year, y),
+          eq(salesHistory.month, m),
+        ),
+      );
+
+    const previousValue = existing[0]?.quantitySold ?? null;
+    let status: "inserted" | "updated";
+
+    if (existing.length > 0) {
+      await db
+        .update(salesHistory)
+        .set({
+          quantitySold: q,
+          source: (source as string) ?? "manual",
+          importedAt: new Date(),
+        })
+        .where(eq(salesHistory.id, existing[0].id));
+      status = "updated";
+    } else {
+      await db.insert(salesHistory).values({
+        productSku: sku,
+        year: y,
+        month: m,
+        quantitySold: q,
+        source: (source as string) ?? "manual",
+      });
+      status = "inserted";
+    }
+
+    // Lineage
+    recordLineage({
+      entity: "sales_history",
+      entityId: `${sku}-${y}-${m}`,
+      field: "quantitySold",
+      previousValue: previousValue !== null ? String(previousValue) : null,
+      newValue: String(q),
+      sourceType: "manual",
+      sourceId: "ui_drag_edit",
+      sourceName: `Canvas mini-chart edit: ${sku} ${m}/${y}`,
+      actor: "user",
+    }).catch(err => console.error("[planning/point] lineage error:", err));
+
+    // WS broadcast — cache invalidation + orchestrator data_trigger
+    broadcastEntityChanged({
+      event: "entity_changed",
+      entities: ["sales_history"],
+      scope: sku,
+      count: 1,
+      source: "ui_drag_edit",
+    });
+
+    // DSE async recompute (sezonsal indeksler + urgency zinciri)
+    bulkUpdateFromSalesHistory("cukurova", sku).catch(err =>
+      console.error("[planning/point] DSE error:", err)
+    );
+
+    res.json({ ok: true, status, sku, year: y, month: m, quantity: q, previousValue });
+  } catch (err: any) {
+    console.error("[planning/point] error:", err);
+    res.status(500).json({ error: err.message });
   }
 });
 

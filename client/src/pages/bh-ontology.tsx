@@ -623,6 +623,30 @@ export default function BhOntologyPage() {
     },
     onSuccess: () => { qc.invalidateQueries(); },
   });
+
+  /* Sales point mutation — device mini-chart drag/click edit */
+  const salesMutation = useMutation({
+    mutationFn: async (p: { sku: string; year: number; month: number; quantity: number }) => {
+      const res = await apiRequest("POST", "/api/planning/point", p);
+      return res.json();
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: [`/api/ontology/timeseries/${vars.sku}`] });
+      BH_SKUS.forEach(sku => {
+        qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/intelligence`] });
+        qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
+      });
+    },
+  });
+  const handleSalesEdit = useCallback((sku: string, barLabel: string, newUnits: number) => {
+    // barLabel format: "MM/YY"
+    const parts = barLabel.split("/");
+    if (parts.length !== 2) return;
+    const month = parseInt(parts[0]);
+    const year = 2000 + parseInt(parts[1]);
+    if (isNaN(month) || isNaN(year)) return;
+    salesMutation.mutate({ sku, year, month, quantity: Math.max(0, Math.round(newUnits)) });
+  }, [salesMutation]);
   const saveEdit = (node: GraphNode) => {
     const v = parseFloat(editVal);
     if (!isNaN(v) && v >= 0) stockMutation.mutate({ code: node.code ?? node.id, stock: v, unit: node.unit || "AD" });
@@ -1063,6 +1087,10 @@ export default function BhOntologyPage() {
                 salesBars={n.kind === "device" ? salesByDevice[n.sku!] : undefined}
                 salesGlobalMax={n.kind === "device" ? salesGlobalMax : undefined}
                 salesTotal={n.kind === "device" ? salesTotals[n.sku!] : undefined}
+                onSalesPointEdit={n.kind === "device"
+                  ? (barLabel: string, newUnits: number) => handleSalesEdit(n.sku!, barLabel, newUnits)
+                  : undefined}
+                salesSaving={salesMutation.isPending}
                 onPointerDown={(e) => handlePointerDown(e, n.id)}
                 onMouseEnter={() => {
                   setHoveredId(n.id);
@@ -1406,7 +1434,7 @@ function NodeView({
   node, x, y, dim, pulsing, expanded, isInspected,
   editing, editVal,
   overrideStock, simulatedMax, simulatedBottleneckCode, simulationActive,
-  salesBars, salesGlobalMax, salesTotal,
+  salesBars, salesGlobalMax, salesTotal, onSalesPointEdit, salesSaving,
   onPointerDown, onMouseEnter, onMouseLeave,
   onToggleExpand, onStartInspect, onStartEdit, onStartWhatIf,
   onEditChange, onSaveEdit, onCancelEdit, saving,
@@ -1424,6 +1452,8 @@ function NodeView({
   salesBars?: Array<{ label: string; units: number }>;
   salesGlobalMax?: number;
   salesTotal?: number;
+  onSalesPointEdit?: (barLabel: string, newUnits: number) => void;
+  salesSaving?: boolean;
   onPointerDown: (e: React.PointerEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -1441,6 +1471,9 @@ function NodeView({
   const isSubComp = node.kind === "subcomponent";
   const isVariable = node.kind === "variable";
   const isComponent = node.kind === "component";
+
+  /* Bar drag state (device mini-chart interaction) */
+  const [barDrag, setBarDrag] = useState<{ idx: number; startClientY: number; startUnits: number; currentUnits: number } | null>(null);
 
   // Shape sizes
   let w: number, h: number;
@@ -1523,7 +1556,8 @@ function NodeView({
         />
       )}
 
-      {/* Sales chart above device (bars for last 12 months, normalized to GLOBAL max so cross-device heights are comparable) */}
+      {/* Sales chart above device — bars last 12 months, GLOBAL-max normalized
+          + INTERACTIVE: drag bar up/down or click to edit */}
       {isDevice && salesBars && salesBars.length > 0 && (() => {
         const barCount = salesBars.length;
         const chartW = w;
@@ -1535,40 +1569,113 @@ function NodeView({
         const gap = 2;
         const barW = (chartW - (barCount - 1) * gap) / barCount;
         const total = salesTotal ?? 0;
+        const pxPerUnit = chartH / normMax;
+        const unitsPerPx = normMax / chartH;
+
+        const handleBarDown = (e: React.PointerEvent, idx: number, units: number) => {
+          if (!onSalesPointEdit) return;
+          e.stopPropagation();
+          (e.currentTarget as Element).setPointerCapture(e.pointerId);
+          setBarDrag({ idx, startClientY: e.clientY, startUnits: units, currentUnits: units });
+        };
+        const handleBarMove = (e: React.PointerEvent) => {
+          if (!barDrag) return;
+          const deltaY = barDrag.startClientY - e.clientY; // up = +
+          const newUnits = Math.max(0, Math.round(barDrag.startUnits + deltaY * unitsPerPx));
+          if (newUnits !== barDrag.currentUnits) {
+            setBarDrag({ ...barDrag, currentUnits: newUnits });
+          }
+        };
+        const handleBarUp = (e: React.PointerEvent, bar: { label: string; units: number }) => {
+          if (!barDrag || !onSalesPointEdit) { setBarDrag(null); return; }
+          const deltaPx = Math.abs(e.clientY - barDrag.startClientY);
+          const { currentUnits, startUnits } = barDrag;
+          if (deltaPx < 4) {
+            // Treated as click → prompt for value
+            const v = window.prompt(`${bar.label} satış (${fmt(bar.units)} → yeni değer):`, String(bar.units));
+            setBarDrag(null);
+            if (v !== null) {
+              const n = parseInt(v.trim());
+              if (!isNaN(n) && n >= 0 && n !== bar.units) {
+                onSalesPointEdit(bar.label, n);
+              }
+            }
+          } else if (currentUnits !== startUnits) {
+            // Drag commit
+            setBarDrag(null);
+            onSalesPointEdit(bar.label, currentUnits);
+          } else {
+            setBarDrag(null);
+          }
+        };
+
         return (
-          <g style={{ pointerEvents: "none" }}>
+          <g>
             <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
-              stroke={C.dim} strokeWidth={0.5} strokeDasharray="2 3" />
+              stroke={C.dim} strokeWidth={0.5} strokeDasharray="2 3"
+              style={{ pointerEvents: "none" }} />
             {salesBars.map((s, i) => {
-              const hBar = s.units > 0 ? Math.max(1.5, (s.units / normMax) * chartH) : 0;
-              const isPeak = s.units === localMax && localMax > 0;
+              const effectiveUnits = barDrag?.idx === i ? barDrag.currentUnits : s.units;
+              const hBar = effectiveUnits > 0 ? Math.max(1.5, effectiveUnits * pxPerUnit) : 0;
+              const isPeak = effectiveUnits === localMax && localMax > 0 && !barDrag;
+              const isDragging = barDrag?.idx === i;
+              const barX = i * (barW + gap);
               return (
                 <g key={i}>
+                  {/* Hit area — always full chart height, easier to click */}
                   <rect
-                    x={i * (barW + gap)}
+                    x={barX} y={chartYBase - chartH}
+                    width={barW} height={chartH + 10}
+                    fill="transparent"
+                    style={{ cursor: onSalesPointEdit ? (isDragging ? "grabbing" : "grab") : "default", touchAction: "none" }}
+                    onPointerDown={(e) => handleBarDown(e, i, s.units)}
+                    onPointerMove={handleBarMove}
+                    onPointerUp={(e) => handleBarUp(e, s)}
+                  />
+                  {/* Visible bar */}
+                  <rect
+                    x={barX}
                     y={chartYBase - hBar}
                     width={barW}
                     height={hBar}
-                    fill={isPeak ? C.warn : C.accent}
-                    opacity={0.85}
+                    fill={isDragging ? C.variable : isPeak ? C.warn : C.accent}
+                    opacity={isDragging ? 1 : salesSaving ? 0.5 : 0.85}
                     rx={1}
+                    style={{ pointerEvents: "none", transition: isDragging ? "none" : "height 0.15s" }}
                   />
-                  {isPeak && s.units > 0 && (
-                    <text x={i * (barW + gap) + barW / 2} y={chartYBase - hBar - 3}
-                      textAnchor="middle" fill={C.warn} fontSize={8} fontFamily={mono} fontWeight={600}>
-                      {s.units}
+                  {/* Value label when dragging */}
+                  {isDragging && (
+                    <g style={{ pointerEvents: "none" }}>
+                      <rect x={barX - 14} y={chartYBase - hBar - 20}
+                        width={barW + 28} height={16} rx={3}
+                        fill="rgba(10,10,15,0.95)" stroke={C.variable} strokeWidth={0.8} />
+                      <text x={barX + barW / 2} y={chartYBase - hBar - 8}
+                        textAnchor="middle" fill={C.variable} fontSize={10} fontFamily={mono} fontWeight={600}>
+                        {fmt(barDrag!.currentUnits)}
+                      </text>
+                    </g>
+                  )}
+                  {/* Peak label (only when not dragging) */}
+                  {isPeak && effectiveUnits > 0 && !isDragging && (
+                    <text x={barX + barW / 2} y={chartYBase - hBar - 3}
+                      textAnchor="middle" fill={C.warn} fontSize={8} fontFamily={mono} fontWeight={600}
+                      style={{ pointerEvents: "none" }}>
+                      {effectiveUnits}
                     </text>
                   )}
                 </g>
               );
             })}
             <text x={0} y={chartYTop - 4} fill={C.dim}
-              fontSize={9} fontFamily={mono} letterSpacing={0.5}>
+              fontSize={9} fontFamily={mono} letterSpacing={0.5}
+              style={{ pointerEvents: "none" }}>
               SATIŞ · {barCount} ay · toplam <tspan fill={C.white} fontWeight={600}>{fmt(total)}</tspan> adet
+              {onSalesPointEdit && <tspan fill={C.dim}> · sürükle/tıkla edit</tspan>}
             </text>
             <text x={chartW} y={chartYTop - 4} fill={C.mid} textAnchor="end"
-              fontSize={9} fontFamily={mono}>
-              {total === 0 ? "veri yok" : `tepe ${fmt(localMax)}`}
+              fontSize={9} fontFamily={mono}
+              style={{ pointerEvents: "none" }}>
+              {salesSaving ? "kaydediliyor…" : total === 0 ? "veri yok" : `tepe ${fmt(localMax)}`}
             </text>
           </g>
         );
