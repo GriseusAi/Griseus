@@ -66,9 +66,11 @@ interface IntelComponent {
 interface IntelResponse { components: IntelComponent[] }
 
 interface GraphNode {
-  id: string; kind: "device" | "component" | "subassembly" | "subcomponent";
+  id: string; kind: "device" | "component" | "subassembly" | "subcomponent" | "variable";
   label: string; sublabel: string;
   sku?: string; code?: string;
+  /* For multi-visual copies — which device column this visual belongs to */
+  deviceSku?: string;
   usedBy: string[];
   currentStock?: number; status?: Status;
   maxProducible?: number; isBottleneck?: boolean; isShared?: boolean;
@@ -91,10 +93,10 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v3";
+const LAYOUT_KEY = "bh-ontology-layout-v4-grid";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
-const CANVAS_H = 1600;
+const CANVAS_H = 2400;
 
 const kbdStyle: React.CSSProperties = {
   fontFamily: "'Outfit', sans-serif",
@@ -138,7 +140,8 @@ function velocityIcon(burn: number | undefined, trend: string | undefined): { ic
   return { icon: "→", color: C.blue };
 }
 
-/* L3 — dry-run: verilen override map'ine göre 4 BH maxProducible hesap */
+/* L3 — dry-run: verilen override map'ine göre 4 BH maxProducible hesap
+   overrides keyed by raw CODE (not visual id) since stock is physically singular */
 function dryRunCapacity(
   sku: string,
   overrides: Record<string, number>,
@@ -151,81 +154,129 @@ function dryRunCapacity(
   for (const l of compLinks) {
     const n = nodes.find(nn => nn.id === l.to);
     if (!n) continue;
-    if (n.status === "variable") continue;
+    if (n.status === "variable" || n.kind === "variable") continue;
+    const code = n.code ?? l.to;
     // BH on-demand: stok=0 direct material bottleneck sayılmaz
-    const stock = overrides[l.to] !== undefined ? overrides[l.to] : (n.currentStock ?? 0);
+    const stock = overrides[code] !== undefined ? overrides[code] : (n.currentStock ?? 0);
     if (stock === 0) continue;
     if (l.required <= 0) continue;
     const possible = Math.floor(stock / l.required);
-    if (possible < min) { min = possible; btc = l.to; }
+    if (possible < min) { min = possible; btc = code; }
   }
   if (min === Infinity) return { max: 0, bottleneckCode: null };
   return { max: min, bottleneckCode: btc };
 }
 
-/* ── Default layout ── */
+/* ── Default layout — grid: cihaz kolonları, bileşen satırları, yarı mamül aşağı, değişken en altta ── */
+const DEVICE_ORDER = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"];
+const Y_CHART_TOP = 40;
+const Y_DEVICE = 240;
+const Y_TIER1_START = 380;
+const ROW_H = 120;
+const Y_SUBASSEMBLY_GAP = 120;
+const Y_SUBCOMP_GAP = 180;
+const Y_VARIABLE_GAP = 120;
+
 function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: number }> {
   const pos: Record<string, { x: number; y: number }> = {};
+
+  // Devices sorted in fixed order
   const devices = nodes.filter(n => n.kind === "device");
-  const topLevel = nodes.filter(n => n.kind !== "device" && n.kind !== "subcomponent");
-  const subs = nodes.filter(n => n.kind === "subcomponent");
-
-  const sortedDev = [...devices].sort((a, b) => {
-    const a50 = a.sku!.includes("50") ? 0 : 1;
-    const b50 = b.sku!.includes("50") ? 0 : 1;
-    if (a50 !== b50) return a50 - b50;
-    return a.sku!.localeCompare(b.sku!);
-  });
-  const devY = 110;
-  const devSpacing = CANVAS_W / (sortedDev.length + 1);
-  sortedDev.forEach((d, i) => { pos[d.id] = { x: devSpacing * (i + 1), y: devY }; });
-
-  const shared = topLevel.filter(n => n.isShared);
-  const unique = topLevel.filter(n => !n.isShared);
-
-  const sharedY = 360;
-  const sharedCols = Math.max(1, Math.ceil(shared.length / 2));
-  const sharedSpacing = CANVAS_W / (sharedCols + 1);
-  shared.forEach((n, i) => {
-    const col = i % sharedCols;
-    const row = Math.floor(i / sharedCols);
-    pos[n.id] = { x: sharedSpacing * (col + 1), y: sharedY + row * 160 };
+  const sortedDev = [...devices].sort((a, b) =>
+    DEVICE_ORDER.indexOf(a.sku!) - DEVICE_ORDER.indexOf(b.sku!)
+  );
+  const D = sortedDev.length;
+  const colW = CANVAS_W / (D + 1);
+  const colX = (i: number) => colW * (i + 1);
+  const deviceCol: Record<string, number> = {};
+  sortedDev.forEach((d, i) => {
+    deviceCol[d.sku!] = i;
+    pos[d.id] = { x: colX(i), y: Y_DEVICE };
   });
 
-  const skuToUnique: Record<string, GraphNode[]> = {};
-  for (const n of unique) {
-    if (n.usedBy.length === 1) {
-      const s = n.usedBy[0];
-      (skuToUnique[s] = skuToUnique[s] || []).push(n);
-    } else {
-      (skuToUnique["_orphan"] = skuToUnique["_orphan"] || []).push(n);
+  // Partition visual tier-1 nodes by code (to place all copies at same Y)
+  const tier1 = nodes.filter(n => n.kind === "component" || n.kind === "subassembly");
+  const variables = nodes.filter(n => n.kind === "variable");
+  const subComps = nodes.filter(n => n.kind === "subcomponent");
+
+  // Group tier-1 by code
+  const groupByCode = (list: GraphNode[]): Map<string, GraphNode[]> => {
+    const m = new Map<string, GraphNode[]>();
+    for (const n of list) {
+      const c = n.code!;
+      if (!m.has(c)) m.set(c, []);
+      m.get(c)!.push(n);
     }
+    return m;
+  };
+
+  const regularComps = tier1.filter(n => n.kind === "component");
+  const subAsms = tier1.filter(n => n.kind === "subassembly");
+
+  const regularGroups = groupByCode(regularComps);
+  const subGroups = groupByCode(subAsms);
+  const varGroups = groupByCode(variables);
+
+  // Sort groups: most-shared first, then by code for stability
+  const sortGroups = (groups: Map<string, GraphNode[]>): Array<[string, GraphNode[]]> => {
+    return Array.from(groups.entries()).sort(([ca, a], [cb, b]) => {
+      const diff = b.length - a.length;
+      if (diff !== 0) return diff;
+      return ca.localeCompare(cb);
+    });
+  };
+
+  // Place regular tier-1 components
+  let currentY = Y_TIER1_START;
+  for (const [code, copies] of sortGroups(regularGroups)) {
+    for (const copy of copies) {
+      const idx = deviceCol[copy.deviceSku!];
+      if (idx === undefined) continue;
+      pos[copy.id] = { x: colX(idx), y: currentY };
+    }
+    currentY += ROW_H;
   }
-  sortedDev.forEach((d, di) => {
-    const list = skuToUnique[d.sku!] || [];
-    const baseX = devSpacing * (di + 1) - 200;
-    const baseY = 780;
-    list.forEach((n, i) => {
-      const col = i % 3;
-      const row = Math.floor(i / 3);
-      pos[n.id] = { x: baseX + col * 140, y: baseY + row * 150 };
+
+  // Subassemblies below tier-1 components
+  currentY += Y_SUBASSEMBLY_GAP;
+  const subAssemblyRowY: Record<string, number> = {};
+  for (const [code, copies] of sortGroups(subGroups)) {
+    subAssemblyRowY[code] = currentY;
+    for (const copy of copies) {
+      const idx = deviceCol[copy.deviceSku!];
+      if (idx === undefined) continue;
+      pos[copy.id] = { x: colX(idx), y: currentY };
+    }
+    currentY += ROW_H + 40;
+  }
+
+  // Subcomponents fan down under their parent visual copy
+  const byParent = new Map<string, GraphNode[]>();
+  for (const sc of subComps) {
+    const parentId = sc.parentSubCode ?? "";
+    if (!byParent.has(parentId)) byParent.set(parentId, []);
+    byParent.get(parentId)!.push(sc);
+  }
+  byParent.forEach((children: GraphNode[], parentId: string) => {
+    const parentPos = pos[parentId];
+    if (!parentPos) return;
+    children.forEach((c: GraphNode, i: number) => {
+      pos[c.id] = { x: parentPos.x, y: parentPos.y + Y_SUBCOMP_GAP + i * 100 };
     });
   });
 
-  // Subcomponent'ler: parent subassembly'nin altında fan-out
-  const byParent: Record<string, GraphNode[]> = {};
-  for (const s of subs) {
-    const p = s.parentSubCode || "_";
-    (byParent[p] = byParent[p] || []).push(s);
-  }
-  for (const [parentCode, children] of Object.entries(byParent)) {
-    const pp = pos[parentCode];
-    if (!pp) continue;
-    const totalW = (children.length - 1) * 160;
-    const startX = pp.x - totalW / 2;
-    children.forEach((c, i) => {
-      pos[c.id] = { x: startX + i * 160, y: pp.y + 180 };
-    });
+  // Variables at the bottom (triangles)
+  // Compute max bottom of all placed nodes
+  let maxY = currentY;
+  Object.values(pos).forEach(p => { if (p.y > maxY) maxY = p.y; });
+  currentY = maxY + Y_VARIABLE_GAP;
+  for (const [code, copies] of sortGroups(varGroups)) {
+    for (const copy of copies) {
+      const idx = deviceCol[copy.deviceSku!];
+      if (idx === undefined) continue;
+      pos[copy.id] = { x: colX(idx), y: currentY };
+    }
+    currentY += ROW_H;
   }
 
   return pos;
@@ -254,6 +305,23 @@ export default function BhOntologyPage() {
   const intelQueries = BH_SKUS.map(sku =>
     useQuery<IntelResponse>({ queryKey: [`/api/bom/${sku}/intelligence`] })
   );
+  /* Sales time series per device — for mini chart above each BH */
+  const salesQueries = BH_SKUS.map(sku =>
+    useQuery<{ salesMonthly: Array<{ year: number; month: number; units: number; label: string }> }>({
+      queryKey: [`/api/ontology/timeseries/${sku}`],
+      queryFn: async () => {
+        const res = await fetch(`/api/ontology/timeseries/${encodeURIComponent(sku)}?sku=${encodeURIComponent(sku)}`);
+        if (!res.ok) throw new Error(`ts ${res.status}`);
+        return res.json();
+      },
+      staleTime: 5 * 60 * 1000,
+    })
+  );
+  const salesByDevice: Record<string, Array<{ label: string; units: number }>> = {};
+  BH_SKUS.forEach((sku, i) => {
+    const m = salesQueries[i].data?.salesMonthly ?? [];
+    salesByDevice[sku] = m.slice(-12).map(x => ({ label: x.label, units: x.units }));
+  });
   const allLoaded = bomQueries.every(q => q.data) && capQueries.every(q => q.data) && intelQueries.every(q => q.data);
 
   /* Drill-down: expanded subassemblies (persist) */
@@ -313,7 +381,29 @@ export default function BhOntologyPage() {
       }
     });
 
-    // 4 device node
+    // ─────────────────────────────────────────────────────
+    // Per-device visual copy model:
+    // • Device: id = SKU (single)
+    // • Component/Subassembly/Variable: id = `${code}@${sku}` — one per usedBy device
+    // • Subcomponent: id = `${parentVisualId}::${childCode}` — under each parent visual copy
+    // • Links use visualIds
+    // • Sharedness computed from how many copies of same code exist
+    // ─────────────────────────────────────────────────────
+
+    // Pass 1: Build usedBy map (code → array of SKUs using it)
+    const codeUsedBy: Map<string, string[]> = new Map();
+    BH_SKUS.forEach((sku, i) => {
+      const comps = bomQueries[i].data!.components;
+      for (const c of comps) {
+        const list = codeUsedBy.get(c.code) ?? [];
+        if (!list.includes(sku)) list.push(sku);
+        codeUsedBy.set(c.code, list);
+      }
+    });
+    const sharedCodes = new Set<string>();
+    codeUsedBy.forEach((skus, code) => { if (skus.length >= 2) sharedCodes.add(code); });
+
+    // Device nodes
     BH_SKUS.forEach((sku, i) => {
       const cap = capQueries[i].data!;
       nodeMap.set(sku, {
@@ -323,72 +413,80 @@ export default function BhOntologyPage() {
       });
     });
 
-    // Top-level bileşen + link'ler
-    BH_SKUS.forEach((sku, i) => {
-      const comps = bomQueries[i].data!.components;
-      for (const c of comps) {
-        let n = nodeMap.get(c.code);
-        if (!n) {
-          const intel = intelByCode.get(c.code);
-          const hasCh = (c.children && c.children.length > 0) || c.isSubAssembly === true;
-          n = {
-            id: c.code, kind: hasCh ? "subassembly" : "component",
-            label: c.code, sublabel: c.name, code: c.code, usedBy: [],
-            currentStock: c.currentStock, status: c.status, unit: c.unit,
-            dailyBurnRate: intel?.dailyBurnRate,
-            daysLeft: intel?.seasonalDays ?? intel?.daysToStockout ?? null,
-            trend: intel?.trend,
-            depletionMonth: intel?.depletionMonth ?? null,
-            requiredByDevice: {},
-            hasChildren: hasCh,
-            childrenCount: c.children?.length ?? 0,
-          };
-          nodeMap.set(c.code, n);
-        }
-        if (!n.usedBy.includes(sku)) n.usedBy.push(sku);
-        (n.requiredByDevice as Record<string, number>)[sku] = c.requiredPerUnit;
-        linkList.push({ from: sku, to: c.code, required: c.requiredPerUnit, tier: 1, linkTypeApiName: "consumes" });
-      }
-    });
-
-    // Drill-down: expanded yarı mamül children → subcomponent node + link (sub→child)
-    BH_SKUS.forEach((_, i) => {
-      const comps = bomQueries[i].data!.components;
-      for (const c of comps) {
-        if (!c.isSubAssembly || !c.children || !expandedSubs.has(c.code)) continue;
-        const flat = collectChildrenRecursive(c, c.code);
-        for (const { child, parentCode } of flat) {
-          const nid = `${parentCode}::${child.code}`;
-          if (!nodeMap.has(nid)) {
-            const intel = intelByCode.get(child.code);
-            nodeMap.set(nid, {
-              id: nid, kind: "subcomponent",
-              label: child.code, sublabel: child.name, code: child.code, usedBy: [parentCode],
-              currentStock: child.currentStock, status: child.status, unit: child.unit,
-              dailyBurnRate: intel?.dailyBurnRate,
-              daysLeft: intel?.seasonalDays ?? intel?.daysToStockout ?? null,
-              trend: intel?.trend,
-              depletionMonth: intel?.depletionMonth ?? null,
-              parentSubCode: parentCode,
-              hasChildren: (child.children?.length ?? 0) > 0,
-              childrenCount: child.children?.length ?? 0,
-            });
-            linkList.push({ from: parentCode, to: nid, required: child.requiredPerUnit, tier: child.tier, linkTypeApiName: "assembles" });
-          }
-        }
-      }
-    });
-
-    // Shared + bottleneck
+    // Bottlenecks by code (across all 4 BH)
     const bottleneckCodes = new Set<string>();
     BH_SKUS.forEach((_, i) => {
       const bt = capQueries[i].data!.bottlenecks[0];
       if (bt) bottleneckCodes.add(bt.code);
     });
-    nodeMap.forEach(n => {
-      if (n.kind !== "device") {
-        n.isShared = n.usedBy.length >= 2;
-        n.isBottleneck = bottleneckCodes.has(n.id);
+
+    // Tier-1: create one visual copy per device that uses the component
+    BH_SKUS.forEach((sku, i) => {
+      const comps = bomQueries[i].data!.components;
+      for (const c of comps) {
+        const visualId = `${c.code}@${sku}`;
+        if (nodeMap.has(visualId)) continue;
+        const intel = intelByCode.get(c.code);
+        const hasCh = (c.children && c.children.length > 0) || c.isSubAssembly === true;
+        const isShared = sharedCodes.has(c.code);
+        // Kind: variable status overrides to triangle
+        let kind: GraphNode["kind"] = hasCh ? "subassembly" : "component";
+        if (c.status === "variable") kind = "variable";
+        nodeMap.set(visualId, {
+          id: visualId,
+          kind,
+          label: c.code,
+          sublabel: c.name,
+          code: c.code,
+          deviceSku: sku,
+          usedBy: codeUsedBy.get(c.code) ?? [sku],
+          currentStock: c.currentStock, status: c.status, unit: c.unit,
+          dailyBurnRate: intel?.dailyBurnRate,
+          daysLeft: intel?.seasonalDays ?? intel?.daysToStockout ?? null,
+          trend: intel?.trend,
+          depletionMonth: intel?.depletionMonth ?? null,
+          requiredByDevice: { [sku]: c.requiredPerUnit },
+          hasChildren: hasCh,
+          childrenCount: c.children?.length ?? 0,
+          isShared,
+          isBottleneck: bottleneckCodes.has(c.code),
+        });
+        linkList.push({ from: sku, to: visualId, required: c.requiredPerUnit, tier: 1, linkTypeApiName: "consumes" });
+      }
+    });
+
+    // Subcomponents: under each parent visual copy, when that parent is expanded
+    BH_SKUS.forEach((sku, i) => {
+      const comps = bomQueries[i].data!.components;
+      for (const c of comps) {
+        if (!c.isSubAssembly || !c.children || !expandedSubs.has(c.code)) continue;
+        const parentVisualId = `${c.code}@${sku}`;
+        const flat = collectChildrenRecursive(c, c.code);
+        for (const { child, parentCode } of flat) {
+          // parentCode is the raw code from the BOM walk; map to THIS device's parent visual
+          const thisParentVisual = `${parentCode}@${sku}`;
+          const childVisual = `${thisParentVisual}::${child.code}`;
+          if (nodeMap.has(childVisual)) continue;
+          const intel = intelByCode.get(child.code);
+          nodeMap.set(childVisual, {
+            id: childVisual,
+            kind: "subcomponent",
+            label: child.code,
+            sublabel: child.name,
+            code: child.code,
+            deviceSku: sku,
+            usedBy: [thisParentVisual],
+            currentStock: child.currentStock, status: child.status, unit: child.unit,
+            dailyBurnRate: intel?.dailyBurnRate,
+            daysLeft: intel?.seasonalDays ?? intel?.daysToStockout ?? null,
+            trend: intel?.trend,
+            depletionMonth: intel?.depletionMonth ?? null,
+            parentSubCode: thisParentVisual,
+            hasChildren: (child.children?.length ?? 0) > 0,
+            childrenCount: child.children?.length ?? 0,
+          });
+          linkList.push({ from: thisParentVisual, to: childVisual, required: child.requiredPerUnit, tier: child.tier, linkTypeApiName: "assembles" });
+        }
       }
     });
 
@@ -447,8 +545,15 @@ export default function BhOntologyPage() {
       if (l.from === hoveredId) set.add(l.to);
       if (l.to === hoveredId) set.add(l.from);
     }
+    // Also highlight sibling visual copies of same code
+    const hoveredNode = nodes.find(n => n.id === hoveredId);
+    if (hoveredNode?.code) {
+      for (const n of nodes) {
+        if (n.code === hoveredNode.code) set.add(n.id);
+      }
+    }
     return set;
-  }, [hoveredId, links]);
+  }, [hoveredId, links, nodes]);
 
   /* Object inspector drawer */
   const [inspectedId, setInspectedId] = useState<string | null>(null);
@@ -507,7 +612,7 @@ export default function BhOntologyPage() {
   });
   const saveEdit = (node: GraphNode) => {
     const v = parseFloat(editVal);
-    if (!isNaN(v) && v >= 0) stockMutation.mutate({ code: node.id, stock: v, unit: node.unit || "AD" });
+    if (!isNaN(v) && v >= 0) stockMutation.mutate({ code: node.code ?? node.id, stock: v, unit: node.unit || "AD" });
     setEditingCode(null);
   };
 
@@ -773,9 +878,10 @@ export default function BhOntologyPage() {
           }}
           onStartWhatIf={() => {
             if (inspectedNode.kind === "device") return;
-            setWhatifFocusCode(inspectedNode.id);
-            if (whatifOverrides[inspectedNode.id] === undefined) {
-              setWhatifOverrides(prev => ({ ...prev, [inspectedNode.id]: inspectedNode.currentStock ?? 0 }));
+            const rawCode = inspectedNode.code ?? inspectedNode.id;
+            setWhatifFocusCode(rawCode);
+            if (whatifOverrides[rawCode] === undefined) {
+              setWhatifOverrides(prev => ({ ...prev, [rawCode]: inspectedNode.currentStock ?? 0 }));
             }
           }}
           onToggleExpand={() => {
@@ -790,17 +896,21 @@ export default function BhOntologyPage() {
       )}
 
       {/* Simülasyon paneli */}
-      {whatifFocusCode && (
-        <WhatIfPanel
-          code={whatifFocusCode}
-          node={nodes.find(n => n.id === whatifFocusCode)!}
-          overrides={whatifOverrides}
-          setOverrides={setWhatifOverrides}
-          simulatedCapacity={simulatedCapacity}
-          nodes={nodes}
-          onClose={() => setWhatifFocusCode(null)}
-        />
-      )}
+      {whatifFocusCode && (() => {
+        const focusNode = nodes.find(n => (n.code ?? n.id) === whatifFocusCode);
+        if (!focusNode) return null;
+        return (
+          <WhatIfPanel
+            code={whatifFocusCode}
+            node={focusNode}
+            overrides={whatifOverrides}
+            setOverrides={setWhatifOverrides}
+            simulatedCapacity={simulatedCapacity}
+            nodes={nodes}
+            onClose={() => setWhatifFocusCode(null)}
+          />
+        );
+      })()}
 
       {/* Canvas */}
       <div style={{ width: "100%", height: "calc(100vh - 188px)", position: "relative", cursor: panStart ? "grabbing" : "grab" }}>
@@ -829,6 +939,45 @@ export default function BhOntologyPage() {
             </filter>
           </defs>
           <rect x={-viewport.x} y={-viewport.y} width={CANVAS_W / viewport.scale} height={CANVAS_H / viewport.scale} fill="url(#grid)" />
+
+          {/* Horizontal "shared" dashed lines between visual copies of same code */}
+          {(() => {
+            const byCode = new Map<string, GraphNode[]>();
+            for (const n of nodes) {
+              if (n.kind !== "component" && n.kind !== "subassembly" && n.kind !== "variable") continue;
+              if (!n.code) continue;
+              if (!byCode.has(n.code)) byCode.set(n.code, []);
+              byCode.get(n.code)!.push(n);
+            }
+            const segments: React.ReactElement[] = [];
+            byCode.forEach((copies, code) => {
+              if (copies.length < 2) return;
+              // Sort by device column order for consistent left-to-right lines
+              const sorted = [...copies].sort((a, b) =>
+                DEVICE_ORDER.indexOf(a.deviceSku ?? "") - DEVICE_ORDER.indexOf(b.deviceSku ?? "")
+              );
+              for (let k = 0; k < sorted.length - 1; k++) {
+                const a = sorted[k];
+                const b = sorted[k + 1];
+                const pa = positions[a.id]; const pb = positions[b.id];
+                if (!pa || !pb) continue;
+                const isHovered = connectedSet && (connectedSet.has(a.id) || connectedSet.has(b.id));
+                const op = (isHovered ? 0.75 : 0.35);
+                segments.push(
+                  <line key={`shared-${code}-${k}`}
+                    x1={pa.x + 60} y1={pa.y}
+                    x2={pb.x - 60} y2={pb.y}
+                    stroke={a.kind === "variable" ? C.variable : C.accent}
+                    strokeWidth={1}
+                    strokeDasharray="4 4"
+                    opacity={op}
+                    style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
+                  />
+                );
+              }
+            });
+            return segments;
+          })()}
 
           {/* Links — L5 Flow animation + L2 hover dim + cardinality label */}
           {links.map((l, i) => {
@@ -894,10 +1043,11 @@ export default function BhOntologyPage() {
                 expanded={!!isExpanded}
                 isInspected={inspectedId === n.id}
                 editing={editingCode === n.id} editVal={editVal}
-                overrideStock={whatifOverrides[n.id]}
+                overrideStock={whatifOverrides[n.code ?? n.id]}
                 simulatedMax={simMax}
                 simulatedBottleneckCode={simBtc}
                 simulationActive={simulationActive}
+                salesBars={n.kind === "device" ? salesByDevice[n.sku!] : undefined}
                 onPointerDown={(e) => handlePointerDown(e, n.id)}
                 onMouseEnter={() => {
                   setHoveredId(n.id);
@@ -920,9 +1070,10 @@ export default function BhOntologyPage() {
                 }}
                 onStartWhatIf={() => {
                   if (n.kind === "device") return;
-                  setWhatifFocusCode(n.id);
-                  if (whatifOverrides[n.id] === undefined) {
-                    setWhatifOverrides(prev => ({ ...prev, [n.id]: n.currentStock ?? 0 }));
+                  const rawCode = n.code ?? n.id;
+                  setWhatifFocusCode(rawCode);
+                  if (whatifOverrides[rawCode] === undefined) {
+                    setWhatifOverrides(prev => ({ ...prev, [rawCode]: n.currentStock ?? 0 }));
                   }
                 }}
                 onEditChange={setEditVal}
@@ -1040,11 +1191,12 @@ export default function BhOntologyPage() {
                   <span style={{ color: C.white, fontSize: 10 }}>{x.l}</span>
                 </div>
               ))}
-              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>TÜR</div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 14 }}>◉</span><span style={{ color: C.white, fontSize: 10 }}>Cihaz (BH)</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.blue, fontSize: 14 }}>◆</span><span style={{ color: C.white, fontSize: 10 }}>Bileşen</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.warn, fontSize: 14 }}>⚙</span><span style={{ color: C.white, fontSize: 10 }}>Yarı mamül</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.purple, fontSize: 14 }}>↳</span><span style={{ color: C.white, fontSize: 10 }}>Alt parça</span></div>
+              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>ŞEKİL</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 14 }}>▭</span><span style={{ color: C.white, fontSize: 10 }}>Cihaz (BH)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.blue, fontSize: 14 }}>◻</span><span style={{ color: C.white, fontSize: 10 }}>Bileşen (kare)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.warn, fontSize: 14 }}>◯</span><span style={{ color: C.white, fontSize: 10 }}>Yarı mamül (daire)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.purple, fontSize: 14 }}>◦</span><span style={{ color: C.white, fontSize: 10 }}>Alt parça (küçük)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.variable, fontSize: 14 }}>▲</span><span style={{ color: C.white, fontSize: 10 }}>Değişken (üçgen)</span></div>
               <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>İŞARETLER</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.err, fontSize: 12 }}>▲</span><span style={{ color: C.white, fontSize: 10 }}>Darboğaz halosu</span></div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 10 }}>⇄</span><span style={{ color: C.white, fontSize: 10 }}>Paylaşımlı (çift çerçeve)</span></div>
@@ -1233,12 +1385,13 @@ function Stat({ label, value, color }: { label: string; value: number; color: st
 }
 
 /* ═══════════════════════════════════════════════════════════
-   Node View — L1 kinetics + L2 dim + L3 override + pulse + expand
+   Node View — 5 shapes (rect, square, circle, small-circle, triangle)
    ═══════════════════════════════════════════════════════════ */
 function NodeView({
   node, x, y, dim, pulsing, expanded, isInspected,
   editing, editVal,
   overrideStock, simulatedMax, simulatedBottleneckCode, simulationActive,
+  salesBars,
   onPointerDown, onMouseEnter, onMouseLeave,
   onToggleExpand, onStartInspect, onStartEdit, onStartWhatIf,
   onEditChange, onSaveEdit, onCancelEdit, saving,
@@ -1253,6 +1406,7 @@ function NodeView({
   simulatedMax?: number;
   simulatedBottleneckCode?: string | null;
   simulationActive: boolean;
+  salesBars?: Array<{ label: string; units: number }>;
   onPointerDown: (e: React.PointerEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -1268,9 +1422,16 @@ function NodeView({
   const isDevice = node.kind === "device";
   const isSub = node.kind === "subassembly";
   const isSubComp = node.kind === "subcomponent";
-  // Daha büyük, kullanıcı dostu boyutlar
-  const w = isDevice ? 240 : isSubComp ? 200 : 230;
-  const h = isDevice ? 96 : isSubComp ? 106 : 118;
+  const isVariable = node.kind === "variable";
+  const isComponent = node.kind === "component";
+
+  // Shape sizes
+  let w: number, h: number;
+  if (isDevice)         { w = 240; h = 96; }
+  else if (isSub)       { w = 170; h = 170; }  // circle
+  else if (isSubComp)   { w = 110; h = 110; }  // small circle
+  else if (isVariable)  { w = 150; h = 130; }  // triangle
+  else                  { w = 200; h = 160; }  // square component — slightly wider for rich content
 
   const displayStock = overrideStock !== undefined ? overrideStock : (node.currentStock ?? 0);
   const isOverridden = overrideStock !== undefined && overrideStock !== node.currentStock;
@@ -1316,13 +1477,74 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      <rect className={pulsing ? "flash-bg" : undefined}
-        width={w} height={h} rx={10}
-        fill={isDevice ? "#0f0f18" : col.bg}
-        stroke={isDevice ? C.accent : col.border}
-        strokeWidth={isDevice ? 2 : 1.5}
-        onPointerDown={onPointerDown}
-      />
+      {/* Main shape — different per kind */}
+      {isSub || isSubComp ? (
+        <circle
+          className={pulsing ? "flash-bg" : undefined}
+          cx={w / 2} cy={h / 2} r={w / 2 - 2}
+          fill={col.bg}
+          stroke={col.border}
+          strokeWidth={1.8}
+          onPointerDown={onPointerDown}
+        />
+      ) : isVariable ? (
+        <polygon
+          className={pulsing ? "flash-bg" : undefined}
+          points={`${w / 2},4 ${w - 4},${h - 4} 4,${h - 4}`}
+          fill={col.bg}
+          stroke={col.border}
+          strokeWidth={1.8}
+          onPointerDown={onPointerDown}
+        />
+      ) : (
+        <rect className={pulsing ? "flash-bg" : undefined}
+          width={w} height={h} rx={isComponent ? 6 : 10}
+          fill={isDevice ? "#0f0f18" : col.bg}
+          stroke={isDevice ? C.accent : col.border}
+          strokeWidth={isDevice ? 2 : 1.5}
+          onPointerDown={onPointerDown}
+        />
+      )}
+
+      {/* Sales chart above device (bars for last 12 months) */}
+      {isDevice && salesBars && salesBars.length > 0 && (() => {
+        const barCount = salesBars.length;
+        const chartW = w;
+        const chartH = 100;
+        const chartYBase = -30; // above the device rect
+        const chartYTop = chartYBase - chartH;
+        const maxUnits = Math.max(1, ...salesBars.map(s => s.units));
+        const gap = 2;
+        const barW = (chartW - (barCount - 1) * gap) / barCount;
+        return (
+          <g style={{ pointerEvents: "none" }}>
+            <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
+              stroke={C.dim} strokeWidth={0.5} strokeDasharray="2 3" />
+            {salesBars.map((s, i) => {
+              const hBar = Math.max(1, (s.units / maxUnits) * chartH);
+              return (
+                <rect key={i}
+                  x={i * (barW + gap)}
+                  y={chartYBase - hBar}
+                  width={barW}
+                  height={hBar}
+                  fill={C.accent}
+                  opacity={0.7}
+                  rx={1}
+                />
+              );
+            })}
+            <text x={0} y={chartYTop - 4} fill={C.dim}
+              fontSize={9} fontFamily={mono} letterSpacing={0.5}>
+              SATIŞ — son {barCount} ay
+            </text>
+            <text x={chartW} y={chartYTop - 4} fill={C.mid} textAnchor="end"
+              fontSize={9} fontFamily={mono}>
+              max {fmt(maxUnits)}
+            </text>
+          </g>
+        );
+      })()}
 
       {isDevice ? (
         <>
@@ -1351,26 +1573,91 @@ function NodeView({
             </>
           )}
         </>
-      ) : (
+      ) : isSub || isSubComp || isVariable ? (
+        /* Simplified inner content for CIRCLES (subassembly/subcomponent) and TRIANGLE (variable) */
         <>
-          {/* Status stripe */}
+          <g onClick={onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
+            {/* Device column badge top */}
+            {node.deviceSku && (
+              <text x={w / 2} y={isVariable ? h * 0.50 : 22} textAnchor="middle"
+                fill={C.dim} fontSize={9} fontFamily={mono} letterSpacing={1}>
+                {node.deviceSku.replace("BH.", "").replace(".SV", "")}
+              </text>
+            )}
+            {/* Code */}
+            <text x={w / 2} y={isVariable ? h * 0.68 : h / 2 - 6} textAnchor="middle"
+              fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.3}>
+              {node.label}
+            </text>
+            {/* Stock */}
+            {!editing && (
+              <text x={w / 2} y={isVariable ? h * 0.85 : h / 2 + 14} textAnchor="middle"
+                fill={isOverridden ? C.variable : col.fg} fontSize={isSubComp ? 14 : 18}
+                fontFamily={mono} fontWeight={600}>
+                {fmt(displayStock)}
+                <tspan fill={C.dim} fontSize={9}> {node.unit || "AD"}</tspan>
+              </text>
+            )}
+            {/* Edit input */}
+            {editing && (
+              <foreignObject x={w / 2 - 70} y={h / 2 + 2} width={140} height={32}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }} onPointerDown={e => e.stopPropagation()}>
+                  <input autoFocus type="number" value={editVal}
+                    onChange={e => onEditChange(e.target.value)}
+                    onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
+                    disabled={saving}
+                    style={{ width: 72, fontSize: 12, fontFamily: mono, color: col.fg,
+                      background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 4,
+                      padding: "3px 6px", outline: "none" }}
+                  />
+                  <button onClick={onSaveEdit} disabled={saving} style={{
+                    fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
+                    background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
+                  }}>✓</button>
+                  <button onClick={onCancelEdit} style={{
+                    fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
+                    background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
+                  }}>✕</button>
+                </div>
+              </foreignObject>
+            )}
+          </g>
+
+          {/* Expand button for subassembly */}
+          {isSub && node.hasChildren && (
+            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} style={{ cursor: "pointer" }}>
+              <circle cx={w / 2} cy={h - 4} r={12}
+                fill={expanded ? C.accentDim : C.surface}
+                stroke={expanded ? C.accent : C.border} strokeWidth={1.2} />
+              <text x={w / 2} y={h - 1} textAnchor="middle"
+                fill={expanded ? C.accent : C.mid} fontSize={11} fontFamily={mono} fontWeight={600}>
+                {expanded ? "−" : `+${node.childrenCount ?? ""}`}
+              </text>
+            </g>
+          )}
+
+          {/* Inspector icon (mini) — clickable area near top */}
+          {!isSubComp && (
+            <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+              <circle cx={isVariable ? 16 : 14} cy={14} r={9}
+                fill={isInspected ? C.okDim : "rgba(52,211,153,0.08)"}
+                stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.22)"} strokeWidth={1} />
+              <text x={isVariable ? 16 : 14} y={17} textAnchor="middle"
+                fill={C.ok} fontSize={10} fontFamily={mono} fontWeight={600}>ⓘ</text>
+            </g>
+          )}
+        </>
+      ) : (
+        /* Component — SQUARE content (w=160 h=160) */
+        <>
+          {/* Status stripe top */}
           <rect width={w} height={4} fill={col.fg} opacity={0.75} rx={2}/>
 
           <text x={10} y={24} fill={C.white} fontSize={14} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
-          {isSub && (
-            <text x={w - 10} y={24} textAnchor="end" fill={C.accent} fontSize={9} fontFamily={mono}>
-              ⚙ YARI MAMÜL
-            </text>
-          )}
-          {isSubComp && (
-            <text x={w - 10} y={24} textAnchor="end" fill={C.purple} fontSize={9} fontFamily={mono}>
-              ↳ ALT PARÇA
-            </text>
-          )}
-          {node.isBottleneck && !isSub && !isSubComp && (
+          {node.isBottleneck && (
             <text x={w - 10} y={24} textAnchor="end" fill={C.err} fontSize={9} fontFamily={mono}>
               ▲ DARBOĞAZ
             </text>
