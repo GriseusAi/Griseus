@@ -95,6 +95,17 @@ const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 1600;
 
+const kbdStyle: React.CSSProperties = {
+  fontFamily: "'Outfit', sans-serif",
+  fontSize: 9,
+  padding: "2px 6px",
+  borderRadius: 4,
+  border: "1px solid rgba(255,255,255,0.15)",
+  background: "rgba(255,255,255,0.05)",
+  color: "#b0b0c0",
+  marginRight: 4,
+};
+
 function statusColor(s?: Status, isBottleneck?: boolean): { fg: string; bg: string; border: string } {
   if (isBottleneck) return { fg: C.err, bg: C.errDim, border: C.errBorder };
   switch (s) {
@@ -442,6 +453,35 @@ export default function BhOntologyPage() {
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const inspectedNode = useMemo(() => inspectedId ? nodes.find(n => n.id === inspectedId) : null, [inspectedId, nodes]);
 
+  /* Search + Filter */
+  const [searchQuery, setSearchQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<Set<string>>(new Set());
+  const searchInputRef = useRef<HTMLInputElement>(null);
+  const filterActive = searchQuery.trim().length > 0 || statusFilter.size > 0;
+  const matchesFilter = useCallback((n: GraphNode): boolean => {
+    if (searchQuery.trim()) {
+      const q = searchQuery.trim().toLowerCase();
+      const hay = `${n.label} ${n.sublabel} ${n.code ?? ""}`.toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (statusFilter.size > 0) {
+      const tags: string[] = [];
+      if (n.status) tags.push(n.status);
+      if (n.isShared) tags.push("shared");
+      if (n.isBottleneck) tags.push("bottleneck");
+      if (n.kind === "device") tags.push("device");
+      if (!Array.from(statusFilter).some(f => tags.includes(f))) return false;
+    }
+    return true;
+  }, [searchQuery, statusFilter]);
+
+  /* Hover tooltip (400ms delay) */
+  const [hoverTooltip, setHoverTooltip] = useState<{ id: string } | null>(null);
+  const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /* Legend collapse */
+  const [legendOpen, setLegendOpen] = useState(true);
+
   /* L3 What-if dry-run */
   const [whatifOverrides, setWhatifOverrides] = useState<Record<string, number>>({});
   const [whatifFocusCode, setWhatifFocusCode] = useState<string | null>(null);
@@ -528,6 +568,36 @@ export default function BhOntologyPage() {
   const resetLayout = () => { localStorage.removeItem(LAYOUT_KEY); setPositions(defaultLayout(nodes)); };
   const clearSimulation = () => { setWhatifOverrides({}); setWhatifFocusCode(null); };
 
+  /* Keyboard shortcuts */
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement)?.tagName;
+      const isInput = tag === "INPUT" || tag === "TEXTAREA";
+      if (isInput) {
+        if (e.key === "Escape") (e.target as HTMLElement).blur();
+        return;
+      }
+      if (e.key === "/") {
+        e.preventDefault();
+        searchInputRef.current?.focus();
+      } else if (e.key === "Escape") {
+        setInspectedId(null);
+        setWhatifFocusCode(null);
+        setSearchQuery("");
+        setStatusFilter(new Set());
+      } else if (e.key === "r" || e.key === "R") {
+        localStorage.removeItem(LAYOUT_KEY);
+        setPositions(defaultLayout(nodes));
+      } else if (e.key >= "1" && e.key <= "4") {
+        const sku = BH_SKUS[parseInt(e.key) - 1];
+        const p = positions[sku];
+        if (p) setViewport({ x: -(p.x - 600), y: -(p.y - 160), scale: 1 });
+      }
+    };
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [nodes, positions]);
+
   return (
     <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: mono, overflow: "hidden" }}>
       <style>{`
@@ -608,6 +678,79 @@ export default function BhOntologyPage() {
         </div>
       </div>
 
+      {/* Search + Filter bar */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 10,
+        padding: "10px 24px", borderBottom: `1px solid ${C.border}`,
+        background: "rgba(10,10,15,0.55)", flexWrap: "wrap",
+      }}>
+        <div style={{ position: "relative", flex: "0 0 340px" }}>
+          <input
+            ref={searchInputRef}
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            placeholder="🔍  Ara: kod, isim, açıklama…"
+            style={{
+              width: "100%", background: "rgba(0,0,0,0.45)",
+              border: `1px solid ${searchQuery ? C.accent : C.border}`,
+              borderRadius: 8, padding: "9px 12px",
+              color: C.white, fontFamily: mono, fontSize: 12, outline: "none",
+              transition: "border 0.15s",
+            }}
+          />
+          {searchQuery && (
+            <button onClick={() => setSearchQuery("")} style={{
+              position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+              background: "transparent", border: "none", color: C.mid, cursor: "pointer",
+              fontSize: 14, padding: "4px 8px", fontFamily: mono,
+            }}>✕</button>
+          )}
+        </div>
+        <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
+          {([
+            { k: "critical",   label: "KRİTİK",     color: C.err },
+            { k: "warning",    label: "DÜŞÜK",      color: C.warn },
+            { k: "variable",   label: "DEĞİŞKEN",   color: C.variable },
+            { k: "ok",         label: "YETERLİ",    color: C.blue },
+            { k: "abundant",   label: "BOL",        color: C.ok },
+            { k: "shared",     label: "PAYLAŞIMLI", color: C.accent },
+            { k: "bottleneck", label: "DARBOĞAZ",   color: C.err },
+          ] as const).map(f => {
+            const active = statusFilter.has(f.k);
+            return (
+              <button key={f.k} onClick={() => setStatusFilter(prev => {
+                const next = new Set(prev);
+                if (next.has(f.k)) next.delete(f.k); else next.add(f.k);
+                return next;
+              })} style={{
+                padding: "6px 11px", borderRadius: 16, cursor: "pointer",
+                fontSize: 10, fontFamily: mono, fontWeight: 500,
+                background: active ? `${f.color}22` : "rgba(255,255,255,0.02)",
+                border: `1px solid ${active ? f.color : C.border}`,
+                color: active ? f.color : C.mid,
+                letterSpacing: 1, transition: "all 0.15s",
+              }}>{f.label}</button>
+            );
+          })}
+          {filterActive && (
+            <button onClick={() => { setStatusFilter(new Set()); setSearchQuery(""); }} style={{
+              padding: "6px 11px", borderRadius: 16, cursor: "pointer",
+              fontSize: 10, fontFamily: mono,
+              background: C.surface, border: `1px solid ${C.border}`, color: C.dim,
+            }}>✕ Temizle</button>
+          )}
+        </div>
+        <div style={{
+          marginLeft: "auto", fontSize: 10, color: C.dim, fontFamily: mono,
+          display: "flex", gap: 10, alignItems: "center",
+        }}>
+          <span><kbd style={kbdStyle}>/</kbd> ara</span>
+          <span><kbd style={kbdStyle}>1-4</kbd> cihaz</span>
+          <span><kbd style={kbdStyle}>R</kbd> layout</span>
+          <span><kbd style={kbdStyle}>Esc</kbd> kapat</span>
+        </div>
+      </div>
+
       {/* Object Inspector drawer — sağ */}
       {inspectedNode && (
         <ObjectInspector
@@ -651,7 +794,7 @@ export default function BhOntologyPage() {
       )}
 
       {/* Canvas */}
-      <div style={{ width: "100%", height: "calc(100vh - 130px)", position: "relative", cursor: panStart ? "grabbing" : "grab" }}>
+      <div style={{ width: "100%", height: "calc(100vh - 188px)", position: "relative", cursor: panStart ? "grabbing" : "grab" }}>
         {!allLoaded && (
           <div style={{ position: "absolute", inset: 0, display: "flex", alignItems: "center", justifyContent: "center", color: C.dim }}>
             4 BH cihazının BOM + kapasite + intelligence verisi yükleniyor…
@@ -683,10 +826,12 @@ export default function BhOntologyPage() {
             const pa = positions[l.from]; const pb = positions[l.to];
             if (!pa || !pb) return null;
             const nodeTo = nodes.find(n => n.id === l.to);
+            const nodeFrom = nodes.find(n => n.id === l.from);
             const isProb = nodeTo?.status === "critical" || nodeTo?.isBottleneck;
             const stroke = isProb ? C.err : (nodeTo?.isShared ? C.accent : C.border);
             const isConnected = !connectedSet || connectedSet.has(l.from) || connectedSet.has(l.to);
-            const opacity = (isProb ? 0.7 : nodeTo?.isShared ? 0.5 : 0.3) * (isConnected ? 1 : 0.15);
+            const linkInFilter = !filterActive || ((nodeFrom && matchesFilter(nodeFrom)) || (nodeTo && matchesFilter(nodeTo)));
+            const opacity = (isProb ? 0.7 : nodeTo?.isShared ? 0.5 : 0.3) * (isConnected ? 1 : 0.15) * (linkInFilter ? 1 : 0.2);
             const midX = (pa.x + pb.x) / 2; const midY = (pa.y + pb.y) / 2;
             const curve = `M ${pa.x} ${pa.y + 30} Q ${midX} ${midY} ${pb.x} ${pb.y - 30}`;
             const flowClass = isProb ? "link-flow-critical" : nodeTo?.isShared ? "link-flow-shared" : "link-flow";
@@ -726,6 +871,7 @@ export default function BhOntologyPage() {
             const p = positions[n.id];
             if (!p) return null;
             const isConnected = !connectedSet || connectedSet.has(n.id);
+            const isFilterMatch = matchesFilter(n);
             const simMax = n.kind === "device" && simulationActive ? simulatedCapacity[n.id!].max : undefined;
             const simBtc = n.kind === "device" && simulationActive ? simulatedCapacity[n.id!].bottleneckCode : undefined;
             const realCode = n.code || n.id;
@@ -734,7 +880,7 @@ export default function BhOntologyPage() {
             return (
               <NodeView
                 key={n.id} node={n} x={p.x} y={p.y}
-                dim={!isConnected}
+                dim={!isConnected || !isFilterMatch}
                 pulsing={pulsing}
                 expanded={!!isExpanded}
                 isInspected={inspectedId === n.id}
@@ -744,8 +890,16 @@ export default function BhOntologyPage() {
                 simulatedBottleneckCode={simBtc}
                 simulationActive={simulationActive}
                 onPointerDown={(e) => handlePointerDown(e, n.id)}
-                onMouseEnter={() => setHoveredId(n.id)}
-                onMouseLeave={() => setHoveredId(null)}
+                onMouseEnter={() => {
+                  setHoveredId(n.id);
+                  if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+                  hoverTimerRef.current = setTimeout(() => setHoverTooltip({ id: n.id }), 400);
+                }}
+                onMouseLeave={() => {
+                  setHoveredId(null);
+                  if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+                  setHoverTooltip(null);
+                }}
                 onToggleExpand={() => {
                   if (n.hasChildren) toggleExpanded(realCode);
                 }}
@@ -769,8 +923,205 @@ export default function BhOntologyPage() {
               />
             );
           })}
+
+          {/* Hover tooltip — 400ms delayed mini-card */}
+          {hoverTooltip && (() => {
+            const tn = nodes.find(nn => nn.id === hoverTooltip.id);
+            const tp = positions[hoverTooltip.id];
+            if (!tn || !tp) return null;
+            const nw = tn.kind === "device" ? 240 : 230;
+            const tx = tp.x + nw / 2 + 18;
+            const ty = tp.y - 100;
+            const tStatus = statusColor(tn.status, tn.isBottleneck);
+            return (
+              <foreignObject x={tx} y={ty} width={280} height={220} style={{ pointerEvents: "none" }}>
+                <div style={{
+                  background: "rgba(5,5,10,0.96)", backdropFilter: "blur(14px)",
+                  border: `1px solid ${tStatus.border}`, borderRadius: 10,
+                  padding: "12px 14px", fontSize: 11, color: C.white, fontFamily: mono,
+                  boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                }}>
+                  <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: C.white, letterSpacing: 0.3 }}>{tn.label}</div>
+                    {tn.status && tn.kind !== "device" && (
+                      <div style={{ fontSize: 9, color: tStatus.fg, letterSpacing: 1.2, fontWeight: 500 }}>
+                        {statusLabel(tn.status)}
+                      </div>
+                    )}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.dim, marginTop: 3, whiteSpace: "normal", lineHeight: "14px" }}>{tn.sublabel}</div>
+                  {tn.kind !== "device" && (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 6, marginTop: 10, fontSize: 10 }}>
+                      <div>
+                        <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>STOK</div>
+                        <div style={{ color: tStatus.fg, fontWeight: 600, marginTop: 1 }}>
+                          {fmt(tn.currentStock ?? 0)} <span style={{ color: C.dim, fontWeight: 400 }}>{tn.unit ?? "AD"}</span>
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>BURN</div>
+                        <div style={{ color: C.white, fontWeight: 500, marginTop: 1 }}>
+                          {tn.dailyBurnRate && tn.dailyBurnRate > 0 ? `${tn.dailyBurnRate.toFixed(1)}/gün` : "durağan"}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>TÜKENME</div>
+                        <div style={{ color: tn.daysLeft && tn.daysLeft < 30 ? C.err : tn.daysLeft && tn.daysLeft < 90 ? C.warn : C.white, fontWeight: 500, marginTop: 1 }}>
+                          {tn.daysLeft != null ? (tn.daysLeft > 365 ? "> 1yıl" : `${Math.round(tn.daysLeft)}g`) : "—"}
+                          {tn.depletionMonth ? ` · ${tn.depletionMonth}` : ""}
+                        </div>
+                      </div>
+                      <div>
+                        <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>TREND</div>
+                        <div style={{ color: C.white, fontWeight: 500, marginTop: 1 }}>{tn.trend ?? "—"}</div>
+                      </div>
+                    </div>
+                  )}
+                  {tn.kind === "device" && tn.maxProducible !== undefined && (
+                    <div style={{ marginTop: 10 }}>
+                      <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>MAKS ÜRETİM</div>
+                      <div style={{ color: C.accent, fontWeight: 600, fontSize: 16, marginTop: 1 }}>{fmt(tn.maxProducible)} adet</div>
+                    </div>
+                  )}
+                  {tn.usedBy.length > 0 && tn.kind !== "device" && (
+                    <div style={{ marginTop: 10, paddingTop: 8, borderTop: `1px dashed ${C.border}` }}>
+                      <div style={{ color: C.dim, fontSize: 9, letterSpacing: 1 }}>KULLANIM</div>
+                      <div style={{ marginTop: 4, fontSize: 10, color: tn.isShared ? C.accent : C.mid, fontWeight: 500 }}>
+                        {tn.usedBy.map(s => s.replace("BH.", "").replace(".SV", "")).join("  ·  ")}
+                        {tn.isShared && <span style={{ marginLeft: 6, color: C.accent, fontSize: 9 }}>⇄ PAYLAŞIMLI</span>}
+                      </div>
+                    </div>
+                  )}
+                  {tn.isBottleneck && (
+                    <div style={{ marginTop: 8, fontSize: 10, color: C.err, letterSpacing: 0.5 }}>▲ DARBOĞAZ — kapasiteyi bu parça sınırlıyor</div>
+                  )}
+                  <div style={{ marginTop: 10, fontSize: 9, color: C.dim, letterSpacing: 0.5 }}>Tıkla → detay inceleyici</div>
+                </div>
+              </foreignObject>
+            );
+          })()}
         </svg>
+
+        {/* Legend panel — sol alt */}
+        <div style={{
+          position: "absolute", left: 16, bottom: 16, zIndex: 5,
+          background: "rgba(5,5,10,0.88)", backdropFilter: "blur(12px)",
+          border: `1px solid ${C.border}`, borderRadius: 10,
+          padding: legendOpen ? "12px 14px" : "8px 12px",
+          fontSize: 10, color: C.mid, fontFamily: mono,
+          minWidth: legendOpen ? 220 : 80, transition: "all 0.2s",
+        }}>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", cursor: "pointer" }}
+            onClick={() => setLegendOpen(o => !o)}>
+            <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 500 }}>◎ AÇIKLAMA</div>
+            <div style={{ fontSize: 11, color: C.dim }}>{legendOpen ? "−" : "+"}</div>
+          </div>
+          {legendOpen && (
+            <div style={{ marginTop: 10, display: "grid", gap: 6 }}>
+              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1 }}>DURUM</div>
+              {([
+                { c: C.err,      l: "KRİTİK — stok <15g" },
+                { c: C.warn,     l: "DÜŞÜK — 15-60g" },
+                { c: C.variable, l: "DEĞİŞKEN — opsiyonel" },
+                { c: C.blue,     l: "YETERLİ — 60-180g" },
+                { c: C.ok,       l: "BOL — >180g" },
+              ] as const).map(x => (
+                <div key={x.l} style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                  <span style={{ width: 10, height: 10, borderRadius: 2, background: x.c, display: "inline-block" }} />
+                  <span style={{ color: C.white, fontSize: 10 }}>{x.l}</span>
+                </div>
+              ))}
+              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>TÜR</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 14 }}>◉</span><span style={{ color: C.white, fontSize: 10 }}>Cihaz (BH)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.blue, fontSize: 14 }}>◆</span><span style={{ color: C.white, fontSize: 10 }}>Bileşen</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.warn, fontSize: 14 }}>⚙</span><span style={{ color: C.white, fontSize: 10 }}>Yarı mamül</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.purple, fontSize: 14 }}>↳</span><span style={{ color: C.white, fontSize: 10 }}>Alt parça</span></div>
+              <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>İŞARETLER</div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.err, fontSize: 12 }}>▲</span><span style={{ color: C.white, fontSize: 10 }}>Darboğaz halosu</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 10 }}>⇄</span><span style={{ color: C.white, fontSize: 10 }}>Paylaşımlı (çift çerçeve)</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.variable, fontSize: 10 }}>⚡</span><span style={{ color: C.white, fontSize: 10 }}>What-if override</span></div>
+            </div>
+          )}
+        </div>
+
+        {/* Minimap — sağ alt */}
+        {allLoaded && (
+          <Minimap
+            nodes={nodes}
+            positions={positions}
+            viewport={viewport}
+            setViewport={setViewport}
+          />
+        )}
       </div>
+    </div>
+  );
+}
+
+/* ═══════════════════════════════════════════════════════════
+   Minimap — overview of all nodes, click-to-jump
+   ═══════════════════════════════════════════════════════════ */
+function Minimap({
+  nodes, positions, viewport, setViewport,
+}: {
+  nodes: GraphNode[];
+  positions: Record<string, { x: number; y: number }>;
+  viewport: { x: number; y: number; scale: number };
+  setViewport: React.Dispatch<React.SetStateAction<{ x: number; y: number; scale: number }>>;
+}) {
+  const W = 200, H = 140;
+  const sx = W / CANVAS_W, sy = H / CANVAS_H;
+  const s = Math.min(sx, sy);
+  const handleClick = (e: React.MouseEvent<SVGSVGElement>) => {
+    const rect = e.currentTarget.getBoundingClientRect();
+    const px = e.clientX - rect.left;
+    const py = e.clientY - rect.top;
+    const worldX = px / s;
+    const worldY = py / s;
+    setViewport(v => ({
+      ...v,
+      x: (CANVAS_W / v.scale) / 2 - worldX,
+      y: (CANVAS_H / v.scale) / 2 - worldY,
+    }));
+  };
+  // viewport rect in world coords → minimap coords
+  const vpW = CANVAS_W / viewport.scale;
+  const vpH = CANVAS_H / viewport.scale;
+  return (
+    <div style={{
+      position: "absolute", right: 16, bottom: 16, zIndex: 5,
+      background: "rgba(5,5,10,0.9)", backdropFilter: "blur(12px)",
+      border: `1px solid ${C.border}`, borderRadius: 10,
+      padding: "10px 12px 8px", fontFamily: mono,
+    }}>
+      <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 500, marginBottom: 6 }}>◈ MİNİMAP</div>
+      <svg width={W} height={H} onClick={handleClick} style={{ cursor: "crosshair", display: "block", background: "#080810", borderRadius: 4 }}>
+        {nodes.map(n => {
+          const p = positions[n.id];
+          if (!p) return null;
+          const col = n.kind === "device" ? C.accent
+            : n.isBottleneck ? C.err
+            : n.status === "critical" ? C.err
+            : n.status === "warning" ? C.warn
+            : n.status === "variable" ? C.variable
+            : n.status === "ok" ? C.blue
+            : n.status === "abundant" ? C.ok
+            : C.mid;
+          const r = n.kind === "device" ? 2.5 : 1.5;
+          return <circle key={n.id} cx={p.x * s} cy={p.y * s} r={r} fill={col} opacity={0.85} />;
+        })}
+        <rect
+          x={-viewport.x * s}
+          y={-viewport.y * s}
+          width={vpW * s}
+          height={vpH * s}
+          fill="none"
+          stroke={C.accent}
+          strokeWidth={1.2}
+          opacity={0.7}
+        />
+      </svg>
+      <div style={{ fontSize: 8, color: C.dim, marginTop: 4, letterSpacing: 0.5 }}>tıkla → konumlan</div>
     </div>
   );
 }
@@ -974,10 +1325,10 @@ function NodeView({
               {objType.displayMetadata.icon}
             </text>
           </g>
-          <text x={w/2} y={28} textAnchor="middle" fill={C.white} fontSize={17} fontFamily={mono} fontWeight={500}>
+          <text x={w/2} y={28} textAnchor="middle" fill={C.white} fontSize={18} fontFamily={mono} fontWeight={600} letterSpacing={0.5}>
             {node.label}
           </text>
-          <text x={w/2} y={50} textAnchor="middle" fill={C.accent} fontSize={12} fontFamily={mono}>
+          <text x={w/2} y={50} textAnchor="middle" fill={C.accent} fontSize={12} fontFamily={mono} fontWeight={500}>
             {node.sublabel}
           </text>
           {simulationActive && simulatedMax !== undefined && (
@@ -996,7 +1347,7 @@ function NodeView({
           {/* Status stripe */}
           <rect width={w} height={4} fill={col.fg} opacity={0.75} rx={2}/>
 
-          <text x={10} y={24} fill={C.white} fontSize={13} fontFamily={mono} fontWeight={500}
+          <text x={10} y={24} fill={C.white} fontSize={14} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
@@ -1047,13 +1398,13 @@ function NodeView({
             </foreignObject>
           ) : (
             <g onClick={onStartEdit} style={{ cursor: "pointer" }}>
-              <text x={10} y={72} fill={isOverridden ? C.variable : col.fg} fontSize={22} fontFamily={mono} fontWeight={500}>
+              <text x={10} y={72} fill={isOverridden ? C.variable : col.fg} fontSize={24} fontFamily={mono} fontWeight={600}>
                 {fmt(displayStock)}
               </text>
-              <text x={10 + String(fmt(displayStock)).length * 13 + 6} y={72} fill={C.dim} fontSize={11} fontFamily={mono}>
+              <text x={10 + String(fmt(displayStock)).length * 14 + 6} y={72} fill={C.dim} fontSize={11} fontFamily={mono}>
                 {node.unit || "AD"} ✎
               </text>
-              <text x={w - 10} y={72} textAnchor="end" fill={col.fg} fontSize={10} fontFamily={mono} opacity={0.85}>
+              <text x={w - 10} y={72} textAnchor="end" fill={col.fg} fontSize={10} fontFamily={mono} fontWeight={500} letterSpacing={0.5} opacity={0.9}>
                 {statusLabel(node.status)}
               </text>
             </g>
