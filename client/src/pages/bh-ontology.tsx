@@ -99,7 +99,7 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v6-spaced";
+const LAYOUT_KEY = "bh-ontology-layout-v7-bigchart";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 3000;
@@ -191,8 +191,8 @@ function dryRunCapacity(
    Her satır yüksekliği şekil boyutu + min 30px gap olmalı, yoksa üst üste biner. */
 const DEVICE_ORDER = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"];
 const Y_CHART_TOP = 40;
-const Y_DEVICE = 260;
-const Y_TIER1_START = 430;   // device (96 tall) + 135 sales chart üstü buffer
+const Y_DEVICE = 320;         // daha aşağı — üstüne büyük chart sığması için
+const Y_TIER1_START = 490;   // device (96) + 140 buffer
 const ROW_H = 195;            // component 160 + 35 gap
 const Y_SUBASSEMBLY_GAP = 160;
 const SUB_ROW_H = 210;        // subassembly circle 170 + 40 gap
@@ -727,10 +727,37 @@ export default function BhOntologyPage() {
     }
   };
   const handleBgPointerUp = () => setPanStart(null);
+  /* Wheel: default = PAN (Magic Mouse / trackpad 2-parmak swipe).
+     ctrl/cmd+wheel = ZOOM. Browser pinch gesture → ctrlKey=true → zoom. */
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    const factor = e.deltaY < 0 ? 1.1 : 0.9;
-    setViewport(v => ({ ...v, scale: Math.max(0.3, Math.min(3, v.scale * factor)) }));
+    if (e.ctrlKey || e.metaKey) {
+      // Zoom — cursor merkezli
+      const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
+      const mx = e.clientX - rect.left;
+      const my = e.clientY - rect.top;
+      const factor = e.deltaY < 0 ? 1.08 : 0.92;
+      setViewport(v => {
+        const newScale = Math.max(0.25, Math.min(3, v.scale * factor));
+        // Zoom toward cursor: world point under cursor stays fixed
+        const worldX = mx * (CANVAS_W / v.scale) / rect.width + (-v.x);
+        const worldY = my * (CANVAS_H / v.scale) / rect.height + (-v.y);
+        const newWorldX = mx * (CANVAS_W / newScale) / rect.width + (-v.x);
+        const newWorldY = my * (CANVAS_H / newScale) / rect.height + (-v.y);
+        return {
+          scale: newScale,
+          x: v.x + (newWorldX - worldX),
+          y: v.y + (newWorldY - worldY),
+        };
+      });
+    } else {
+      // Pan — natural scroll direction
+      setViewport(v => ({
+        ...v,
+        x: v.x - e.deltaX / v.scale,
+        y: v.y - e.deltaY / v.scale,
+      }));
+    }
   };
 
   /* Problemler */
@@ -824,7 +851,7 @@ export default function BhOntologyPage() {
           </div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 2 }}>Varlık Felsefesi — 4 Cihaz · Canlı Zincir</div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-            Hover → bağlıları vurgula · Tıkla → detay incele · Stok üstü → düzenle · ⚡ → What-if · +N → alt parça · Sürükle/Scroll
+            Hover · Tıkla · Stok/Satış düzenle · ⚡ What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll=Pan</b> · <b style={{ color: C.accent }}>⌘/Ctrl+Scroll=Zoom</b>
           </div>
           {(() => {
             const m = ontologyMeta();
@@ -1070,7 +1097,7 @@ export default function BhOntologyPage() {
               <g style={{ pointerEvents: "none" }}>
                 {devicesPosed.map(({ sku, pos }, i) => {
                   const centerX = pos!.x;
-                  const topY = pos!.y - 160; // above sales chart
+                  const topY = pos!.y - 260; // büyük chart için yeterli üst boşluk
                   const bottomY = (maxYByCol[sku] ?? (pos!.y + 400)) + 40;
                   const leftX = centerX - COL_WIDTH / 2;
                   const widthRect = COL_WIDTH;
@@ -1688,18 +1715,19 @@ function NodeView({
         />
       )}
 
-      {/* Sales chart above device — bars last 12 months, GLOBAL-max normalized
-          + INTERACTIVE: drag bar up/down or click to edit */}
+      {/* Sales chart above device — BIG + INTERACTIVE (2x size, drag/click) */}
       {isDevice && salesBars && salesBars.length > 0 && (() => {
         const barCount = salesBars.length;
-        const chartW = w;
-        const chartH = 100;
-        const chartYBase = -30;
+        const CHART_EXTRA = 60;                          // device genişliğinin ötesine 30'ar px
+        const chartW = w + CHART_EXTRA;
+        const chartH = 170;                              // 100 → 170 (+70%)
+        const chartXOffset = -CHART_EXTRA / 2;           // sola kaydır, ortaya hizalı
+        const chartYBase = -40;
         const chartYTop = chartYBase - chartH;
         const normMax = Math.max(1, salesGlobalMax ?? 0);
         const localMax = Math.max(0, ...salesBars.map(s => s.units));
-        const gap = 2;
-        const barW = (chartW - (barCount - 1) * gap) / barCount;
+        const gap = 3;                                   // daha belirgin bar ayrımı
+        const barW = (chartW - (barCount - 1) * gap) / barCount;  // ~22px bar
         const total = salesTotal ?? 0;
         const pxPerUnit = chartH / normMax;
         const unitsPerPx = normMax / chartH;
@@ -1742,22 +1770,34 @@ function NodeView({
         };
 
         return (
-          <g>
-            <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
-              stroke={C.dim} strokeWidth={0.5} strokeDasharray="2 3"
+          <g transform={`translate(${chartXOffset}, 0)`}>
+            {/* Chart frame — subtle background */}
+            <rect x={-4} y={chartYBase - chartH - 4} width={chartW + 8} height={chartH + 8} rx={4}
+              fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.05)" strokeWidth={0.5}
               style={{ pointerEvents: "none" }} />
+            <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
+              stroke={C.dim} strokeWidth={0.6} strokeDasharray="2 3"
+              style={{ pointerEvents: "none" }} />
+            {/* Y-axis gridlines at 25/50/75% */}
+            {[0.25, 0.5, 0.75].map((p, idx) => (
+              <line key={idx}
+                x1={0} x2={chartW}
+                y1={chartYBase - chartH * p} y2={chartYBase - chartH * p}
+                stroke={C.dim} strokeWidth={0.3} strokeDasharray="1 4" opacity={0.5}
+                style={{ pointerEvents: "none" }} />
+            ))}
             {salesBars.map((s, i) => {
               const effectiveUnits = barDrag?.idx === i ? barDrag.currentUnits : s.units;
-              const hBar = effectiveUnits > 0 ? Math.max(1.5, effectiveUnits * pxPerUnit) : 0;
+              const hBar = effectiveUnits > 0 ? Math.max(2, effectiveUnits * pxPerUnit) : 0;
               const isPeak = effectiveUnits === localMax && localMax > 0 && !barDrag;
               const isDragging = barDrag?.idx === i;
               const barX = i * (barW + gap);
               return (
                 <g key={i}>
-                  {/* Hit area — always full chart height, easier to click */}
+                  {/* Hit area — full chart height, easier to click */}
                   <rect
                     x={barX} y={chartYBase - chartH}
-                    width={barW} height={chartH + 10}
+                    width={barW} height={chartH + 14}
                     fill="transparent"
                     style={{ cursor: onSalesPointEdit ? (isDragging ? "grabbing" : "grab") : "default", touchAction: "none" }}
                     onPointerDown={(e) => handleBarDown(e, i, s.units)}
@@ -1771,26 +1811,32 @@ function NodeView({
                     width={barW}
                     height={hBar}
                     fill={isDragging ? C.variable : isPeak ? C.warn : C.accent}
-                    opacity={isDragging ? 1 : salesSaving ? 0.5 : 0.85}
-                    rx={1}
+                    opacity={isDragging ? 1 : salesSaving ? 0.5 : 0.9}
+                    rx={2}
                     style={{ pointerEvents: "none", transition: isDragging ? "none" : "height 0.15s" }}
                   />
+                  {/* Month label at bottom (always visible) */}
+                  <text x={barX + barW / 2} y={chartYBase + 12}
+                    textAnchor="middle" fill={C.dim} fontSize={9} fontFamily={mono}
+                    style={{ pointerEvents: "none" }}>
+                    {s.label}
+                  </text>
                   {/* Value label when dragging */}
                   {isDragging && (
                     <g style={{ pointerEvents: "none" }}>
-                      <rect x={barX - 14} y={chartYBase - hBar - 20}
-                        width={barW + 28} height={16} rx={3}
-                        fill="rgba(10,10,15,0.95)" stroke={C.variable} strokeWidth={0.8} />
-                      <text x={barX + barW / 2} y={chartYBase - hBar - 8}
-                        textAnchor="middle" fill={C.variable} fontSize={10} fontFamily={mono} fontWeight={600}>
+                      <rect x={barX - 16} y={chartYBase - hBar - 24}
+                        width={barW + 32} height={18} rx={3}
+                        fill="rgba(10,10,15,0.97)" stroke={C.variable} strokeWidth={1} />
+                      <text x={barX + barW / 2} y={chartYBase - hBar - 11}
+                        textAnchor="middle" fill={C.variable} fontSize={11} fontFamily={mono} fontWeight={700}>
                         {fmt(barDrag!.currentUnits)}
                       </text>
                     </g>
                   )}
                   {/* Peak label (only when not dragging) */}
                   {isPeak && effectiveUnits > 0 && !isDragging && (
-                    <text x={barX + barW / 2} y={chartYBase - hBar - 3}
-                      textAnchor="middle" fill={C.warn} fontSize={8} fontFamily={mono} fontWeight={600}
+                    <text x={barX + barW / 2} y={chartYBase - hBar - 4}
+                      textAnchor="middle" fill={C.warn} fontSize={10} fontFamily={mono} fontWeight={700}
                       style={{ pointerEvents: "none" }}>
                       {effectiveUnits}
                     </text>
@@ -1798,14 +1844,14 @@ function NodeView({
                 </g>
               );
             })}
-            <text x={0} y={chartYTop - 4} fill={C.dim}
-              fontSize={9} fontFamily={mono} letterSpacing={0.5}
+            <text x={0} y={chartYTop - 6} fill={C.dim}
+              fontSize={10} fontFamily={mono} letterSpacing={0.8}
               style={{ pointerEvents: "none" }}>
-              SATIŞ · {barCount} ay · toplam <tspan fill={C.white} fontWeight={600}>{fmt(total)}</tspan> adet
+              SATIŞ · {barCount} ay · toplam <tspan fill={C.white} fontWeight={700}>{fmt(total)}</tspan> adet
               {onSalesPointEdit && <tspan fill={C.dim}> · sürükle/tıkla edit</tspan>}
             </text>
-            <text x={chartW} y={chartYTop - 4} fill={C.mid} textAnchor="end"
-              fontSize={9} fontFamily={mono}
+            <text x={chartW} y={chartYTop - 6} fill={C.mid} textAnchor="end"
+              fontSize={10} fontFamily={mono}
               style={{ pointerEvents: "none" }}>
               {salesSaving ? "kaydediliyor…" : total === 0 ? "veri yok" : `tepe ${fmt(localMax)}`}
             </text>
