@@ -99,7 +99,7 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v4-grid";
+const LAYOUT_KEY = "bh-ontology-layout-v5-compact-drill";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 2400;
@@ -275,11 +275,21 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
     if (!byParent.has(parentId)) byParent.set(parentId, []);
     byParent.get(parentId)!.push(sc);
   }
+  // Grid fan-out — 3 sütun × N satır (dikey yer %66 azalır, kolon içi kalır)
   byParent.forEach((children: GraphNode[], parentId: string) => {
     const parentPos = pos[parentId];
     if (!parentPos) return;
+    const cols = Math.min(3, children.length);
+    const gapX = 120;
+    const gapY = 110;
+    const startY = parentPos.y + 120; // parent daire altı (Y_SUBCOMP_GAP kısaltıldı)
     children.forEach((c: GraphNode, i: number) => {
-      pos[c.id] = { x: parentPos.x, y: parentPos.y + Y_SUBCOMP_GAP + i * 100 };
+      const col = i % cols;
+      const row = Math.floor(i / cols);
+      // Satırın ortasına hizala
+      const rowChildCount = Math.min(cols, children.length - row * cols);
+      const xOffset = (col - (rowChildCount - 1) / 2) * gapX;
+      pos[c.id] = { x: parentPos.x + xOffset, y: startY + row * gapY };
     });
   });
 
