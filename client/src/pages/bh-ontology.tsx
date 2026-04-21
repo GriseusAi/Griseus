@@ -1862,7 +1862,9 @@ function NodeView({
             {/* Edit input */}
             {editing && (
               <foreignObject x={w / 2 - 70} y={h / 2 + 2} width={140} height={32}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }} onPointerDown={e => e.stopPropagation()}>
+                <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+                  onPointerDown={e => e.stopPropagation()}
+                  onClick={e => e.stopPropagation()}>
                   <input autoFocus type="number" value={editVal}
                     onChange={e => onEditChange(e.target.value)}
                     onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
@@ -1871,11 +1873,11 @@ function NodeView({
                       background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 4,
                       padding: "3px 6px", outline: "none" }}
                   />
-                  <button onClick={onSaveEdit} disabled={saving} style={{
+                  <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
                     fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
                     background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
                   }}>✓</button>
-                  <button onClick={onCancelEdit} style={{
+                  <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
                     fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
                     background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                   }}>✕</button>
@@ -1886,7 +1888,9 @@ function NodeView({
 
           {/* Expand button for subassembly */}
           {isSub && node.hasChildren && (
-            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} style={{ cursor: "pointer" }}>
+            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+               onPointerDown={(e) => e.stopPropagation()}
+               style={{ cursor: "pointer" }}>
               <circle cx={w / 2} cy={h - 4} r={12}
                 fill={expanded ? C.accentDim : C.surface}
                 stroke={expanded ? C.accent : C.border} strokeWidth={1.2} />
@@ -1934,7 +1938,9 @@ function NodeView({
           {/* Stock (editable) */}
           {editing ? (
             <foreignObject x={10} y={50} width={w - 20} height={32}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6 }} onPointerDown={e => e.stopPropagation()}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}
+                onPointerDown={e => e.stopPropagation()}
+                onClick={e => e.stopPropagation()}>
                 <input autoFocus type="number" value={editVal}
                   onChange={e => onEditChange(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
@@ -1943,11 +1949,11 @@ function NodeView({
                     background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 5,
                     padding: "4px 8px", outline: "none" }}
                 />
-                <button onClick={onSaveEdit} disabled={saving} style={{
+                <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
                   fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
                   background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
                 }}>✓</button>
-                <button onClick={onCancelEdit} style={{
+                <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
                   fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
                   background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                 }}>✕</button>
@@ -2006,7 +2012,9 @@ function NodeView({
 
           {/* Expand button — yarı mamül için (+/−) */}
           {node.hasChildren && (
-            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }} style={{ cursor: "pointer" }}>
+            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+               onPointerDown={(e) => e.stopPropagation()}
+               style={{ cursor: "pointer" }}>
               <rect x={-10} y={h - 14} width={28} height={22} rx={5}
                 fill={expanded ? C.accentDim : C.surface}
                 stroke={expanded ? C.accent : C.border} strokeWidth={1}/>
