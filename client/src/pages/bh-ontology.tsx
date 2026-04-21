@@ -99,10 +99,10 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v5-compact-drill";
+const LAYOUT_KEY = "bh-ontology-layout-v6-spaced";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
-const CANVAS_H = 2400;
+const CANVAS_H = 3000;
 
 const kbdStyle: React.CSSProperties = {
   fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
@@ -185,15 +185,21 @@ function dryRunCapacity(
   return { max: min, bottleneckCode: btc };
 }
 
-/* ── Default layout — grid: cihaz kolonları, bileşen satırları, yarı mamül aşağı, değişken en altta ── */
+/* ── Default layout — grid: cihaz kolonları, bileşen satırları, yarı mamül aşağı, değişken en altta ──
+   Shape boyutları (NodeView):
+     device 240×96, component 200×160, subassembly 170×170, subComp 110×110, variable 150×130
+   Her satır yüksekliği şekil boyutu + min 30px gap olmalı, yoksa üst üste biner. */
 const DEVICE_ORDER = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"];
 const Y_CHART_TOP = 40;
-const Y_DEVICE = 240;
-const Y_TIER1_START = 380;
-const ROW_H = 120;
-const Y_SUBASSEMBLY_GAP = 120;
-const Y_SUBCOMP_GAP = 180;
-const Y_VARIABLE_GAP = 120;
+const Y_DEVICE = 260;
+const Y_TIER1_START = 430;   // device (96 tall) + 135 sales chart üstü buffer
+const ROW_H = 195;            // component 160 + 35 gap
+const Y_SUBASSEMBLY_GAP = 160;
+const SUB_ROW_H = 210;        // subassembly circle 170 + 40 gap
+const Y_SUBCOMP_GAP = 170;    // parent circle merkezi → child row merkezi (85 radius + 55 child radius + 30 buffer)
+const SUBCOMP_ROW_H = 140;    // child 110 + 30 gap
+const Y_VARIABLE_GAP = 150;
+const VARIABLE_ROW_H = 170;   // triangle 130 + 40 gap
 
 function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: number }> {
   const pos: Record<string, { x: number; y: number }> = {};
@@ -265,7 +271,7 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
       if (idx === undefined) continue;
       pos[copy.id] = { x: colX(idx), y: currentY };
     }
-    currentY += ROW_H + 40;
+    currentY += SUB_ROW_H;
   }
 
   // Subcomponents fan down under their parent visual copy
@@ -280,9 +286,9 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
     const parentPos = pos[parentId];
     if (!parentPos) return;
     const cols = Math.min(3, children.length);
-    const gapX = 120;
-    const gapY = 110;
-    const startY = parentPos.y + 120; // parent daire altı (Y_SUBCOMP_GAP kısaltıldı)
+    const gapX = 130;                            // child 110 + 20 gap
+    const gapY = SUBCOMP_ROW_H;                  // 140
+    const startY = parentPos.y + Y_SUBCOMP_GAP;  // parent center + 170 = daire altı + buffer
     children.forEach((c: GraphNode, i: number) => {
       const col = i % cols;
       const row = Math.floor(i / cols);
@@ -304,7 +310,7 @@ function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: numbe
       if (idx === undefined) continue;
       pos[copy.id] = { x: colX(idx), y: currentY };
     }
-    currentY += ROW_H;
+    currentY += VARIABLE_ROW_H;
   }
 
   return pos;
