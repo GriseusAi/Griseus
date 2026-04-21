@@ -322,6 +322,19 @@ export default function BhOntologyPage() {
     const m = salesQueries[i].data?.salesMonthly ?? [];
     salesByDevice[sku] = m.slice(-12).map(x => ({ label: x.label, units: x.units }));
   });
+  /* GLOBAL MAX across all 4 devices — so chart bars are comparable between columns */
+  const salesGlobalMax = useMemo(() => {
+    let max = 0;
+    for (const sku of BH_SKUS) {
+      const bars = salesByDevice[sku] ?? [];
+      for (const b of bars) if (b.units > max) max = b.units;
+    }
+    return max;
+  }, [salesByDevice]);
+  const salesTotals: Record<string, number> = {};
+  BH_SKUS.forEach(sku => {
+    salesTotals[sku] = (salesByDevice[sku] ?? []).reduce((a, b) => a + b.units, 0);
+  });
   const allLoaded = bomQueries.every(q => q.data) && capQueries.every(q => q.data) && intelQueries.every(q => q.data);
 
   /* Drill-down: expanded subassemblies (persist) */
@@ -1048,6 +1061,8 @@ export default function BhOntologyPage() {
                 simulatedBottleneckCode={simBtc}
                 simulationActive={simulationActive}
                 salesBars={n.kind === "device" ? salesByDevice[n.sku!] : undefined}
+                salesGlobalMax={n.kind === "device" ? salesGlobalMax : undefined}
+                salesTotal={n.kind === "device" ? salesTotals[n.sku!] : undefined}
                 onPointerDown={(e) => handlePointerDown(e, n.id)}
                 onMouseEnter={() => {
                   setHoveredId(n.id);
@@ -1391,7 +1406,7 @@ function NodeView({
   node, x, y, dim, pulsing, expanded, isInspected,
   editing, editVal,
   overrideStock, simulatedMax, simulatedBottleneckCode, simulationActive,
-  salesBars,
+  salesBars, salesGlobalMax, salesTotal,
   onPointerDown, onMouseEnter, onMouseLeave,
   onToggleExpand, onStartInspect, onStartEdit, onStartWhatIf,
   onEditChange, onSaveEdit, onCancelEdit, saving,
@@ -1407,6 +1422,8 @@ function NodeView({
   simulatedBottleneckCode?: string | null;
   simulationActive: boolean;
   salesBars?: Array<{ label: string; units: number }>;
+  salesGlobalMax?: number;
+  salesTotal?: number;
   onPointerDown: (e: React.PointerEvent) => void;
   onMouseEnter: () => void;
   onMouseLeave: () => void;
@@ -1506,41 +1523,52 @@ function NodeView({
         />
       )}
 
-      {/* Sales chart above device (bars for last 12 months) */}
+      {/* Sales chart above device (bars for last 12 months, normalized to GLOBAL max so cross-device heights are comparable) */}
       {isDevice && salesBars && salesBars.length > 0 && (() => {
         const barCount = salesBars.length;
         const chartW = w;
         const chartH = 100;
-        const chartYBase = -30; // above the device rect
+        const chartYBase = -30;
         const chartYTop = chartYBase - chartH;
-        const maxUnits = Math.max(1, ...salesBars.map(s => s.units));
+        const normMax = Math.max(1, salesGlobalMax ?? 0);
+        const localMax = Math.max(0, ...salesBars.map(s => s.units));
         const gap = 2;
         const barW = (chartW - (barCount - 1) * gap) / barCount;
+        const total = salesTotal ?? 0;
         return (
           <g style={{ pointerEvents: "none" }}>
             <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
               stroke={C.dim} strokeWidth={0.5} strokeDasharray="2 3" />
             {salesBars.map((s, i) => {
-              const hBar = Math.max(1, (s.units / maxUnits) * chartH);
+              const hBar = s.units > 0 ? Math.max(1.5, (s.units / normMax) * chartH) : 0;
+              const isPeak = s.units === localMax && localMax > 0;
               return (
-                <rect key={i}
-                  x={i * (barW + gap)}
-                  y={chartYBase - hBar}
-                  width={barW}
-                  height={hBar}
-                  fill={C.accent}
-                  opacity={0.7}
-                  rx={1}
-                />
+                <g key={i}>
+                  <rect
+                    x={i * (barW + gap)}
+                    y={chartYBase - hBar}
+                    width={barW}
+                    height={hBar}
+                    fill={isPeak ? C.warn : C.accent}
+                    opacity={0.85}
+                    rx={1}
+                  />
+                  {isPeak && s.units > 0 && (
+                    <text x={i * (barW + gap) + barW / 2} y={chartYBase - hBar - 3}
+                      textAnchor="middle" fill={C.warn} fontSize={8} fontFamily={mono} fontWeight={600}>
+                      {s.units}
+                    </text>
+                  )}
+                </g>
               );
             })}
             <text x={0} y={chartYTop - 4} fill={C.dim}
               fontSize={9} fontFamily={mono} letterSpacing={0.5}>
-              SATIŞ — son {barCount} ay
+              SATIŞ · {barCount} ay · toplam <tspan fill={C.white} fontWeight={600}>{fmt(total)}</tspan> adet
             </text>
             <text x={chartW} y={chartYTop - 4} fill={C.mid} textAnchor="end"
               fontSize={9} fontFamily={mono}>
-              max {fmt(maxUnits)}
+              {total === 0 ? "veri yok" : `tepe ${fmt(localMax)}`}
             </text>
           </g>
         );
