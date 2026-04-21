@@ -727,31 +727,42 @@ export default function BhOntologyPage() {
     }
   };
   const handleBgPointerUp = () => setPanStart(null);
-  /* Wheel: default = PAN (Magic Mouse / trackpad 2-parmak swipe).
-     ctrl/cmd+wheel = ZOOM. Browser pinch gesture → ctrlKey=true → zoom. */
+
+  /* Zoom helpers — cursor merkezli. centerX/Y = screen pixel (isteğe bağlı). */
+  const zoomAtScreen = useCallback((factor: number, centerX?: number, centerY?: number) => {
+    setViewport(v => {
+      const newScale = Math.max(0.25, Math.min(3, v.scale * factor));
+      if (newScale === v.scale) return v;
+      const svg = svgRef.current;
+      if (!svg || centerX === undefined || centerY === undefined) {
+        return { ...v, scale: newScale };
+      }
+      const rect = svg.getBoundingClientRect();
+      const mx = centerX - rect.left;
+      const my = centerY - rect.top;
+      const kx = mx / rect.width;
+      const ky = my / rect.height;
+      return {
+        scale: newScale,
+        x: v.x + kx * (CANVAS_W / newScale - CANVAS_W / v.scale),
+        y: v.y + ky * (CANVAS_H / newScale - CANVAS_H / v.scale),
+      };
+    });
+  }, []);
+  const zoomIn = useCallback(() => zoomAtScreen(1.2), [zoomAtScreen]);
+  const zoomOut = useCallback(() => zoomAtScreen(0.83), [zoomAtScreen]);
+  const zoomReset = useCallback(() => setViewport({ x: 0, y: 0, scale: 1 }), []);
+
+  /* Wheel:
+     • shift+wheel → ZOOM (en kolay, Magic Mouse'ta da çalışır)
+     • ctrl/cmd+wheel → ZOOM (trackpad pinch + klavye)
+     • default → PAN (2-parmak swipe, Magic Mouse swipe'ı pan eder) */
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
-    if (e.ctrlKey || e.metaKey) {
-      // Zoom — cursor merkezli
-      const rect = (e.currentTarget as SVGSVGElement).getBoundingClientRect();
-      const mx = e.clientX - rect.left;
-      const my = e.clientY - rect.top;
+    if (e.ctrlKey || e.metaKey || e.shiftKey) {
       const factor = e.deltaY < 0 ? 1.08 : 0.92;
-      setViewport(v => {
-        const newScale = Math.max(0.25, Math.min(3, v.scale * factor));
-        // Zoom toward cursor: world point under cursor stays fixed
-        const worldX = mx * (CANVAS_W / v.scale) / rect.width + (-v.x);
-        const worldY = my * (CANVAS_H / v.scale) / rect.height + (-v.y);
-        const newWorldX = mx * (CANVAS_W / newScale) / rect.width + (-v.x);
-        const newWorldY = my * (CANVAS_H / newScale) / rect.height + (-v.y);
-        return {
-          scale: newScale,
-          x: v.x + (newWorldX - worldX),
-          y: v.y + (newWorldY - worldY),
-        };
-      });
+      zoomAtScreen(factor, e.clientX, e.clientY);
     } else {
-      // Pan — natural scroll direction
       setViewport(v => ({
         ...v,
         x: v.x - e.deltaX / v.scale,
@@ -796,11 +807,20 @@ export default function BhOntologyPage() {
         const sku = BH_SKUS[parseInt(e.key) - 1];
         const p = positions[sku];
         if (p) setViewport({ x: -(p.x - 600), y: -(p.y - 160), scale: 1 });
+      } else if (e.key === "+" || e.key === "=") {
+        e.preventDefault();
+        zoomIn();
+      } else if (e.key === "-" || e.key === "_") {
+        e.preventDefault();
+        zoomOut();
+      } else if (e.key === "0") {
+        e.preventDefault();
+        zoomReset();
       }
     };
     window.addEventListener("keydown", handler);
     return () => window.removeEventListener("keydown", handler);
-  }, [nodes, positions]);
+  }, [nodes, positions, zoomIn, zoomOut, zoomReset]);
 
   return (
     <div style={{
@@ -851,7 +871,7 @@ export default function BhOntologyPage() {
           </div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 2 }}>Varlık Felsefesi — 4 Cihaz · Canlı Zincir</div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-            Hover · Tıkla · Stok/Satış düzenle · ⚡ What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll=Pan</b> · <b style={{ color: C.accent }}>⌘/Ctrl+Scroll=Zoom</b>
+            Hover · Tıkla · Stok/Satış düzenle · ⚡ What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll = Pan</b> · <b style={{ color: C.accent }}>Shift+Scroll veya +/− butonları = Zoom</b>
           </div>
           {(() => {
             const m = ontologyMeta();
@@ -1402,6 +1422,31 @@ export default function BhOntologyPage() {
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.variable, fontSize: 10 }}>⚡</span><span style={{ color: C.white, fontSize: 10 }}>What-if override</span></div>
             </div>
           )}
+        </div>
+
+        {/* Zoom toolbar — sağ alt, minimap üstü */}
+        <div style={{
+          position: "absolute", right: 16, bottom: 190, zIndex: 6,
+          display: "flex", flexDirection: "column", gap: 4,
+          background: "rgba(5,5,10,0.9)", backdropFilter: "blur(12px)",
+          border: `1px solid ${C.border}`, borderRadius: 8,
+          padding: 5,
+        }}>
+          <button onClick={zoomIn} title="Yakınlaştır (+)" style={{
+            width: 32, height: 28, borderRadius: 5, cursor: "pointer",
+            background: C.surface, border: `1px solid ${C.border}`, color: C.white,
+            fontSize: 16, fontFamily: mono, fontWeight: 600, padding: 0,
+          }}>+</button>
+          <button onClick={zoomReset} title="Sıfırla (0)" style={{
+            width: 32, height: 22, borderRadius: 5, cursor: "pointer",
+            background: C.accentDim, border: `1px solid ${C.accent}40`, color: C.accent,
+            fontSize: 10, fontFamily: mono, fontWeight: 600, padding: 0, letterSpacing: 0.5,
+          }}>{Math.round(viewport.scale * 100)}%</button>
+          <button onClick={zoomOut} title="Uzaklaştır (-)" style={{
+            width: 32, height: 28, borderRadius: 5, cursor: "pointer",
+            background: C.surface, border: `1px solid ${C.border}`, color: C.white,
+            fontSize: 16, fontFamily: mono, fontWeight: 600, padding: 0,
+          }}>−</button>
         </div>
 
         {/* Minimap — sağ alt */}
