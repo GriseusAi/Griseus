@@ -515,3 +515,18 @@
 .leaflet-tile-container img {
   filter: brightness(0.7) contrast(1.1) saturate(0.8);
 }
+
+/* Light mode — global invert filter.
+   Flips dark bg → light bg, text → dark, via invert + hue-rotate (color-preserving). */
+html[data-theme="light"] {
+  filter: invert(1) hue-rotate(180deg);
+  background: #ffffff;
+}
+/* Counter-invert media so images/videos display with original colors */
+html[data-theme="light"] img,
+html[data-theme="light"] video,
+html[data-theme="light"] iframe,
+html[data-theme="light"] canvas,
+html[data-theme="light"] svg image {
+  filter: invert(1) hue-rotate(180deg);
+}

@@ -2,6 +2,7 @@ import { useLocation } from "wouter";
 import { useAgentPanel, useGlobalAlerts } from "../App";
 import { useState, useRef, useEffect } from "react";
 import type { ProactiveAlertData } from "../lib/useStockWebSocket";
+import { useTheme } from "@/lib/theme-context";
 
 const C = {
   bg: "rgba(5,5,5,0.4)",
@@ -86,6 +87,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
   const [location, navigate] = useLocation();
   const { agentOpen, toggleAgent } = useAgentPanel();
   const { alerts: globalAlerts } = useGlobalAlerts();
+  const { theme, toggleTheme } = useTheme();
   const NAV_ITEMS = useNavItems();
   const alerts = propAlerts ?? globalAlerts;
   const [panelOpen, setPanelOpen] = useState(false);
@@ -210,6 +212,21 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
             {trDate}
           </span>
         </div>
+
+        {/* Tema geçişi */}
+        <button
+          onClick={toggleTheme}
+          title={theme === "dark" ? "Aydınlık moda geç" : "Karanlık moda geç"}
+          style={{
+            background: "transparent",
+            border: `1px solid ${C.borderActive}`,
+            borderRadius: 8, padding: "6px 10px", cursor: "pointer",
+            color: C.mid, fontSize: 14,
+            transition: "all 0.15s", display: "flex", alignItems: "center",
+          }}
+        >
+          {theme === "dark" ? "☀" : "☾"}
+        </button>
 
         {/* Bildirim Zili */}
         <div ref={panelRef} style={{ position: "relative" }}>
