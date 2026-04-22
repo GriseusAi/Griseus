@@ -1,6 +1,5 @@
 import { useLocation } from "wouter";
 import { useAgentPanel, useGlobalAlerts } from "../App";
-import { useSKU } from "@/lib/sku-context";
 import { useState, useRef, useEffect } from "react";
 import type { ProactiveAlertData } from "../lib/useStockWebSocket";
 
@@ -60,14 +59,10 @@ type NavItem = {
 };
 
 function useNavItems(): NavItem[] {
-  const { selectedSku } = useSKU();
   return [
-    { path: "/", label: "Stok Durumu", icon: "\u{1F3ED}" },
-    { path: `/stok/urun/${selectedSku}`, label: "\u00DCr\u00FCn \u0130stihbarat\u0131", icon: "\u{1F4CA}", matchPrefix: "/stok/urun" },
-    { path: "/sihir", label: "Sihir", icon: "\u2B21" },
+    { path: "/", label: "Home", icon: "⌂" },
     { path: "/ontology", label: "Ontology", iconNode: <OctopusIcon /> },
     { path: "/lineage", label: "LineAge", icon: "\u21DD" },
-    { path: "/veri-yukle", label: "Veri Y\u00FCkle", icon: "\u{1F4C2}" },
   ];
 }
 
@@ -109,8 +104,16 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
   }, [panelOpen]);
 
   const isActive = (path: string) => {
-    if (path === "/") return location === "/" || location === "/stok/durum";
-    if (path.startsWith("/stok/urun")) return location.startsWith("/stok/urun");
+    if (path === "/") {
+      return (
+        location === "/" ||
+        location === "/home" ||
+        location === "/stok/durum" ||
+        location.startsWith("/stok/urun") ||
+        location === "/sihir" ||
+        location === "/veri-yukle"
+      );
+    }
     if (path === "/ontology") return location === "/ontology";
     if (path === "/lineage") return location === "/lineage";
     return location === path;

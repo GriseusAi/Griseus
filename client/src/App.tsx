@@ -22,6 +22,7 @@ import { SKUProvider } from "@/lib/sku-context";
    └─────────────────────────────────────────────────────┘
    ═══════════════════════════════════════════════════════════ */
 
+import Home from "@/pages/home";
 import StokDurum from "@/pages/stok-durum";
 import UrunIstihbarat from "@/pages/urun-istihbarat";
 import LoginPage from "@/pages/login";
@@ -75,7 +76,8 @@ function App() {
       <AlertContext.Provider value={{ alerts, pushAlerts }}>
       <AgentPanelContext.Provider value={{ agentOpen, toggleAgent }}>
         <Switch>
-          <Route path="/" component={StokDurum} />
+          <Route path="/" component={Home} />
+          <Route path="/home" component={Home} />
           <Route path="/stok/durum" component={StokDurum} />
           <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
           <Route path="/sihir" component={PalantirPage} />
