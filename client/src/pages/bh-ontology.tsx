@@ -10,6 +10,7 @@ import {
   cardinalityLabel, ontologyMeta,
   type ObjectTypeSpec, type ActionTypeSpec, type LinkTypeSpec,
 } from "@/lib/bh-ontology-schema";
+import { useSelection } from "@/lib/selection-context";
 
 /* ═══════════════════════════════════════════════════════════
    BH ONTOLOGY CANVAS — Canlı Organizma (Tier 1)
@@ -605,6 +606,28 @@ export default function BhOntologyPage() {
   /* Object inspector drawer */
   const [inspectedId, setInspectedId] = useState<string | null>(null);
   const inspectedNode = useMemo(() => inspectedId ? nodes.find(n => n.id === inspectedId) : null, [inspectedId, nodes]);
+
+  /* Çoklu seçim (Cmd/Shift+click) */
+  const { toggle: toggleSelection } = useSelection();
+  const handleNodeClick = useCallback((n: GraphNode, e?: React.MouseEvent) => {
+    if (e && (e.metaKey || e.shiftKey || e.ctrlKey)) {
+      const code = n.code || n.id;
+      toggleSelection({
+        code,
+        label: n.label || code,
+        kind: n.kind,
+        currentStock: n.currentStock,
+        dailyBurnRate: n.dailyBurnRate,
+        daysLeft: n.daysLeft,
+        usedBy: n.usedBy,
+        isShared: n.isShared,
+        isBottleneck: n.isBottleneck,
+        status: n.status,
+      });
+      return;
+    }
+    setInspectedId(n.id);
+  }, [toggleSelection]);
 
   /* Search + Filter */
   const [searchQuery, setSearchQuery] = useState("");
@@ -1281,7 +1304,7 @@ export default function BhOntologyPage() {
                 onToggleExpand={() => {
                   if (n.hasChildren) toggleExpanded(realCode);
                 }}
-                onStartInspect={() => setInspectedId(n.id)}
+                onStartInspect={(e) => handleNodeClick(n, e)}
                 onStartEdit={() => {
                   if (n.kind === "device") return;
                   setEditingCode(n.id);
@@ -1659,7 +1682,7 @@ function NodeView({
   onMouseEnter: () => void;
   onMouseLeave: () => void;
   onToggleExpand: () => void;
-  onStartInspect: () => void;
+  onStartInspect: (e?: React.MouseEvent) => void;
   onStartEdit: () => void;
   onStartWhatIf: () => void;
   onEditChange: (v: string) => void;
@@ -1672,6 +1695,11 @@ function NodeView({
   const isSubComp = node.kind === "subcomponent";
   const isVariable = node.kind === "variable";
   const isComponent = node.kind === "component";
+
+  /* Çoklu seçim rozeti */
+  const { indexOf: selIndexOf } = useSelection();
+  const selIdx = selIndexOf(node.code || node.id);
+  const isSelected = selIdx >= 0;
 
   /* Bar drag state (device mini-chart interaction) */
   const [barDrag, setBarDrag] = useState<{ idx: number; startClientY: number; startUnits: number; currentUnits: number } | null>(null);
@@ -1700,6 +1728,12 @@ function NodeView({
        style={{ cursor: "grab", opacity: dim ? 0.22 : 1, transition: "opacity 0.25s" }}
        onMouseEnter={onMouseEnter}
        onMouseLeave={onMouseLeave}
+       onClick={(e) => {
+         if (e.metaKey || e.shiftKey || e.ctrlKey) {
+           e.stopPropagation();
+           onStartInspect(e);
+         }
+       }}
     >
       {/* Pulse ring — WS güncellemesi geldiğinde bir kere çalar */}
       {pulsing && (
@@ -1721,6 +1755,18 @@ function NodeView({
       {isOverridden && (
         <rect x={-4} y={-4} width={w+8} height={h+8} rx={11}
           fill="none" stroke={C.variable} strokeWidth={1.5} strokeDasharray="2 2" opacity={0.9}/>
+      )}
+      {/* Çoklu seçim halo + numara rozeti */}
+      {isSelected && (
+        <g>
+          <rect x={-6} y={-6} width={w+12} height={h+12} rx={13}
+            fill="none" stroke={C.accent} strokeWidth={2.5} strokeDasharray="8 4" opacity={0.95}/>
+          <circle cx={-2} cy={-2} r={13} fill={C.accent} stroke="#0a0a0f" strokeWidth={2}/>
+          <text x={-2} y={2} textAnchor="middle" fill="#0a0a0f"
+            fontSize={13} fontFamily={mono} fontWeight={700}>
+            {selIdx + 1}
+          </text>
+        </g>
       )}
       {/* Inspected — kalın yeşil çerçeve */}
       {isInspected && (
@@ -1910,7 +1956,7 @@ function NodeView({
       {isDevice ? (
         <>
           {/* Device inspector ℹ top-left */}
-          <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+          <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
             <rect x={8} y={8} width={30} height={22} rx={5}
               fill={isInspected ? C.okDim : C.accentDim} stroke={isInspected ? C.okBorder : C.accent + "40"} strokeWidth={1}/>
             <text x={23} y={23} textAnchor="middle" fill={objType.displayMetadata.color} fontSize={14} fontFamily={mono} fontWeight={500}>
@@ -2003,7 +2049,7 @@ function NodeView({
 
           {/* Inspector icon (mini) — clickable area near top */}
           {!isSubComp && (
-            <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+            <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
               <circle cx={isVariable ? 16 : 14} cy={14} r={9}
                 fill={isInspected ? C.okDim : "rgba(52,211,153,0.08)"}
                 stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.22)"} strokeWidth={1} />
@@ -2094,7 +2140,7 @@ function NodeView({
           </g>
 
           {/* Inspector (ℹ) button — sol üstte obj type icon'u tıklanabilir */}
-          <g onClick={(e) => { e.stopPropagation(); onStartInspect(); }} style={{ cursor: "pointer" }}>
+          <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
             <rect x={-10} y={4} width={30} height={22} rx={5}
               fill={isInspected ? C.okDim : "rgba(52,211,153,0.06)"}
               stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.18)"} strokeWidth={1}/>

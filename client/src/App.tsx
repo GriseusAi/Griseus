@@ -7,6 +7,8 @@ import { Toaster } from "@/components/ui/toaster";
 import AgentPanel from "@/components/AgentPanel";
 import { SKUProvider } from "@/lib/sku-context";
 import { ThemeProvider } from "@/lib/theme-context";
+import { SelectionProvider } from "@/lib/selection-context";
+import SelectionPanel from "@/components/selection-panel";
 
 /* ═══════════════════════════════════════════════════════════
    GRISEUS — Single-Product Stock Intelligence
@@ -39,7 +41,9 @@ import VeriYukle from "@/pages/veri-yukle";
 const AgentPanelContext = createContext<{
   agentOpen: boolean;
   toggleAgent: () => void;
-}>({ agentOpen: false, toggleAgent: () => {} });
+  prefillInput: string;
+  setPrefillInput: (s: string) => void;
+}>({ agentOpen: false, toggleAgent: () => {}, prefillInput: "", setPrefillInput: () => {} });
 
 export function useAgentPanel() {
   return useContext(AgentPanelContext);
@@ -58,6 +62,7 @@ export function useGlobalAlerts() {
 function App() {
   const [agentOpen, setAgentOpen] = useState(false);
   const toggleAgent = useCallback(() => setAgentOpen(prev => !prev), []);
+  const [prefillInput, setPrefillInput] = useState("");
 
   const [alerts, setAlerts] = useState<ProactiveAlertData[]>([]);
   const alertIdsRef = useRef(new Set<string>());
@@ -75,8 +80,9 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
       <SKUProvider>
+      <SelectionProvider>
       <AlertContext.Provider value={{ alerts, pushAlerts }}>
-      <AgentPanelContext.Provider value={{ agentOpen, toggleAgent }}>
+      <AgentPanelContext.Provider value={{ agentOpen, toggleAgent, prefillInput, setPrefillInput }}>
         <Switch>
           <Route path="/" component={Home} />
           <Route path="/home" component={Home} />
@@ -92,9 +98,11 @@ function App() {
           <Route component={NotFound} />
         </Switch>
         <AgentPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
+        <SelectionPanel />
         <Toaster />
       </AgentPanelContext.Provider>
       </AlertContext.Provider>
+      </SelectionProvider>
       </SKUProvider>
       </ThemeProvider>
     </QueryClientProvider>

@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect, useCallback } from "react";
 import { useQueryClient } from "@tanstack/react-query";
 import mermaid from "mermaid";
+import { useAgentPanel } from "../App";
 
 // Initialize mermaid with dark theme
 mermaid.initialize({
@@ -295,6 +296,7 @@ interface ChatSession {
 
 export default function AgentPanel({ open, onClose }: { open: boolean; onClose: () => void }) {
   const qc = useQueryClient();
+  const { prefillInput, setPrefillInput } = useAgentPanel();
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState("");
   const [loading, setLoading] = useState(false);
@@ -326,6 +328,21 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
   useEffect(() => {
     if (open) setTimeout(() => inputRef.current?.focus(), 300);
   }, [open]);
+
+  useEffect(() => {
+    if (open && prefillInput) {
+      setInput(prefillInput);
+      setPrefillInput("");
+      setTimeout(() => {
+        const el = inputRef.current;
+        if (el) {
+          el.focus();
+          el.setSelectionRange(el.value.length, el.value.length);
+          el.scrollTop = el.scrollHeight;
+        }
+      }, 320);
+    }
+  }, [open, prefillInput, setPrefillInput]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === "Escape" && open) { if (expandedSvg) setExpandedSvg(null); else if (showHistory) setShowHistory(false); else onClose(); } };
