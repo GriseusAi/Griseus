@@ -63,7 +63,7 @@ interface ModeOption {
 }
 
 const MODES: ModeOption[] = [
-  { key: "fast", icon: "⚡", label: "Hızlı", sublabel: "~10s", color: "#fbbf24", glow: "rgba(251,191,36,0.12)", border: "rgba(251,191,36,0.25)" },
+  { key: "fast", icon: "▸", label: "Hızlı", sublabel: "~10s", color: "#fbbf24", glow: "rgba(251,191,36,0.12)", border: "rgba(251,191,36,0.25)" },
   { key: "normal", icon: "💬", label: "Normal", sublabel: "~25s", color: "#818cf8", glow: "rgba(129,140,248,0.12)", border: "rgba(129,140,248,0.25)" },
   { key: "research", icon: "🧠", label: "Araştırma", sublabel: "~2dk", color: "#f472b6", glow: "rgba(244,114,182,0.12)", border: "rgba(244,114,182,0.25)" },
   { key: "visual", icon: "📊", label: "Görsel", sublabel: "~25s", color: "#34d399", glow: "rgba(52,211,153,0.12)", border: "rgba(52,211,153,0.25)" },
@@ -82,7 +82,7 @@ const AGENT_LABELS: Record<string, string> = {
   tukenme: "🔺 Tükenme",
   yapi: "🔺 Yapı",
   risk: "🔺 Risk",
-  aksiyon: "⚡ Aksiyon",
+  aksiyon: "Aksiyon",
 };
 
 const WRITE_TOOLS = new Set([

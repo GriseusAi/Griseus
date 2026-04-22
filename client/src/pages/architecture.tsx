@@ -51,7 +51,7 @@ const layers: Layer[] = [
     nodes: [
       { id: "pg", label: "PostgreSQL", sublabel: "Ana veritabanı", icon: "🗄️", color: P.blue, x: 20, y: 50 },
       { id: "netsis", label: "Netsis ERP", sublabel: "Stok import", icon: "📊", color: P.orange, x: 50, y: 50 },
-      { id: "ws", label: "WebSocket", sublabel: "Canlı veri akışı", icon: "⚡", color: P.cyan, x: 80, y: 50 },
+      { id: "ws", label: "WebSocket", sublabel: "Canlı veri akışı", icon: "↔", color: P.cyan, x: 80, y: 50 },
     ],
   },
   {
@@ -100,7 +100,7 @@ const layers: Layer[] = [
     zIndex: 4,
     nodes: [
       { id: "stok", label: "Stok Durumu", sublabel: "Komuta Merkezi", icon: "🏠", color: P.green, x: 10, y: 50 },
-      { id: "hizli", label: "Hızlı Giriş", sublabel: "Üretim girişi", icon: "⚡", color: P.orange, x: 30, y: 50 },
+      { id: "hizli", label: "Hızlı Giriş", sublabel: "Üretim girişi", icon: "▸", color: P.orange, x: 30, y: 50 },
       { id: "istihbarat", label: "Ürün İstihbaratı", sublabel: "BOM · Simülasyon", icon: "🔍", color: P.blue, x: 50, y: 50 },
       { id: "agent", label: "CEO Agent", sublabel: "Doğal dil arayüzü", icon: "🤖", color: P.accent, x: 70, y: 50 },
       { id: "auto", label: "Automations", sublabel: "Otomatik aksiyonlar", icon: "🔁", color: P.cyan, x: 90, y: 50 },

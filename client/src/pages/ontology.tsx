@@ -1042,7 +1042,7 @@ export default function OntologyPage() {
               fontSize: 10, color: C.ok, fontFamily: mono,
               animation: "pulse 1s infinite",
             }}>
-              ⚡ CANLI GÜNCELLEME: {lastUpdate}
+              CANLI GÜNCELLEME: {lastUpdate}
             </div>
           )}
         </div>

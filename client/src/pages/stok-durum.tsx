@@ -525,7 +525,7 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
       }}
     >
       <div style={{ fontSize: 9, fontFamily: mono, color: C.accent, fontWeight: 400, letterSpacing: 1, marginBottom: 2 }}>
-        ⚡ PROACTIVE INTELLIGENCE
+        PROACTIVE INTELLIGENCE
       </div>
       {alerts.map(a => (
         <motion.div key={a.id}
@@ -900,7 +900,7 @@ export default function StokDurum() {
           padding: "16px 20px", marginBottom: 20, ...glass,
         }}>
           <div style={{ fontSize: 10, fontFamily: mono, color: C.dim, fontWeight: 400, letterSpacing: 1.5, marginBottom: 10 }}>
-            ⚡ AKSİYONLAR — {sku} Stok Hareketi
+            AKSİYONLAR — {sku} Stok Hareketi
           </div>
           <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
             {QUICK_ACTIONS.map(a => {

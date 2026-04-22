@@ -867,11 +867,11 @@ export default function BhOntologyPage() {
       <div style={{ padding: "16px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
         <div>
           <div style={{ fontSize: 9, color: C.accent, letterSpacing: 2, fontWeight: 400 }}>
-            ◈ BH GRUBU ONTOLOJİ {simulationActive && <span style={{ color: C.variable, marginLeft: 8 }}>⚡ SİMÜLASYON AKTİF</span>}
+            ◈ BH GRUBU ONTOLOJİ {simulationActive && <span style={{ color: C.variable, marginLeft: 8 }}>SİMÜLASYON AKTİF</span>}
           </div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 2 }}>Varlık Felsefesi — 4 Cihaz · Canlı Zincir</div>
           <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-            Hover · Tıkla · Stok/Satış düzenle · ⚡ What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll = Pan</b> · <b style={{ color: C.accent }}>Shift+Scroll veya +/− butonları = Zoom</b>
+            Hover · Tıkla · Stok/Satış düzenle · What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll = Pan</b> · <b style={{ color: C.accent }}>Shift+Scroll veya +/− butonları = Zoom</b>
           </div>
           {(() => {
             const m = ontologyMeta();
@@ -887,15 +887,15 @@ export default function BhOntologyPage() {
           })()}
         </div>
         <div style={{ display: "flex", gap: 16, alignItems: "center" }}>
-          <Stat label="KRİTİK" value={problemCount.critical} color={C.err} />
-          <Stat label="DÜŞÜK" value={problemCount.warning} color={C.warn} />
-          <Stat label="DARBOĞAZ" value={problemCount.bottlenecks} color={C.err} />
-          <Stat label="PAYLAŞIMLI" value={problemCount.shared} color={C.accent} />
+          <Stat label="KRİTİK" value={problemCount.critical} />
+          <Stat label="DÜŞÜK" value={problemCount.warning} />
+          <Stat label="DARBOĞAZ" value={problemCount.bottlenecks} />
+          <Stat label="PAYLAŞIMLI" value={problemCount.shared} />
           {simulationActive && (
             <button onClick={clearSimulation} style={{
               padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
               background: C.variableDim, border: `1px solid ${C.variableBorder}`, color: C.variable, fontSize: 13, fontFamily: mono,
-            }}>⚡ Simülasyonu Kapat</button>
+            }}>Simülasyonu Kapat</button>
           )}
           {expandedSubs.size > 0 && (
             <button onClick={() => { setExpandedSubs(new Set()); localStorage.removeItem(EXPANDED_KEY); }} style={{
@@ -913,7 +913,7 @@ export default function BhOntologyPage() {
               background: C.variableDim, border: `1px solid ${C.variableBorder}`, color: C.variable,
               fontSize: 13, fontFamily: mono, textDecoration: "none", letterSpacing: 0.5, fontWeight: 500,
               display: "inline-flex", alignItems: "center",
-            }}>⚡ Simulation Engine →</a>
+            }}>Simulation Engine →</a>
           </Link>
         </div>
       </div>
@@ -1419,7 +1419,7 @@ export default function BhOntologyPage() {
               <div style={{ fontSize: 9, color: C.dim, letterSpacing: 1, marginTop: 6 }}>İŞARETLER</div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.err, fontSize: 12 }}>▲</span><span style={{ color: C.white, fontSize: 10 }}>Darboğaz halosu</span></div>
               <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.accent, fontSize: 10 }}>⇄</span><span style={{ color: C.white, fontSize: 10 }}>Paylaşımlı (çift çerçeve)</span></div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.variable, fontSize: 10 }}>⚡</span><span style={{ color: C.white, fontSize: 10 }}>What-if override</span></div>
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}><span style={{ color: C.variable, fontSize: 10 }}>●</span><span style={{ color: C.white, fontSize: 10 }}>What-if override</span></div>
             </div>
           )}
         </div>
@@ -1558,7 +1558,7 @@ function WhatIfPanel({
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
-          <div style={{ fontSize: 10, color: C.variable, letterSpacing: 1.8, fontWeight: 500 }}>⚡ WHAT-IF SİMÜLASYON</div>
+          <div style={{ fontSize: 10, color: C.variable, letterSpacing: 1.8, fontWeight: 500 }}>WHAT-IF SİMÜLASYON</div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 4, fontFamily: mono }}>{code}</div>
           <div style={{ fontSize: 12, color: C.dim, marginTop: 2 }}>{node.sublabel}</div>
         </div>
@@ -1619,11 +1619,11 @@ function WhatIfPanel({
 }
 
 /* ── Stat pill ── */
-function Stat({ label, value, color }: { label: string; value: number; color: string }) {
+function Stat({ label, value }: { label: string; value: number }) {
   return (
     <div style={{ textAlign: "center", minWidth: 60 }}>
       <div style={{ fontSize: 10, color: C.dim, letterSpacing: 1.2, fontWeight: 500 }}>{label}</div>
-      <div style={{ fontSize: 22, color, fontFamily: mono, fontWeight: 500, marginTop: 2 }}>{value}</div>
+      <div style={{ fontSize: 22, color: C.white, fontFamily: mono, fontWeight: 500, marginTop: 2 }}>{value}</div>
     </div>
   );
 }
@@ -1927,7 +1927,7 @@ function NodeView({
             <>
               <line x1={22} y1={60} x2={w-22} y2={60} stroke={C.variableBorder} strokeDasharray="3 2" opacity={0.6} />
               <text x={w/2} y={80} textAnchor="middle" fill={C.variable} fontSize={13} fontFamily={mono} fontWeight={500}>
-                ⚡ sim: {fmt(simulatedMax)} <tspan fill={deviceDeltaColor}>
+                sim: {fmt(simulatedMax)} <tspan fill={deviceDeltaColor}>
                   ({deviceDelta >= 0 ? "+" : ""}{deviceDelta})
                 </tspan>
               </text>
@@ -2107,7 +2107,7 @@ function NodeView({
           <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
             <rect x={w - 40} y={4} width={32} height={22} rx={5}
               fill={C.variableDim} stroke={C.variableBorder} strokeWidth={1}/>
-            <text x={w - 24} y={19} textAnchor="middle" fill={C.variable} fontSize={13} fontFamily={mono} fontWeight={500}>⚡</text>
+            <text x={w - 24} y={19} textAnchor="middle" fill={C.variable} fontSize={10} fontFamily={mono} fontWeight={500}>W?</text>
           </g>
 
           {/* Expand button — yarı mamül için (+/−) */}

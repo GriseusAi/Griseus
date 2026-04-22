@@ -318,7 +318,6 @@ export default function UrunIstihbarat() {
           >
             <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-                <span style={{ fontSize: 18 }}>⚡</span>
                 <div>
                   <div style={{ fontSize: 13, fontWeight: 400, color: C.white }}>
                     {sub.name} <span style={{ color: C.dim, fontFamily: mono, fontSize: 11 }}>({code})</span>
@@ -509,7 +508,7 @@ export default function UrunIstihbarat() {
                     </div>
                     <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
                       {c.name}
-                      {isSubAssembly && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL ({c.children!.length} alt)</span>}
+                      {isSubAssembly && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>YARI MAMÜL ({c.children!.length} alt)</span>}
                     </div>
                     <div style={{ fontFamily: mono, fontSize: 12, color: C.white, fontWeight: 400 }}>{c.requiredPerUnit}</div>
                     <div style={{ fontFamily: mono, fontSize: 11, color: C.dim }}>{c.unit}</div>
@@ -635,7 +634,7 @@ export default function UrunIstihbarat() {
                     </div>
                     <div style={{ fontSize: 12, color: C.white, display: "flex", alignItems: "center", gap: 6 }}>
                       {row.name}
-                      {isSub && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>⚡ YARI MAMÜL ({row.children.length} alt)</span>}
+                      {isSub && <span style={{ fontSize: 9, color: C.accent, fontFamily: mono }}>YARI MAMÜL ({row.children.length} alt)</span>}
                       {depth > 0 && <span style={{ fontSize: 8, color: C.dim, fontFamily: mono }}>alt bileşen</span>}
                       {row.winterStress && <span style={{ fontSize: 8, color: "#f97316", fontFamily: mono }}>KIS RISKI</span>}
                     </div>

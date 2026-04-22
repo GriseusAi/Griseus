@@ -244,7 +244,7 @@ export default function OntologySimulatePage() {
         display: "flex", justifyContent: "space-between", alignItems: "center", gap: 20,
       }}>
         <div>
-          <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2.2, fontWeight: 500 }}>⚡ SIMULATION ENGINE</div>
+          <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2.2, fontWeight: 500 }}>SIMULATION ENGINE</div>
           <div style={{ fontSize: 20, color: C.white, marginTop: 4, fontWeight: 600, letterSpacing: 0.3 }}>
             Senaryo Kokpiti
           </div>
@@ -706,7 +706,7 @@ function ScenarioManager({
   return (
     <>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-        <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, fontWeight: 500 }}>⚡ SENARYOLAR</div>
+        <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, fontWeight: 500 }}>SENARYOLAR</div>
         <button
           onClick={() => setCreating(c => !c)}
           style={{
@@ -759,7 +759,7 @@ function ScenarioManager({
               color: newName.trim() && !creating ? C.white : C.dim, fontFamily: mono, fontWeight: 600, letterSpacing: 0.5,
             }}
           >
-            {creating ? "Kaydediliyor…" : "⚡ OLUŞTUR"}
+            {creating ? "Kaydediliyor…" : "OLUŞTUR"}
           </button>
         </div>
       )}
@@ -828,7 +828,7 @@ function ScenarioDetailPanel({
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
         <div>
-          <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, fontWeight: 500 }}>⚡ SENARYO DETAY</div>
+          <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, fontWeight: 500 }}>SENARYO DETAY</div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 3, fontWeight: 600 }}>{detail.name}</div>
           {detail.description && (
             <div style={{ fontSize: 11, color: C.dim, marginTop: 3 }}>{detail.description}</div>
