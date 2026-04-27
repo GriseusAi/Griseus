@@ -612,6 +612,50 @@ export const FALLBACK_TOOLS: Anthropic.Tool[] = [
     description: "Decision loop raporu: toplam decisions, status dağılımı, outcome verification, predicted vs actual TL, realization rate %, son verified örnekleri.",
     input_schema: { type: "object" as const, properties: {}, required: [] },
   },
+  // FAZ 4 — Tiered Operations Monitoring
+  {
+    name: "get_tier_dashboard",
+    description: "Tiered ops dashboard: operator/supervisor/plant_manager. Açık + onaylı + bugün çözülen sayılar, entity dağılımı, severity breakdown, son alarmlar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        tier: { type: "string", enum: ["operator", "supervisor", "plant_manager"] },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_ops_alerts",
+    description: "Ops alarmlarını listele (tier ve/veya status filter).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        tier: { type: "string", enum: ["operator", "supervisor", "plant_manager"] },
+        status: { type: "string", enum: ["open", "acknowledged", "resolved", "escalated"] },
+        limit: { type: "number" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "get_process_flow",
+    description: "Process flow diagram (P&ID-equivalent): hat → workCenters → makineler hiyerarşisi, status, metrics, açık alarm sayısı.",
+    input_schema: {
+      type: "object" as const,
+      properties: { line_id: { type: "number", description: "Production line ID (default 1)" } },
+      required: [],
+    },
+  },
+  {
+    name: "auto_escalate_alerts",
+    description: "Açık alarmları SLA'ya göre tier yükselt: 30dk = operator→supervisor, 2sa = supervisor→plant_manager.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "sync_drift_to_ops",
+    description: "Twin health drift_alerts'lerini ops_alerts'e mirror et (operator tier'da başlatır).",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1780,6 +1824,36 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
     case "get_loop_report": {
       const { getLoopReport } = await import("../lib/decision-loop");
       return await getLoopReport();
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FAZ 4 — Tiered Operations Monitoring
+    // ─────────────────────────────────────────────────────────
+
+    case "get_tier_dashboard": {
+      const { getTierDashboard } = await import("../lib/ops-monitoring");
+      const tier = (input.tier ?? "operator") as any;
+      return await getTierDashboard(tier);
+    }
+
+    case "list_ops_alerts": {
+      const { listOpsAlerts } = await import("../lib/ops-monitoring");
+      return await listOpsAlerts({ tier: input.tier, status: input.status, limit: input.limit ?? 30 });
+    }
+
+    case "get_process_flow": {
+      const { getProcessFlow } = await import("../lib/ops-monitoring");
+      return await getProcessFlow(input.line_id ?? 1);
+    }
+
+    case "auto_escalate_alerts": {
+      const { autoEscalateOpenAlerts } = await import("../lib/ops-monitoring");
+      return await autoEscalateOpenAlerts();
+    }
+
+    case "sync_drift_to_ops": {
+      const { syncDriftAlertsToOps } = await import("../lib/ops-monitoring");
+      return await syncDriftAlertsToOps();
     }
 
     default:

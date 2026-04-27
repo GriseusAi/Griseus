@@ -216,6 +216,29 @@ export const PALANTIR_ATOM_OBJECT_TYPES: Record<string, ObjectTypeSpec> = {
     ],
   },
 
+  // --- Operations Alerts (FAZ 4) ---
+  OpsAlert: {
+    rid: ATOM("OpsAlert"), apiName: "OpsAlert",
+    displayName: "Ops Alarmı", pluralDisplayName: "Ops Alarmları",
+    primaryKey: "id", titleProperty: "title", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "◮", color: "#f59e0b", description: "Tiered operations alarm — operator → supervisor → plant_manager escalation" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "tier", displayName: "Tier", type: "Enum",
+        enumValues: ["operator", "supervisor", "plant_manager"], visibility: "PROMINENT" },
+      { apiName: "severity", displayName: "Severity", type: "Enum",
+        enumValues: ["info", "warning", "critical"], visibility: "PROMINENT" },
+      { apiName: "source", displayName: "Kaynak", type: "Enum",
+        enumValues: ["twin_health", "rules_engine", "pipeline", "impact", "manual"], visibility: "PROMINENT" },
+      { apiName: "title", displayName: "Başlık", type: "String", visibility: "PROMINENT" },
+      { apiName: "message", displayName: "Mesaj", type: "String", visibility: "NORMAL" },
+      { apiName: "status", displayName: "Durum", type: "Enum",
+        enumValues: ["open", "acknowledged", "resolved", "escalated"], visibility: "PROMINENT" },
+      { apiName: "escalationCount", displayName: "Escalation sayısı", type: "Integer", visibility: "NORMAL" },
+      { apiName: "raisedAt", displayName: "Açılış", type: "Timestamp", visibility: "NORMAL" },
+    ],
+  },
+
   // --- Decision (FAZ 3) ---
   Decision: {
     rid: ATOM("Decision"), apiName: "Decision",

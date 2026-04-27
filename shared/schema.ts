@@ -1087,3 +1087,45 @@ export const decisions = pgTable("decisions", {
   updatedAt: timestamp("updated_at").defaultNow(),
 });
 export type Decision = typeof decisions.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// FAZ 4 — TIERED OPERATIONS MONITORING (Vertex pattern)
+// Unified alert table with tier escalation:
+//   operator (30 min) → supervisor (2 hours) → plant_manager
+// Sources: twin_health, rules_engine, pipeline, impact_engine, manual
+// ═══════════════════════════════════════════════════════════
+
+export const opsAlerts = pgTable("ops_alerts", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  // Source linkage (where did this alert come from)
+  source: text("source").notNull(),  // twin_health | rules_engine | pipeline | impact | manual
+  sourceAlertId: integer("source_alert_id"),  // soft FK to drift_alerts.id, validation_alerts.id, etc.
+  // Entity reference
+  entityType: text("entity_type"),  // line | machine | product | run | shift
+  entityId: text("entity_id"),
+  metric: text("metric"),
+  // Tier + content
+  tier: text("tier").notNull().default("operator"),  // operator | supervisor | plant_manager
+  severity: text("severity").notNull(),  // info | warning | critical
+  title: text("title").notNull(),
+  message: text("message"),
+  recommendedAction: text("recommended_action"),
+  // Lifecycle
+  status: text("status").notNull().default("open"),  // open | acknowledged | resolved | escalated
+  raisedAt: timestamp("raised_at").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+  acknowledgedBy: text("acknowledged_by"),
+  resolvedAt: timestamp("resolved_at"),
+  resolvedBy: text("resolved_by"),
+  resolutionNotes: text("resolution_notes"),
+  // Escalation
+  escalationCount: integer("escalation_count").notNull().default(0),
+  lastEscalatedAt: timestamp("last_escalated_at"),
+  escalationHistory: jsonb("escalation_history").$type<Array<{
+    fromTier: string; toTier: string; at: string; reason: string;
+  }>>().default([]),
+  // Tagging
+  tags: jsonb("tags").$type<string[]>().default([]),
+});
+export type OpsAlert = typeof opsAlerts.$inferSelect;
