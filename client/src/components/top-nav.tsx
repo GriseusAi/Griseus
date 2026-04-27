@@ -134,6 +134,12 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
     }
     if (path === "/ontology") return location === "/ontology";
     if (path === "/lineage") return location === "/lineage";
+    if (path === "/pipeline") return location.startsWith("/pipeline");
+    if (path === "/twin-health") return location.startsWith("/twin-health");
+    if (path === "/loop") return location.startsWith("/loop");
+    if (path === "/operations") return location.startsWith("/operations");
+    if (path === "/sddi") return location.startsWith("/sddi");
+    if (path === "/workshop") return location.startsWith("/workshop");
     return location === path;
   };
 
