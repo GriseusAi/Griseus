@@ -1129,3 +1129,80 @@ export const opsAlerts = pgTable("ops_alerts", {
   tags: jsonb("tags").$type<string[]>().default([]),
 });
 export type OpsAlert = typeof opsAlerts.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// FAZ 5 — SDDI (Software-Defined Data Integration) + Workshop
+// External source connectors with bidirectional sync + no-code widget builder.
+// ═══════════════════════════════════════════════════════════
+
+export const connectors = pgTable("connectors", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  name: text("name").notNull(),
+  kind: text("kind").notNull(),  // netsis | mes | iot_mqtt | excel | csv | rest_api
+  direction: text("direction").notNull().default("read_only"),  // read_only | write_only | bidirectional
+  config: jsonb("config").$type<Record<string, any>>().default({}),  // connection details (do NOT store secrets)
+  targetTable: text("target_table"),  // backing ontology table to sync into
+  schedule: text("schedule"),  // cron expression or 'manual'
+  enabled: boolean("enabled").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type Connector = typeof connectors.$inferSelect;
+
+export const connectorRuns = pgTable("connector_runs", {
+  id: serial("id").primaryKey(),
+  connectorId: integer("connector_id").references(() => connectors.id).notNull(),
+  trigger: text("trigger").notNull(),  // scheduled | manual | webhook
+  status: text("status").notNull().default("running"),  // running | success | failed
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  durationMs: integer("duration_ms"),
+  rowsRead: integer("rows_read").default(0),
+  rowsWritten: integer("rows_written").default(0),
+  rowsRejected: integer("rows_rejected").default(0),
+  errorMessage: text("error_message"),
+  summary: jsonb("summary").default({}),
+});
+export type ConnectorRun = typeof connectorRuns.$inferSelect;
+
+export const fieldMappings = pgTable("field_mappings", {
+  id: serial("id").primaryKey(),
+  connectorId: integer("connector_id").references(() => connectors.id).notNull(),
+  sourceField: text("source_field").notNull(),  // raw column header from source
+  targetField: text("target_field").notNull(),  // ontology field name
+  confidence: numeric("confidence"),  // 0-1 (auto-mapping confidence)
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  transform: text("transform"),  // optional transform function name
+});
+export type FieldMapping = typeof fieldMappings.$inferSelect;
+
+export const workspaces = pgTable("workspaces", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  name: text("name").notNull(),
+  description: text("description"),
+  layout: jsonb("layout").$type<Array<{ widgetId: number; x: number; y: number; w: number; h: number }>>().default([]),
+  ownerId: text("owner_id"),
+  visibility: text("visibility").default("private"),  // private | shared | public
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type Workspace = typeof workspaces.$inferSelect;
+
+export const workspaceWidgets = pgTable("workspace_widgets", {
+  id: serial("id").primaryKey(),
+  workspaceId: integer("workspace_id").references(() => workspaces.id).notNull(),
+  type: text("type").notNull(),  // chart | table | kpi | pipeline_runner | text
+  title: text("title").notNull(),
+  config: jsonb("config").$type<Record<string, any>>().default({}),  // type-specific config
+  dataSource: jsonb("data_source").$type<{
+    kind: "ontology_query" | "api_endpoint" | "static";
+    query?: string;
+    endpoint?: string;
+    params?: Record<string, any>;
+  }>(),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type WorkspaceWidget = typeof workspaceWidgets.$inferSelect;

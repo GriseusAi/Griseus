@@ -656,6 +656,59 @@ export const FALLBACK_TOOLS: Anthropic.Tool[] = [
     description: "Twin health drift_alerts'lerini ops_alerts'e mirror et (operator tier'da başlatır).",
     input_schema: { type: "object" as const, properties: {}, required: [] },
   },
+  // FAZ 5 — SDDI + Workshop
+  {
+    name: "list_connectors",
+    description: "Tanımlı SDDI connector'larını listele (Netsis/MES/IoT/Excel/CSV/REST).",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "run_connector",
+    description: "Belirli bir connector'ı manuel tetikle. Run history'e kayıt yapar.",
+    input_schema: { type: "object" as const, properties: { connector_id: { type: "number" } }, required: ["connector_id"] },
+  },
+  {
+    name: "suggest_field_mappings",
+    description: "Source kolon header listesini hedef tablonun şemasıyla otomatik eşleştir (fuzzy + alias dictionary).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        connector_id: { type: "number" },
+        source_fields: { type: "array", items: { type: "string" } },
+        target_table: { type: "string" },
+      },
+      required: ["connector_id", "source_fields"],
+    },
+  },
+  {
+    name: "list_workspaces",
+    description: "Workshop workspace'lerini listele.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "create_workspace",
+    description: "Yeni dashboard workspace yarat.",
+    input_schema: {
+      type: "object" as const,
+      properties: { name: { type: "string" }, description: { type: "string" } },
+      required: ["name"],
+    },
+  },
+  {
+    name: "add_widget",
+    description: "Workspace'e widget ekle (chart/table/kpi/pipeline_runner/text).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        workspace_id: { type: "number" },
+        type: { type: "string", enum: ["chart", "table", "kpi", "pipeline_runner", "text"] },
+        title: { type: "string" },
+        config: { type: "object" },
+        data_source: { type: "object" },
+      },
+      required: ["workspace_id", "type", "title"],
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1854,6 +1907,49 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
     case "sync_drift_to_ops": {
       const { syncDriftAlertsToOps } = await import("../lib/ops-monitoring");
       return await syncDriftAlertsToOps();
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FAZ 5 — SDDI + Workshop
+    // ─────────────────────────────────────────────────────────
+
+    case "list_connectors": {
+      const { listConnectors } = await import("../lib/sddi-connector");
+      return await listConnectors();
+    }
+
+    case "run_connector": {
+      const { runConnector } = await import("../lib/sddi-connector");
+      const id = await runConnector(input.connector_id, "manual");
+      return { runId: id };
+    }
+
+    case "suggest_field_mappings": {
+      const { suggestFieldMappings } = await import("../lib/sddi-connector");
+      return await suggestFieldMappings(input.connector_id, input.source_fields ?? [], input.target_table ?? "products");
+    }
+
+    case "list_workspaces": {
+      const { listWorkspaces } = await import("../lib/workshop");
+      return await listWorkspaces();
+    }
+
+    case "create_workspace": {
+      const { createWorkspace } = await import("../lib/workshop");
+      const id = await createWorkspace({ name: input.name, description: input.description });
+      return { workspaceId: id };
+    }
+
+    case "add_widget": {
+      const { createWidget } = await import("../lib/workshop");
+      const id = await createWidget({
+        workspaceId: input.workspace_id,
+        type: input.type,
+        title: input.title,
+        config: input.config ?? {},
+        dataSource: input.data_source ?? { kind: "ontology_query" },
+      });
+      return { widgetId: id };
     }
 
     default:

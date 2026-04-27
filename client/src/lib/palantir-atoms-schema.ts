@@ -216,6 +216,50 @@ export const PALANTIR_ATOM_OBJECT_TYPES: Record<string, ObjectTypeSpec> = {
     ],
   },
 
+  // --- SDDI + Workshop (FAZ 5) ---
+  Connector: {
+    rid: ATOM("Connector"), apiName: "Connector",
+    displayName: "Connector", pluralDisplayName: "Connector'lar",
+    primaryKey: "id", titleProperty: "name", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "⇆", color: "#22c55e", description: "External source bağlantısı (Netsis/MES/IoT/Excel/CSV/REST)" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "name", displayName: "Ad", type: "String", visibility: "PROMINENT" },
+      { apiName: "kind", displayName: "Tip", type: "Enum",
+        enumValues: ["netsis", "mes", "iot_mqtt", "excel", "csv", "rest_api"], visibility: "PROMINENT" },
+      { apiName: "direction", displayName: "Yön", type: "Enum",
+        enumValues: ["read_only", "write_only", "bidirectional"], visibility: "PROMINENT" },
+      { apiName: "targetTable", displayName: "Hedef tablo", type: "String", visibility: "NORMAL" },
+      { apiName: "schedule", displayName: "Schedule", type: "String", visibility: "NORMAL" },
+      { apiName: "enabled", displayName: "Aktif", type: "Boolean", visibility: "NORMAL" },
+    ],
+  },
+  Workspace: {
+    rid: ATOM("Workspace"), apiName: "Workspace",
+    displayName: "Workspace", pluralDisplayName: "Workspace'ler",
+    primaryKey: "id", titleProperty: "name", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "▣", color: "#ec4899", description: "No-code dashboard — widget koleksiyonu" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "name", displayName: "Ad", type: "String", visibility: "PROMINENT" },
+      { apiName: "description", displayName: "Açıklama", type: "String", visibility: "NORMAL" },
+      { apiName: "visibility", displayName: "Görünürlük", type: "Enum",
+        enumValues: ["private", "shared", "public"], visibility: "PROMINENT" },
+    ],
+  },
+  Widget: {
+    rid: ATOM("Widget"), apiName: "Widget",
+    displayName: "Widget", pluralDisplayName: "Widgets",
+    primaryKey: "id", titleProperty: "title", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "▦", color: "#a855f7", description: "Dashboard widget (KPI/Tablo/Chart/Pipeline/Text)" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "type", displayName: "Tip", type: "Enum",
+        enumValues: ["chart", "table", "kpi", "pipeline_runner", "text"], visibility: "PROMINENT" },
+      { apiName: "title", displayName: "Başlık", type: "String", visibility: "PROMINENT" },
+    ],
+  },
+
   // --- Operations Alerts (FAZ 4) ---
   OpsAlert: {
     rid: ATOM("OpsAlert"), apiName: "OpsAlert",
