@@ -216,6 +216,47 @@ export const PALANTIR_ATOM_OBJECT_TYPES: Record<string, ObjectTypeSpec> = {
     ],
   },
 
+  // --- Digital Twin Health (FAZ 2) ---
+  TwinHealthMetric: {
+    rid: ATOM("TwinHealthMetric"), apiName: "TwinHealthMetric",
+    displayName: "Twin Health Metric", pluralDisplayName: "Twin Health Metric'leri",
+    primaryKey: "id", titleProperty: "metric", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "≈", color: "#14b8a6", description: "Planned vs actual variance — digital twin divergence" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "entityType", displayName: "Entity tipi", type: "Enum", enumValues: ["line", "machine", "product"], visibility: "PROMINENT" },
+      { apiName: "entityId", displayName: "Entity ID", type: "String", visibility: "PROMINENT" },
+      { apiName: "metric", displayName: "Metric", type: "Enum",
+        enumValues: ["throughput", "scrap", "cycle_time", "energy", "stock_burn"], visibility: "PROMINENT" },
+      { apiName: "plannedValue", displayName: "Planlanan", type: "Double", visibility: "PROMINENT" },
+      { apiName: "actualValue", displayName: "Gerçek", type: "Double", visibility: "PROMINENT" },
+      { apiName: "variancePercent", displayName: "Sapma %", type: "Percentage", unit: "%", visibility: "PROMINENT" },
+      { apiName: "trend7d", displayName: "7-gün trend", type: "Percentage", unit: "%", visibility: "NORMAL" },
+      { apiName: "trend30d", displayName: "30-gün trend", type: "Percentage", unit: "%", visibility: "NORMAL" },
+      { apiName: "driftStatus", displayName: "Drift", type: "Enum",
+        enumValues: ["ok", "warning", "critical"], visibility: "PROMINENT" },
+      { apiName: "consecutiveDriftDays", displayName: "Üst üste gün", type: "Integer", unit: "gün", visibility: "NORMAL" },
+    ],
+  },
+  DriftAlert: {
+    rid: ATOM("DriftAlert"), apiName: "DriftAlert",
+    displayName: "Drift Alarmı", pluralDisplayName: "Drift Alarmları",
+    primaryKey: "id", titleProperty: "message", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "⟂", color: "#ef4444", description: "3+ gün üst üste >%15 sapma alarmı" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "severity", displayName: "Severity", type: "Enum",
+        enumValues: ["warning", "critical"], visibility: "PROMINENT" },
+      { apiName: "metric", displayName: "Metric", type: "String", visibility: "PROMINENT" },
+      { apiName: "variancePercent", displayName: "Sapma %", type: "Percentage", unit: "%", visibility: "PROMINENT" },
+      { apiName: "consecutiveDriftDays", displayName: "Üst üste gün", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "message", displayName: "Mesaj", type: "String", visibility: "NORMAL" },
+      { apiName: "recommendedAction", displayName: "Önerilen aksiyon", type: "String", visibility: "NORMAL" },
+      { apiName: "status", displayName: "Durum", type: "Enum",
+        enumValues: ["open", "acknowledged", "resolved"], visibility: "PROMINENT" },
+    ],
+  },
+
   // --- Simulation pipeline (FAZ 1) ---
   SimulationPipelineRun: {
     rid: ATOM("SimulationPipelineRun"), apiName: "SimulationPipelineRun",

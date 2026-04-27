@@ -989,3 +989,55 @@ export const simulationPipelineRuns = pgTable("simulation_pipeline_runs", {
   errorMessage: text("error_message"),
 });
 export type SimulationPipelineRun = typeof simulationPipelineRuns.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// FAZ 2 — DIGITAL TWIN HEALTH (Vertex pattern)
+// Planned (engineering model) vs Actual (sensor/system) divergence.
+// Drift detection: >15% variance for 3+ consecutive days = alert.
+// ═══════════════════════════════════════════════════════════
+
+export const digitalTwinDivergence = pgTable("digital_twin_divergence", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  // Entity reference (polymorphic)
+  entityType: text("entity_type").notNull(),  // line | machine | product | run
+  entityId: text("entity_id").notNull(),  // stringified id (line:1, machine:5, sku:GSS20P)
+  // Metric
+  metric: text("metric").notNull(),  // throughput | scrap | cycle_time | energy | stock_burn
+  // Time bucket
+  bucketDate: timestamp("bucket_date").notNull(),  // day start (UTC)
+  // Values
+  plannedValue: numeric("planned_value"),
+  actualValue: numeric("actual_value"),
+  unit: text("unit"),  // adet | sn | kWh | %
+  variancePercent: numeric("variance_percent"),  // (actual - planned) / planned * 100
+  // Trend
+  trend7d: numeric("trend_7d"),  // 7-day avg variance %
+  trend30d: numeric("trend_30d"),  // 30-day avg variance %
+  // Drift status
+  driftStatus: text("drift_status").default("ok"),  // ok | warning | critical
+  consecutiveDriftDays: integer("consecutive_drift_days").default(0),
+  // Provenance
+  computedAt: timestamp("computed_at").defaultNow(),
+  sourceRunIds: jsonb("source_run_ids").$type<number[]>().default([]),
+  notes: text("notes"),
+});
+export type DigitalTwinDivergence = typeof digitalTwinDivergence.$inferSelect;
+
+export const driftAlerts = pgTable("drift_alerts", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  entityType: text("entity_type").notNull(),
+  entityId: text("entity_id").notNull(),
+  metric: text("metric").notNull(),
+  severity: text("severity").notNull(),  // warning | critical
+  variancePercent: numeric("variance_percent").notNull(),
+  consecutiveDriftDays: integer("consecutive_drift_days").notNull(),
+  message: text("message"),
+  recommendedAction: text("recommended_action"),
+  status: text("status").default("open"),  // open | acknowledged | resolved
+  raisedAt: timestamp("raised_at").defaultNow().notNull(),
+  resolvedAt: timestamp("resolved_at"),
+  acknowledgedBy: text("acknowledged_by"),
+});
+export type DriftAlert = typeof driftAlerts.$inferSelect;

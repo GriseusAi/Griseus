@@ -495,6 +495,36 @@ export const FALLBACK_TOOLS: Anthropic.Tool[] = [
     description: "Şu an çalışan (status=running) üretim koşularını listele.",
     input_schema: { type: "object" as const, properties: {}, required: [] },
   },
+  // FAZ 2 — Digital Twin Health
+  {
+    name: "get_twin_health_dashboard",
+    description: "Digital Twin Health panosu: planned (mühendislik modeli) vs actual (sensor) divergence. Metric ve entityType filtresi opsiyonel. Variance %, 7/30 gün trend, drift status (ok/warning/critical) döner.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        metric: { type: "string", enum: ["throughput", "scrap", "cycle_time", "energy", "stock_burn"] },
+        entity_type: { type: "string", enum: ["line", "machine", "product"] },
+        days: { type: "number", description: "Lookback gün (varsayılan 30, max 90)" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_drift_alerts",
+    description: "Aktif drift alarmları (3+ gün üst üste >%15 sapma). Hangi entity, hangi metric, kaç gün, önerilen aksiyon.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "compute_twin_variance",
+    description: "Belirli bir günün variance compute'unu tetikle (default: dün). Throughput/scrap/cycle/energy/stock_burn metric'lerini hesaplar ve drift alarmları üretir.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        day: { type: "string", description: "ISO tarih (YYYY-MM-DD), default: dün" },
+      },
+      required: [],
+    },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1537,6 +1567,53 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
       const { eq } = await import("drizzle-orm");
       const rows = await db.select().from(productionRuns).where(eq(productionRuns.status, "running"));
       return rows;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FAZ 2 — Digital Twin Health
+    // ─────────────────────────────────────────────────────────
+
+    case "get_twin_health_dashboard": {
+      const { getDashboard } = await import("../lib/twin-health");
+      const data = await getDashboard({
+        metric: input.metric, entityType: input.entity_type, days: input.days ?? 30,
+      });
+      return {
+        summary: data.summary,
+        recentRows: data.rows.slice(0, 30).map(r => ({
+          entity: `${r.entityType}:${r.entityId}`,
+          metric: r.metric,
+          date: r.bucketDate?.toISOString().slice(0, 10),
+          planned: r.plannedValue, actual: r.actualValue,
+          variancePercent: r.variancePercent,
+          trend7d: r.trend7d, trend30d: r.trend30d,
+          driftStatus: r.driftStatus,
+          consecutive: r.consecutiveDriftDays,
+        })),
+      };
+    }
+
+    case "list_drift_alerts": {
+      const { getOpenAlerts } = await import("../lib/twin-health");
+      const alerts = await getOpenAlerts();
+      return alerts.map(a => ({
+        id: a.id,
+        entity: `${a.entityType}:${a.entityId}`,
+        metric: a.metric,
+        severity: a.severity,
+        variancePercent: a.variancePercent,
+        consecutiveDays: a.consecutiveDriftDays,
+        message: a.message,
+        recommendedAction: a.recommendedAction,
+        raisedAt: a.raisedAt,
+      }));
+    }
+
+    case "compute_twin_variance": {
+      const { computeDailyVariance } = await import("../lib/twin-health");
+      const day = input.day ? new Date(input.day) : undefined;
+      const result = await computeDailyVariance({ day });
+      return result;
     }
 
     default:

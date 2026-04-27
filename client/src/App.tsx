@@ -37,6 +37,7 @@ import BhOntologyPage from "@/pages/bh-ontology";
 import OntologySimulatePage from "@/pages/ontology-simulate";
 import VeriYukle from "@/pages/veri-yukle";
 import PipelineRunsPage from "@/pages/pipeline-runs";
+import TwinHealthPage from "@/pages/twin-health";
 
 // Global agent panel context
 const AgentPanelContext = createContext<{
@@ -94,6 +95,7 @@ function App() {
           <Route path="/ontology" component={BhOntologyPage} />
           <Route path="/ontology/simulate" component={OntologySimulatePage} />
           <Route path="/pipeline" component={PipelineRunsPage} />
+          <Route path="/twin-health" component={TwinHealthPage} />
           <Route path="/veri-yukle" component={VeriYukle} />
           <Route path="/login" component={LoginPage} />
           <Route path="/admin" component={AdminPage} />
