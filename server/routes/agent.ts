@@ -525,6 +525,93 @@ export const FALLBACK_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // FAZ 3 — Decision Loop (scenario → decision → opportunity → work order → outcome)
+  {
+    name: "create_decision",
+    description: "Yapılandırılmış karar kaydı oluştur. Rationale (gerekçe), alternatives_considered (denenen seçenekler), predicted_value (TL), confidence (0-1) zorunlu. status='proposed' başlar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        decision_type: { type: "string", enum: ["purchase", "production_change", "maintenance", "scrap_reduction", "scenario_apply", "manual"] },
+        title: { type: "string" },
+        rationale: { type: "string", description: "Karar gerekçesi (neden bu seçim)" },
+        alternatives_considered: { type: "array", description: "[{title, predictedValue, predictedCost, reason_rejected}]" },
+        predicted_value: { type: "number", description: "TL cinsinden beklenen değer" },
+        confidence: { type: "number", description: "0-1 arası güven skoru" },
+        source_engine: { type: "string" },
+        source_scenario_id: { type: "number" },
+        source_pipeline_run_id: { type: "number" },
+        deadline: { type: "string", description: "ISO datetime" },
+      },
+      required: ["decision_type", "title", "rationale"],
+    },
+  },
+  {
+    name: "list_decisions",
+    description: "Decision kayıtlarını listele (status filter opsiyonel: proposed | approved | rejected | expired | superseded).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        status: { type: "string" },
+        limit: { type: "number" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "promote_to_opportunity",
+    description: "Decision'ı veya scenario'yu opportunity'ye dönüştür (kanban'a alır).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        decision_id: { type: "number" },
+        scenario_id: { type: "number" },
+        title: { type: "string" },
+        description: { type: "string" },
+        category: { type: "string", enum: ["throughput", "scrap_reduction", "energy", "inventory", "quality"] },
+        projected_value: { type: "number" },
+        priority: { type: "string", enum: ["low", "medium", "high", "critical"] },
+        deadline: { type: "string" },
+      },
+      required: ["title", "category"],
+    },
+  },
+  {
+    name: "promote_to_work_order",
+    description: "Opportunity'yi work order'a dönüştür (icra emri).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        opportunity_id: { type: "number" },
+        type: { type: "string", enum: ["production", "maintenance", "purchase", "quality", "setup_change"] },
+        description: { type: "string" },
+        assignee_id: { type: "number" },
+        target_machine_id: { type: "number" },
+        target_line_id: { type: "number" },
+        due_date: { type: "string" },
+      },
+      required: ["opportunity_id"],
+    },
+  },
+  {
+    name: "complete_work_order",
+    description: "Work order'ı tamamlandı olarak işaretle. actual_value verilirse bağlı decision'ın outcome verification otomatik tetiklenir (predicted vs actual karşılaştırılır).",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        work_order_id: { type: "number" },
+        actual_value: { type: "number", description: "Gerçek elde edilen değer (TL)" },
+        completion_proof: { type: "string" },
+        notes: { type: "string" },
+      },
+      required: ["work_order_id"],
+    },
+  },
+  {
+    name: "get_loop_report",
+    description: "Decision loop raporu: toplam decisions, status dağılımı, outcome verification, predicted vs actual TL, realization rate %, son verified örnekleri.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1614,6 +1701,85 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
       const day = input.day ? new Date(input.day) : undefined;
       const result = await computeDailyVariance({ day });
       return result;
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FAZ 3 — Decision Loop
+    // ─────────────────────────────────────────────────────────
+
+    case "create_decision": {
+      const { createDecision } = await import("../lib/decision-loop");
+      const id = await createDecision({
+        decisionType: input.decision_type,
+        title: input.title,
+        rationale: input.rationale,
+        alternativesConsidered: input.alternatives_considered ?? [],
+        predictedValue: input.predicted_value,
+        confidence: input.confidence,
+        sourceEngine: input.source_engine ?? "agent",
+        sourceScenarioId: input.source_scenario_id,
+        sourcePipelineRunId: input.source_pipeline_run_id,
+        proposedBy: "agent",
+        deadline: input.deadline,
+      });
+      return { decisionId: id, status: "proposed" };
+    }
+
+    case "list_decisions": {
+      const { listDecisions } = await import("../lib/decision-loop");
+      const rows = await listDecisions({ status: input.status, limit: input.limit ?? 20 });
+      return rows.map(d => ({
+        id: d.id, title: d.title, type: d.decisionType,
+        status: d.status, outcomeStatus: d.outcomeStatus,
+        rationale: d.rationale,
+        predicted: d.predictedValue, actual: d.actualValue,
+        deadline: d.deadline, createdAt: d.createdAt,
+      }));
+    }
+
+    case "promote_to_opportunity": {
+      const { createOpportunityFromSource } = await import("../lib/decision-loop");
+      const id = await createOpportunityFromSource({
+        decisionId: input.decision_id,
+        scenarioId: input.scenario_id,
+        title: input.title,
+        description: input.description,
+        category: input.category,
+        projectedValue: input.projected_value,
+        priority: input.priority ?? "medium",
+        deadline: input.deadline,
+      });
+      return { opportunityId: id, status: "identified" };
+    }
+
+    case "promote_to_work_order": {
+      const { createWorkOrderFromOpportunity } = await import("../lib/decision-loop");
+      const id = await createWorkOrderFromOpportunity({
+        opportunityId: input.opportunity_id,
+        type: input.type ?? "production",
+        description: input.description,
+        assigneeId: input.assignee_id,
+        targetMachineId: input.target_machine_id,
+        targetLineId: input.target_line_id,
+        dueDate: input.due_date,
+      });
+      return { workOrderId: id, status: "open" };
+    }
+
+    case "complete_work_order": {
+      const { completeWorkOrder } = await import("../lib/decision-loop");
+      const result = await completeWorkOrder({
+        workOrderId: input.work_order_id,
+        actualValue: input.actual_value,
+        completionProof: input.completion_proof,
+        notes: input.notes,
+      });
+      return result;
+    }
+
+    case "get_loop_report": {
+      const { getLoopReport } = await import("../lib/decision-loop");
+      return await getLoopReport();
     }
 
     default:

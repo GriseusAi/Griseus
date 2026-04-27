@@ -903,10 +903,13 @@ export const opportunities = pgTable("opportunities", {
   status: text("status").default("identified"),  // identified | approved | in_progress | completed | verified | rejected
   identifiedAt: timestamp("identified_at").defaultNow(),
   deadline: timestamp("deadline"),
+  linkedDecisionId: integer("linked_decision_id"),  // FAZ 3: closed-loop linkage
 });
 export type Opportunity = typeof opportunities.$inferSelect;
 
-export const workOrders = pgTable("work_orders", {
+// Backing table renamed: legacy 'work_orders' (project/trade domain) coexists.
+// Palantir-style namespacing — apiName "WorkOrder" stays, physical table prefixed.
+export const workOrders = pgTable("griseus_work_orders", {
   id: serial("id").primaryKey(),
   opportunityId: integer("opportunity_id").references(() => opportunities.id),
   code: text("code").notNull(),
@@ -1041,3 +1044,46 @@ export const driftAlerts = pgTable("drift_alerts", {
   acknowledgedBy: text("acknowledged_by"),
 });
 export type DriftAlert = typeof driftAlerts.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// FAZ 3 — DECISION + OPPORTUNITY + WORK ORDER CLOSED LOOP
+// Palantir Foundry decision capture: rationale + alternatives + predicted outcome
+// + linkage to scenario/engine source. Closed loop: scenario→opportunity→work_order→outcome.
+// ═══════════════════════════════════════════════════════════
+
+export const decisions = pgTable("decisions", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  // What kind of decision
+  decisionType: text("decision_type").notNull(),  // purchase | production_change | maintenance | scrap_reduction | scenario_apply | manual
+  title: text("title").notNull(),
+  rationale: text("rationale").notNull(),  // why this decision (free text)
+  alternativesConsidered: jsonb("alternatives_considered").$type<Array<{
+    title: string; predictedValue?: number; predictedCost?: number; reason_rejected?: string;
+  }>>().default([]),
+  // Predicted outcome
+  predictedValue: numeric("predicted_value"),  // TL
+  predictedMetricImpact: jsonb("predicted_metric_impact").$type<Record<string, number>>(),
+  confidence: numeric("confidence"),  // 0-1
+  // Linkage
+  sourceScenarioId: integer("source_scenario_id"),  // soft ref scenarios
+  sourcePipelineRunId: integer("source_pipeline_run_id"),  // soft ref simulation_pipeline_runs
+  sourceEngine: text("source_engine"),  // dse | whatif | impact | cpe | ole | manual | agent
+  linkedOpportunityId: integer("linked_opportunity_id"),  // soft ref opportunities
+  // Lifecycle
+  status: text("status").notNull().default("proposed"),  // proposed | approved | rejected | expired | superseded
+  deadline: timestamp("deadline"),
+  // Provenance
+  proposedBy: text("proposed_by").default("agent"),  // agent | user_id | engine_name
+  approvedBy: text("approved_by"),
+  approvedAt: timestamp("approved_at"),
+  // Outcome verification
+  actualValue: numeric("actual_value"),
+  outcomeStatus: text("outcome_status"),  // pending | verified_correct | verified_partial | verified_wrong
+  outcomeVerifiedAt: timestamp("outcome_verified_at"),
+  outcomeNotes: text("outcome_notes"),
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export type Decision = typeof decisions.$inferSelect;

@@ -216,6 +216,29 @@ export const PALANTIR_ATOM_OBJECT_TYPES: Record<string, ObjectTypeSpec> = {
     ],
   },
 
+  // --- Decision (FAZ 3) ---
+  Decision: {
+    rid: ATOM("Decision"), apiName: "Decision",
+    displayName: "Decision", pluralDisplayName: "Decisions",
+    primaryKey: "id", titleProperty: "title", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "◊", color: "#8b5cf6", description: "Yapılandırılmış karar kaydı: rationale + alternatives + predicted outcome" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "title", displayName: "Başlık", type: "String", visibility: "PROMINENT" },
+      { apiName: "decisionType", displayName: "Tip", type: "Enum",
+        enumValues: ["purchase", "production_change", "maintenance", "scrap_reduction", "scenario_apply", "manual"], visibility: "PROMINENT" },
+      { apiName: "rationale", displayName: "Gerekçe", type: "String", visibility: "PROMINENT" },
+      { apiName: "predictedValue", displayName: "Tahmini değer", type: "Money", unit: "TL", visibility: "PROMINENT" },
+      { apiName: "confidence", displayName: "Güven", type: "Percentage", unit: "%", visibility: "NORMAL" },
+      { apiName: "status", displayName: "Durum", type: "Enum",
+        enumValues: ["proposed", "approved", "rejected", "expired", "superseded"], visibility: "PROMINENT" },
+      { apiName: "outcomeStatus", displayName: "Sonuç", type: "Enum",
+        enumValues: ["pending", "verified_correct", "verified_partial", "verified_wrong"], visibility: "PROMINENT" },
+      { apiName: "actualValue", displayName: "Gerçek değer", type: "Money", unit: "TL", visibility: "NORMAL" },
+      { apiName: "deadline", displayName: "Termin", type: "Timestamp", visibility: "NORMAL" },
+    ],
+  },
+
   // --- Digital Twin Health (FAZ 2) ---
   TwinHealthMetric: {
     rid: ATOM("TwinHealthMetric"), apiName: "TwinHealthMetric",

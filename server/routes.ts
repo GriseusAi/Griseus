@@ -27,6 +27,7 @@ import ontologyTimeseriesRouter from "./routes/ontology-timeseries";
 import orchestratorRouter from "./routes/orchestrator";
 import simulationPipelineRouter from "./routes/simulation-pipeline";
 import twinHealthRouter from "./routes/twin-health";
+import decisionLoopRouter from "./routes/decision-loop";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
@@ -59,6 +60,7 @@ export async function registerRoutes(
   app.use("/api/orchestrator", orchestratorRouter);
   app.use("/api/pipeline", simulationPipelineRouter);
   app.use("/api/twin-health", twinHealthRouter);
+  app.use("/api/loop", decisionLoopRouter);
 
   // Auto-seed ontology on first boot (idempotent)
   seedOntology().catch(err => console.error("[ontology] Seed error:", err.message));
