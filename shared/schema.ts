@@ -725,3 +725,226 @@ export interface OntologyProperty {
     enum?: string[];
   };
 }
+
+// ═══════════════════════════════════════════════════════════
+// PALANTIR-LEVEL OPERATIONAL ATOMS — FAZ 0 (2026-04-27)
+// Vertex pattern: asset hierarchy + time atom + quality + supplier + decision loop
+// Reference: /Users/gurkanduruak/Desktop/GRISEUS_PALANTIR_PLAYBOOK.md
+// Existing productionLines reused for "Line" object type
+// ═══════════════════════════════════════════════════════════
+
+// --- Asset hierarchy (Plant > Line > WorkCenter > Machine > Operator) ---
+
+export const plants = pgTable("plants", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  city: text("city"),
+  address: text("address"),
+  status: text("status").default("active"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type Plant = typeof plants.$inferSelect;
+
+export const workCenters = pgTable("work_centers", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id").references(() => productionLines.id),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  stationOrder: integer("station_order"),
+  capacityPerHour: numeric("capacity_per_hour"),
+  status: text("status").default("active"),
+});
+export type WorkCenter = typeof workCenters.$inferSelect;
+
+export const machines = pgTable("machines", {
+  id: serial("id").primaryKey(),
+  workCenterId: integer("work_center_id").references(() => workCenters.id),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  type: text("type"),
+  manufacturer: text("manufacturer"),
+  installedAt: timestamp("installed_at"),
+  expectedCycleTimeSec: numeric("expected_cycle_time_sec"),
+  status: text("status").default("active"),
+});
+export type Machine = typeof machines.$inferSelect;
+
+export const operators = pgTable("operators", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  employeeCode: text("employee_code").notNull(),
+  name: text("name").notNull(),
+  primaryLineId: integer("primary_line_id").references(() => productionLines.id),
+  skill: text("skill"),
+  certifications: jsonb("certifications").$type<string[]>().default([]),
+  status: text("status").default("active"),
+});
+export type Operator = typeof operators.$inferSelect;
+
+// --- Time atoms (Shift > Batch > ProductionRun + Downtime) ---
+
+export const shifts = pgTable("shifts", {
+  id: serial("id").primaryKey(),
+  lineId: integer("line_id").references(() => productionLines.id).notNull(),
+  shiftCode: text("shift_code").notNull(),  // morning | afternoon | night
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at"),
+  supervisorId: integer("supervisor_id").references(() => operators.id),
+  notes: text("notes"),
+});
+export type Shift = typeof shifts.$inferSelect;
+
+export const batches = pgTable("batches", {
+  id: serial("id").primaryKey(),
+  productId: integer("product_id").references(() => products.id).notNull(),
+  batchCode: text("batch_code").notNull(),
+  plannedQuantity: integer("planned_quantity").notNull(),
+  status: text("status").default("planned"),  // planned | in_progress | completed | cancelled
+  scheduledStart: timestamp("scheduled_start"),
+  scheduledEnd: timestamp("scheduled_end"),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type Batch = typeof batches.$inferSelect;
+
+export const productionRuns = pgTable("production_runs", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").references(() => batches.id).notNull(),
+  machineId: integer("machine_id").references(() => machines.id),
+  operatorId: integer("operator_id").references(() => operators.id),
+  shiftId: integer("shift_id").references(() => shifts.id),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at"),
+  plannedOutput: integer("planned_output"),
+  actualOutput: integer("actual_output"),
+  scrapCount: integer("scrap_count").default(0),
+  setupTimeSec: integer("setup_time_sec"),
+  cycleTimeAvgSec: numeric("cycle_time_avg_sec"),
+  status: text("status").default("running"),  // running | completed | aborted
+});
+export type ProductionRun = typeof productionRuns.$inferSelect;
+
+export const downtimeEpisodes = pgTable("downtime_episodes", {
+  id: serial("id").primaryKey(),
+  machineId: integer("machine_id").references(() => machines.id),
+  productionRunId: integer("production_run_id").references(() => productionRuns.id),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at"),
+  durationMin: numeric("duration_min"),
+  category: text("category"),  // breakdown | changeover | material_wait | quality | planned
+  reason: text("reason"),
+  resolvedBy: integer("resolved_by").references(() => operators.id),
+});
+export type DowntimeEpisode = typeof downtimeEpisodes.$inferSelect;
+
+// --- Quality events ---
+
+export const scrapReasons = pgTable("scrap_reasons", {
+  id: serial("id").primaryKey(),
+  code: text("code").notNull().unique(),
+  name: text("name").notNull(),
+  category: text("category"),  // material | machine | operator | design
+  description: text("description"),
+});
+export type ScrapReason = typeof scrapReasons.$inferSelect;
+
+export const qualityEvents = pgTable("quality_events", {
+  id: serial("id").primaryKey(),
+  batchId: integer("batch_id").references(() => batches.id),
+  productionRunId: integer("production_run_id").references(() => productionRuns.id),
+  scrapReasonId: integer("scrap_reason_id").references(() => scrapReasons.id),
+  eventType: text("event_type").notNull(),  // scrap | rework | warranty_return | inspection_fail
+  quantity: integer("quantity").notNull().default(1),
+  detectedAt: timestamp("detected_at").defaultNow(),
+  detectedBy: integer("detected_by").references(() => operators.id),
+  notes: text("notes"),
+});
+export type QualityEvent = typeof qualityEvents.$inferSelect;
+
+// --- Supplier graph ---
+
+export const suppliers = pgTable("suppliers", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  code: text("code").notNull(),
+  name: text("name").notNull(),
+  country: text("country"),
+  averageLeadTimeDays: integer("average_lead_time_days"),
+  qualityGrade: text("quality_grade"),  // A | B | C
+  status: text("status").default("active"),
+});
+export type Supplier = typeof suppliers.$inferSelect;
+
+export const supplierLots = pgTable("supplier_lots", {
+  id: serial("id").primaryKey(),
+  supplierId: integer("supplier_id").references(() => suppliers.id).notNull(),
+  componentCode: text("component_code").notNull(),
+  lotNumber: text("lot_number").notNull(),
+  quantity: integer("quantity").notNull(),
+  receivedAt: timestamp("received_at"),
+  qualityCheckResult: text("quality_check_result"),  // passed | failed | conditional
+  unitCost: numeric("unit_cost"),
+});
+export type SupplierLot = typeof supplierLots.$inferSelect;
+
+// --- Decision/execution chain ---
+
+export const opportunities = pgTable("opportunities", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  scenarioId: integer("scenario_id"),  // links to scenarios table (no FK to allow soft ref)
+  title: text("title").notNull(),
+  description: text("description"),
+  category: text("category"),  // throughput | scrap_reduction | energy | inventory | quality
+  projectedValue: numeric("projected_value"),  // TL
+  projectedMetricImpact: jsonb("projected_metric_impact").$type<Record<string, number>>(),
+  priority: text("priority").default("medium"),  // low | medium | high | critical
+  status: text("status").default("identified"),  // identified | approved | in_progress | completed | verified | rejected
+  identifiedAt: timestamp("identified_at").defaultNow(),
+  deadline: timestamp("deadline"),
+});
+export type Opportunity = typeof opportunities.$inferSelect;
+
+export const workOrders = pgTable("work_orders", {
+  id: serial("id").primaryKey(),
+  opportunityId: integer("opportunity_id").references(() => opportunities.id),
+  code: text("code").notNull(),
+  type: text("type").notNull(),  // production | maintenance | purchase | quality | setup_change
+  assigneeId: integer("assignee_id").references(() => operators.id),
+  targetMachineId: integer("target_machine_id").references(() => machines.id),
+  targetLineId: integer("target_line_id").references(() => productionLines.id),
+  description: text("description"),
+  dueDate: timestamp("due_date"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  status: text("status").default("open"),  // open | in_progress | completed | cancelled | verified
+  actualValue: numeric("actual_value"),  // verified outcome value
+  completionProof: text("completion_proof"),  // text or URL
+  createdAt: timestamp("created_at").defaultNow(),
+});
+export type WorkOrder = typeof workOrders.$inferSelect;
+
+// --- Energy/cost meter ---
+
+export const energyMeters = pgTable("energy_meters", {
+  id: serial("id").primaryKey(),
+  machineId: integer("machine_id").references(() => machines.id),
+  lineId: integer("line_id").references(() => productionLines.id),
+  meterType: text("meter_type").notNull(),  // electricity | gas | water | compressed_air
+  unit: text("unit").notNull(),  // kWh | m3 | liter
+  installedAt: timestamp("installed_at"),
+  lastReading: numeric("last_reading"),
+  lastReadingAt: timestamp("last_reading_at"),
+});
+export type EnergyMeter = typeof energyMeters.$inferSelect;
+
+export const energyReadings = pgTable("energy_readings", {
+  id: serial("id").primaryKey(),
+  meterId: integer("meter_id").references(() => energyMeters.id).notNull(),
+  productionRunId: integer("production_run_id").references(() => productionRuns.id),
+  reading: numeric("reading").notNull(),
+  delta: numeric("delta"),  // since previous reading
+  recordedAt: timestamp("recorded_at").defaultNow(),
+});
+export type EnergyReading = typeof energyReadings.$inferSelect;
