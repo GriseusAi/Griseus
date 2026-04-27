@@ -80,6 +80,12 @@ function useNavItems(): NavItem[] {
     },
     { path: "/ontology", label: "Ontology", iconNode: <OctopusIcon /> },
     { path: "/lineage", label: "LineAge", icon: "\u21DD" },
+    { path: "/pipeline", label: "Pipeline", icon: "\u27FF" },
+    { path: "/twin-health", label: "Twin Health", icon: "\u2248" },
+    { path: "/loop", label: "Loop", icon: "\u25CA" },
+    { path: "/operations", label: "Ops", icon: "\u25EE" },
+    { path: "/sddi", label: "SDDI", icon: "\u21C6" },
+    { path: "/workshop", label: "Workshop", icon: "\u25A6" },
   ];
 }
 
