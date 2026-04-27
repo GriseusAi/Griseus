@@ -443,6 +443,58 @@ export const FALLBACK_TOOLS: Anthropic.Tool[] = [
       required: [],
     },
   },
+  // FAZ 1 — Simulation Model Mesh + operational atom lookups
+  {
+    name: "run_simulation_pipeline",
+    description: "Vertex-style simulation model mesh: DSE → Forecast → ProductionPlan → BOMExplosion → PurchaseGap → ImpactPropagation → OutcomePrediction zincirini tek transactional run'da çalıştırır. Belirli bir SKU için planlanan vs gerçek senaryosunu uçtan uca simüle eder. Mode='simulation' (varsayılan) DB'ye yazmaz; mode='live' purchase suggestions yazar.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: { type: "string", description: "SKU kodu (örn: GSS20P, ELT.7-11, BH.55ST.SV)" },
+        horizon_months: { type: "number", description: "Tahmin ufku ay (1-12, varsayılan 6)" },
+        mode: { type: "string", enum: ["simulation", "live"], description: "simulation = read-only; live = DB writes" },
+        growth_factor: { type: "number", description: "Talep büyüme katsayısı (0.5-2.0, varsayılan 1.0)" },
+      },
+      required: ["sku"],
+    },
+  },
+  {
+    name: "list_pipeline_runs",
+    description: "Geçmiş simulation pipeline run'larını listele. SKU filtresi opsiyonel.",
+    input_schema: {
+      type: "object" as const,
+      properties: {
+        sku: { type: "string" },
+        limit: { type: "number", description: "Varsayılan 20" },
+      },
+      required: [],
+    },
+  },
+  {
+    name: "list_plants",
+    description: "Tüm üretim tesislerini (plants) listele. Çukurova Ankara, vb.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "list_lines",
+    description: "Tüm üretim hatlarını listele (productionLines).",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "list_machines",
+    description: "Tüm makineleri listele (Pres 100T, vb).",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "list_operators",
+    description: "Tüm operatörleri listele.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
+  {
+    name: "list_active_production_runs",
+    description: "Şu an çalışan (status=running) üretim koşularını listele.",
+    input_schema: { type: "object" as const, properties: {}, required: [] },
+  },
 ];
 
 // ══════════════════════════════════════════════════════════════════════
@@ -1414,6 +1466,77 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
         })),
         summary: analysis.summary,
       };
+    }
+
+    // ─────────────────────────────────────────────────────────
+    // FAZ 1 — Simulation Model Mesh + Operational atom lookups
+    // ─────────────────────────────────────────────────────────
+
+    case "run_simulation_pipeline": {
+      try {
+        const { runSimulationPipeline, getPipelineRun } = await import("../lib/simulation-pipeline");
+        const runId = await runSimulationPipeline({
+          tenantId: input.tenant_id ?? "cukurova",
+          sku: input.sku,
+          horizonMonths: input.horizon_months ?? 6,
+          mode: input.mode ?? "simulation",
+          growthFactor: input.growth_factor ?? 1.0,
+          triggeredBy: "ceo_agent",
+        });
+        const run = await getPipelineRun(runId);
+        return {
+          runId,
+          sku: run?.sku,
+          status: run?.status,
+          durationMs: run?.durationMs,
+          summary: run?.summary,
+          steps: run?.steps?.map((s: any) => ({
+            step: s.step, status: s.status, durationMs: s.durationMs, notes: s.notes,
+          })),
+        };
+      } catch (err: any) {
+        return { error: `Pipeline run failed: ${err.message}` };
+      }
+    }
+
+    case "list_pipeline_runs": {
+      const { listPipelineRuns } = await import("../lib/simulation-pipeline");
+      const runs = await listPipelineRuns({ sku: input.sku, limit: input.limit ?? 20 });
+      return runs.map((r: any) => ({
+        id: r.id, sku: r.sku, status: r.status, mode: r.mode,
+        startedAt: r.startedAt, durationMs: r.durationMs, summary: r.summary,
+      }));
+    }
+
+    case "list_plants": {
+      const { plants } = await import("@shared/schema");
+      const rows = await db.select().from(plants);
+      return rows;
+    }
+
+    case "list_lines": {
+      const { productionLines } = await import("@shared/schema");
+      const rows = await db.select().from(productionLines);
+      return rows;
+    }
+
+    case "list_machines": {
+      const { machines } = await import("@shared/schema");
+      const rows = await db.select().from(machines);
+      return rows;
+    }
+
+    case "list_operators": {
+      const { operators } = await import("@shared/schema");
+      const rows = await db.select().from(operators);
+      return rows;
+    }
+
+    case "list_active_production_runs": {
+      const { productionRuns } = await import("@shared/schema");
+      const { eq } = await import("drizzle-orm");
+      const rows = await db.select().from(productionRuns).where(eq(productionRuns.status, "running"));
+      return rows;
     }
 
     default:

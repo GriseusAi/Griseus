@@ -216,6 +216,24 @@ export const PALANTIR_ATOM_OBJECT_TYPES: Record<string, ObjectTypeSpec> = {
     ],
   },
 
+  // --- Simulation pipeline (FAZ 1) ---
+  SimulationPipelineRun: {
+    rid: ATOM("SimulationPipelineRun"), apiName: "SimulationPipelineRun",
+    displayName: "Pipeline Run", pluralDisplayName: "Pipeline Run'lar",
+    primaryKey: "id", titleProperty: "id", status: "EXPERIMENTAL",
+    displayMetadata: { icon: "⟿", color: "#3b82f6", description: "Vertex-style chained model run (DSE → Forecast → Plan → BOM → Gap → Impact → Outcome)" },
+    properties: [
+      { apiName: "id", displayName: "ID", type: "Integer", visibility: "PROMINENT" },
+      { apiName: "sku", displayName: "SKU", type: "String", visibility: "PROMINENT" },
+      { apiName: "horizonMonths", displayName: "Ufuk", type: "Integer", unit: "ay", visibility: "PROMINENT" },
+      { apiName: "mode", displayName: "Mod", type: "Enum", enumValues: ["simulation", "live"], visibility: "PROMINENT" },
+      { apiName: "status", displayName: "Durum", type: "Enum",
+        enumValues: ["running", "success", "partial", "failed"], visibility: "PROMINENT" },
+      { apiName: "durationMs", displayName: "Süre (ms)", type: "Integer", visibility: "NORMAL" },
+      { apiName: "startedAt", displayName: "Başlangıç", type: "Timestamp", visibility: "NORMAL" },
+    ],
+  },
+
   // --- Energy ---
   EnergyMeter: {
     rid: ATOM("EnergyMeter"), apiName: "EnergyMeter", displayName: "Enerji Sayacı", pluralDisplayName: "Enerji Sayaçları",

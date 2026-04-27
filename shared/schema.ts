@@ -948,3 +948,44 @@ export const energyReadings = pgTable("energy_readings", {
   recordedAt: timestamp("recorded_at").defaultNow(),
 });
 export type EnergyReading = typeof energyReadings.$inferSelect;
+
+// ═══════════════════════════════════════════════════════════
+// FAZ 1 — SIMULATION MODEL MESH (Vertex pattern)
+// Chains DSE → Forecast → ProductionPlan → BOMExplosion → PurchaseGap → Impact → Outcome
+// Each run captures input ontology state + per-step output for replay/audit.
+// ═══════════════════════════════════════════════════════════
+
+export const simulationPipelineRuns = pgTable("simulation_pipeline_runs", {
+  id: serial("id").primaryKey(),
+  tenantId: text("tenant_id").default("cukurova"),
+  sku: text("sku").notNull(),
+  scenarioId: integer("scenario_id"),  // soft ref to scenarios; null = baseline
+  horizonMonths: integer("horizon_months").notNull().default(6),
+  mode: text("mode").notNull().default("simulation"),  // simulation | live
+  triggeredBy: text("triggered_by").default("ui"),
+  status: text("status").notNull().default("running"),  // running | success | partial | failed
+  startedAt: timestamp("started_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  durationMs: integer("duration_ms"),
+  steps: jsonb("steps").$type<Array<{
+    step: string;
+    startedAt: string;
+    completedAt: string;
+    durationMs: number;
+    status: "ok" | "warning" | "error";
+    input: any;
+    output: any;
+    notes: string[];
+  }>>().default([]),
+  summary: jsonb("summary").$type<{
+    totalForecastDemand?: number;
+    plannedProductionUnits?: number;
+    componentGapsCount?: number;
+    purchaseSuggestionsValue?: number;
+    impactRippleSize?: number;
+    bottleneck?: string;
+    capacityChange?: number;
+  }>(),
+  errorMessage: text("error_message"),
+});
+export type SimulationPipelineRun = typeof simulationPipelineRuns.$inferSelect;
