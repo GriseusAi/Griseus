@@ -35,6 +35,7 @@ import PalantirPage from "@/pages/palantir";
 import LineAgePage from "@/pages/ontology"; // lineage force-graph sayfası
 import BhOntologyPage from "@/pages/bh-ontology";
 import OntologySimulatePage from "@/pages/ontology-simulate";
+import StrategyCanvasPage from "@/pages/strategy-canvas";
 import VeriYukle from "@/pages/veri-yukle";
 import PipelineRunsPage from "@/pages/pipeline-runs";
 import TwinHealthPage from "@/pages/twin-health";
@@ -98,6 +99,7 @@ function App() {
           <Route path="/lineage" component={LineAgePage} />
           <Route path="/ontology" component={BhOntologyPage} />
           <Route path="/ontology/simulate" component={OntologySimulatePage} />
+          <Route path="/ontology/strategy" component={StrategyCanvasPage} />
           <Route path="/pipeline" component={PipelineRunsPage} />
           <Route path="/twin-health" component={TwinHealthPage} />
           <Route path="/loop" component={DecisionLoopPage} />

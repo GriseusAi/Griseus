@@ -648,12 +648,9 @@ export default function BhOntologyPage() {
   /* Legend collapse */
   const [legendOpen, setLegendOpen] = useState(false);
 
-  /* BH grupları dropdown + Strateji modal */
+  /* BH grupları dropdown */
   const [, navigate] = useLocation();
   const [groupsOpen, setGroupsOpen] = useState(false);
-  const [strategyOpen, setStrategyOpen] = useState(false);
-  const [strategyName, setStrategyName] = useState("");
-  const [strategyDesc, setStrategyDesc] = useState("");
   const groupsMenuRef = useRef<HTMLDivElement>(null);
   useEffect(() => {
     if (!groupsOpen) return;
@@ -686,26 +683,6 @@ export default function BhOntologyPage() {
     },
     onSuccess: () => { qc.invalidateQueries(); },
   });
-
-  /* Strateji submit — yeni scenario yarat ve simulate sayfasına yönlendir */
-  const strategyMutation = useMutation({
-    mutationFn: async (payload: { name: string; description?: string }) => {
-      const res = await apiRequest("POST", "/api/foundry/scenarios", payload);
-      return res.json() as Promise<{ id: number }>;
-    },
-    onSuccess: (data) => {
-      qc.invalidateQueries({ queryKey: ["/api/foundry/scenarios"] });
-      setStrategyOpen(false);
-      setStrategyName("");
-      setStrategyDesc("");
-      navigate(`/ontology/simulate?scenario=${data.id}`);
-    },
-  });
-  const submitStrategy = () => {
-    const name = strategyName.trim();
-    if (!name) return;
-    strategyMutation.mutate({ name, description: strategyDesc.trim() || undefined });
-  };
 
   /* Sales point mutation — device mini-chart drag/click edit */
   const salesMutation = useMutation({
@@ -1069,77 +1046,14 @@ export default function BhOntologyPage() {
           )}
         </div>
 
-        {/* Strateji butonu — senaryo yaz */}
-        <button onClick={() => setStrategyOpen(true)} style={{
+        {/* Strateji butonu → freeform canvas */}
+        <button onClick={() => navigate("/ontology/strategy")} style={{
           padding: "6px 12px", borderRadius: 16, cursor: "pointer",
           fontSize: 10, fontFamily: mono, fontWeight: 500, letterSpacing: 1,
           background: C.variableDim, border: `1px solid ${C.variableBorder}`,
           color: C.variable, transition: "all 0.15s",
-        }}>◇ STRATEJİ</button>
+        }}>◇ STRATEJİ →</button>
       </div>
-
-      {/* Strateji modal — senaryo yarat */}
-      {strategyOpen && (
-        <div onClick={() => setStrategyOpen(false)} style={{
-          position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
-          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
-        }}>
-          <div onClick={e => e.stopPropagation()} style={{
-            width: 540, maxWidth: "92vw",
-            background: C.bg, border: `1px solid ${C.variableBorder}`, borderRadius: 12,
-            padding: 22, fontFamily: mono,
-            boxShadow: "0 20px 50px rgba(15,23,42,0.18)",
-          }}>
-            <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, marginBottom: 4 }}>◇ YENİ STRATEJİ</div>
-            <div style={{ fontSize: 16, color: C.white, marginBottom: 4 }}>Senaryo Yaz</div>
-            <div style={{ fontSize: 11, color: C.dim, marginBottom: 16 }}>
-              Senaryoya bir ad ver, ardından simülasyon sayfasında stok/BOM override'larını ekleyip what-if çalıştır.
-            </div>
-            <label style={{ fontSize: 10, color: C.mid, letterSpacing: 1 }}>SENARYO ADI</label>
-            <input
-              autoFocus value={strategyName}
-              onChange={e => setStrategyName(e.target.value)}
-              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitStrategy(); } }}
-              placeholder="Örn: BH.50ST satışları %20 artarsa"
-              style={{
-                width: "100%", marginTop: 6, marginBottom: 14,
-                background: C.surface, border: `1px solid ${C.border}`,
-                borderRadius: 8, padding: "9px 12px", color: C.white,
-                fontFamily: mono, fontSize: 13, outline: "none",
-              }}
-            />
-            <label style={{ fontSize: 10, color: C.mid, letterSpacing: 1 }}>AÇIKLAMA / NOT</label>
-            <textarea
-              value={strategyDesc}
-              onChange={e => setStrategyDesc(e.target.value)}
-              rows={4}
-              placeholder="Senaryo bağlamı (opsiyonel) — hangi bileşenlerde, hangi varsayımla, ne zaman..."
-              style={{
-                width: "100%", marginTop: 6, marginBottom: 16,
-                background: C.surface, border: `1px solid ${C.border}`,
-                borderRadius: 8, padding: "9px 12px", color: C.white,
-                fontFamily: mono, fontSize: 12, outline: "none", resize: "vertical",
-              }}
-            />
-            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
-              <button onClick={() => setStrategyOpen(false)} style={{
-                padding: "9px 16px", borderRadius: 8, cursor: "pointer",
-                background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
-                fontFamily: mono, fontSize: 12,
-              }}>Vazgeç</button>
-              <button onClick={submitStrategy}
-                disabled={strategyMutation.isPending || !strategyName.trim()}
-                style={{
-                  padding: "9px 16px", borderRadius: 8,
-                  cursor: strategyMutation.isPending || !strategyName.trim() ? "not-allowed" : "pointer",
-                  background: C.variableDim, border: `1px solid ${C.variableBorder}`,
-                  color: C.variable, fontFamily: mono, fontSize: 12, fontWeight: 500,
-                  opacity: strategyMutation.isPending || !strategyName.trim() ? 0.5 : 1,
-                }}>{strategyMutation.isPending ? "Yaratılıyor..." : "Yarat → Simülasyon"}</button>
-            </div>
-          </div>
-        </div>
-      )}
 
       {/* Object Inspector drawer — sağ */}
       {inspectedNode && (
