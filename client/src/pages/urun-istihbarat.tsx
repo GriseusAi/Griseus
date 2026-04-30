@@ -8,23 +8,22 @@ import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import ProductSelector from "@/components/ProductSelector";
 
-/* ═══════════════════════════════════════════════════════════
-   PALETTE — same Palantir dark theme as stok-durum
-   ═══════════════════════════════════════════════════════════ */
+/* PALETTE — claude.ai aesthetic via shared theme */
+import { CT, CT_FONT } from "@/lib/claude-theme";
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.20)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
-  variable: "#ea580c", variableDim: "rgba(234,88,12,0.08)", variableBorder: "rgba(234,88,12,0.25)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
-  blue: "#60a5fa", blueDim: "rgba(96,165,250,0.06)", blueBorder: "rgba(96,165,250,0.15)",
-  purple: "#a78bfa",
-  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
+  bg: CT.bg, surface: CT.surface, surfaceHover: CT.surfaceHover,
+  border: CT.border, borderActive: CT.borderStrong,
+  accent: CT.accent, accentDim: CT.accentSoft, accentGlow: CT.accentEdge,
+  ok: CT.ok, okDim: CT.okSoft, okBorder: "rgba(63,143,91,0.28)",
+  warn: CT.warn, warnDim: CT.warnSoft, warnBorder: "rgba(184,118,28,0.28)",
+  variable: "#c96442", variableDim: "rgba(201,100,66,0.12)", variableBorder: "rgba(201,100,66,0.32)",
+  err: CT.err, errDim: CT.errSoft, errBorder: "rgba(179,64,55,0.28)",
+  blue: CT.info, blueDim: CT.infoSoft, blueBorder: "rgba(61,111,176,0.28)",
+  purple: "#8a72c7",
+  white: CT.ink, mid: CT.inkSub, dim: CT.inkMuted, dimmer: CT.inkFaint,
 };
-const mono = "'Outfit', sans-serif";
-const sans = "'Outfit', sans-serif";
+const mono = CT_FONT;
+const sans = CT_FONT;
 
 const GLOBAL_STYLES = `
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
