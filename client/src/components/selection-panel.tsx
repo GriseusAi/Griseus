@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
 import { useAgentPanel } from "../App";
-import CompareModal from "./compare-modal";
+import ChartPromptModal from "./chart-prompt-modal";
 
 const C = {
   bg: "rgba(10,10,15,0.96)",
@@ -233,7 +233,7 @@ export default function SelectionPanel() {
                 letterSpacing: 0.3,
               }}
             >
-              ◫ Karşılaştır
+              ▸ Diyagram
             </button>
           </div>
 
@@ -253,7 +253,7 @@ export default function SelectionPanel() {
       )}
 
       {compareOpen && (
-        <CompareModal items={selected} onClose={() => setCompareOpen(false)} />
+        <ChartPromptModal items={selected} onClose={() => setCompareOpen(false)} />
       )}
     </>
   );
