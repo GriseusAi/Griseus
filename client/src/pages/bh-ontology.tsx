@@ -922,7 +922,7 @@ export default function BhOntologyPage() {
   }, [nodes, positions, zoomIn, zoomOut, zoomReset]);
 
   return (
-    <div className="native-light" style={{
+    <div style={{
       minHeight: "100vh", background: C.bg, color: C.white,
       fontFamily: mono,
       fontFeatureSettings: INTER_FEATURES,
@@ -1422,8 +1422,19 @@ export default function BhOntologyPage() {
             );
           })}
 
-          {/* Nodes */}
-          {nodes.map(n => {
+          {/* Nodes — viewport-culled (only render visible + buffer) */}
+          {(() => {
+            const buffer = 400;
+            const visMinX = -viewport.x - buffer;
+            const visMaxX = -viewport.x + CANVAS_W / viewport.scale + buffer;
+            const visMinY = -viewport.y - buffer;
+            const visMaxY = -viewport.y + CANVAS_H / viewport.scale + buffer;
+            return nodes.filter(n => {
+              const p = effectivePositions[n.id];
+              if (!p) return false;
+              return p.x >= visMinX && p.x <= visMaxX && p.y >= visMinY && p.y <= visMaxY;
+            });
+          })().map(n => {
             const p = effectivePositions[n.id];
             if (!p) return null;
             const isConnected = !connectedSet || connectedSet.has(n.id);
