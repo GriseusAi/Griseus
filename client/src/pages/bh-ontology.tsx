@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
-import { Link, useLocation } from "wouter";
+import { useLocation } from "wouter";
 import {
   BH_OBJECT_TYPES, BH_LINK_TYPES, BH_ACTION_TYPES,
   objectTypeForKind, actionsForObjectType, linksForObjectType,
@@ -1049,14 +1049,6 @@ export default function BhOntologyPage() {
             padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
             background: C.surface, border: `1px solid ${C.border}`, color: C.mid, fontSize: 13, fontFamily: mono,
           }}>Layout Sıfırla</button>
-          <Link href="/ontology/simulate">
-            <a style={{
-              padding: "10px 18px", borderRadius: 8, cursor: "pointer", minHeight: 36,
-              background: C.variableDim, border: `1px solid ${C.variableBorder}`, color: C.variable,
-              fontSize: 13, fontFamily: mono, textDecoration: "none", letterSpacing: 0.5, fontWeight: 500,
-              display: "inline-flex", alignItems: "center",
-            }}>Simulation Engine →</a>
-          </Link>
         </div>
       </div>
 

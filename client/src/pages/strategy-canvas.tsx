@@ -5,6 +5,7 @@ import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import { useAgentPanel } from "@/App";
+import { useSelection, type SelectedItem } from "@/lib/selection-context";
 
 /* ════════════════════════════════════════════════════════════════════
    STRATEGY CANVAS v5 — Pure HTML + CSS transform (no SVG foreignObject)
@@ -779,40 +780,46 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
    DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
    ──────────────────────────────────────────────────────────────────── */
 function DragNode({
-  pos, width, height, onDrag, onTap, getMouseInWorld, children, style, asCircle,
+  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle,
 }: {
   pos: XY;
   width: number;
   height: number;
   onDrag: (xy: XY) => void;
   onTap?: () => void;
+  onMultiSelect?: () => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   children: React.ReactNode;
   style?: React.CSSProperties;
   asCircle?: boolean;
 }) {
   const offsetRef = useRef<XY>({ x: 0, y: 0 });
-  const downAtRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const downAtRef = useRef<{ x: number; y: number; t: number; shift: boolean } | null>(null);
   const handleDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
     const w = getMouseInWorld(e);
     offsetRef.current = { x: w.x - pos.x, y: w.y - pos.y };
-    downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+    downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now(), shift: e.shiftKey || e.metaKey || e.ctrlKey };
   };
   const handleMove = (e: React.PointerEvent) => {
     if (e.buttons === 0) return;
     if (!downAtRef.current) return;
+    if (downAtRef.current.shift) return; // Shift+drag = selection mode, kart sabit
     const w = getMouseInWorld(e);
     onDrag({ x: w.x - offsetRef.current.x, y: w.y - offsetRef.current.y });
   };
   const handleUp = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (onTap && downAtRef.current) {
+    if (downAtRef.current) {
       const dx = e.clientX - downAtRef.current.x;
       const dy = e.clientY - downAtRef.current.y;
       const dt = Date.now() - downAtRef.current.t;
-      if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 400) onTap();
+      const isClick = Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 400;
+      if (isClick) {
+        if (downAtRef.current.shift && onMultiSelect) onMultiSelect();
+        else if (onTap) onTap();
+      }
     }
     downAtRef.current = null;
   };
@@ -870,6 +877,16 @@ function OrderBlock({
   }), [top, order.quantity]);
   const subs = useMemo(() => enriched.filter(c => c.isSubAssembly || c.hasChildren), [enriched]);
   const flats = useMemo(() => enriched.filter(c => !(c.isSubAssembly || c.hasChildren)), [enriched]);
+
+  const sel = useSelection();
+  const buildItem = (c: BomComponent, kind: SelectedItem["kind"]): SelectedItem => ({
+    code: c.code,
+    label: c.name || c.code,
+    kind,
+    currentStock: c.currentStock,
+    usedBy: [order.sku],
+    status: c.status,
+  });
 
   const get = (id: string): XY => positions[id] ?? defaults[id] ?? { x: 0, y: 0 };
   const orderP = get(`order:${order.id}`);
