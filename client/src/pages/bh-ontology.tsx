@@ -542,6 +542,68 @@ export default function BhOntologyPage() {
     setPositions(merged);
   }, [allLoaded, nodes.length]);
 
+  /* Effective positions — expanded subassembly rows itecek their fan-out depth kadar
+     subsequent rows + variables. Drag mutates `positions`; we layer offset on top. */
+  const effectivePositions = useMemo<Record<string, { x: number; y: number }>>(() => {
+    if (Object.keys(positions).length === 0) return positions;
+    // Group subassemblies by Y row
+    const subsByRow = new Map<number, GraphNode[]>();
+    for (const n of nodes) {
+      if (n.kind !== "subassembly") continue;
+      const y = positions[n.id]?.y;
+      if (y == null) continue;
+      if (!subsByRow.has(y)) subsByRow.set(y, []);
+      subsByRow.get(y)!.push(n);
+    }
+    const rowYs = Array.from(subsByRow.keys()).sort((a, b) => a - b);
+    let cumExtra = 0;
+    const offsetForRow = new Map<number, number>(); // base-Y → cumulative offset BEFORE this row
+    for (const rowY of rowYs) {
+      offsetForRow.set(rowY, cumExtra);
+      let maxDepth = 0;
+      for (const sub of subsByRow.get(rowY)!) {
+        if (!sub.code || !expandedSubs.has(sub.code)) continue;
+        const childCount = nodes.filter(c =>
+          c.kind === "subcomponent" &&
+          c.parentSubCode === sub.code &&
+          c.deviceSku === sub.deviceSku
+        ).length;
+        if (childCount === 0) continue;
+        const childRows = Math.ceil(childCount / 3);
+        const depth = Y_SUBCOMP_GAP + (childRows - 1) * SUBCOMP_ROW_H + 60;
+        maxDepth = Math.max(maxDepth, depth);
+      }
+      const extra = Math.max(0, maxDepth - SUB_ROW_H);
+      cumExtra += extra;
+    }
+    if (cumExtra === 0) return positions;
+    const subBaseYByDeviceCode = new Map<string, number>();
+    for (const n of nodes) {
+      if (n.kind === "subassembly" && n.code && n.deviceSku) {
+        const y = positions[n.id]?.y;
+        if (y != null) subBaseYByDeviceCode.set(`${n.deviceSku}::${n.code}`, y);
+      }
+    }
+    const out: Record<string, { x: number; y: number }> = {};
+    for (const n of nodes) {
+      const p = positions[n.id];
+      if (!p) continue;
+      let off = 0;
+      if (n.kind === "subassembly") {
+        off = offsetForRow.get(p.y) ?? 0;
+      } else if (n.kind === "subcomponent" && n.parentSubCode && n.deviceSku) {
+        const parentY = subBaseYByDeviceCode.get(`${n.deviceSku}::${n.parentSubCode}`);
+        off = parentY != null ? (offsetForRow.get(parentY) ?? 0) : 0;
+      } else if (n.kind === "variable") {
+        off = cumExtra;
+      }
+      out[n.id] = off === 0 ? p : { x: p.x, y: p.y + off };
+    }
+    // Devices + components stay (rows above subassemblies)
+    for (const n of nodes) if (!out[n.id] && positions[n.id]) out[n.id] = positions[n.id];
+    return out;
+  }, [positions, nodes, expandedSubs]);
+
   /* Drag */
   const [dragId, setDragId] = useState<string | null>(null);
   const dragOffsetRef = useRef<{ dx: number; dy: number }>({ dx: 0, dy: 0 });
@@ -786,9 +848,9 @@ export default function BhOntologyPage() {
   const zoomOut = useCallback(() => zoomAtScreen(0.83), [zoomAtScreen]);
   const zoomReset = useCallback(() => setViewport({ x: 0, y: 0, scale: 1 }), []);
   const snapToSku = useCallback((sku: string) => {
-    const p = positions[sku];
+    const p = effectivePositions[sku];
     if (p) setViewport({ x: -(p.x - 600), y: -(p.y - 160), scale: 1 });
-  }, [positions]);
+  }, [effectivePositions]);
 
   /* Wheel:
      • shift+wheel → ZOOM (en kolay, Magic Mouse'ta da çalışır)
@@ -842,7 +904,7 @@ export default function BhOntologyPage() {
         setPositions(defaultLayout(nodes));
       } else if (e.key >= "1" && e.key <= "4") {
         const sku = BH_SKUS[parseInt(e.key) - 1];
-        const p = positions[sku];
+        const p = effectivePositions[sku];
         if (p) setViewport({ x: -(p.x - 600), y: -(p.y - 160), scale: 1 });
       } else if (e.key === "+" || e.key === "=") {
         e.preventDefault();
@@ -1175,7 +1237,7 @@ export default function BhOntologyPage() {
           {/* Palantir-style UNIT backdrops per device column (soft dark panel with border + label) */}
           {allLoaded && (() => {
             const devicesPosed = BH_SKUS
-              .map(sku => ({ sku, pos: positions[sku] }))
+              .map(sku => ({ sku, pos: effectivePositions[sku] }))
               .filter(d => d.pos);
             if (devicesPosed.length === 0) return null;
             // Compute per-column bounds: x center per device; y extends from device top to lowest node in that column
@@ -1185,7 +1247,7 @@ export default function BhOntologyPage() {
             // Find max Y per column by scanning nodes with deviceSku match
             const maxYByCol: Record<string, number> = {};
             for (const n of nodes) {
-              const p = positions[n.id];
+              const p = effectivePositions[n.id];
               if (!p) continue;
               const sku = n.deviceSku ?? (n.kind === "device" ? n.sku : undefined);
               if (!sku) continue;
@@ -1246,7 +1308,7 @@ export default function BhOntologyPage() {
               for (let k = 0; k < sorted.length - 1; k++) {
                 const a = sorted[k];
                 const b = sorted[k + 1];
-                const pa = positions[a.id]; const pb = positions[b.id];
+                const pa = effectivePositions[a.id]; const pb = effectivePositions[b.id];
                 if (!pa || !pb) continue;
                 const isHovered = connectedSet && (connectedSet.has(a.id) || connectedSet.has(b.id));
                 // Tile half-widths: circle r=70 / 40, rect ~120; arc starts at edge
@@ -1281,14 +1343,14 @@ export default function BhOntologyPage() {
             for (const parent of nodes) {
               if (parent.kind !== "subassembly" || !parent.code) continue;
               if (!expandedSubs.has(parent.code)) continue;
-              const pp = positions[parent.id];
+              const pp = effectivePositions[parent.id];
               if (!pp) continue;
               for (const child of nodes) {
                 if (child.kind !== "subcomponent") continue;
                 if (child.parentSubCode !== parent.code) continue;
                 // Only children in the SAME device column as parent (visual locality)
                 if (child.deviceSku !== parent.deviceSku) continue;
-                const cp = positions[child.id];
+                const cp = effectivePositions[child.id];
                 if (!cp) continue;
                 const startY = pp.y + 70;          // bottom edge of subassembly circle (r=70)
                 const endY   = cp.y - 40;          // top edge of subcomponent circle (r=40)
@@ -1312,7 +1374,7 @@ export default function BhOntologyPage() {
 
           {/* Links — visible only when this tile/its neighbor is hovered (declutter) */}
           {links.map((l, i) => {
-            const pa = positions[l.from]; const pb = positions[l.to];
+            const pa = effectivePositions[l.from]; const pb = effectivePositions[l.to];
             if (!pa || !pb) return null;
             const nodeTo = nodeById.get(l.to);
             const nodeFrom = nodeById.get(l.from);
@@ -1362,7 +1424,7 @@ export default function BhOntologyPage() {
 
           {/* Nodes */}
           {nodes.map(n => {
-            const p = positions[n.id];
+            const p = effectivePositions[n.id];
             if (!p) return null;
             const isConnected = !connectedSet || connectedSet.has(n.id);
             const isFilterMatch = matchesFilter(n);
@@ -1429,7 +1491,7 @@ export default function BhOntologyPage() {
           {/* Hover tooltip — 400ms delayed mini-card */}
           {hoverTooltip && (() => {
             const tn = nodes.find(nn => nn.id === hoverTooltip.id);
-            const tp = positions[hoverTooltip.id];
+            const tp = effectivePositions[hoverTooltip.id];
             if (!tn || !tp) return null;
             const nw = tn.kind === "device" ? 240 : 230;
             const tx = tp.x + nw / 2 + 18;
@@ -1576,7 +1638,7 @@ export default function BhOntologyPage() {
         {allLoaded && (
           <Minimap
             nodes={nodes}
-            positions={positions}
+            positions={effectivePositions}
             viewport={viewport}
             setViewport={setViewport}
           />
