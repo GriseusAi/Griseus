@@ -717,7 +717,7 @@ export default function OntologyPage() {
       <div style={{ display: "flex", height: "calc(100vh - 48px)" }}>
         {/* ═══ LEFT: Controls + Simulation Panel — dark sidebar on light page ═══ */}
         <div style={{
-          width: 340, background: CT.bgAlt, borderRight: `1px solid ${CT.border}`, padding: 20,
+          width: 340, background: CT.bg, borderRight: `1px solid ${CT.border}`, padding: 20,
           overflowY: "auto", display: "flex", flexDirection: "column", gap: 16,
         }}>
           {/* Header */}
