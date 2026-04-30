@@ -1264,8 +1264,8 @@ export default function BhOntologyPage() {
                   <path key={`fam-${code}-${k}`}
                     d={path} fill="none"
                     stroke={stroke}
-                    strokeWidth={isHovered ? 2 : 1.2}
-                    opacity={isHovered ? 0.7 : 0.22}
+                    strokeWidth={isHovered ? 2.4 : 1.8}
+                    opacity={isHovered ? 0.95 : 0.55}
                     strokeLinecap="round"
                     style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
                   />
@@ -1299,8 +1299,8 @@ export default function BhOntologyPage() {
                   <path key={`drill-${parent.id}-${child.id}`}
                     d={path} fill="none"
                     stroke={C.accent}
-                    strokeWidth={1.4}
-                    opacity={0.30}
+                    strokeWidth={2}
+                    opacity={0.65}
                     strokeLinecap="round"
                     style={{ pointerEvents: "none" }}
                   />
