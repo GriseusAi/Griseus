@@ -12,14 +12,18 @@ import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocke
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.25)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.08)", okBorder: "rgba(52,211,153,0.15)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.08)", warnBorder: "rgba(251,191,36,0.15)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.06)", errBorder: "rgba(239,68,68,0.15)",
-  blue: "#60a5fa", purple: "#a78bfa", cyan: "#22d3ee",
-  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#2a2a3a",
+  bg: "#f8fafc", surface: "#0e0e14", surfaceHover: "#15151c",
+  border: "rgba(255,255,255,0.10)", borderActive: "rgba(255,255,255,0.22)",
+  accent: "#818cf8", accentDim: "rgba(99,102,241,0.18)", accentGlow: "rgba(99,102,241,0.30)",
+  ok: "#10b981", okDim: "rgba(16,185,129,0.18)", okBorder: "rgba(16,185,129,0.30)",
+  warn: "#f59e0b", warnDim: "rgba(245,158,11,0.18)", warnBorder: "rgba(245,158,11,0.30)",
+  err: "#ef4444", errDim: "rgba(239,68,68,0.18)", errBorder: "rgba(239,68,68,0.30)",
+  blue: "#38bdf8", purple: "#a78bfa", cyan: "#22d3ee",
+  white: "#f0f0f5", mid: "#9a9aa8", dim: "#94a3b8", dimmer: "#cbd5e1",
+  // Light-bg-specific (canvas + tier labels + outer page text)
+  ink: "#0a0a0e", inkSub: "#475569", canvasGrid: "rgba(15,23,42,0.06)",
+  canvasEdge: "rgba(15,23,42,0.32)", canvasEdgeFaint: "rgba(15,23,42,0.18)",
+  canvasHalo: "rgba(255,255,255,0.92)",
 };
 const mono = "'Outfit', sans-serif";
 const fmt = (n: number) => n.toLocaleString("tr-TR");
@@ -287,10 +291,12 @@ function drawGraph(
   selectedNode: string | null, sim: SimResult | null, simQty: number,
   expandedSubs: Set<string>,
 ) {
-  ctx.clearRect(0, 0, width, height);
+  // Light canvas bg
+  ctx.fillStyle = C.bg;
+  ctx.fillRect(0, 0, width, height);
 
   // Background grid
-  ctx.strokeStyle = "rgba(255,255,255,0.04)";
+  ctx.strokeStyle = C.canvasGrid;
   ctx.lineWidth = 1;
   for (let x = 0; x < width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
   for (let y = 0; y < height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
@@ -306,8 +312,8 @@ function drawGraph(
     const isHighlighted = selectedNode === e.source || selectedNode === e.target;
     const sc = sim?.components.find(c => c.code === e.target);
     const edgeColor = sim && sc
-      ? (sc.surplus < 0 ? C.err : sc.isBottleneck ? C.warn : "rgba(255,255,255,0.32)")
-      : isHighlighted ? "rgba(129,140,248,0.75)" : "rgba(255,255,255,0.28)";
+      ? (sc.surplus < 0 ? C.err : sc.isBottleneck ? C.warn : C.canvasEdge)
+      : isHighlighted ? "rgba(99,102,241,0.85)" : C.canvasEdge;
 
     ctx.beginPath();
     ctx.moveTo(s.x, s.y);
@@ -333,11 +339,11 @@ function drawGraph(
     const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2;
     ctx.font = "bold 11px 'Outfit', sans-serif";
     ctx.textAlign = "center";
-    // Halo for legibility against grid bg
+    // Light halo so dark text stays legible on light bg
     ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(5,5,5,0.85)";
+    ctx.strokeStyle = C.canvasHalo;
     ctx.strokeText(e.label, mx, my - 4);
-    ctx.fillStyle = C.white;
+    ctx.fillStyle = C.ink;
     ctx.fillText(e.label, mx, my - 4);
   }
 
@@ -377,10 +383,10 @@ function drawGraph(
     // Node circle
     ctx.beginPath();
     ctx.arc(n.x, n.y, r, 0, Math.PI * 2);
-    ctx.fillStyle = n.isProduct ? C.accent + "30" : color + "15";
+    ctx.fillStyle = n.isProduct ? C.accent + "55" : color + "35";
     ctx.fill();
     ctx.strokeStyle = color;
-    ctx.lineWidth = isSelected ? 2.5 : 1.5;
+    ctx.lineWidth = isSelected ? 2.8 : 1.8;
     ctx.stroke();
 
     // Utilization arc (sim mode)
@@ -396,16 +402,16 @@ function drawGraph(
       }
     }
 
-    // Label (with halo for legibility)
+    // Label (light halo so dark text stays legible)
     ctx.font = n.isProduct ? "bold 13px 'Outfit', sans-serif" : "bold 11px 'Outfit', sans-serif";
     ctx.textAlign = "center";
     const lines = n.label.split("\n");
     ctx.lineWidth = 3.5;
-    ctx.strokeStyle = "rgba(5,5,5,0.9)";
+    ctx.strokeStyle = C.canvasHalo;
     for (let i = 0; i < lines.length; i++) {
       ctx.strokeText(lines[i], n.x, n.y + r + 14 + i * 13);
     }
-    ctx.fillStyle = C.white;
+    ctx.fillStyle = C.ink;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(lines[i], n.x, n.y + r + 14 + i * 13);
     }
@@ -417,9 +423,9 @@ function drawGraph(
       ctx.textBaseline = "middle";
       const stockText = n.stock > 9999 ? `${(n.stock / 1000).toFixed(1)}k` : String(Math.round(n.stock));
       ctx.lineWidth = 3;
-      ctx.strokeStyle = "rgba(5,5,5,0.9)";
+      ctx.strokeStyle = C.canvasHalo;
       ctx.strokeText(stockText, n.x, n.y);
-      ctx.fillStyle = C.white;
+      ctx.fillStyle = C.ink;
       ctx.fillText(stockText, n.x, n.y);
       ctx.textBaseline = "alphabetic";
 
@@ -435,7 +441,7 @@ function drawGraph(
         ctx.lineWidth = 1.5;
         ctx.stroke();
         ctx.font = "bold 10px 'Outfit', sans-serif";
-        ctx.fillStyle = C.white;
+        ctx.fillStyle = "#ffffff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
         ctx.fillText(isExpanded ? "−" : "+", bx, by + 0.5);
@@ -448,14 +454,14 @@ function drawGraph(
       const head = skuParts[0] || n.id;
       const tail = skuParts.slice(1).join("-") || "";
       ctx.lineWidth = 3.5;
-      ctx.strokeStyle = "rgba(5,5,5,0.9)";
+      ctx.strokeStyle = C.canvasHalo;
       ctx.font = "bold 14px 'Outfit', sans-serif";
       ctx.strokeText(head, n.x, n.y - 4);
-      ctx.fillStyle = C.white;
+      ctx.fillStyle = C.ink;
       ctx.fillText(head, n.x, n.y - 4);
       ctx.font = "bold 10px 'Outfit', sans-serif";
       ctx.strokeText(tail, n.x, n.y + 9);
-      ctx.fillStyle = C.white;
+      ctx.fillStyle = C.ink;
       ctx.fillText(tail, n.x, n.y + 9);
       ctx.textBaseline = "alphabetic";
     }
@@ -476,9 +482,9 @@ function drawGraph(
     ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2);
     ctx.fillStyle = legendItems[i].color; ctx.fill();
     ctx.lineWidth = 3;
-    ctx.strokeStyle = "rgba(5,5,5,0.9)";
+    ctx.strokeStyle = C.canvasHalo;
     ctx.strokeText(legendItems[i].label, lx + 12, ly + 4);
-    ctx.fillStyle = C.white;
+    ctx.fillStyle = C.ink;
     ctx.fillText(legendItems[i].label, lx + 12, ly + 4);
   }
 }
@@ -709,9 +715,9 @@ export default function OntologyPage() {
       `}</style>
 
       <div style={{ display: "flex", height: "calc(100vh - 48px)" }}>
-        {/* ═══ LEFT: Controls + Simulation Panel ═══ */}
+        {/* ═══ LEFT: Controls + Simulation Panel — dark sidebar on light page ═══ */}
         <div style={{
-          width: 340, borderRight: `1px solid ${C.border}`, padding: 20,
+          width: 340, background: "#0a0a0e", borderRight: `1px solid rgba(15,23,42,0.08)`, padding: 20,
           overflowY: "auto", display: "flex", flexDirection: "column", gap: 16,
         }}>
           {/* Header */}
@@ -1039,10 +1045,10 @@ export default function OntologyPage() {
           {/* Tier labels */}
           {graphReady && (
             <>
-              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>ÜRÜN</div>
-              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 1 — DİREKT MALZEME</div>
-              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 2 — YARI MAMÜL</div>
-              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 3 — ALT BİLEŞEN</div>
+              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 11, color: C.ink, letterSpacing: 1.5, fontWeight: 600 }}>ÜRÜN</div>
+              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 11, color: C.ink, letterSpacing: 1.5, fontWeight: 600 }}>TIER 1 — DİREKT MALZEME</div>
+              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 11, color: C.ink, letterSpacing: 1.5, fontWeight: 600 }}>TIER 2 — YARI MAMÜL</div>
+              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 11, color: C.ink, letterSpacing: 1.5, fontWeight: 600 }}>TIER 3 — ALT BİLEŞEN</div>
             </>
           )}
 

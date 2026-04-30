@@ -3,16 +3,18 @@ import TopNav from "@/components/top-nav";
 import { useSKU } from "@/lib/sku-context";
 
 const C = {
-  bg: "#050507",
-  surface: "rgba(10,10,15,0.6)",
-  surfaceHover: "rgba(16,16,22,0.85)",
-  border: "rgba(255,255,255,0.08)",
-  borderHover: "rgba(129,140,248,0.35)",
+  bg: "#f8fafc",
+  surface: "#0e0e14",
+  surfaceHover: "#15151c",
+  border: "rgba(255,255,255,0.10)",
+  borderHover: "rgba(129,140,248,0.45)",
   accent: "#818cf8",
-  accentDim: "rgba(129,140,248,0.08)",
-  white: "#f0f0f5",
-  mid: "#8888a0",
-  dim: "#4a4a60",
+  accentDim: "rgba(129,140,248,0.12)",
+  ink: "#0a0a0e",
+  cardInk: "#f0f0f5",
+  mid: "#5a6072",
+  midOnDark: "#9a9aa8",
+  dim: "#94a3b8",
 };
 
 const mono = "'Outfit', sans-serif";
@@ -61,7 +63,7 @@ export default function Home() {
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.white, fontFamily: mono }}>
+    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: mono }}>
       <TopNav />
 
       <div style={{
@@ -75,7 +77,7 @@ export default function Home() {
             GRISEUS · HOME
           </div>
           <h1 style={{
-            fontSize: 32, fontWeight: 300, margin: 0, color: C.white, letterSpacing: -0.4,
+            fontSize: 32, fontWeight: 300, margin: 0, color: C.ink, letterSpacing: -0.4,
           }}>
             Nereden başlamak istersin?
           </h1>
@@ -99,7 +101,7 @@ export default function Home() {
                 borderRadius: 16,
                 background: C.surface,
                 border: `1px solid ${C.border}`,
-                color: C.white,
+                color: C.cardInk,
                 cursor: "pointer",
                 fontFamily: mono,
                 transition: "all 0.18s ease",
@@ -109,6 +111,7 @@ export default function Home() {
                 minHeight: 180,
                 position: "relative",
                 overflow: "hidden",
+                boxShadow: "0 4px 20px rgba(15,23,42,0.08)",
               }}
               onMouseEnter={(e) => {
                 e.currentTarget.style.background = C.surfaceHover;
@@ -139,11 +142,11 @@ export default function Home() {
 
               <div>
                 <div style={{
-                  fontSize: 20, fontWeight: 400, color: C.white, marginBottom: 6, letterSpacing: -0.2,
+                  fontSize: 20, fontWeight: 400, color: C.cardInk, marginBottom: 6, letterSpacing: -0.2,
                 }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 12, color: C.mid, lineHeight: 1.55 }}>
+                <div style={{ fontSize: 12, color: C.midOnDark, lineHeight: 1.55 }}>
                   {t.tagline}
                 </div>
               </div>
