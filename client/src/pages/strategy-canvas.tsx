@@ -6,8 +6,8 @@ import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 
 /* ════════════════════════════════════════════════════════════════════
-   STRATEGY CANVAS v3 — Palantir Foundry-grade strategy planning
-   Sipariş → Mamul → BOM → Aksiyon Kuyruğu · Çapraz Etki · Risk · Güven
+   STRATEGY CANVAS v5 — Pure HTML + CSS transform (no SVG foreignObject)
+   Tek pan-zoom wrapper · tüm atomlar uniform hareket eder · Safari-safe
    ──────────────────────────────────────────────────────────────────── */
 
 const C = {
@@ -39,7 +39,7 @@ const INTER_FEATS = "'cv11', 'ss01', 'cv02'";
 const fmtTR = (n: number) => (isFinite(n) ? n.toLocaleString("tr-TR") : "—");
 const MONTH_LABELS = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
 const DEFAULT_LEAD_TIME_DAYS = 14;
-const PRODUCTION_DAYS_PER_UNIT = 0.4; // ~2.5 unit/day per worker baseline
+const PRODUCTION_DAYS_PER_UNIT = 0.4;
 
 const ALL_SKUS = [
   "ELT.7-11", "ELT.5-7",
@@ -49,43 +49,26 @@ const ALL_SKUS = [
 ] as const;
 
 interface Order {
-  id: string;
-  customer: string;
-  deadline: string;
-  sku: string;
-  quantity: number;
-  createdAt: number;
+  id: string; customer: string; deadline: string;
+  sku: string; quantity: number; createdAt: number;
 }
 interface BomComponent {
-  code: string;
-  name: string;
-  requiredPerUnit: number;
-  unit: string;
-  currentStock: number;
-  rawStock?: number;
-  maxProducts: number | null;
-  status: string;
-  tier: number;
+  code: string; name: string; requiredPerUnit: number; unit: string;
+  currentStock: number; rawStock?: number;
+  maxProducts: number | null; status: string; tier: number;
   parentComponentCode: string | null;
-  isSubAssembly?: boolean;
-  hasChildren?: boolean;
+  isSubAssembly?: boolean; hasChildren?: boolean;
   lastCountedAt?: string;
   children?: BomComponent[];
 }
 interface CapacityResp {
-  product: string;
-  maxProducible: number;
+  product: string; maxProducible: number;
   bottlenecks: { code: string; name: string; maxProducts: number; reason?: string }[];
-  onDemandComponents?: { code: string }[];
 }
-interface StockResp {
-  product: string;
-  components: BomComponent[];
-}
+interface StockResp { product: string; components: BomComponent[]; }
 type XY = { x: number; y: number };
 type PositionOverrides = Record<string, Record<string, XY>>;
 
-/* localStorage keys */
 const ORDERS_KEY = "griseus_strategy_orders_v1";
 const POS_KEY = "griseus_strategy_positions_v3";
 const VIEW_KEY = "griseus_strategy_viewport_v2";
@@ -121,7 +104,6 @@ function defaultPositions(order: Order, components: BomComponent[], yOffset: num
   const subs = top.filter(c => c.isSubAssembly || c.hasChildren);
   const flats = top.filter(c => !(c.isSubAssembly || c.hasChildren));
 
-  // Yoğun BOM: 16'dan fazla flat bileşen → 2 sütun
   const TWO_COL_THRESHOLD = 16;
   const useTwoCol = flats.length > TWO_COL_THRESHOLD;
   const flatGap = Math.max(38, Math.min(46, useTwoCol ? 700 / Math.ceil(flats.length / 2) : 700 / Math.max(1, flats.length)));
@@ -157,57 +139,8 @@ function defaultPositions(order: Order, components: BomComponent[], yOffset: num
   return pos;
 }
 
-/* ─────── Sürüklenebilir + tıklanabilir SVG node ─────── */
-function DragNode({
-  pos, width, height, onDrag, children, setSvgPoint, onTap,
-}: {
-  pos: XY;
-  width: number;
-  height: number;
-  onDrag: (xy: XY) => void;
-  children: React.ReactNode;
-  setSvgPoint: (e: React.PointerEvent) => XY;
-  onTap?: () => void;
-}) {
-  const offsetRef = useRef<XY>({ x: 0, y: 0 });
-  const downAtRef = useRef<XY | null>(null);
-  const handleDown = (e: React.PointerEvent) => {
-    e.stopPropagation();
-    (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
-    const p = setSvgPoint(e);
-    offsetRef.current = { x: p.x - pos.x, y: p.y - pos.y };
-    downAtRef.current = { x: e.clientX, y: e.clientY };
-  };
-  const handleMove = (e: React.PointerEvent) => {
-    if (e.buttons === 0) return;
-    const p = setSvgPoint(e);
-    onDrag({ x: p.x - offsetRef.current.x, y: p.y - offsetRef.current.y });
-  };
-  const handleUp = (e: React.PointerEvent) => {
-    (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (onTap && downAtRef.current) {
-      const dx = e.clientX - downAtRef.current.x;
-      const dy = e.clientY - downAtRef.current.y;
-      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) onTap();
-    }
-    downAtRef.current = null;
-  };
-  return (
-    <foreignObject x={pos.x} y={pos.y} width={width} height={height} style={{ overflow: "visible" }}>
-      <div
-        onPointerDown={handleDown}
-        onPointerMove={handleMove}
-        onPointerUp={handleUp}
-        style={{ width, height, cursor: onTap ? "pointer" : "grab", touchAction: "none", userSelect: "none" }}
-      >
-        {children}
-      </div>
-    </foreignObject>
-  );
-}
-
 /* ════════════════════════════════════════════════════════════════════
-   STRATEJİ HESAPLAMA — Palantir-grade enrichments
+   STRATEJI HESAPLAMA
    ──────────────────────────────────────────────────────────────────── */
 type ActionItem =
   | { kind: "tedarik"; code: string; name: string; quantity: number; leadDays: number; rationale: string; impact: string }
@@ -215,26 +148,21 @@ type ActionItem =
   | { kind: "oncelik"; code: string; sharedOrders: { id: string; customer: string; sku: string }[]; rationale: string; impact: string }
   | { kind: "uyari"; severity: "warn" | "critical"; message: string };
 
-interface CrossImpact {
-  code: string;
-  orders: { id: string; customer: string; sku: string; quantity: number }[];
-}
+interface CrossImpact { code: string; orders: { id: string; customer: string; sku: string; quantity: number }[]; }
 
 interface Strategy {
-  capacityPct: number;            // 0-100 — talebin ne kadarı karşılanıyor
-  riskScore: number;              // 0-100 — yüksek = tehlikeli
+  capacityPct: number;
+  riskScore: number;
   riskBand: "low" | "med" | "high";
   riskReasons: string[];
-  confidencePct: number;          // 0-100 — data freshness
+  confidencePct: number;
   confidenceNote: string;
   actions: ActionItem[];
   crossImpact: CrossImpact[];
   bottleneckCascade: { code: string; name: string; coveragePct: number; max: number }[];
   timeline: {
     todayT: number; deadlineT: number;
-    procurementEndT: number;      // tedarik son tarih
-    productionStartT: number;     // üretim başla
-    productionEndT: number;       // üretim bit
+    procurementEndT: number; productionStartT: number; productionEndT: number;
     daysToDeadline: number;
   };
 }
@@ -258,20 +186,16 @@ function computeStrategy(args: {
   const missing = Math.max(0, order.quantity - maxProd);
   const capacityPct = order.quantity > 0 ? Math.min(100, Math.round((possible / order.quantity) * 100)) : 0;
 
-  /* Risk skoru */
   const reasons: string[] = [];
   let risk = 0;
-  // (a) capacity gap
   const gapRatio = order.quantity > 0 ? missing / order.quantity : 0;
   risk += gapRatio * 40;
   if (gapRatio > 0.15) reasons.push(`%${Math.round(gapRatio * 100)} talep eksiği`);
-  // (b) deadline tightness vs lead time
   const leadDays = DEFAULT_LEAD_TIME_DAYS;
   const tightness = leadDays > 0 ? Math.max(0, 1 - daysToDeadline / (leadDays * 2)) : 0;
   risk += tightness * 35;
-  if (daysToDeadline < leadDays) reasons.push(`teslime ${daysToDeadline} gün kaldı, tedarik ~${leadDays} gün`);
-  else if (daysToDeadline < leadDays * 1.5) reasons.push(`teslime ${daysToDeadline} gün — tedarik için sınırda`);
-  // (c) bottleneck severity
+  if (daysToDeadline < leadDays) reasons.push(`teslime ${daysToDeadline} gün, tedarik ~${leadDays} gün`);
+  else if (daysToDeadline < leadDays * 1.5) reasons.push(`teslime ${daysToDeadline} gün — sınırda`);
   const bn = capacity?.bottlenecks?.[0];
   if (bn && bn.maxProducts < order.quantity) {
     const sev = 1 - bn.maxProducts / Math.max(1, order.quantity);
@@ -281,7 +205,6 @@ function computeStrategy(args: {
   risk = Math.max(0, Math.min(100, Math.round(risk)));
   const riskBand: "low" | "med" | "high" = risk >= 65 ? "high" : risk >= 30 ? "med" : "low";
 
-  /* Güven (data freshness) */
   let conf = 90;
   let confNote = "tüm bileşen sayımları taze (≤7 gün)";
   if (components.length > 0) {
@@ -296,7 +219,6 @@ function computeStrategy(args: {
     else if (avg > 7) confNote = `ortalama sayım ${Math.round(avg)} gün önce`;
   }
 
-  /* Çapraz etki */
   const componentCodes = Array.from(new Set(enriched.filter(c => c.shortfall > 0).map(c => c.code)));
   const crossImpact: CrossImpact[] = [];
   for (const code of componentCodes) {
@@ -311,29 +233,24 @@ function computeStrategy(args: {
     if (sharers.length > 0) crossImpact.push({ code, orders: sharers });
   }
 
-  /* Aksiyon kuyruğu */
   const actions: ActionItem[] = [];
-  // Tedarik aksiyonları (en yüksek shortfall önce)
   enriched
     .filter(c => c.shortfall > 0)
     .sort((a, b) => b.shortfall - a.shortfall)
     .slice(0, 5)
     .forEach(c => {
-      const priorityLead = leadDays;
       const cross = crossImpact.find(ci => ci.code === c.code);
       const rationale = cross
-        ? `${order.customer} eksik · ayrıca ${cross.orders.map(o => o.customer).join(", ")} siparişlerinde de kullanılıyor`
+        ? `${order.customer} eksik · ${cross.orders.map(o => o.customer).join(", ")} siparişlerinde de kullanılıyor`
         : `mevcut stok ${fmtTR(c.currentStock)} — gerekli ${fmtTR(c.needed)}`;
       actions.push({
         kind: "tedarik",
         code: c.code, name: c.name,
-        quantity: c.shortfall,
-        leadDays: priorityLead,
+        quantity: c.shortfall, leadDays,
         rationale,
         impact: `+${fmtTR(Math.floor(c.shortfall / Math.max(1, c.requiredPerUnit)))} mamul üretim hakkı`,
       });
     });
-  // Üretim aksiyonu
   if (possible > 0) {
     const days = Math.max(1, Math.ceil(possible * PRODUCTION_DAYS_PER_UNIT));
     actions.push({
@@ -345,31 +262,26 @@ function computeStrategy(args: {
       impact: missing > 0 ? `kısmi teslim güvence altına alınır` : `tam teslim, ekstra eylem gerekmez`,
     });
   }
-  // Önceliklendirme uyarısı
   for (const ci of crossImpact.slice(0, 3)) {
     actions.push({
       kind: "oncelik",
       code: ci.code,
       sharedOrders: ci.orders.map(o => ({ id: o.id, customer: o.customer, sku: o.sku })),
-      rationale: `${ci.orders.length} sipariş bu bileşeni paylaşıyor; tedarik yetmezse hangisine öncelik?`,
-      impact: `paylaşımlı stok bölünme stratejisi gerekli`,
+      rationale: `${ci.orders.length} sipariş bu bileşeni paylaşıyor — paylaşımlı stok bölünme stratejisi`,
+      impact: `paylaşım önceliği belirlenmeli`,
     });
   }
-  // Risk uyarıları
   if (riskBand === "high") {
     actions.push({ kind: "uyari", severity: "critical", message: `Yüksek risk · ${reasons[0] ?? "deadline-stok dengesizliği"}` });
   } else if (riskBand === "med" && missing > 0) {
     actions.push({ kind: "uyari", severity: "warn", message: `Orta risk · ${reasons[0] ?? "yakın takip gerekli"}` });
   }
 
-  /* Darboğaz cascade — top 3 + kapsama % */
   const bottleneckCascade = (capacity?.bottlenecks ?? []).slice(0, 3).map(b => ({
-    code: b.code, name: b.name,
-    max: b.maxProducts,
+    code: b.code, name: b.name, max: b.maxProducts,
     coveragePct: order.quantity > 0 ? Math.min(100, Math.round((b.maxProducts / order.quantity) * 100)) : 0,
   }));
 
-  /* Timeline marker'ları */
   const procurementEndT = todayT + leadDays * 86400000;
   const productionStartT = missing > 0 ? procurementEndT : todayT;
   const productionEndT = productionStartT + Math.ceil(possible * PRODUCTION_DAYS_PER_UNIT) * 86400000;
@@ -383,22 +295,19 @@ function computeStrategy(args: {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   STRATEJI PANEL — sectioned, rich
+   STRATEJI PANEL — pure HTML, no foreignObject, no absolute positioning
    ──────────────────────────────────────────────────────────────────── */
-function StrategyPanel({ s, order, capacity, loading }: {
-  s: Strategy; order: Order; capacity?: CapacityResp; loading: boolean;
-}) {
+function StrategyPanel({ s, order, loading }: { s: Strategy; order: Order; loading: boolean }) {
   const today = new Date();
   const deadline = order.deadline ? new Date(order.deadline) : new Date(Date.now() + 90 * 86400000);
   const months = useMemo(() => monthSlots(today, deadline), [order.deadline]);
   const totalSpan = Math.max(1, deadline.getTime() - today.getTime());
-  const TIMELINE_W = PANEL_W - 32;
-  const tToX = (t: number) => Math.max(0, Math.min(TIMELINE_W, ((t - today.getTime()) / totalSpan) * TIMELINE_W));
+  const tlW = PANEL_W - 32;
+  const tToX = (t: number) => Math.max(0, Math.min(tlW, ((t - today.getTime()) / totalSpan) * tlW));
 
   const riskColor = s.riskBand === "high" ? C.shortfall : s.riskBand === "med" ? C.warn : C.ok;
   const riskLabel = s.riskBand === "high" ? "YÜKSEK" : s.riskBand === "med" ? "ORTA" : "DÜŞÜK";
 
-  const tlSvgW = TIMELINE_W;
   const procEndX = tToX(s.timeline.procurementEndT);
   const prodStartX = tToX(s.timeline.productionStartT);
   const prodEndX = tToX(s.timeline.productionEndT);
@@ -413,23 +322,20 @@ function StrategyPanel({ s, order, capacity, loading }: {
       overflow: "hidden", display: "flex", flexDirection: "column", gap: 14,
     }}>
       {/* Header */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexShrink: 0 }}>
         <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 600 }}>◇ STRATEJİ</div>
-        <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 0.5 }} title={s.confidenceNote}>
-          güven %{s.confidencePct}
-        </div>
+        <div style={{ fontSize: 9, color: C.cardSub }} title={s.confidenceNote}>güven %{s.confidencePct}</div>
       </div>
 
-      {/* Capacity meter + risk + days */}
-      <div>
+      {/* Capacity meter */}
+      <div style={{ flexShrink: 0 }}>
         <div style={{
-          height: 12, borderRadius: 6, background: "rgba(255,255,255,0.06)",
-          overflow: "hidden", position: "relative",
+          height: 12, borderRadius: 6, background: "rgba(255,255,255,0.08)",
+          overflow: "hidden",
         }}>
           <div style={{
             width: `${s.capacityPct}%`, height: "100%",
             background: s.capacityPct >= 100 ? C.ok : s.capacityPct >= 60 ? C.info : s.capacityPct >= 30 ? C.warn : C.shortfall,
-            transition: "width 0.4s",
           }} />
         </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11 }}>
@@ -447,79 +353,71 @@ function StrategyPanel({ s, order, capacity, loading }: {
         )}
       </div>
 
-      {/* Aksiyon kuyruğu */}
-      <Section title={`AKSİYON KUYRUĞU · ${s.actions.length}`}>
-        {loading ? (
-          <div style={{ fontSize: 11, color: C.cardSub }}>Hesaplanıyor…</div>
-        ) : s.actions.length === 0 ? (
-          <div style={{ fontSize: 11, color: C.cardSub }}>Aksiyon gerekmiyor — tüm talep karşılanıyor.</div>
-        ) : s.actions.map((a, i) => <ActionRow key={i} action={a} />)}
-      </Section>
-
-      {/* Çapraz etki */}
-      {s.crossImpact.length > 0 && (
-        <Section title={`ÇAPRAZ ETKİ · ${s.crossImpact.length} bileşen`}>
-          {s.crossImpact.slice(0, 4).map(ci => (
-            <div key={ci.code} style={crossRow}>
-              <div style={{ fontSize: 11, fontWeight: 700 }}>{ci.code}</div>
-              <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
-                {ci.orders.map(o => `${o.customer} (${o.sku})`).join(" · ")}
-              </div>
-            </div>
-          ))}
+      {/* Scrollable inner sections (action queue, çapraz etki, darboğaz) */}
+      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4, marginRight: -4 }}>
+        <Section title={`AKSİYON KUYRUĞU · ${s.actions.length}`}>
+          {loading ? (
+            <div style={{ fontSize: 11, color: C.cardSub }}>Hesaplanıyor…</div>
+          ) : s.actions.length === 0 ? (
+            <div style={{ fontSize: 11, color: C.cardSub }}>Aksiyon gerekmiyor — tüm talep karşılanıyor.</div>
+          ) : s.actions.map((a, i) => <ActionRow key={i} action={a} />)}
         </Section>
-      )}
 
-      {/* Darboğaz cascade */}
-      {s.bottleneckCascade.length > 0 && (
-        <Section title="DARBOĞAZ ZİNCİRİ">
-          {s.bottleneckCascade.map(b => (
-            <div key={b.code} style={{ marginBottom: 6 }}>
-              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                <span style={{ fontWeight: 700 }}>{b.code}</span>
-                <span style={{ color: C.cardSub }}>maks {fmtTR(b.max)} · %{b.coveragePct}</span>
+        {s.crossImpact.length > 0 && (
+          <Section title={`ÇAPRAZ ETKİ · ${s.crossImpact.length} bileşen`}>
+            {s.crossImpact.slice(0, 4).map(ci => (
+              <div key={ci.code} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "5px 8px" }}>
+                <div style={{ fontSize: 11, fontWeight: 700 }}>{ci.code}</div>
+                <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
+                  {ci.orders.map(o => `${o.customer} (${o.sku})`).join(" · ")}
+                </div>
               </div>
-              <div style={{
-                height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)",
-                marginTop: 3, overflow: "hidden",
-              }}>
-                <div style={{
-                  width: `${b.coveragePct}%`, height: "100%",
-                  background: b.coveragePct >= 100 ? C.ok : b.coveragePct >= 60 ? C.info : b.coveragePct >= 30 ? C.warn : C.shortfall,
-                }} />
-              </div>
-            </div>
-          ))}
-        </Section>
-      )}
+            ))}
+          </Section>
+        )}
 
-      {/* Timeline — inline SVG (foreignObject + position:absolute Safari bug'ı by-pass) */}
-      <Section title="ZAMAN ÇİZGİSİ">
+        {s.bottleneckCascade.length > 0 && (
+          <Section title="DARBOĞAZ ZİNCİRİ">
+            {s.bottleneckCascade.map(b => (
+              <div key={b.code}>
+                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                  <span style={{ fontWeight: 700 }}>{b.code}</span>
+                  <span style={{ color: C.cardSub }}>maks {fmtTR(b.max)} · %{b.coveragePct}</span>
+                </div>
+                <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", marginTop: 3, overflow: "hidden" }}>
+                  <div style={{
+                    width: `${b.coveragePct}%`, height: "100%",
+                    background: b.coveragePct >= 100 ? C.ok : b.coveragePct >= 60 ? C.info : b.coveragePct >= 30 ? C.warn : C.shortfall,
+                  }} />
+                </div>
+              </div>
+            ))}
+          </Section>
+        )}
+      </div>
+
+      {/* Timeline — inline SVG */}
+      <div style={{ flexShrink: 0 }}>
+        <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 600, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${C.panelEdge}` }}>
+          ZAMAN ÇİZGİSİ
+        </div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
           {months.map(m => (
             <div key={m.t} style={{ fontSize: 9, color: C.cardSub }}>{m.label}</div>
           ))}
         </div>
-        <svg width={tlSvgW} height={48} style={{ display: "block" }}>
-          <rect x={0} y={6} width={tlSvgW} height={36} rx={6} fill="rgba(255,255,255,0.04)" />
-          <rect x={0} y={28} width={Math.max(0, procEndX)} height={4} rx={2} fill={C.warn}>
-            <title>Tedarik süresi</title>
-          </rect>
-          <rect x={prodStartX} y={14} width={Math.max(8, prodEndX - prodStartX)} height={8} rx={4} fill={C.cardInk}>
-            <title>Üretim aralığı</title>
-          </rect>
-          <line x1={deadlineX} y1={6} x2={deadlineX} y2={42} stroke={C.shortfall} strokeWidth={2}>
-            <title>Son tarih</title>
-          </line>
-          <text x={Math.max(20, Math.min(tlSvgW - 4, deadlineX))} y={4} textAnchor="end"
-            fontSize={8} fill={C.shortfall} fontWeight={700} fontFamily={mono}>deadline</text>
+        <svg width={tlW} height={48} style={{ display: "block" }}>
+          <rect x={0} y={6} width={tlW} height={36} rx={6} fill="rgba(255,255,255,0.04)" />
+          <rect x={0} y={28} width={Math.max(0, procEndX)} height={4} rx={2} fill={C.warn}><title>Tedarik süresi</title></rect>
+          <rect x={prodStartX} y={14} width={Math.max(8, prodEndX - prodStartX)} height={8} rx={4} fill={C.cardInk}><title>Üretim aralığı</title></rect>
+          <line x1={deadlineX} y1={6} x2={deadlineX} y2={42} stroke={C.shortfall} strokeWidth={2}><title>Son tarih</title></line>
         </svg>
         <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9, color: C.cardSub, flexWrap: "wrap" }}>
           <Legend dot={C.warn}>Tedarik</Legend>
           <Legend dot={C.cardInk}>Üretim</Legend>
           <Legend dot={C.shortfall}>Deadline</Legend>
         </div>
-      </Section>
+      </div>
     </div>
   );
 }
@@ -587,20 +485,13 @@ function ActionRow({ action }: { action: ActionItem }) {
       break;
   }
   return (
-    <div style={{
-      background: soft, borderLeft: `3px solid ${color}`, borderRadius: 6,
-      padding: "6px 10px",
-    }}>
+    <div style={{ background: soft, borderLeft: `3px solid ${color}`, borderRadius: 6, padding: "6px 10px" }}>
       <div style={{ fontSize: 8, color, letterSpacing: 1.4, fontWeight: 700, marginBottom: 3 }}>{label}</div>
       {body}
     </div>
   );
 }
 
-const crossRow: React.CSSProperties = {
-  background: "rgba(255,255,255,0.04)", borderRadius: 6,
-  padding: "5px 8px",
-};
 function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
   return (
     <span style={{ display: "inline-flex", alignItems: "center", gap: 4 }}>
@@ -611,14 +502,75 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   Sipariş bloğu render
+   DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
+   ──────────────────────────────────────────────────────────────────── */
+function DragNode({
+  pos, width, height, onDrag, onTap, getMouseInWorld, children, style, asCircle,
+}: {
+  pos: XY;
+  width: number;
+  height: number;
+  onDrag: (xy: XY) => void;
+  onTap?: () => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  children: React.ReactNode;
+  style?: React.CSSProperties;
+  asCircle?: boolean;
+}) {
+  const offsetRef = useRef<XY>({ x: 0, y: 0 });
+  const downAtRef = useRef<{ x: number; y: number; t: number } | null>(null);
+  const handleDown = (e: React.PointerEvent) => {
+    e.stopPropagation();
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    const w = getMouseInWorld(e);
+    offsetRef.current = { x: w.x - pos.x, y: w.y - pos.y };
+    downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now() };
+  };
+  const handleMove = (e: React.PointerEvent) => {
+    if (e.buttons === 0) return;
+    if (!downAtRef.current) return;
+    const w = getMouseInWorld(e);
+    onDrag({ x: w.x - offsetRef.current.x, y: w.y - offsetRef.current.y });
+  };
+  const handleUp = (e: React.PointerEvent) => {
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    if (onTap && downAtRef.current) {
+      const dx = e.clientX - downAtRef.current.x;
+      const dy = e.clientY - downAtRef.current.y;
+      const dt = Date.now() - downAtRef.current.t;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 400) onTap();
+    }
+    downAtRef.current = null;
+  };
+  return (
+    <div
+      onPointerDown={handleDown}
+      onPointerMove={handleMove}
+      onPointerUp={handleUp}
+      style={{
+        position: "absolute",
+        left: pos.x, top: pos.y,
+        width, height,
+        cursor: onTap ? "pointer" : "grab",
+        touchAction: "none", userSelect: "none",
+        ...(asCircle ? { borderRadius: "50%" } : {}),
+        ...style,
+      }}
+    >
+      {children}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SİPARİŞ BLOĞU — atomlar (HTML div) + edges (SVG overlay)
    ──────────────────────────────────────────────────────────────────── */
 function OrderBlock({
   order, capacity, stock, loading,
   positions, defaults, onMove,
   expandedSubs, toggleSub,
   onRemove, onEdit,
-  setSvgPoint,
+  getMouseInWorld,
   allOrders, stockBySku,
 }: {
   order: Order;
@@ -632,7 +584,7 @@ function OrderBlock({
   toggleSub: (code: string) => void;
   onRemove: () => void;
   onEdit: () => void;
-  setSvgPoint: (e: React.PointerEvent) => XY;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
   allOrders: Order[];
   stockBySku: Record<string, StockResp>;
 }) {
@@ -660,46 +612,11 @@ function OrderBlock({
   );
 
   return (
-    <g>
-      {/* Edges first → underneath */}
-      <line x1={orderC.x} y1={orderC.y} x2={productP.x} y2={productC.y}
-        stroke={C.edge} strokeWidth={1.5} strokeDasharray="5 5" />
-      {(flats.length > 0 || subs.length > 0) && (
-        <line x1={productOut.x} y1={productC.y} x2={productOut.x + 90} y2={productC.y}
-          stroke={C.edge} strokeWidth={1.5} strokeDasharray="5 5" />
-      )}
-      {subs.map(c => {
-        const sp = get(`sub:${order.id}:${c.code}`);
-        const sc = { x: sp.x + SUB_R, y: sp.y + SUB_R };
-        const start = { x: productOut.x + 90, y: productC.y };
-        const cpx = (start.x + sc.x) / 2;
-        const path = `M ${start.x} ${start.y} C ${cpx} ${start.y}, ${cpx} ${sc.y}, ${sc.x - SUB_R} ${sc.y}`;
-        const isShort = c.shortfall > 0;
-        return <path key={`se:${c.code}`} d={path}
-          stroke={isShort ? C.shortfall : C.edge}
-          strokeWidth={isShort ? 1.6 : 1.2}
-          strokeDasharray={isShort ? "5 5" : "4 5"} fill="none" />;
-      })}
-      {flats.map(c => {
-        const cp = get(`comp:${order.id}:${c.code}`);
-        const cc = { x: cp.x, y: cp.y + COMP_H / 2 };
-        const start = { x: productOut.x + 90, y: productC.y };
-        const cpx = (start.x + cc.x) / 2;
-        const path = `M ${start.x} ${start.y} C ${cpx} ${start.y}, ${cpx} ${cc.y}, ${cc.x} ${cc.y}`;
-        const isShort = c.shortfall > 0;
-        return <path key={`fe:${c.code}`} d={path}
-          stroke={isShort ? C.shortfall : C.edge}
-          strokeWidth={isShort ? 1.6 : 1.1}
-          strokeDasharray={isShort ? "5 5" : "3 5"} fill="none" />;
-      })}
-      <text x={productOut.x + 38} y={productC.y - 12} fontSize={11} fill={C.mid} fontStyle="italic" fontFamily={mono}>
-        × {fmtTR(order.quantity)}
-      </text>
-
-      {/* Sipariş */}
+    <>
+      {/* Atomlar — saf HTML div, transform parent içinde uniform hareket eder */}
       <DragNode pos={orderP} width={ORDER_W} height={ORDER_H}
-        onDrag={(xy) => onMove(`order:${order.id}`, xy)} setSvgPoint={setSvgPoint}>
-        <div style={cardWrap(false)}>
+        onDrag={(xy) => onMove(`order:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        <div style={cardWrap()}>
           <div style={cardLabel}>SİPARİŞ</div>
           <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>{order.customer || "Bayi"}</div>
           <div style={{ fontSize: 11, color: C.cardSub, marginTop: 2 }}>
@@ -712,10 +629,9 @@ function OrderBlock({
         </div>
       </DragNode>
 
-      {/* Mamul */}
       <DragNode pos={productP} width={PRODUCT_W} height={PRODUCT_H}
-        onDrag={(xy) => onMove(`product:${order.id}`, xy)} setSvgPoint={setSvgPoint}>
-        <div style={cardWrap(false)}>
+        onDrag={(xy) => onMove(`product:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        <div style={cardWrap()}>
           <div style={cardLabel}>MAMUL</div>
           <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}>{fmtTR(order.quantity)} adet</div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.cardSub, marginTop: 1 }}>{order.sku}</div>
@@ -731,38 +647,22 @@ function OrderBlock({
         const childGap = 44;
         const childStartY = sp.y + SUB_R - ((children.length - 1) * childGap) / 2 - COMP_H / 2;
         const childX = sp.x + SUB_R * 2 + 80;
-        const subCenter = { x: sp.x + SUB_R, y: sp.y + SUB_R };
         return (
-          <g key={`sub-grp:${c.code}`}>
-            {/* Drill-down child edges */}
-            {open && children.map((ch, i) => {
-              const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
-              const cpos = positions[overrideId] ?? { x: childX, y: childStartY + i * childGap };
-              const childCenter = { x: cpos.x, y: cpos.y + COMP_H / 2 };
-              const cpx = (subCenter.x + childCenter.x) / 2;
-              const path = `M ${subCenter.x + SUB_R - 2} ${subCenter.y} C ${cpx} ${subCenter.y}, ${cpx} ${childCenter.y}, ${childCenter.x} ${childCenter.y}`;
-              const childNeeded = order.quantity * ch.requiredPerUnit;
-              const childShort = Math.max(0, Math.ceil(childNeeded - ch.currentStock));
-              return <path key={`ce:${ch.code}`} d={path}
-                stroke={childShort > 0 ? C.shortfall : C.edge}
-                strokeWidth={childShort > 0 ? 1.5 : 1.1}
-                strokeDasharray={childShort > 0 ? "5 5" : "3 5"} fill="none" />;
-            })}
-
-            {/* Sub circle */}
+          <div key={`sub-grp:${c.code}`}>
             <DragNode pos={sp} width={SUB_R * 2} height={SUB_R * 2}
               onDrag={(xy) => onMove(`sub:${order.id}:${c.code}`, xy)}
-              setSvgPoint={setSvgPoint}
-              onTap={children.length > 0 ? () => toggleSub(c.code) : undefined}>
+              getMouseInWorld={getMouseInWorld}
+              onTap={children.length > 0 ? () => toggleSub(c.code) : undefined}
+              asCircle>
               <div title={`${c.name}${children.length > 0 ? ` · tıkla → ${children.length} alt bileşen` : ""}`} style={{
-                width: SUB_R * 2, height: SUB_R * 2, borderRadius: "50%",
+                width: "100%", height: "100%", borderRadius: "50%",
                 background: C.cardBg, color: C.cardInk,
                 border: open ? `2px solid ${C.accent}`
                   : isShort ? `2px solid ${C.shortfall}`
                   : `1.5px solid rgba(255,255,255,0.18)`,
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                 boxShadow: open ? `0 0 0 4px ${C.accentSoft}, 0 5px 18px rgba(0,0,0,0.35)` : "0 5px 18px rgba(0,0,0,0.35)",
-                fontFamily: mono, position: "relative", transition: "box-shadow 0.2s, border 0.2s",
+                fontFamily: mono, position: "relative",
               }}>
                 <div style={{ fontSize: 9, fontWeight: 700 }}>{c.code.length > 9 ? c.code.slice(0, 8) + "…" : c.code}</div>
                 <div style={{ fontSize: 7, color: C.cardSub, marginTop: 1 }}>{fmtTR(c.currentStock)} ad</div>
@@ -780,7 +680,6 @@ function OrderBlock({
               </div>
             </DragNode>
 
-            {/* Drill-down child cards */}
             {open && children.map((ch, i) => {
               const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
               const cpos = positions[overrideId] ?? { x: childX, y: childStartY + i * childGap };
@@ -788,13 +687,11 @@ function OrderBlock({
               const childShort = Math.max(0, Math.ceil(childNeeded - ch.currentStock));
               const childIsSub = (ch.children?.length ?? 0) > 0 || ch.isSubAssembly;
               if (childIsSub) {
-                // Nested sub-assembly → smaller circle (Tier 2C)
                 return (
-                  <DragNode key={`subchild:${ch.code}`} pos={cpos} width={SUB_R * 2 - 8} height={SUB_R * 2 - 8}
-                    onDrag={(xy) => onMove(overrideId, xy)} setSvgPoint={setSvgPoint}
-                    onTap={() => toggleSub(`${c.code}/${ch.code}`)}>
+                  <DragNode key={overrideId} pos={cpos} width={SUB_R * 2 - 8} height={SUB_R * 2 - 8}
+                    onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld} asCircle>
                     <div title={ch.name} style={{
-                      width: SUB_R * 2 - 8, height: SUB_R * 2 - 8, borderRadius: "50%",
+                      width: "100%", height: "100%", borderRadius: "50%",
                       background: C.cardBgAlt, color: C.cardInk,
                       border: `1.5px dashed ${C.accent}66`,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -807,8 +704,8 @@ function OrderBlock({
                 );
               }
               return (
-                <DragNode key={`subchild:${ch.code}`} pos={cpos} width={COMP_W - 30} height={COMP_H - 4}
-                  onDrag={(xy) => onMove(overrideId, xy)} setSvgPoint={setSvgPoint}>
+                <DragNode key={overrideId} pos={cpos} width={COMP_W - 30} height={COMP_H - 4}
+                  onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}>
                   <div title={ch.name} style={{
                     width: "100%", height: "100%", boxSizing: "border-box",
                     background: C.cardBgAlt, color: C.cardInk, borderRadius: 7,
@@ -834,7 +731,7 @@ function OrderBlock({
                 </DragNode>
               );
             })}
-          </g>
+          </div>
         );
       })}
 
@@ -844,7 +741,7 @@ function OrderBlock({
         const isShort = c.shortfall > 0;
         return (
           <DragNode key={`comp:${c.code}`} pos={cp} width={COMP_W} height={COMP_H}
-            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} setSvgPoint={setSvgPoint}>
+            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} getMouseInWorld={getMouseInWorld}>
             <div title={c.name} style={{
               width: "100%", height: "100%", boxSizing: "border-box",
               background: C.cardBg, color: C.cardInk, borderRadius: 8,
@@ -871,18 +768,18 @@ function OrderBlock({
         );
       })}
 
-      {/* Strateji panel — RICH */}
+      {/* Strateji panel — pure HTML div, transform parent içinde */}
       <DragNode pos={panelP} width={PANEL_W} height={PANEL_H}
-        onDrag={(xy) => onMove(`panel:${order.id}`, xy)} setSvgPoint={setSvgPoint}>
-        <StrategyPanel s={strategy} order={order} capacity={capacity} loading={loading} />
+        onDrag={(xy) => onMove(`panel:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        <StrategyPanel s={strategy} order={order} loading={loading} />
       </DragNode>
-    </g>
+    </>
   );
 }
 
-const cardWrap = (alt: boolean): React.CSSProperties => ({
+const cardWrap = (): React.CSSProperties => ({
   width: "100%", height: "100%", boxSizing: "border-box",
-  background: alt ? C.cardBgAlt : C.cardBg, color: C.cardInk,
+  background: C.cardBg, color: C.cardInk,
   borderRadius: 12, padding: 12,
   boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
   display: "flex", flexDirection: "column", gap: 3,
@@ -893,7 +790,107 @@ const btnGhost: React.CSSProperties = {
   padding: "2px 8px", fontSize: 10, color: C.cardSub, cursor: "pointer", fontFamily: mono,
 };
 
-/* ─────── Order modal ─────── */
+/* ════════════════════════════════════════════════════════════════════
+   EDGES — tek SVG overlay, world koordinatlarında, transform parent'ı içinde
+   ──────────────────────────────────────────────────────────────────── */
+function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByOrder }: {
+  orders: Order[];
+  allDefaults: Record<string, Record<string, XY>>;
+  posOverrides: PositionOverrides;
+  stockBySku: Record<string, StockResp>;
+  expandedByOrder: Record<string, string[]>;
+}) {
+  type EdgeSeg = { d: string; short: boolean; key: string };
+  const edges: EdgeSeg[] = [];
+
+  orders.forEach(order => {
+    const stock = stockBySku[order.sku];
+    if (!stock) return;
+    const overrides = posOverrides[order.id] ?? {};
+    const defaults = allDefaults[order.id] ?? {};
+    const get = (id: string): XY => overrides[id] ?? defaults[id] ?? { x: 0, y: 0 };
+    const orderP = get(`order:${order.id}`);
+    const productP = get(`product:${order.id}`);
+    const orderRight = { x: orderP.x + ORDER_W, y: orderP.y + ORDER_H / 2 };
+    const productLeft = { x: productP.x, y: productP.y + PRODUCT_H / 2 };
+    const productRight = { x: productP.x + PRODUCT_W, y: productP.y + PRODUCT_H / 2 };
+
+    edges.push({ key: `e:o2p:${order.id}`, short: false,
+      d: `M ${orderRight.x} ${orderRight.y} L ${productLeft.x} ${productLeft.y}` });
+
+    const top = stock.components.filter(c => c.parentComponentCode === null);
+    const subs = top.filter(c => c.isSubAssembly || c.hasChildren);
+    const flats = top.filter(c => !(c.isSubAssembly || c.hasChildren));
+    const expanded = new Set(expandedByOrder[order.id] ?? []);
+
+    if (subs.length > 0 || flats.length > 0) {
+      edges.push({ key: `e:p2hub:${order.id}`, short: false,
+        d: `M ${productRight.x} ${productRight.y} L ${productRight.x + 90} ${productRight.y}` });
+    }
+    const hubX = productRight.x + 90;
+    const hubY = productRight.y;
+
+    subs.forEach(c => {
+      const sp = get(`sub:${order.id}:${c.code}`);
+      const sc = { x: sp.x + SUB_R, y: sp.y + SUB_R };
+      const cpx = (hubX + sc.x) / 2;
+      const needed = order.quantity * c.requiredPerUnit;
+      const short = needed - c.currentStock > 0;
+      edges.push({
+        key: `e:sub:${order.id}:${c.code}`, short,
+        d: `M ${hubX} ${hubY} C ${cpx} ${hubY}, ${cpx} ${sc.y}, ${sc.x - SUB_R} ${sc.y}`,
+      });
+
+      // Drill-down children
+      if (expanded.has(c.code) && c.children) {
+        const childGap = 44;
+        const childStartY = sp.y + SUB_R - ((c.children.length - 1) * childGap) / 2 - COMP_H / 2;
+        const childX = sp.x + SUB_R * 2 + 80;
+        c.children.forEach((ch, i) => {
+          const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
+          const cpos = overrides[overrideId] ?? { x: childX, y: childStartY + i * childGap };
+          const childNeed = order.quantity * ch.requiredPerUnit;
+          const cs = childNeed - ch.currentStock > 0;
+          const childCenter = { x: cpos.x, y: cpos.y + COMP_H / 2 };
+          const cmid = (sc.x + childCenter.x) / 2;
+          edges.push({
+            key: `e:subch:${order.id}:${c.code}:${ch.code}`, short: cs,
+            d: `M ${sc.x + SUB_R - 2} ${sc.y} C ${cmid} ${sc.y}, ${cmid} ${childCenter.y}, ${childCenter.x} ${childCenter.y}`,
+          });
+        });
+      }
+    });
+
+    flats.forEach(c => {
+      const cp = get(`comp:${order.id}:${c.code}`);
+      const cc = { x: cp.x, y: cp.y + COMP_H / 2 };
+      const cpx = (hubX + cc.x) / 2;
+      const needed = order.quantity * c.requiredPerUnit;
+      const short = needed - c.currentStock > 0;
+      edges.push({
+        key: `e:flat:${order.id}:${c.code}`, short,
+        d: `M ${hubX} ${hubY} C ${cpx} ${hubY}, ${cpx} ${cc.y}, ${cc.x} ${cc.y}`,
+      });
+    });
+  });
+
+  return (
+    <svg style={{
+      position: "absolute", left: 0, top: 0, width: 4000, height: 4000,
+      pointerEvents: "none", overflow: "visible",
+    }}>
+      {edges.map(e => (
+        <path key={e.key} d={e.d}
+          stroke={e.short ? C.shortfall : C.edge}
+          strokeWidth={e.short ? 1.6 : 1.2}
+          strokeDasharray={e.short ? "5 5" : "3 5"}
+          fill="none" />
+      ))}
+    </svg>
+  );
+}
+
+/* ─────── Order Modal ─────── */
 function OrderModal({
   initial, onClose, onSave,
 }: {
@@ -1055,10 +1052,7 @@ export default function StrategyCanvasPage() {
     triggerOctopus.mutate();
   };
   const moveNode = useCallback((orderId: string, nodeId: string, xy: XY) => {
-    setPosOverrides(prev => ({
-      ...prev,
-      [orderId]: { ...(prev[orderId] ?? {}), [nodeId]: xy },
-    }));
+    setPosOverrides(prev => ({ ...prev, [orderId]: { ...(prev[orderId] ?? {}), [nodeId]: xy } }));
   }, []);
   const resetLayout = () => setPosOverrides({});
 
@@ -1072,12 +1066,11 @@ export default function StrategyCanvasPage() {
     return all;
   }, [orders, stockBySku]);
 
-  /* SVG koordinat dönüştürme */
-  const svgRef = useRef<SVGSVGElement>(null);
-  const setSvgPoint = useCallback((e: React.PointerEvent): XY => {
-    const svg = svgRef.current;
-    if (!svg) return { x: 0, y: 0 };
-    const rect = svg.getBoundingClientRect();
+  /* World ↔ screen koordinat dönüştürme */
+  const wrapperRef = useRef<HTMLDivElement>(null);
+  const getMouseInWorld = useCallback((e: React.PointerEvent): XY => {
+    const rect = wrapperRef.current?.getBoundingClientRect();
+    if (!rect) return { x: 0, y: 0 };
     return {
       x: (e.clientX - rect.left - viewport.vx) / viewport.scale,
       y: (e.clientY - rect.top - viewport.vy) / viewport.scale,
@@ -1086,29 +1079,32 @@ export default function StrategyCanvasPage() {
 
   /* Pan */
   const panRef = useRef<{ startX: number; startY: number; vx0: number; vy0: number } | null>(null);
-  const handleBgDown = (e: React.PointerEvent<SVGSVGElement>) => {
-    if (e.target !== e.currentTarget && (e.target as Element).tagName !== "rect") return;
+  const [isPanning, setIsPanning] = useState(false);
+  const handleBgDown = (e: React.PointerEvent<HTMLDivElement>) => {
+    if (e.target !== e.currentTarget) return;
     panRef.current = { startX: e.clientX, startY: e.clientY, vx0: viewport.vx, vy0: viewport.vy };
-    (e.currentTarget as SVGSVGElement).setPointerCapture?.(e.pointerId);
+    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+    setIsPanning(true);
   };
-  const handleBgMove = (e: React.PointerEvent<SVGSVGElement>) => {
+  const handleBgMove = (e: React.PointerEvent<HTMLDivElement>) => {
     if (!panRef.current) return;
     const dx = e.clientX - panRef.current.startX;
     const dy = e.clientY - panRef.current.startY;
     setViewport(v => ({ ...v, vx: panRef.current!.vx0 + dx, vy: panRef.current!.vy0 + dy }));
   };
-  const handleBgUp = (e: React.PointerEvent<SVGSVGElement>) => {
+  const handleBgUp = (e: React.PointerEvent<HTMLDivElement>) => {
     panRef.current = null;
-    (e.currentTarget as SVGSVGElement).releasePointerCapture?.(e.pointerId);
+    (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
+    setIsPanning(false);
   };
 
-  const handleWheel = (e: React.WheelEvent<SVGSVGElement>) => {
+  const handleWheel = (e: React.WheelEvent<HTMLDivElement>) => {
     if (e.shiftKey || e.ctrlKey || e.metaKey) {
       e.preventDefault();
       const factor = e.deltaY < 0 ? 1.1 : 0.9;
       setViewport(v => {
         const newScale = Math.max(0.2, Math.min(2.5, v.scale * factor));
-        const rect = svgRef.current?.getBoundingClientRect();
+        const rect = wrapperRef.current?.getBoundingClientRect();
         if (!rect) return { ...v, scale: newScale };
         const cx = e.clientX - rect.left;
         const cy = e.clientY - rect.top;
@@ -1122,7 +1118,6 @@ export default function StrategyCanvasPage() {
 
   const zoomBy = (factor: number) => setViewport(v => ({ ...v, scale: Math.max(0.2, Math.min(2.5, v.scale * factor)) }));
 
-  /* Sığdır — tüm orders bounding box → viewport */
   const fitToView = () => {
     const all: XY[] = [];
     orders.forEach(o => {
@@ -1134,15 +1129,13 @@ export default function StrategyCanvasPage() {
     const maxX = Math.max(...all.map(p => p.x)) + PANEL_W + 40;
     const minY = Math.min(...all.map(p => p.y)) - 40;
     const maxY = Math.max(...all.map(p => p.y)) + PANEL_H + 40;
-    const svg = svgRef.current; if (!svg) return;
-    const rect = svg.getBoundingClientRect();
+    const rect = wrapperRef.current?.getBoundingClientRect(); if (!rect) return;
     const scaleX = rect.width / Math.max(1, maxX - minX);
     const scaleY = rect.height / Math.max(1, maxY - minY);
     const scale = Math.max(0.2, Math.min(1.2, Math.min(scaleX, scaleY) * 0.95));
     setViewport({ vx: -minX * scale + 20, vy: -minY * scale + 20, scale });
   };
 
-  /* İlk yüklemede sığdır */
   const fittedOnceRef = useRef(false);
   useEffect(() => {
     if (fittedOnceRef.current) return;
@@ -1169,7 +1162,7 @@ export default function StrategyCanvasPage() {
           <div style={{ fontSize: 9, color: C.accent, letterSpacing: 2 }}>◇ STRATEJİ CANVAS</div>
           <div style={{ fontSize: 18, marginTop: 2, color: C.ink }}>Sipariş → Mamul → BOM → Aksiyon Kuyruğu · Canlı Domino</div>
           <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
-            Bayi siparişi ekle · fan-out otomatik · sürükle, zoom, sığdır · stok değişince yeniden hesapla · her hareket octopus-chain tetikler
+            Bayi siparişi ekle · fan-out otomatik · sürükle, zoom, sığdır · stok değişince yeniden hesapla
           </div>
         </div>
         <div style={{ display: "flex", gap: 8 }}>
@@ -1182,55 +1175,66 @@ export default function StrategyCanvasPage() {
         </div>
       </div>
 
-      {/* Canvas */}
-      <div style={{ position: "relative", height: "calc(100vh - 132px)" }}>
+      {/* Canvas — pan/zoom wrapper */}
+      <div
+        ref={wrapperRef}
+        onPointerDown={handleBgDown}
+        onPointerMove={handleBgMove}
+        onPointerUp={handleBgUp}
+        onWheel={handleWheel}
+        style={{
+          position: "relative", height: "calc(100vh - 132px)",
+          overflow: "hidden",
+          background: C.bg,
+          backgroundImage: `radial-gradient(circle at 1px 1px, rgba(15,23,42,0.10) 1px, transparent 0)`,
+          backgroundSize: `${40 * viewport.scale}px ${40 * viewport.scale}px`,
+          backgroundPosition: `${viewport.vx}px ${viewport.vy}px`,
+          cursor: isPanning ? "grabbing" : "grab",
+          touchAction: "none", userSelect: "none",
+        }}
+      >
         {orders.length === 0 ? (
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            height: "100%", color: C.mid, gap: 12,
+            height: "100%", color: C.mid, gap: 12, pointerEvents: "auto",
           }}>
             <div style={{ fontSize: 14 }}>Boş canvas — sipariş ekleyerek başla</div>
             <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ İlk siparişi ekle</button>
           </div>
         ) : (
-          <svg
-            ref={svgRef}
-            width="100%" height="100%"
-            onPointerDown={handleBgDown}
-            onPointerMove={handleBgMove}
-            onPointerUp={handleBgUp}
-            onWheel={handleWheel}
-            style={{ display: "block", cursor: "grab", userSelect: "none", touchAction: "none" }}
-          >
-            <defs>
-              <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse"
-                patternTransform={`translate(${viewport.vx} ${viewport.vy}) scale(${viewport.scale})`}>
-                <path d="M 40 0 L 0 0 0 40" fill="none" stroke="rgba(15,23,42,0.05)" strokeWidth="1" />
-              </pattern>
-            </defs>
-            <rect width="100%" height="100%" fill="url(#grid)" />
-            <g transform={`translate(${viewport.vx} ${viewport.vy}) scale(${viewport.scale})`}>
-              {orders.map(o => (
-                <OrderBlock
-                  key={o.id}
-                  order={o}
-                  capacity={capacityBySku[o.sku]}
-                  stock={stockBySku[o.sku]}
-                  loading={anyLoading && !stockBySku[o.sku]}
-                  positions={posOverrides[o.id] ?? {}}
-                  defaults={allDefaults[o.id] ?? {}}
-                  onMove={(nodeId, xy) => moveNode(o.id, nodeId, xy)}
-                  expandedSubs={new Set(expandedSubs[o.id] ?? [])}
-                  toggleSub={(code) => toggleSub(o.id, code)}
-                  onRemove={() => removeOrder(o.id)}
-                  onEdit={() => { setEditing(o); setModalOpen(true); }}
-                  setSvgPoint={setSvgPoint}
-                  allOrders={orders}
-                  stockBySku={stockBySku}
-                />
-              ))}
-            </g>
-          </svg>
+          <div style={{
+            position: "absolute", left: 0, top: 0, width: 0, height: 0,
+            transformOrigin: "0 0",
+            transform: `translate3d(${viewport.vx}px, ${viewport.vy}px, 0) scale(${viewport.scale})`,
+            willChange: "transform",
+          }}>
+            <EdgesLayer
+              orders={orders}
+              allDefaults={allDefaults}
+              posOverrides={posOverrides}
+              stockBySku={stockBySku}
+              expandedByOrder={expandedSubs}
+            />
+            {orders.map(o => (
+              <OrderBlock
+                key={o.id}
+                order={o}
+                capacity={capacityBySku[o.sku]}
+                stock={stockBySku[o.sku]}
+                loading={anyLoading && !stockBySku[o.sku]}
+                positions={posOverrides[o.id] ?? {}}
+                defaults={allDefaults[o.id] ?? {}}
+                onMove={(nodeId, xy) => moveNode(o.id, nodeId, xy)}
+                expandedSubs={new Set(expandedSubs[o.id] ?? [])}
+                toggleSub={(code) => toggleSub(o.id, code)}
+                onRemove={() => removeOrder(o.id)}
+                onEdit={() => { setEditing(o); setModalOpen(true); }}
+                getMouseInWorld={getMouseInWorld}
+                allOrders={orders}
+                stockBySku={stockBySku}
+              />
+            ))}
+          </div>
         )}
 
         <div style={{
