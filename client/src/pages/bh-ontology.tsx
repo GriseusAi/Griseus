@@ -574,6 +574,13 @@ export default function BhOntologyPage() {
     if (dragId) { setDragId(null); saveLayout(positions); }
   }, [dragId, positions]);
 
+  /* O(1) node lookup map — perf: link rendering was O(N*L) via nodes.find() */
+  const nodeById = useMemo(() => {
+    const m = new Map<string, GraphNode>();
+    for (const n of nodes) m.set(n.id, n);
+    return m;
+  }, [nodes]);
+
   /* L2 Cross-ref highlight */
   const [hoveredId, setHoveredId] = useState<string | null>(null);
   const connectedSet = useMemo(() => {
@@ -1163,7 +1170,7 @@ export default function BhOntologyPage() {
               <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
             </filter>
           </defs>
-          <rect x={-viewport.x} y={-viewport.y} width={CANVAS_W / viewport.scale} height={CANVAS_H / viewport.scale} fill="url(#grid)" />
+          {/* Grid pattern removed — clean cream canvas (Anthropic style) */}
 
           {/* Palantir-style UNIT backdrops per device column (soft dark panel with border + label) */}
           {allLoaded && (() => {
@@ -1262,8 +1269,8 @@ export default function BhOntologyPage() {
           {links.map((l, i) => {
             const pa = positions[l.from]; const pb = positions[l.to];
             if (!pa || !pb) return null;
-            const nodeTo = nodes.find(n => n.id === l.to);
-            const nodeFrom = nodes.find(n => n.id === l.from);
+            const nodeTo = nodeById.get(l.to);
+            const nodeFrom = nodeById.get(l.from);
             const isProb = nodeTo?.status === "critical" || nodeTo?.isBottleneck;
             const stroke = isProb ? C.err : "#141413";
             const isConnected = !!connectedSet && (connectedSet.has(l.from) || connectedSet.has(l.to));
@@ -1794,22 +1801,21 @@ function NodeView({
         <rect className="breathe" x={-6} y={-6} width={w+12} height={h+12} rx={14}
           fill="none" stroke={C.err} strokeWidth={2} filter="url(#glow)"/>
       )}
-      {/* Shared çift çerçeve */}
+      {/* Shared marker — corner dot only (no double-frame ring) */}
       {node.isShared && !isDevice && (
-        <rect x={-3} y={-3} width={w+6} height={h+6} rx={10}
-          fill="none" stroke={C.accent} strokeWidth={1} opacity={0.5} strokeDasharray="4 2"/>
+        <circle cx={w - 8} cy={8} r={3} fill={C.accent} style={{ pointerEvents: "none" }}/>
       )}
-      {/* Override indicator */}
+      {/* Override indicator — solid coral ring, 2px */}
       {isOverridden && (
-        <rect x={-4} y={-4} width={w+8} height={h+8} rx={11}
-          fill="none" stroke={C.variable} strokeWidth={1.5} strokeDasharray="2 2" opacity={0.9}/>
+        <rect x={-2} y={-2} width={w+4} height={h+4} rx={10}
+          fill="none" stroke={C.variable} strokeWidth={2} opacity={0.9}/>
       )}
       {/* Çoklu seçim halo + numara rozeti */}
       {isSelected && (
         <g>
-          <rect x={-6} y={-6} width={w+12} height={h+12} rx={13}
-            fill="none" stroke={C.accent} strokeWidth={2.5} strokeDasharray="8 4" opacity={0.95}/>
-          <circle cx={-2} cy={-2} r={13} fill={C.accent} stroke="#0a0a0f" strokeWidth={2}/>
+          <rect x={-4} y={-4} width={w+8} height={h+8} rx={12}
+            fill="none" stroke={C.accent} strokeWidth={2.5} opacity={0.95}/>
+          <circle cx={-2} cy={-2} r={13} fill={C.accent} stroke="#FFFFFF" strokeWidth={2}/>
           <text x={-2} y={2} textAnchor="middle" fill="#0a0a0f"
             fontSize={13} fontFamily={mono} fontWeight={700}>
             {selIdx + 1}
@@ -1839,7 +1845,6 @@ function NodeView({
               fill={tileFill}
               stroke={tileStroke}
               strokeWidth={1.5}
-              filter={!isDevice ? "url(#cardShadow)" : undefined}
               onPointerDown={onPointerDown}
             />
             {/* Status stripe — left edge, problem states only */}
@@ -1914,14 +1919,14 @@ function NodeView({
               fill="#f8fafc" stroke="#f1f5f9" strokeWidth={0.5}
               style={{ pointerEvents: "none" }} />
             <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
-              stroke={C.dim} strokeWidth={0.6} strokeDasharray="2 3"
+              stroke={C.dim} strokeWidth={0.6}
               style={{ pointerEvents: "none" }} />
-            {/* Y-axis gridlines at 25/50/75% */}
+            {/* Y-axis gridlines at 25/50/75% — solid faint */}
             {[0.25, 0.5, 0.75].map((p, idx) => (
               <line key={idx}
                 x1={0} x2={chartW}
                 y1={chartYBase - chartH * p} y2={chartYBase - chartH * p}
-                stroke={C.dim} strokeWidth={0.3} strokeDasharray="1 4" opacity={0.5}
+                stroke={C.dim} strokeWidth={0.3} opacity={0.25}
                 style={{ pointerEvents: "none" }} />
             ))}
             {salesBars.map((s, i) => {
@@ -2018,7 +2023,7 @@ function NodeView({
           </text>
           {simulationActive && simulatedMax !== undefined && (
             <>
-              <line x1={22} y1={60} x2={w-22} y2={60} stroke={C.variableBorder} strokeDasharray="3 2" opacity={0.6} />
+              <line x1={22} y1={60} x2={w-22} y2={60} stroke={C.variableBorder} strokeWidth={0.8} opacity={0.6} />
               <text x={w/2} y={80} textAnchor="middle" fill={C.variable} fontSize={13} fontFamily={mono} fontWeight={500}>
                 sim: {fmt(simulatedMax)} <tspan fill={deviceDeltaColor}>
                   ({deviceDelta >= 0 ? "+" : ""}{deviceDelta})
