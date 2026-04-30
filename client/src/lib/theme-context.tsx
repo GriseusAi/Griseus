@@ -1,6 +1,6 @@
-import { createContext, useContext, useEffect, useState, useCallback, type ReactNode } from "react";
+import { createContext, useContext, useEffect, type ReactNode } from "react";
 
-type Theme = "dark" | "light";
+type Theme = "light";
 const STORAGE_KEY = "griseus.theme";
 
 type Ctx = {
@@ -8,29 +8,20 @@ type Ctx = {
   toggleTheme: () => void;
 };
 
-const ThemeContext = createContext<Ctx>({ theme: "dark", toggleTheme: () => {} });
+const ThemeContext = createContext<Ctx>({ theme: "light", toggleTheme: () => {} });
 
 export function useTheme() {
   return useContext(ThemeContext);
 }
 
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    if (typeof window === "undefined") return "dark";
-    return (localStorage.getItem(STORAGE_KEY) as Theme) || "dark";
-  });
-
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem(STORAGE_KEY, theme);
-  }, [theme]);
-
-  const toggleTheme = useCallback(() => {
-    setTheme(prev => (prev === "dark" ? "light" : "dark"));
+    document.documentElement.dataset.theme = "light";
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
   }, []);
 
   return (
-    <ThemeContext.Provider value={{ theme, toggleTheme }}>
+    <ThemeContext.Provider value={{ theme: "light", toggleTheme: () => {} }}>
       {children}
     </ThemeContext.Provider>
   );
