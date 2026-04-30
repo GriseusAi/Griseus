@@ -516,8 +516,8 @@
   filter: brightness(0.7) contrast(1.1) saturate(0.8);
 }
 
-/* Light mode — global invert filter.
-   Flips dark bg → light bg, text → dark, via invert + hue-rotate (color-preserving). */
+/* Light mode — global invert hack flips dark UI → light for legacy pages.
+   Pages that are NATIVELY light (already render in white) opt out via .native-light. */
 html[data-theme="light"] {
   filter: invert(1) hue-rotate(180deg);
   background: #ffffff;
@@ -528,5 +528,9 @@ html[data-theme="light"] video,
 html[data-theme="light"] iframe,
 html[data-theme="light"] canvas,
 html[data-theme="light"] svg image {
+  filter: invert(1) hue-rotate(180deg);
+}
+/* Native-light pages — counter the global invert so true white stays white */
+html[data-theme="light"] .native-light {
   filter: invert(1) hue-rotate(180deg);
 }

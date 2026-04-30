@@ -876,7 +876,7 @@ export default function BhOntologyPage() {
   }, [nodes, positions, zoomIn, zoomOut, zoomReset]);
 
   return (
-    <div style={{
+    <div className="native-light" style={{
       minHeight: "100vh", background: C.bg, color: C.white,
       fontFamily: mono,
       fontFeatureSettings: INTER_FEATURES,
