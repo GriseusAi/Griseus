@@ -6,20 +6,20 @@ import TopNav from "@/components/top-nav";
 import ProductSelector from "@/components/ProductSelector";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 
+import { CT } from "@/lib/claude-theme";
 const C = {
-  bg: "#050505", surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.10)", accentGlow: "rgba(99,102,241,0.20)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.06)", okBorder: "rgba(52,211,153,0.15)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.06)", warnBorder: "rgba(251,191,36,0.15)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.05)", errBorder: "rgba(239,68,68,0.12)",
-  blue: "#60a5fa", blueDim: "rgba(96,165,250,0.06)", blueBorder: "rgba(96,165,250,0.15)",
-  purple: "#a78bfa",
-  white: "#f0f0f5", mid: "#7a7a90", dim: "#4a4a60", dimmer: "#1a1a2a",
+  bg: CT.bg, surface: CT.surface, surfaceHover: CT.surfaceHover,
+  border: CT.border, borderActive: CT.borderStrong,
+  accent: CT.accent, accentDim: CT.accentSoft, accentGlow: CT.accentEdge,
+  ok: CT.ok, okDim: CT.okSoft, okBorder: "rgba(63,143,91,0.28)",
+  warn: CT.warn, warnDim: CT.warnSoft, warnBorder: "rgba(184,118,28,0.28)",
+  err: CT.err, errDim: CT.errSoft, errBorder: "rgba(179,64,55,0.28)",
+  blue: CT.info, blueDim: CT.infoSoft, blueBorder: "rgba(61,111,176,0.28)",
+  purple: "#8a72c7",
+  white: CT.ink, mid: CT.inkSub, dim: CT.inkMuted, dimmer: CT.inkFaint,
 };
 const glass = {
-  backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
-  boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
+  boxShadow: "0 1px 2px rgba(20,20,19,0.04), 0 4px 16px rgba(20,20,19,0.04)",
 } as const;
 
 /* ═══════════════════════════════════════════════════════════
