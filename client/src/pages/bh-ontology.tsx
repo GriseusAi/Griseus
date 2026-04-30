@@ -18,25 +18,25 @@ import { useSelection } from "@/lib/selection-context";
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  // Blueprint.js (Palantir) intent palette — muted, easy on eyes, Foundry-like
-  bg: "#ffffff",
-  panelBg: "#ffffff",
-  surface: "#f6f7f9", surfaceHover: "#edeff2",
-  border: "rgba(17,20,24,0.10)", borderActive: "rgba(17,20,24,0.20)",
-  accent: "#2d72d2", accentDim: "rgba(45,114,210,0.08)",
-  ok: "#238551", okDim: "rgba(35,133,81,0.10)", okBorder: "rgba(35,133,81,0.30)",
-  warn: "#c87619", warnDim: "rgba(200,118,25,0.10)", warnBorder: "rgba(200,118,25,0.30)",
-  variable: "#ac2f33", variableDim: "rgba(172,47,51,0.08)", variableBorder: "rgba(172,47,51,0.30)",
-  err: "#cd4246", errDim: "rgba(205,66,70,0.10)", errBorder: "rgba(205,66,70,0.30)",
-  blue: "#2d72d2", blueDim: "rgba(45,114,210,0.08)", blueBorder: "rgba(45,114,210,0.28)",
-  purple: "#9d3f9d",
-  // Token names kept for diff stability — `white` = primary ink, `dim*` = neutral backgrounds
-  white: "#1c2127", mid: "#5f6b7c", dim: "#8f99a8", dimmer: "#edeff2",
+  // Anthropic Claude.ai inspired — warm cream canvas, coral accent, soft warm grays
+  bg: "#FAF9F5",                                    // signature cream canvas
+  panelBg: "#FFFFFF",                               // pure white surface for cards
+  surface: "#F5F4EE", surfaceHover: "#EDEBE3",      // sidebar/secondary tint
+  border: "rgba(31,29,26,0.08)", borderActive: "rgba(31,29,26,0.18)",
+  accent: "#CC785C", accentDim: "rgba(204,120,92,0.10)",   // Anthropic coral
+  ok: "#3D7A5A", okDim: "rgba(61,122,90,0.10)", okBorder: "rgba(61,122,90,0.28)",
+  warn: "#B7791F", warnDim: "rgba(183,121,31,0.10)", warnBorder: "rgba(183,121,31,0.28)",
+  variable: "#CC785C", variableDim: "rgba(204,120,92,0.10)", variableBorder: "rgba(204,120,92,0.32)",
+  err: "#B73A3A", errDim: "rgba(183,58,58,0.10)", errBorder: "rgba(183,58,58,0.28)",
+  blue: "#5C6F8E", blueDim: "rgba(92,111,142,0.08)", blueBorder: "rgba(92,111,142,0.26)",
+  purple: "#7E6699",
+  // Token names kept for diff stability — `white` = primary ink, `dim*` = neutral
+  white: "#1F1D1A", mid: "#5C5B57", dim: "#8B8A85", dimmer: "#E5E5E2",
 };
-// Palantir uses Alliance No.1 (proprietary) — closest free substitute: Inter
-// with alternate-char OpenType features for more Alliance-like rendering.
-const mono = "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif";
-const INTER_FEATURES = "'cv11', 'ss01', 'ss02', 'cv02', 'cv03', 'cv04'"; // single-story a, alt g, flat l
+// Anthropic uses Styrene A/B (proprietary, Commercial Type). Public fallback chain →
+// system-ui (SF Pro on Mac/iOS, Segoe UI on Windows) which visually resembles Styrene.
+const mono = "'Styrene A', 'Söhne', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
+const INTER_FEATURES = "normal"; // system-ui already balanced, no extra features needed
 const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 const BH_SKUS = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"] as const;
