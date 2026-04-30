@@ -1030,7 +1030,116 @@ export default function BhOntologyPage() {
             }}>✕ Temizle</button>
           )}
         </div>
+
+        {/* BH grupları dropdown */}
+        <div ref={groupsMenuRef} style={{ position: "relative" }}>
+          <button onClick={() => setGroupsOpen(o => !o)} style={{
+            padding: "6px 12px", borderRadius: 16, cursor: "pointer",
+            fontSize: 10, fontFamily: mono, fontWeight: 500, letterSpacing: 1,
+            background: groupsOpen ? `${C.accent}22` : C.surface,
+            border: `1px solid ${groupsOpen ? C.accent : C.border}`,
+            color: groupsOpen ? C.accent : C.mid,
+            transition: "all 0.15s",
+          }}>◈ BH GRUPLARI {groupsOpen ? "▴" : "▾"}</button>
+          {groupsOpen && (
+            <div style={{
+              position: "absolute", top: "calc(100% + 6px)", left: 0, zIndex: 50,
+              minWidth: 180, background: C.panelBg,
+              border: `1px solid ${C.border}`, borderRadius: 8,
+              boxShadow: "0 8px 24px rgba(15,23,42,0.12)", padding: 4,
+            }}>
+              {BH_SKUS.map((sku, i) => (
+                <button key={sku} onClick={() => { snapToSku(sku); setGroupsOpen(false); }} style={{
+                  display: "flex", justifyContent: "space-between", alignItems: "center",
+                  width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                  background: "transparent", border: "none", color: C.white,
+                  fontSize: 11, fontFamily: mono, textAlign: "left",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = C.surfaceHover)}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+                  <span>{sku}</span>
+                  <kbd style={{
+                    fontFamily: mono, fontSize: 9, padding: "2px 6px",
+                    borderRadius: 4, border: `1px solid ${C.border}`,
+                    background: C.surface, color: C.mid,
+                  }}>{i + 1}</kbd>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
+        {/* Strateji butonu — senaryo yaz */}
+        <button onClick={() => setStrategyOpen(true)} style={{
+          padding: "6px 12px", borderRadius: 16, cursor: "pointer",
+          fontSize: 10, fontFamily: mono, fontWeight: 500, letterSpacing: 1,
+          background: C.variableDim, border: `1px solid ${C.variableBorder}`,
+          color: C.variable, transition: "all 0.15s",
+        }}>◇ STRATEJİ</button>
       </div>
+
+      {/* Strateji modal — senaryo yarat */}
+      {strategyOpen && (
+        <div onClick={() => setStrategyOpen(false)} style={{
+          position: "fixed", inset: 0, background: "rgba(15,23,42,0.45)",
+          display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100,
+        }}>
+          <div onClick={e => e.stopPropagation()} style={{
+            width: 540, maxWidth: "92vw",
+            background: C.bg, border: `1px solid ${C.variableBorder}`, borderRadius: 12,
+            padding: 22, fontFamily: mono,
+            boxShadow: "0 20px 50px rgba(15,23,42,0.18)",
+          }}>
+            <div style={{ fontSize: 9, color: C.variable, letterSpacing: 2, marginBottom: 4 }}>◇ YENİ STRATEJİ</div>
+            <div style={{ fontSize: 16, color: C.white, marginBottom: 4 }}>Senaryo Yaz</div>
+            <div style={{ fontSize: 11, color: C.dim, marginBottom: 16 }}>
+              Senaryoya bir ad ver, ardından simülasyon sayfasında stok/BOM override'larını ekleyip what-if çalıştır.
+            </div>
+            <label style={{ fontSize: 10, color: C.mid, letterSpacing: 1 }}>SENARYO ADI</label>
+            <input
+              autoFocus value={strategyName}
+              onChange={e => setStrategyName(e.target.value)}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submitStrategy(); } }}
+              placeholder="Örn: BH.50ST satışları %20 artarsa"
+              style={{
+                width: "100%", marginTop: 6, marginBottom: 14,
+                background: C.surface, border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "9px 12px", color: C.white,
+                fontFamily: mono, fontSize: 13, outline: "none",
+              }}
+            />
+            <label style={{ fontSize: 10, color: C.mid, letterSpacing: 1 }}>AÇIKLAMA / NOT</label>
+            <textarea
+              value={strategyDesc}
+              onChange={e => setStrategyDesc(e.target.value)}
+              rows={4}
+              placeholder="Senaryo bağlamı (opsiyonel) — hangi bileşenlerde, hangi varsayımla, ne zaman..."
+              style={{
+                width: "100%", marginTop: 6, marginBottom: 16,
+                background: C.surface, border: `1px solid ${C.border}`,
+                borderRadius: 8, padding: "9px 12px", color: C.white,
+                fontFamily: mono, fontSize: 12, outline: "none", resize: "vertical",
+              }}
+            />
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: 8 }}>
+              <button onClick={() => setStrategyOpen(false)} style={{
+                padding: "9px 16px", borderRadius: 8, cursor: "pointer",
+                background: C.surface, border: `1px solid ${C.border}`, color: C.mid,
+                fontFamily: mono, fontSize: 12,
+              }}>Vazgeç</button>
+              <button onClick={submitStrategy}
+                disabled={strategyMutation.isPending || !strategyName.trim()}
+                style={{
+                  padding: "9px 16px", borderRadius: 8,
+                  cursor: strategyMutation.isPending || !strategyName.trim() ? "not-allowed" : "pointer",
+                  background: C.variableDim, border: `1px solid ${C.variableBorder}`,
+                  color: C.variable, fontFamily: mono, fontSize: 12, fontWeight: 500,
+                  opacity: strategyMutation.isPending || !strategyName.trim() ? 0.5 : 1,
+                }}>{strategyMutation.isPending ? "Yaratılıyor..." : "Yarat → Simülasyon"}</button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Object Inspector drawer — sağ */}
       {inspectedNode && (

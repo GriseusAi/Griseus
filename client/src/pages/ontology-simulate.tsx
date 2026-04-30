@@ -164,6 +164,13 @@ export default function OntologySimulatePage() {
 
   /* Selected scenario detail */
   const [selectedScenarioId, setSelectedScenarioId] = useState<number | null>(null);
+  /* Pre-select scenario from ?scenario=<id> (geliş bh-ontology Strateji modal) */
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    const id = new URLSearchParams(window.location.search).get("scenario");
+    const num = id ? parseInt(id, 10) : NaN;
+    if (!isNaN(num) && num > 0) setSelectedScenarioId(num);
+  }, []);
   const scenarioDetailQuery = useQuery<ScenarioDetail>({
     queryKey: [`/api/foundry/scenarios/${selectedScenarioId}`],
     enabled: selectedScenarioId != null,
