@@ -795,44 +795,51 @@ function DragNode({
 }) {
   const offsetRef = useRef<XY>({ x: 0, y: 0 });
   const downAtRef = useRef<{ x: number; y: number; t: number; shift: boolean } | null>(null);
+  const movedRef = useRef(false);
   const handleDown = (e: React.PointerEvent) => {
+    const isShift = e.shiftKey || e.metaKey || e.ctrlKey;
     e.stopPropagation();
-    (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
-    const w = getMouseInWorld(e);
-    offsetRef.current = { x: w.x - pos.x, y: w.y - pos.y };
-    downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now(), shift: e.shiftKey || e.metaKey || e.ctrlKey };
+    movedRef.current = false;
+    if (!isShift) {
+      (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
+      const w = getMouseInWorld(e);
+      offsetRef.current = { x: w.x - pos.x, y: w.y - pos.y };
+    }
+    downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now(), shift: isShift };
   };
   const handleMove = (e: React.PointerEvent) => {
     if (e.buttons === 0) return;
     if (!downAtRef.current) return;
-    if (downAtRef.current.shift) return; // Shift+drag = selection mode, kart sabit
+    if (downAtRef.current.shift) return;
     const w = getMouseInWorld(e);
+    movedRef.current = true;
     onDrag({ x: w.x - offsetRef.current.x, y: w.y - offsetRef.current.y });
   };
   const handleUp = (e: React.PointerEvent) => {
     (e.currentTarget as HTMLElement).releasePointerCapture?.(e.pointerId);
-    if (downAtRef.current) {
-      const dx = e.clientX - downAtRef.current.x;
-      const dy = e.clientY - downAtRef.current.y;
-      const dt = Date.now() - downAtRef.current.t;
-      const isClick = Math.abs(dx) < 5 && Math.abs(dy) < 5 && dt < 400;
-      if (isClick) {
-        if (downAtRef.current.shift && onMultiSelect) onMultiSelect();
-        else if (onTap) onTap();
-      }
-    }
     downAtRef.current = null;
+  };
+  // onClick: pointer events sonrası browser üretir; setPointerCapture ile çakışmaz
+  const handleClick = (e: React.MouseEvent) => {
+    if (movedRef.current) { movedRef.current = false; return; }
+    e.stopPropagation();
+    if ((e.shiftKey || e.metaKey || e.ctrlKey) && onMultiSelect) {
+      onMultiSelect();
+    } else if (onTap) {
+      onTap();
+    }
   };
   return (
     <div
       onPointerDown={handleDown}
       onPointerMove={handleMove}
       onPointerUp={handleUp}
+      onClick={handleClick}
       style={{
         position: "absolute",
         left: pos.x, top: pos.y,
         width, height,
-        cursor: onTap ? "pointer" : "grab",
+        cursor: (onTap || onMultiSelect) ? "pointer" : "grab",
         touchAction: "none", userSelect: "none",
         ...(asCircle ? { borderRadius: "50%" } : {}),
         ...style,
