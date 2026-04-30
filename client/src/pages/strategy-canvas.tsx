@@ -398,13 +398,19 @@ function StrategyPanel({ s, order, capacity, loading }: {
   const riskColor = s.riskBand === "high" ? C.shortfall : s.riskBand === "med" ? C.warn : C.ok;
   const riskLabel = s.riskBand === "high" ? "YÜKSEK" : s.riskBand === "med" ? "ORTA" : "DÜŞÜK";
 
+  const tlSvgW = TIMELINE_W;
+  const procEndX = tToX(s.timeline.procurementEndT);
+  const prodStartX = tToX(s.timeline.productionStartT);
+  const prodEndX = tToX(s.timeline.productionEndT);
+  const deadlineX = tToX(s.timeline.deadlineT);
+
   return (
     <div style={{
       width: "100%", height: "100%", boxSizing: "border-box",
       background: C.panelBg, border: `1px solid ${C.panelEdge}`, borderRadius: 14,
       padding: 16, fontFamily: mono, color: C.cardInk,
       boxShadow: "0 12px 36px rgba(0,0,0,0.55)",
-      overflow: "auto", display: "flex", flexDirection: "column", gap: 14,
+      overflow: "hidden", display: "flex", flexDirection: "column", gap: 14,
     }}>
       {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline" }}>
@@ -487,42 +493,31 @@ function StrategyPanel({ s, order, capacity, loading }: {
         </Section>
       )}
 
-      {/* Timeline */}
+      {/* Timeline — inline SVG (foreignObject + position:absolute Safari bug'ı by-pass) */}
       <Section title="ZAMAN ÇİZGİSİ">
-        <div style={{ position: "relative", height: 60 }}>
-          <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-            {months.map(m => (
-              <div key={m.t} style={{ fontSize: 9, color: C.cardSub }}>{m.label}</div>
-            ))}
-          </div>
-          <div style={{ position: "relative", height: 36, background: "rgba(255,255,255,0.04)", borderRadius: 6 }}>
-            {/* tedarik bandı */}
-            <div style={{
-              position: "absolute", left: 0, top: 22, height: 4,
-              width: tToX(s.timeline.procurementEndT),
-              background: C.warn, borderRadius: 2,
-            }} title="Tedarik süresi" />
-            {/* üretim bandı */}
-            <div style={{
-              position: "absolute", left: tToX(s.timeline.productionStartT), top: 8, height: 8,
-              width: Math.max(8, tToX(s.timeline.productionEndT) - tToX(s.timeline.productionStartT)),
-              background: C.cardInk, borderRadius: 4,
-            }} title="Üretim aralığı" />
-            {/* deadline marker */}
-            <div style={{
-              position: "absolute", left: tToX(s.timeline.deadlineT) - 1, top: 0, height: 36,
-              width: 2, background: C.shortfall,
-            }} title="Son tarih" />
-            <div style={{
-              position: "absolute", left: tToX(s.timeline.deadlineT) - 22, top: -2,
-              fontSize: 8, color: C.shortfall, fontWeight: 700,
-            }}>deadline</div>
-          </div>
-          <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9, color: C.cardSub, flexWrap: "wrap" }}>
-            <Legend dot={C.warn}>Tedarik</Legend>
-            <Legend dot={C.cardInk}>Üretim</Legend>
-            <Legend dot={C.shortfall}>Deadline</Legend>
-          </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          {months.map(m => (
+            <div key={m.t} style={{ fontSize: 9, color: C.cardSub }}>{m.label}</div>
+          ))}
+        </div>
+        <svg width={tlSvgW} height={48} style={{ display: "block" }}>
+          <rect x={0} y={6} width={tlSvgW} height={36} rx={6} fill="rgba(255,255,255,0.04)" />
+          <rect x={0} y={28} width={Math.max(0, procEndX)} height={4} rx={2} fill={C.warn}>
+            <title>Tedarik süresi</title>
+          </rect>
+          <rect x={prodStartX} y={14} width={Math.max(8, prodEndX - prodStartX)} height={8} rx={4} fill={C.cardInk}>
+            <title>Üretim aralığı</title>
+          </rect>
+          <line x1={deadlineX} y1={6} x2={deadlineX} y2={42} stroke={C.shortfall} strokeWidth={2}>
+            <title>Son tarih</title>
+          </line>
+          <text x={Math.max(20, Math.min(tlSvgW - 4, deadlineX))} y={4} textAnchor="end"
+            fontSize={8} fill={C.shortfall} fontWeight={700} fontFamily={mono}>deadline</text>
+        </svg>
+        <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9, color: C.cardSub, flexWrap: "wrap" }}>
+          <Legend dot={C.warn}>Tedarik</Legend>
+          <Legend dot={C.cardInk}>Üretim</Legend>
+          <Legend dot={C.shortfall}>Deadline</Legend>
         </div>
       </Section>
     </div>
