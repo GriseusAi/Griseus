@@ -4,6 +4,7 @@ import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
+import { useAgentPanel } from "@/App";
 
 /* ════════════════════════════════════════════════════════════════════
    STRATEGY CANVAS v5 — Pure HTML + CSS transform (no SVG foreignObject)
@@ -297,21 +298,25 @@ function computeStrategy(args: {
 /* ════════════════════════════════════════════════════════════════════
    STRATEJI PANEL — pure HTML, no foreignObject, no absolute positioning
    ──────────────────────────────────────────────────────────────────── */
-function StrategyPanel({ s, order, loading }: { s: Strategy; order: Order; loading: boolean }) {
-  const today = new Date();
-  const deadline = order.deadline ? new Date(order.deadline) : new Date(Date.now() + 90 * 86400000);
-  const months = useMemo(() => monthSlots(today, deadline), [order.deadline]);
-  const totalSpan = Math.max(1, deadline.getTime() - today.getTime());
-  const tlW = PANEL_W - 32;
-  const tToX = (t: number) => Math.max(0, Math.min(tlW, ((t - today.getTime()) / totalSpan) * tlW));
+type Lens = "overview" | "actions" | "whatif" | "cross" | "time" | "ask";
+type ActionStatus = "pending" | "approved" | "skipped";
 
+function StrategyPanel({ s, order, loading, enriched }: {
+  s: Strategy; order: Order; loading: boolean;
+  enriched: (BomComponent & { needed: number; shortfall: number })[];
+}) {
+  const [lens, setLens] = useState<Lens>("overview");
   const riskColor = s.riskBand === "high" ? C.shortfall : s.riskBand === "med" ? C.warn : C.ok;
   const riskLabel = s.riskBand === "high" ? "YÜKSEK" : s.riskBand === "med" ? "ORTA" : "DÜŞÜK";
 
-  const procEndX = tToX(s.timeline.procurementEndT);
-  const prodStartX = tToX(s.timeline.productionStartT);
-  const prodEndX = tToX(s.timeline.productionEndT);
-  const deadlineX = tToX(s.timeline.deadlineT);
+  const lenses: { k: Lens; label: string }[] = [
+    { k: "overview", label: "Genel" },
+    { k: "actions", label: "Aksiyon" },
+    { k: "whatif", label: "Ne-Eğer" },
+    { k: "cross", label: "Çapraz" },
+    { k: "time", label: "Zaman" },
+    { k: "ask", label: "AI Sor" },
+  ];
 
   return (
     <div style={{
@@ -319,108 +324,377 @@ function StrategyPanel({ s, order, loading }: { s: Strategy; order: Order; loadi
       background: C.panelBg, border: `1px solid ${C.panelEdge}`, borderRadius: 14,
       padding: 16, fontFamily: mono, color: C.cardInk,
       boxShadow: "0 12px 36px rgba(0,0,0,0.55)",
-      overflow: "hidden", display: "flex", flexDirection: "column", gap: 14,
+      overflow: "hidden", display: "flex", flexDirection: "column", gap: 12,
     }}>
-      {/* Header */}
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", flexShrink: 0 }}>
         <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 600 }}>◇ STRATEJİ</div>
         <div style={{ fontSize: 9, color: C.cardSub }} title={s.confidenceNote}>güven %{s.confidencePct}</div>
       </div>
 
-      {/* Capacity meter */}
+      {/* Lens tabs */}
+      <div onPointerDown={(e) => e.stopPropagation()} style={{
+        display: "flex", flexWrap: "wrap", gap: 4, flexShrink: 0,
+        padding: 3, background: "rgba(255,255,255,0.04)", borderRadius: 8,
+      }}>
+        {lenses.map(l => (
+          <button key={l.k} onClick={() => setLens(l.k)} style={{
+            flex: 1, minWidth: 50, padding: "5px 8px", borderRadius: 5,
+            background: lens === l.k ? C.accent : "transparent",
+            border: "none", color: lens === l.k ? "#fff" : C.cardSub,
+            fontFamily: mono, fontSize: 9, fontWeight: 600, letterSpacing: 0.5,
+            cursor: "pointer", transition: "all 0.15s",
+          }}>{l.label}</button>
+        ))}
+      </div>
+
+      {/* Capacity + risk header (visible across all lenses) */}
       <div style={{ flexShrink: 0 }}>
-        <div style={{
-          height: 12, borderRadius: 6, background: "rgba(255,255,255,0.08)",
-          overflow: "hidden",
-        }}>
+        <div style={{ height: 10, borderRadius: 5, background: "rgba(255,255,255,0.08)", overflow: "hidden" }}>
           <div style={{
             width: `${s.capacityPct}%`, height: "100%",
             background: s.capacityPct >= 100 ? C.ok : s.capacityPct >= 60 ? C.info : s.capacityPct >= 30 ? C.warn : C.shortfall,
           }} />
         </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 6, fontSize: 11 }}>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 5, fontSize: 11 }}>
           <div>
-            <b>%{s.capacityPct}</b> talep karşılanıyor
+            <b>%{s.capacityPct}</b> karşılanıyor
             <span style={{ color: C.cardSub }}> · </span>
             <span style={{ color: riskColor, fontWeight: 600 }}>risk {riskLabel}</span>
           </div>
           <div style={{ color: C.cardSub }}>{s.timeline.daysToDeadline} gün</div>
         </div>
-        {s.riskReasons.length > 0 && (
-          <div style={{ fontSize: 10, color: C.cardSub, marginTop: 4, lineHeight: 1.5 }}>
-            {s.riskReasons.join(" · ")}
-          </div>
-        )}
       </div>
 
-      {/* Scrollable inner sections (action queue, çapraz etki, darboğaz) */}
-      <div style={{ flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 12, paddingRight: 4, marginRight: -4 }}>
-        <Section title={`AKSİYON KUYRUĞU · ${s.actions.length}`}>
-          {loading ? (
-            <div style={{ fontSize: 11, color: C.cardSub }}>Hesaplanıyor…</div>
-          ) : s.actions.length === 0 ? (
-            <div style={{ fontSize: 11, color: C.cardSub }}>Aksiyon gerekmiyor — tüm talep karşılanıyor.</div>
-          ) : s.actions.map((a, i) => <ActionRow key={i} action={a} />)}
-        </Section>
-
-        {s.crossImpact.length > 0 && (
-          <Section title={`ÇAPRAZ ETKİ · ${s.crossImpact.length} bileşen`}>
-            {s.crossImpact.slice(0, 4).map(ci => (
-              <div key={ci.code} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "5px 8px" }}>
-                <div style={{ fontSize: 11, fontWeight: 700 }}>{ci.code}</div>
-                <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
-                  {ci.orders.map(o => `${o.customer} (${o.sku})`).join(" · ")}
-                </div>
-              </div>
-            ))}
-          </Section>
-        )}
-
-        {s.bottleneckCascade.length > 0 && (
-          <Section title="DARBOĞAZ ZİNCİRİ">
-            {s.bottleneckCascade.map(b => (
-              <div key={b.code}>
-                <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
-                  <span style={{ fontWeight: 700 }}>{b.code}</span>
-                  <span style={{ color: C.cardSub }}>maks {fmtTR(b.max)} · %{b.coveragePct}</span>
-                </div>
-                <div style={{ height: 4, borderRadius: 2, background: "rgba(255,255,255,0.06)", marginTop: 3, overflow: "hidden" }}>
-                  <div style={{
-                    width: `${b.coveragePct}%`, height: "100%",
-                    background: b.coveragePct >= 100 ? C.ok : b.coveragePct >= 60 ? C.info : b.coveragePct >= 30 ? C.warn : C.shortfall,
-                  }} />
-                </div>
-              </div>
-            ))}
-          </Section>
-        )}
-      </div>
-
-      {/* Timeline — inline SVG */}
-      <div style={{ flexShrink: 0 }}>
-        <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 600, marginBottom: 6, paddingBottom: 4, borderBottom: `1px solid ${C.panelEdge}` }}>
-          ZAMAN ÇİZGİSİ
-        </div>
-        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
-          {months.map(m => (
-            <div key={m.t} style={{ fontSize: 9, color: C.cardSub }}>{m.label}</div>
-          ))}
-        </div>
-        <svg width={tlW} height={48} style={{ display: "block" }}>
-          <rect x={0} y={6} width={tlW} height={36} rx={6} fill="rgba(255,255,255,0.04)" />
-          <rect x={0} y={28} width={Math.max(0, procEndX)} height={4} rx={2} fill={C.warn}><title>Tedarik süresi</title></rect>
-          <rect x={prodStartX} y={14} width={Math.max(8, prodEndX - prodStartX)} height={8} rx={4} fill={C.cardInk}><title>Üretim aralığı</title></rect>
-          <line x1={deadlineX} y1={6} x2={deadlineX} y2={42} stroke={C.shortfall} strokeWidth={2}><title>Son tarih</title></line>
-        </svg>
-        <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9, color: C.cardSub, flexWrap: "wrap" }}>
-          <Legend dot={C.warn}>Tedarik</Legend>
-          <Legend dot={C.cardInk}>Üretim</Legend>
-          <Legend dot={C.shortfall}>Deadline</Legend>
-        </div>
+      {/* Lens content */}
+      <div onPointerDown={(e) => e.stopPropagation()} style={{
+        flex: 1, overflowY: "auto", display: "flex", flexDirection: "column", gap: 10,
+        paddingRight: 4, marginRight: -4,
+      }}>
+        {lens === "overview" && <OverviewLens s={s} order={order} />}
+        {lens === "actions" && <ActionsLens s={s} order={order} loading={loading} />}
+        {lens === "whatif" && <WhatIfLens order={order} enriched={enriched} baselineCapacity={s.capacityPct} />}
+        {lens === "cross" && <CrossLens s={s} />}
+        {lens === "time" && <TimeLens s={s} order={order} />}
+        {lens === "ask" && <AskLens order={order} s={s} enriched={enriched} />}
       </div>
     </div>
   );
 }
+
+function OverviewLens({ s, order }: { s: Strategy; order: Order }) {
+  const possible = Math.min(order.quantity, order.quantity - (order.quantity - Math.round(order.quantity * s.capacityPct / 100)));
+  return (
+    <>
+      {s.riskReasons.length > 0 && (
+        <Section title="RİSK GEREKÇESİ">
+          <div style={{ fontSize: 10, color: C.cardSub, lineHeight: 1.5 }}>
+            {s.riskReasons.join(" · ")}
+          </div>
+        </Section>
+      )}
+      <Section title="ÖZET">
+        <KV k="Talep" v={`${fmtTR(order.quantity)} adet ${order.sku}`} />
+        <KV k="Üretilebilir" v={`${fmtTR(possible)} adet`} />
+        <KV k="Eksik" v={s.capacityPct >= 100 ? "yok" : `${fmtTR(order.quantity - possible)} adet`}
+          color={s.capacityPct >= 100 ? C.ok : C.shortfall} />
+        <KV k="Aksiyon sayısı" v={String(s.actions.length)} />
+        <KV k="Çapraz etki" v={s.crossImpact.length > 0 ? `${s.crossImpact.length} bileşen` : "yok"} />
+        <KV k="Bayi" v={order.customer || "—"} />
+      </Section>
+      {s.bottleneckCascade.length > 0 && (
+        <Section title="DARBOĞAZ TOP 3">
+          {s.bottleneckCascade.map(b => (
+            <div key={b.code}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                <span style={{ fontWeight: 700 }}>{b.code}</span>
+                <span style={{ color: C.cardSub }}>%{b.coveragePct}</span>
+              </div>
+              <div style={{ height: 3, borderRadius: 2, background: "rgba(255,255,255,0.06)", marginTop: 2, overflow: "hidden" }}>
+                <div style={{
+                  width: `${b.coveragePct}%`, height: "100%",
+                  background: b.coveragePct >= 100 ? C.ok : b.coveragePct >= 60 ? C.info : b.coveragePct >= 30 ? C.warn : C.shortfall,
+                }} />
+              </div>
+            </div>
+          ))}
+        </Section>
+      )}
+    </>
+  );
+}
+
+function ActionsLens({ s, order, loading }: { s: Strategy; order: Order; loading: boolean }) {
+  const key = `griseus_strategy_action_status_v1:${order.id}`;
+  const [statuses, setStatuses] = useState<Record<number, ActionStatus>>(
+    () => safeParse(localStorage.getItem(key), {} as Record<number, ActionStatus>),
+  );
+  useEffect(() => { localStorage.setItem(key, JSON.stringify(statuses)); }, [key, statuses]);
+  const set = (i: number, st: ActionStatus) => setStatuses(p => ({ ...p, [i]: st }));
+
+  if (loading) return <div style={{ fontSize: 11, color: C.cardSub }}>Hesaplanıyor…</div>;
+  if (s.actions.length === 0) return <div style={{ fontSize: 11, color: C.cardSub }}>Aksiyon gerekmiyor — tüm talep karşılanıyor.</div>;
+
+  return (
+    <Section title={`KUYRUK · ${s.actions.length} aksiyon`}>
+      {s.actions.map((a, i) => {
+        const st = statuses[i] ?? "pending";
+        return (
+          <div key={i} style={{ opacity: st === "skipped" ? 0.5 : 1 }}>
+            <ActionRow action={a} />
+            <div style={{ display: "flex", gap: 4, marginTop: 4 }}>
+              <button onClick={() => set(i, "approved")} style={btnSm(st === "approved" ? C.ok : "rgba(255,255,255,0.06)", st === "approved" ? "#fff" : C.cardSub)}>
+                {st === "approved" ? "✓ onaylı" : "✓ onayla"}
+              </button>
+              <button onClick={() => set(i, "skipped")} style={btnSm(st === "skipped" ? C.shortfall : "rgba(255,255,255,0.06)", st === "skipped" ? "#fff" : C.cardSub)}>
+                {st === "skipped" ? "✕ atlandı" : "✕ atla"}
+              </button>
+              <button onClick={() => set(i, "pending")} style={btnSm("rgba(255,255,255,0.06)", C.cardSub)}>↺</button>
+            </div>
+          </div>
+        );
+      })}
+    </Section>
+  );
+}
+
+function WhatIfLens({ order, enriched, baselineCapacity }: {
+  order: Order;
+  enriched: (BomComponent & { needed: number; shortfall: number })[];
+  baselineCapacity: number;
+}) {
+  const top = useMemo(() => [...enriched].sort((a, b) => b.shortfall - a.shortfall).slice(0, 6), [enriched]);
+  const [overrides, setOverrides] = useState<Record<string, number>>({});
+
+  const newCapacity = useMemo(() => {
+    let minMax = order.quantity;
+    for (const c of enriched) {
+      const stock = overrides[c.code] ?? c.currentStock;
+      const max = c.requiredPerUnit > 0 ? Math.floor(stock / c.requiredPerUnit) : 1e9;
+      if (max < minMax) minMax = max;
+    }
+    return Math.min(100, Math.round((Math.min(order.quantity, minMax) / order.quantity) * 100));
+  }, [enriched, overrides, order.quantity]);
+
+  const delta = newCapacity - baselineCapacity;
+
+  return (
+    <>
+      <Section title="STOKLAMA SİMÜLASYONU">
+        <div style={{ fontSize: 11, lineHeight: 1.5 }}>
+          Eksik bileşenler için stoğu kaydır → kapasite anında yeniden hesaplanır.
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginTop: 8, fontSize: 13 }}>
+          <span>Yeni kapasite: <b>%{newCapacity}</b></span>
+          <span style={{ color: delta > 0 ? C.ok : delta < 0 ? C.shortfall : C.cardSub, fontWeight: 700 }}>
+            {delta > 0 ? `+${delta}` : delta} pp
+          </span>
+        </div>
+      </Section>
+      <Section title="BİLEŞEN STOKLARI">
+        {top.map(c => {
+          const cur = overrides[c.code] ?? c.currentStock;
+          const max = Math.max(c.needed * 2, c.currentStock * 2 + 100);
+          return (
+            <div key={c.code}>
+              <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11 }}>
+                <span style={{ fontWeight: 700 }}>{c.code}</span>
+                <span style={{ color: C.cardSub }}>
+                  {fmtTR(cur)} / gerekli {fmtTR(c.needed)}
+                </span>
+              </div>
+              <input type="range" min={0} max={max} step={Math.max(1, Math.round(max / 100))}
+                value={cur}
+                onChange={(e) => setOverrides(p => ({ ...p, [c.code]: parseInt(e.target.value) }))}
+                onPointerDown={(e) => e.stopPropagation()}
+                style={{ width: "100%", marginTop: 4, accentColor: C.accent }} />
+            </div>
+          );
+        })}
+      </Section>
+      {Object.keys(overrides).length > 0 && (
+        <button onClick={() => setOverrides({})} style={btnSm("rgba(255,255,255,0.08)", C.cardInk)}>↺ baseline'a dön</button>
+      )}
+    </>
+  );
+}
+
+function CrossLens({ s }: { s: Strategy }) {
+  if (s.crossImpact.length === 0) {
+    return <div style={{ fontSize: 11, color: C.cardSub }}>Bu sipariş başka açık siparişle bileşen paylaşmıyor.</div>;
+  }
+  return (
+    <Section title="PAYLAŞIMLI BİLEŞENLER">
+      {s.crossImpact.map(ci => (
+        <div key={ci.code} style={{ background: "rgba(255,255,255,0.04)", borderRadius: 6, padding: "8px 10px" }}>
+          <div style={{ fontSize: 12, fontWeight: 700, color: C.shortfall }}>{ci.code}</div>
+          <div style={{ fontSize: 10, color: C.cardSub, marginTop: 4, lineHeight: 1.5 }}>
+            {ci.orders.length} sipariş bu bileşeni kullanıyor:
+          </div>
+          {ci.orders.map(o => (
+            <div key={o.id} style={{
+              fontSize: 10, color: C.cardInk, marginTop: 4, padding: "4px 8px",
+              background: "rgba(255,255,255,0.04)", borderRadius: 4,
+              display: "flex", justifyContent: "space-between",
+            }}>
+              <span>{o.customer}</span>
+              <span style={{ color: C.cardSub }}>{o.sku} · {fmtTR(o.quantity)} adet</span>
+            </div>
+          ))}
+          <div style={{ fontSize: 9, color: C.accent, marginTop: 6 }}>
+            → Önceliklendir: hangi siparişe öncelik veriyorsun?
+          </div>
+        </div>
+      ))}
+    </Section>
+  );
+}
+
+function TimeLens({ s, order }: { s: Strategy; order: Order }) {
+  const [plan, setPlan] = useState<"A" | "B" | "C">("A");
+  const today = new Date();
+  const deadline = order.deadline ? new Date(order.deadline) : new Date(Date.now() + 90 * 86400000);
+  const months = monthSlots(today, deadline);
+  const totalSpan = Math.max(1, deadline.getTime() - today.getTime());
+  const tlW = PANEL_W - 32;
+  const tToX = (t: number) => Math.max(0, Math.min(tlW, ((t - today.getTime()) / totalSpan) * tlW));
+  const possible = Math.round(order.quantity * s.capacityPct / 100);
+  const missing = order.quantity - possible;
+
+  const plans = {
+    A: {
+      label: "Tedarik + Üret", color: C.ok,
+      desc: `${fmtTR(missing)} eksik bileşen tedarik et, sonra ${fmtTR(order.quantity)} üret. Tam teslim, +14 gün hazırlık.`,
+      procEndT: s.timeline.procurementEndT, prodStartT: s.timeline.productionStartT, prodEndT: s.timeline.productionEndT,
+      kpis: [{ k: "Tamamlanma", v: "%100" }, { k: "Risk", v: "DÜŞÜK" }, { k: "Ek maliyet", v: "tedarik" }],
+    },
+    B: {
+      label: "Geç Teslim — Ceza Riski", color: C.warn,
+      desc: `Sadece ${fmtTR(possible)} üret, eksik kısmı deadline sonrası teslim et. Bayi ile yeniden müzakere.`,
+      procEndT: today.getTime(), prodStartT: today.getTime(), prodEndT: today.getTime() + Math.ceil(possible * 0.4) * 86400000,
+      kpis: [{ k: "Tamamlanma", v: `%${s.capacityPct}` }, { k: "Risk", v: "ORTA" }, { k: "Ek maliyet", v: "ceza" }],
+    },
+    C: {
+      label: "Yarımamül Outsource", color: C.accent,
+      desc: `Yarımamülleri dışarıdan hazır al. Üretim hızlanır, marj düşer ama deadline yetişir.`,
+      procEndT: today.getTime() + 7 * 86400000,
+      prodStartT: today.getTime() + 7 * 86400000,
+      prodEndT: today.getTime() + 7 * 86400000 + Math.ceil(order.quantity * 0.25) * 86400000,
+      kpis: [{ k: "Tamamlanma", v: "%100" }, { k: "Risk", v: "DÜŞÜK" }, { k: "Ek maliyet", v: "marj kaybı" }],
+    },
+  };
+  const cur = plans[plan];
+
+  return (
+    <>
+      <Section title="ALTERNATİF PLANLAR">
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["A", "B", "C"] as const).map(p => (
+            <button key={p} onClick={() => setPlan(p)} style={{
+              flex: 1, padding: "6px 8px", borderRadius: 6,
+              background: plan === p ? plans[p].color : "rgba(255,255,255,0.04)",
+              border: "none", color: plan === p ? "#fff" : C.cardSub,
+              fontFamily: mono, fontSize: 10, fontWeight: 700, cursor: "pointer",
+            }}>{p}: {plans[p].label.split(" ")[0]}</button>
+          ))}
+        </div>
+        <div style={{ fontSize: 11, color: C.cardInk, marginTop: 6, lineHeight: 1.5 }}>
+          <b style={{ color: cur.color }}>Plan {plan}: {cur.label}</b>
+        </div>
+        <div style={{ fontSize: 10, color: C.cardSub, marginTop: 4, lineHeight: 1.5 }}>
+          {cur.desc}
+        </div>
+        <div style={{ display: "flex", gap: 8, marginTop: 8, flexWrap: "wrap" }}>
+          {cur.kpis.map(k => (
+            <div key={k.k} style={{
+              padding: "4px 8px", background: "rgba(255,255,255,0.04)",
+              borderRadius: 4, fontSize: 9,
+            }}>
+              <span style={{ color: C.cardSub }}>{k.k}: </span>
+              <b>{k.v}</b>
+            </div>
+          ))}
+        </div>
+      </Section>
+      <Section title="ZAMAN ÇİZGİSİ">
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 4 }}>
+          {months.map(m => <div key={m.t} style={{ fontSize: 9, color: C.cardSub }}>{m.label}</div>)}
+        </div>
+        <svg width={tlW} height={48} style={{ display: "block" }}>
+          <rect x={0} y={6} width={tlW} height={36} rx={6} fill="rgba(255,255,255,0.04)" />
+          <rect x={0} y={28} width={Math.max(0, tToX(cur.procEndT))} height={4} rx={2} fill={C.warn} />
+          <rect x={tToX(cur.prodStartT)} y={14} width={Math.max(8, tToX(cur.prodEndT) - tToX(cur.prodStartT))} height={8} rx={4} fill={cur.color} />
+          <line x1={tToX(s.timeline.deadlineT)} y1={6} x2={tToX(s.timeline.deadlineT)} y2={42} stroke={C.shortfall} strokeWidth={2} />
+        </svg>
+        <div style={{ display: "flex", gap: 14, marginTop: 6, fontSize: 9, color: C.cardSub, flexWrap: "wrap" }}>
+          <Legend dot={C.warn}>Tedarik</Legend>
+          <Legend dot={cur.color}>Üretim</Legend>
+          <Legend dot={C.shortfall}>Deadline</Legend>
+        </div>
+      </Section>
+    </>
+  );
+}
+
+function AskLens({ order, s, enriched }: {
+  order: Order;
+  s: Strategy;
+  enriched: (BomComponent & { needed: number; shortfall: number })[];
+}) {
+  const { toggleAgent, setPrefillInput } = useAgentPanel();
+  const shorts = enriched.filter(c => c.shortfall > 0).sort((a, b) => b.shortfall - a.shortfall).slice(0, 3);
+  const ctx = `Sipariş: ${order.customer} için ${fmtTR(order.quantity)} adet ${order.sku} (deadline ${order.deadline}). Üretilebilir: %${s.capacityPct}, risk ${s.riskBand}. Eksik: ${shorts.map(c => `${c.code} (${fmtTR(c.shortfall)} adet)`).join(", ") || "yok"}.`;
+
+  const presets = [
+    "Bu siparişi nasıl tam teslim edebilirim?",
+    "Hangi tedarikçiye öncelik vermeliyim?",
+    "Bu eksiği başka bileşenle ikame edebilir miyim?",
+    "Çapraz siparişlerde hangisini geciktirsem?",
+    "Bu siparişin marjını nasıl korurum?",
+  ];
+
+  const ask = (q: string) => {
+    setPrefillInput(`${q}\n\nBağlam: ${ctx}`);
+    toggleAgent();
+  };
+
+  return (
+    <>
+      <Section title="AI'A SOR">
+        <div style={{ fontSize: 10, color: C.cardSub, lineHeight: 1.5 }}>
+          Bu siparişin context'i agent'a otomatik geçer. Hazır soru seç veya kendi sorunu yaz.
+        </div>
+      </Section>
+      <Section title="HAZIR SORULAR">
+        {presets.map(p => (
+          <button key={p} onClick={() => ask(p)} style={{
+            background: "rgba(255,255,255,0.04)", border: `1px solid ${C.panelEdge}`,
+            borderRadius: 6, padding: "8px 10px", fontSize: 11, color: C.cardInk,
+            fontFamily: mono, cursor: "pointer", textAlign: "left",
+          }}>{p}</button>
+        ))}
+      </Section>
+      <button onClick={() => ask("")} style={{
+        background: C.accent, border: "none", borderRadius: 6, padding: "9px 12px",
+        fontSize: 11, color: "#fff", fontFamily: mono, fontWeight: 700, cursor: "pointer",
+        marginTop: 4,
+      }}>+ Kendi sorumu yaz (agent panel açılır)</button>
+    </>
+  );
+}
+
+function KV({ k, v, color }: { k: string; v: string; color?: string }) {
+  return (
+    <div style={{ display: "flex", justifyContent: "space-between", fontSize: 11, padding: "3px 0" }}>
+      <span style={{ color: C.cardSub }}>{k}</span>
+      <span style={{ fontWeight: 600, color: color ?? C.cardInk }}>{v}</span>
+    </div>
+  );
+}
+const btnSm = (bg: string, color: string): React.CSSProperties => ({
+  flex: 1, padding: "4px 8px", borderRadius: 5,
+  background: bg, border: "none", color, fontFamily: mono, fontSize: 9,
+  fontWeight: 600, cursor: "pointer", letterSpacing: 0.4,
+});
 
 function Section({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -771,7 +1045,7 @@ function OrderBlock({
       {/* Strateji panel — pure HTML div, transform parent içinde */}
       <DragNode pos={panelP} width={PANEL_W} height={PANEL_H}
         onDrag={(xy) => onMove(`panel:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
-        <StrategyPanel s={strategy} order={order} loading={loading} />
+        <StrategyPanel s={strategy} order={order} loading={loading} enriched={enriched} />
       </DragNode>
     </>
   );
