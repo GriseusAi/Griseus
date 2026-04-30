@@ -3,7 +3,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import {
   BH_OBJECT_TYPES, BH_LINK_TYPES, BH_ACTION_TYPES,
   objectTypeForKind, actionsForObjectType, linksForObjectType,
@@ -18,19 +18,20 @@ import { useSelection } from "@/lib/selection-context";
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  // Palantir dark digital-twin palette — slight blue tint instead of pure black
-  bg: "#0a0e1a",
-  panelBg: "rgba(255,255,255,0.025)",
-  surface: "rgba(255,255,255,0.03)", surfaceHover: "rgba(255,255,255,0.06)",
-  border: "rgba(255,255,255,0.08)", borderActive: "rgba(255,255,255,0.15)",
-  accent: "#818cf8", accentDim: "rgba(129,140,248,0.10)",
-  ok: "#34d399", okDim: "rgba(52,211,153,0.08)", okBorder: "rgba(52,211,153,0.25)",
-  warn: "#fbbf24", warnDim: "rgba(251,191,36,0.08)", warnBorder: "rgba(251,191,36,0.25)",
-  variable: "#ea580c", variableDim: "rgba(234,88,12,0.10)", variableBorder: "rgba(234,88,12,0.35)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.08)", errBorder: "rgba(239,68,68,0.30)",
-  blue: "#60a5fa", blueDim: "rgba(96,165,250,0.08)", blueBorder: "rgba(96,165,250,0.25)",
-  purple: "#a78bfa",
-  white: "#e8ecf4", mid: "#8b93a7", dim: "#4a5065", dimmer: "#1e2230",
+  // Palantir-light Foundry palette — pure white canvas, slate ink, saturated status accents
+  bg: "#ffffff",
+  panelBg: "#ffffff",
+  surface: "#f8fafc", surfaceHover: "#f1f5f9",
+  border: "rgba(15,23,42,0.10)", borderActive: "rgba(15,23,42,0.22)",
+  accent: "#2563eb", accentDim: "rgba(37,99,235,0.08)",
+  ok: "#059669", okDim: "rgba(5,150,105,0.10)", okBorder: "rgba(5,150,105,0.35)",
+  warn: "#d97706", warnDim: "rgba(217,119,6,0.10)", warnBorder: "rgba(217,119,6,0.35)",
+  variable: "#ea580c", variableDim: "rgba(234,88,12,0.10)", variableBorder: "rgba(234,88,12,0.40)",
+  err: "#dc2626", errDim: "rgba(220,38,38,0.10)", errBorder: "rgba(220,38,38,0.35)",
+  blue: "#2563eb", blueDim: "rgba(37,99,235,0.08)", blueBorder: "rgba(37,99,235,0.30)",
+  purple: "#7c3aed",
+  // NOTE: token names kept for diff stability — `white` now = primary ink, `dim*` = neutral backgrounds
+  white: "#0f172a", mid: "#475569", dim: "#94a3b8", dimmer: "#e2e8f0",
 };
 // Palantir uses Alliance No.1 (proprietary) — closest free substitute: Inter
 // with alternate-char OpenType features for more Alliance-like rendering.
@@ -104,17 +105,6 @@ const LAYOUT_KEY = "bh-ontology-layout-v8-xlchart";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 3200;
-
-const kbdStyle: React.CSSProperties = {
-  fontFamily: "'Inter', system-ui, -apple-system, 'Segoe UI', sans-serif",
-  fontSize: 9,
-  padding: "2px 6px",
-  borderRadius: 4,
-  border: "1px solid rgba(255,255,255,0.15)",
-  background: "rgba(255,255,255,0.05)",
-  color: "#b0b0c0",
-  marginRight: 4,
-};
 
 function statusColor(s?: Status, isBottleneck?: boolean): { fg: string; bg: string; border: string } {
   if (isBottleneck) return { fg: C.err, bg: C.errDim, border: C.errBorder };
@@ -656,7 +646,23 @@ export default function BhOntologyPage() {
   const hoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   /* Legend collapse */
-  const [legendOpen, setLegendOpen] = useState(true);
+  const [legendOpen, setLegendOpen] = useState(false);
+
+  /* BH grupları dropdown + Strateji modal */
+  const [, navigate] = useLocation();
+  const [groupsOpen, setGroupsOpen] = useState(false);
+  const [strategyOpen, setStrategyOpen] = useState(false);
+  const [strategyName, setStrategyName] = useState("");
+  const [strategyDesc, setStrategyDesc] = useState("");
+  const groupsMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!groupsOpen) return;
+    const onDoc = (e: MouseEvent) => {
+      if (groupsMenuRef.current && !groupsMenuRef.current.contains(e.target as Node)) setGroupsOpen(false);
+    };
+    document.addEventListener("mousedown", onDoc);
+    return () => document.removeEventListener("mousedown", onDoc);
+  }, [groupsOpen]);
 
   /* L3 What-if dry-run */
   const [whatifOverrides, setWhatifOverrides] = useState<Record<string, number>>({});
@@ -680,6 +686,26 @@ export default function BhOntologyPage() {
     },
     onSuccess: () => { qc.invalidateQueries(); },
   });
+
+  /* Strateji submit — yeni scenario yarat ve simulate sayfasına yönlendir */
+  const strategyMutation = useMutation({
+    mutationFn: async (payload: { name: string; description?: string }) => {
+      const res = await apiRequest("POST", "/api/foundry/scenarios", payload);
+      return res.json() as Promise<{ id: number }>;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/foundry/scenarios"] });
+      setStrategyOpen(false);
+      setStrategyName("");
+      setStrategyDesc("");
+      navigate(`/ontology/simulate?scenario=${data.id}`);
+    },
+  });
+  const submitStrategy = () => {
+    const name = strategyName.trim();
+    if (!name) return;
+    strategyMutation.mutate({ name, description: strategyDesc.trim() || undefined });
+  };
 
   /* Sales point mutation — device mini-chart drag/click edit */
   const salesMutation = useMutation({
@@ -775,6 +801,10 @@ export default function BhOntologyPage() {
   const zoomIn = useCallback(() => zoomAtScreen(1.2), [zoomAtScreen]);
   const zoomOut = useCallback(() => zoomAtScreen(0.83), [zoomAtScreen]);
   const zoomReset = useCallback(() => setViewport({ x: 0, y: 0, scale: 1 }), []);
+  const snapToSku = useCallback((sku: string) => {
+    const p = positions[sku];
+    if (p) setViewport({ x: -(p.x - 600), y: -(p.y - 160), scale: 1 });
+  }, [positions]);
 
   /* Wheel:
      • shift+wheel → ZOOM (en kolay, Magic Mouse'ta da çalışır)
@@ -893,9 +923,6 @@ export default function BhOntologyPage() {
             ◈ BH GRUBU ONTOLOJİ {simulationActive && <span style={{ color: C.variable, marginLeft: 8 }}>SİMÜLASYON AKTİF</span>}
           </div>
           <div style={{ fontSize: 18, color: C.white, marginTop: 2 }}>Varlık Felsefesi — 4 Cihaz · Canlı Zincir</div>
-          <div style={{ fontSize: 11, color: C.dim, marginTop: 2 }}>
-            Hover · Tıkla · Stok/Satış düzenle · What-if · +N alt parça · <b style={{ color: C.accent }}>Scroll = Pan</b> · <b style={{ color: C.accent }}>Shift+Scroll veya +/− butonları = Zoom</b>
-          </div>
           {(() => {
             const m = ontologyMeta();
             return (
@@ -954,7 +981,7 @@ export default function BhOntologyPage() {
             onChange={e => setSearchQuery(e.target.value)}
             placeholder="🔍  Ara: kod, isim, açıklama…"
             style={{
-              width: "100%", background: "rgba(0,0,0,0.45)",
+              width: "100%", background: "#ffffff",
               border: `1px solid ${searchQuery ? C.accent : C.border}`,
               borderRadius: 8, padding: "9px 12px",
               color: C.white, fontFamily: mono, fontSize: 12, outline: "none",
@@ -988,7 +1015,7 @@ export default function BhOntologyPage() {
               })} style={{
                 padding: "6px 11px", borderRadius: 16, cursor: "pointer",
                 fontSize: 10, fontFamily: mono, fontWeight: 500,
-                background: active ? `${f.color}22` : "rgba(255,255,255,0.02)",
+                background: active ? `${f.color}22` : "#f8fafc",
                 border: `1px solid ${active ? f.color : C.border}`,
                 color: active ? f.color : C.mid,
                 letterSpacing: 1, transition: "all 0.15s",
@@ -1002,15 +1029,6 @@ export default function BhOntologyPage() {
               background: C.surface, border: `1px solid ${C.border}`, color: C.dim,
             }}>✕ Temizle</button>
           )}
-        </div>
-        <div style={{
-          marginLeft: "auto", fontSize: 10, color: C.dim, fontFamily: mono,
-          display: "flex", gap: 10, alignItems: "center",
-        }}>
-          <span><kbd style={kbdStyle}>/</kbd> ara</span>
-          <span><kbd style={kbdStyle}>1-4</kbd> cihaz</span>
-          <span><kbd style={kbdStyle}>R</kbd> layout</span>
-          <span><kbd style={kbdStyle}>Esc</kbd> kapat</span>
         </div>
       </div>
 
@@ -1088,24 +1106,24 @@ export default function BhOntologyPage() {
             </filter>
             {/* Palantir-style gradient fills per status (top brighter → bottom darker) */}
             {([
-              ["nodeCritical", "#ef4444"],
-              ["nodeWarning",  "#fbbf24"],
+              ["nodeCritical", "#dc2626"],
+              ["nodeWarning",  "#d97706"],
               ["nodeVariable", "#ea580c"],
-              ["nodeOk",       "#60a5fa"],
-              ["nodeAbundant", "#34d399"],
-              ["nodeAccent",   "#818cf8"],
-              ["nodeMid",      "#7a7a90"],
+              ["nodeOk",       "#2563eb"],
+              ["nodeAbundant", "#059669"],
+              ["nodeAccent",   "#2563eb"],
+              ["nodeMid",      "#94a3b8"],
             ] as const).map(([id, col]) => (
               <linearGradient key={id} id={id} x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%"  stopColor={col} stopOpacity="0.28" />
-                <stop offset="55%" stopColor={col} stopOpacity="0.12" />
-                <stop offset="100%" stopColor={col} stopOpacity="0.06" />
+                <stop offset="0%"  stopColor={col} stopOpacity="0.14" />
+                <stop offset="55%" stopColor={col} stopOpacity="0.07" />
+                <stop offset="100%" stopColor="#ffffff" stopOpacity="1" />
               </linearGradient>
             ))}
-            {/* Device header gradient — subtle blue panel */}
+            {/* Device header gradient — soft slate panel on white */}
             <linearGradient id="deviceGrad" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#1a2240" stopOpacity="0.9" />
-              <stop offset="100%" stopColor="#0f1322" stopOpacity="0.95" />
+              <stop offset="0%" stopColor="#f1f5f9" stopOpacity="1" />
+              <stop offset="100%" stopColor="#e2e8f0" stopOpacity="1" />
             </linearGradient>
             {/* Soft inner shadow for group backdrops */}
             <filter id="panelShadow" x="-5%" y="-5%" width="110%" height="110%">
@@ -1152,15 +1170,15 @@ export default function BhOntologyPage() {
                         width={widthRect} height={heightRect}
                         rx={12}
                         fill={C.panelBg}
-                        stroke="rgba(255,255,255,0.05)"
+                        stroke="#f1f5f9"
                         strokeWidth={1}
                       />
                       {/* Unit label top-left — Palantir "Unit 1/2" pattern */}
                       <g>
                         <rect x={leftX + 14} y={topY + 10}
                           width={78} height={22} rx={4}
-                          fill="rgba(20,26,42,0.85)"
-                          stroke="rgba(255,255,255,0.08)" strokeWidth={0.8} />
+                          fill="#ffffff"
+                          stroke="rgba(15,23,42,0.10)" strokeWidth={0.8} />
                         <text x={leftX + 53} y={topY + 25} textAnchor="middle"
                           fill={C.mid} fontSize={10} fontFamily={mono} fontWeight={600} letterSpacing={1.2}>
                           UNIT {i + 1}
@@ -1219,7 +1237,7 @@ export default function BhOntologyPage() {
             const nodeTo = nodes.find(n => n.id === l.to);
             const nodeFrom = nodes.find(n => n.id === l.from);
             const isProb = nodeTo?.status === "critical" || nodeTo?.isBottleneck;
-            const stroke = isProb ? "#ef4444aa" : "rgba(255,255,255,0.22)";
+            const stroke = isProb ? "#dc2626cc" : "rgba(15,23,42,0.28)";
             const isConnected = !connectedSet || connectedSet.has(l.from) || connectedSet.has(l.to);
             const linkInFilter = !filterActive || ((nodeFrom && matchesFilter(nodeFrom)) || (nodeTo && matchesFilter(nodeTo)));
             const opacity = (isProb ? 0.9 : 0.6) * (isConnected ? 1 : 0.2) * (linkInFilter ? 1 : 0.2);
@@ -1341,7 +1359,7 @@ export default function BhOntologyPage() {
                   background: "rgba(5,5,10,0.96)", backdropFilter: "blur(14px)",
                   border: `1px solid ${tStatus.border}`, borderRadius: 10,
                   padding: "12px 14px", fontSize: 11, color: C.white, fontFamily: mono,
-                  boxShadow: "0 8px 32px rgba(0,0,0,0.6)",
+                  boxShadow: "0 8px 32px rgba(15,23,42,0.12)",
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
                     <div style={{ fontSize: 13, fontWeight: 600, color: C.white, letterSpacing: 0.3 }}>{tn.label}</div>
@@ -1523,7 +1541,7 @@ function Minimap({
       padding: "10px 12px 8px", fontFamily: mono,
     }}>
       <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 500, marginBottom: 6 }}>◈ MİNİMAP</div>
-      <svg width={W} height={H} onClick={handleClick} style={{ cursor: "crosshair", display: "block", background: "#080810", borderRadius: 4 }}>
+      <svg width={W} height={H} onClick={handleClick} style={{ cursor: "crosshair", display: "block", background: "#f8fafc", borderRadius: 4, border: "1px solid rgba(15,23,42,0.10)" }}>
         {nodes.map(n => {
           const p = positions[n.id];
           if (!p) return null;
@@ -1577,7 +1595,7 @@ function WhatIfPanel({
       width: 440, padding: "20px 22px", borderRadius: 14,
       background: "rgba(10,10,15,0.95)", backdropFilter: "blur(16px)",
       border: `1px solid ${C.variableBorder}`,
-      boxShadow: "0 8px 32px rgba(0,0,0,0.5)",
+      boxShadow: "0 8px 32px rgba(15,23,42,0.14)",
     }}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 12 }}>
         <div>
@@ -1601,7 +1619,7 @@ function WhatIfPanel({
       />
       <div style={{ display: "flex", gap: 10, marginTop: 12 }}>
         <input type="number" value={current} onChange={e => setOverrides(prev => ({ ...prev, [code]: parseFloat(e.target.value) || 0 }))}
-          style={{ flex: 1, fontSize: 16, fontFamily: mono, color: C.variable, background: "rgba(0,0,0,0.5)",
+          style={{ flex: 1, fontSize: 16, fontFamily: mono, color: C.variable, background: "#ffffff",
             border: `1px solid ${C.variableBorder}`, borderRadius: 6, padding: "8px 12px", outline: "none", minHeight: 40 }}
         />
         <button onClick={() => setOverrides(prev => {
@@ -1864,7 +1882,7 @@ function NodeView({
           <g transform={`translate(${chartXOffset}, 0)`}>
             {/* Chart frame — subtle background */}
             <rect x={-4} y={chartYBase - chartH - 4} width={chartW + 8} height={chartH + 8} rx={4}
-              fill="rgba(255,255,255,0.015)" stroke="rgba(255,255,255,0.05)" strokeWidth={0.5}
+              fill="#f8fafc" stroke="#f1f5f9" strokeWidth={0.5}
               style={{ pointerEvents: "none" }} />
             <line x1={0} y1={chartYBase} x2={chartW} y2={chartYBase}
               stroke={C.dim} strokeWidth={0.6} strokeDasharray="2 3"
@@ -2016,7 +2034,7 @@ function NodeView({
                     onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
                     disabled={saving}
                     style={{ width: 72, fontSize: 12, fontFamily: mono, color: col.fg,
-                      background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 4,
+                      background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 4,
                       padding: "3px 6px", outline: "none" }}
                   />
                   <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
@@ -2025,7 +2043,7 @@ function NodeView({
                   }}>✓</button>
                   <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
                     fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
-                    background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
+                    background: "#f1f5f9", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                   }}>✕</button>
                 </div>
               </foreignObject>
@@ -2051,8 +2069,8 @@ function NodeView({
           {!isSubComp && (
             <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
               <circle cx={isVariable ? 16 : 14} cy={14} r={9}
-                fill={isInspected ? C.okDim : "rgba(52,211,153,0.08)"}
-                stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.22)"} strokeWidth={1} />
+                fill={isInspected ? C.okDim : "rgba(5,150,105,0.10)"}
+                stroke={isInspected ? C.okBorder : "rgba(5,150,105,0.30)"} strokeWidth={1} />
               <text x={isVariable ? 16 : 14} y={17} textAnchor="middle"
                 fill={C.ok} fontSize={10} fontFamily={mono} fontWeight={600}>ⓘ</text>
             </g>
@@ -2092,7 +2110,7 @@ function NodeView({
                   onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
                   disabled={saving}
                   style={{ width: 90, fontSize: 15, fontFamily: mono, color: col.fg,
-                    background: "rgba(0,0,0,0.55)", border: `1px solid ${col.fg}70`, borderRadius: 5,
+                    background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 5,
                     padding: "4px 8px", outline: "none" }}
                 />
                 <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
@@ -2101,7 +2119,7 @@ function NodeView({
                 }}>✓</button>
                 <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
                   fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
-                  background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
+                  background: "#f1f5f9", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                 }}>✕</button>
               </div>
             </foreignObject>
@@ -2142,8 +2160,8 @@ function NodeView({
           {/* Inspector (ℹ) button — sol üstte obj type icon'u tıklanabilir */}
           <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
             <rect x={-10} y={4} width={30} height={22} rx={5}
-              fill={isInspected ? C.okDim : "rgba(52,211,153,0.06)"}
-              stroke={isInspected ? C.okBorder : "rgba(52,211,153,0.18)"} strokeWidth={1}/>
+              fill={isInspected ? C.okDim : "rgba(5,150,105,0.08)"}
+              stroke={isInspected ? C.okBorder : "rgba(5,150,105,0.28)"} strokeWidth={1}/>
             <text x={5} y={19} textAnchor="middle" fill={objType.displayMetadata.color} fontSize={14} fontFamily={mono} fontWeight={500}>
               {objType.displayMetadata.icon}
             </text>
@@ -2180,7 +2198,7 @@ function NodeView({
                   return (
                     <span key={sku} style={{
                       fontSize: 9, fontFamily: mono, padding: "2px 6px", borderRadius: 4,
-                      background: node.isShared ? C.accentDim : "rgba(255,255,255,0.04)",
+                      background: node.isShared ? C.accentDim : "#f1f5f9",
                       color: node.isShared ? C.accent : C.dim,
                       border: `1px solid ${node.isShared ? C.accent + "40" : C.border}`,
                     }}>{abbr}</span>
@@ -2282,7 +2300,7 @@ function ObjectInspector({
       padding: "22px 24px", borderRadius: 14,
       background: "rgba(10,10,15,0.97)", backdropFilter: "blur(18px)",
       border: `1px solid ${objType.displayMetadata.color}40`,
-      boxShadow: "0 12px 48px rgba(0,0,0,0.6)",
+      boxShadow: "0 12px 48px rgba(15,23,42,0.16)",
       overflowY: "auto", fontFamily: mono,
     }}>
       {/* Header */}
@@ -2316,7 +2334,7 @@ function ObjectInspector({
 
       {/* Meta */}
       <div style={{ fontSize: 9, color: C.dim, marginBottom: 12, padding: "8px 10px",
-        background: "rgba(255,255,255,0.02)", borderRadius: 6, border: `1px solid ${C.border}`,
+        background: "#f8fafc", borderRadius: 6, border: `1px solid ${C.border}`,
         lineHeight: 1.6 }}>
         <div><span style={{ color: C.mid }}>apiName:</span> <span style={{ color: C.white, fontFamily: mono }}>{objType.apiName}</span></div>
         <div><span style={{ color: C.mid }}>rid:</span> <span style={{ fontFamily: mono }}>{objType.rid}</span></div>
@@ -2336,7 +2354,7 @@ function ObjectInspector({
               <div key={p.apiName} style={{
                 display: "flex", justifyContent: "space-between", alignItems: "center",
                 padding: "8px 12px", fontSize: 12,
-                background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
+                background: i % 2 === 0 ? "#f8fafc" : "transparent",
                 borderBottom: i < objType.properties.length - 1 ? `1px solid ${C.border}` : "none",
               }}>
                 <div style={{ color: C.mid, fontSize: 12 }}>{p.displayName}</div>
@@ -2361,7 +2379,7 @@ function ObjectInspector({
           return (
             <div key={link.apiName + side} style={{
               padding: "10px 12px", marginBottom: 6, borderRadius: 6,
-              background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`,
+              background: "#f8fafc", border: `1px solid ${C.border}`,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
                 <span style={{ fontSize: 12, color: C.white }}>{role.displayName}</span>
@@ -2401,7 +2419,7 @@ function ObjectInspector({
                 }}
                 style={{
                   textAlign: "left", padding: "10px 14px", borderRadius: 8, cursor: a.status === "PLANNED" ? "not-allowed" : "pointer",
-                  background: a.status === "ACTIVE" ? "rgba(52,211,153,0.08)" : "rgba(255,255,255,0.02)",
+                  background: a.status === "ACTIVE" ? "rgba(5,150,105,0.10)" : "#f8fafc",
                   border: `1px solid ${a.status === "ACTIVE" ? C.okBorder : C.border}`,
                   color: a.status === "ACTIVE" ? C.white : C.dim,
                   fontFamily: mono, fontSize: 12,
@@ -2415,7 +2433,7 @@ function ObjectInspector({
                 </div>
                 <span style={{
                   fontSize: 8, padding: "2px 6px", borderRadius: 3,
-                  background: a.status === "ACTIVE" ? C.okDim : "rgba(255,255,255,0.04)",
+                  background: a.status === "ACTIVE" ? C.okDim : "#f1f5f9",
                   color: a.status === "ACTIVE" ? C.ok : C.mid,
                   border: `1px solid ${a.status === "ACTIVE" ? C.okBorder : C.border}`,
                 }}>{a.status}</span>
@@ -2440,7 +2458,7 @@ function ObjectInspector({
               return (
                 <div key={a.kind + a.id} style={{
                   padding: "8px 12px",
-                  background: i % 2 === 0 ? "rgba(255,255,255,0.01)" : "transparent",
+                  background: i % 2 === 0 ? "#f8fafc" : "transparent",
                   borderBottom: i < historyQuery.data!.actions.length - 1 ? `1px solid ${C.border}` : "none",
                 }}>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -2496,7 +2514,7 @@ function ObjectInspector({
           background: toastMsg.kind === "ok" ? C.okDim : C.errDim,
           border: `1px solid ${toastMsg.kind === "ok" ? C.okBorder : C.errBorder}`,
           color: toastMsg.kind === "ok" ? C.ok : C.err,
-          boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+          boxShadow: "0 8px 24px rgba(15,23,42,0.14)",
           maxWidth: 400,
         }}>
           {toastMsg.kind === "ok" ? "✓" : "✕"} {toastMsg.text}
@@ -2553,7 +2571,7 @@ function ActionFormModal({
   return (
     <div style={{
       position: "fixed", inset: 0, zIndex: 50,
-      background: "rgba(0,0,0,0.65)", backdropFilter: "blur(6px)",
+      background: "rgba(15,23,42,0.45)", backdropFilter: "blur(6px)",
       display: "flex", alignItems: "center", justifyContent: "center",
     }} onClick={onClose}>
       <div
@@ -2563,7 +2581,7 @@ function ActionFormModal({
           padding: "24px 28px", borderRadius: 14,
           background: "rgba(12,12,18,0.98)",
           border: `1px solid ${C.ok}50`,
-          boxShadow: "0 16px 64px rgba(0,0,0,0.7)",
+          boxShadow: "0 16px 64px rgba(15,23,42,0.20)",
           fontFamily: mono,
         }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 16 }}>
@@ -2601,7 +2619,7 @@ function ActionFormModal({
                   style={{
                     width: "100%", marginTop: 6, padding: "10px 12px",
                     fontSize: 14, fontFamily: mono, color: C.white,
-                    background: p.apiName === "code" ? "rgba(255,255,255,0.02)" : "rgba(0,0,0,0.5)",
+                    background: p.apiName === "code" ? "#f8fafc" : "#ffffff",
                     border: `1px solid ${C.border}`, borderRadius: 6, outline: "none",
                     boxSizing: "border-box",
                   }}
