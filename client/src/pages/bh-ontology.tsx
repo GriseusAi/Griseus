@@ -18,20 +18,20 @@ import { useSelection } from "@/lib/selection-context";
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  // Palantir-light Foundry palette — pure white canvas, slate ink, saturated status accents
+  // Blueprint.js (Palantir) intent palette — muted, easy on eyes, Foundry-like
   bg: "#ffffff",
   panelBg: "#ffffff",
-  surface: "#f8fafc", surfaceHover: "#f1f5f9",
-  border: "rgba(15,23,42,0.10)", borderActive: "rgba(15,23,42,0.22)",
-  accent: "#2563eb", accentDim: "rgba(37,99,235,0.08)",
-  ok: "#059669", okDim: "rgba(5,150,105,0.10)", okBorder: "rgba(5,150,105,0.35)",
-  warn: "#d97706", warnDim: "rgba(217,119,6,0.10)", warnBorder: "rgba(217,119,6,0.35)",
-  variable: "#ea580c", variableDim: "rgba(234,88,12,0.10)", variableBorder: "rgba(234,88,12,0.40)",
-  err: "#dc2626", errDim: "rgba(220,38,38,0.10)", errBorder: "rgba(220,38,38,0.35)",
-  blue: "#2563eb", blueDim: "rgba(37,99,235,0.08)", blueBorder: "rgba(37,99,235,0.30)",
-  purple: "#7c3aed",
-  // NOTE: token names kept for diff stability — `white` now = primary ink, `dim*` = neutral backgrounds
-  white: "#0f172a", mid: "#475569", dim: "#94a3b8", dimmer: "#e2e8f0",
+  surface: "#f6f7f9", surfaceHover: "#edeff2",
+  border: "rgba(17,20,24,0.10)", borderActive: "rgba(17,20,24,0.20)",
+  accent: "#2d72d2", accentDim: "rgba(45,114,210,0.08)",
+  ok: "#238551", okDim: "rgba(35,133,81,0.10)", okBorder: "rgba(35,133,81,0.30)",
+  warn: "#c87619", warnDim: "rgba(200,118,25,0.10)", warnBorder: "rgba(200,118,25,0.30)",
+  variable: "#ac2f33", variableDim: "rgba(172,47,51,0.08)", variableBorder: "rgba(172,47,51,0.30)",
+  err: "#cd4246", errDim: "rgba(205,66,70,0.10)", errBorder: "rgba(205,66,70,0.30)",
+  blue: "#2d72d2", blueDim: "rgba(45,114,210,0.08)", blueBorder: "rgba(45,114,210,0.28)",
+  purple: "#9d3f9d",
+  // Token names kept for diff stability — `white` = primary ink, `dim*` = neutral backgrounds
+  white: "#1c2127", mid: "#5f6b7c", dim: "#8f99a8", dimmer: "#edeff2",
 };
 // Palantir uses Alliance No.1 (proprietary) — closest free substitute: Inter
 // with alternate-char OpenType features for more Alliance-like rendering.
@@ -1908,22 +1908,38 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      {/* Main tile — Foundry Process Mining pattern: white card + saturated top band */}
-      <rect className={pulsing ? "flash-bg" : undefined}
-        width={w} height={h} rx={6}
-        fill={isDevice ? "url(#deviceGrad)" : "#ffffff"}
-        stroke={isDevice ? C.accent : "rgba(15,23,42,0.12)"}
-        strokeWidth={1}
-        filter={!isDevice ? "url(#cardShadow)" : undefined}
-        onPointerDown={onPointerDown}
-      />
-      {/* Saturated status band — top, full width */}
-      {!isDevice && (
-        <rect width={w} height={isSubComp ? 5 : 7} rx={3}
-          fill={col.fg}
-          style={{ pointerEvents: "none" }}
-        />
-      )}
+      {/* Main tile — Blueprint Callout pattern: pastel for problem states, white for healthy */}
+      {(() => {
+        const isProblem = node.isBottleneck
+          || node.status === "critical"
+          || node.status === "warning"
+          || node.status === "variable";
+        const tileFill = isDevice
+          ? "url(#deviceGrad)"
+          : isProblem ? col.bg : "#ffffff";
+        const tileStroke = isDevice
+          ? C.accent
+          : isProblem ? col.border : C.border;
+        return (
+          <>
+            <rect className={pulsing ? "flash-bg" : undefined}
+              width={w} height={h} rx={4}
+              fill={tileFill}
+              stroke={tileStroke}
+              strokeWidth={1}
+              filter={!isDevice && isProblem ? "url(#cardShadow)" : undefined}
+              onPointerDown={onPointerDown}
+            />
+            {/* Status stripe — left edge, only for problem states (sakin görünüm) */}
+            {!isDevice && isProblem && (
+              <rect x={0} y={0} width={3} height={h} rx={0}
+                fill={col.fg}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+          </>
+        );
+      })()}
 
       {/* Sales chart above device — XL size (default zoom'da okunabilir) */}
       {isDevice && salesBars && salesBars.length > 0 && (() => {
@@ -2102,51 +2118,31 @@ function NodeView({
       ) : (
         /* Unified Foundry-tile content — landscape rect for component / subassembly / subcomponent / variable */
         <>
-          {/* Inspector ⓘ (top-left, overlaps band) — not for subcomp (too small) */}
-          {!isSubComp && (
-            <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
-              <rect x={8} y={14} width={22} height={18} rx={4}
-                fill={isInspected ? C.okDim : "#ffffff"}
-                stroke={isInspected ? C.okBorder : "rgba(15,23,42,0.18)"} strokeWidth={0.8}/>
-              <text x={19} y={27} textAnchor="middle"
-                fill={isInspected ? C.ok : objType.displayMetadata.color} fontSize={11} fontFamily={mono} fontWeight={500}>
-                ⓘ
-              </text>
-            </g>
-          )}
-          {/* What-if (top-right) — only component */}
-          {isComponent && (
-            <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
-              <rect x={w - 30} y={14} width={22} height={18} rx={4}
-                fill={C.variableDim} stroke={C.variableBorder} strokeWidth={0.8}/>
-              <text x={w - 19} y={27} textAnchor="middle" fill={C.variable} fontSize={9} fontFamily={mono} fontWeight={600}>W?</text>
-            </g>
-          )}
           {/* Variable marker — small ▲ near code */}
           {isVariable && (
-            <text x={12} y={28} fill={C.variable} fontSize={11} fontFamily={mono} fontWeight={700}>▲</text>
+            <text x={12} y={24} fill={C.variable} fontSize={10} fontFamily={mono} fontWeight={700}>▲</text>
           )}
 
-          {/* Code (top-left, after icons) */}
-          <text x={isSubComp ? 12 : (isVariable ? 28 : 36)} y={isSubComp ? 22 : 28}
-            fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
+          {/* Code (top-left, after stripe) — primary identity */}
+          <text x={isSubComp ? 10 : (isVariable ? 24 : 12)} y={isSubComp ? 20 : 24}
+            fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.2}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
 
-          {/* Status label (top-right, small caps) — not for subcomp + skip when W? button covers */}
-          {!isSubComp && !isComponent && (
-            <text x={w - 12} y={28} textAnchor="end"
-              fill={col.fg} fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={1}>
-              {statusLabel(node.status)}
-            </text>
-          )}
-
-          {/* Bottleneck pill (component only, sublabel row right) */}
-          {isComponent && node.isBottleneck && (
-            <text x={w - 12} y={44} textAnchor="end" fill={C.err} fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={0.8}>
-              ▲ DARBOĞAZ
-            </text>
+          {/* Status tag — Blueprint Tag minimal (top-right, only for non-healthy) */}
+          {!isSubComp && (node.status === "critical" || node.status === "warning" || node.status === "variable" || node.isBottleneck) && (
+            <g style={{ pointerEvents: "none" }}>
+              <rect x={w - (node.isBottleneck ? 78 : 56)} y={12} width={node.isBottleneck ? 66 : 44} height={16} rx={2}
+                fill={node.isBottleneck ? C.errDim : col.bg}
+                stroke="none"
+              />
+              <text x={w - (node.isBottleneck ? 45 : 34)} y={23} textAnchor="middle"
+                fill={node.isBottleneck ? C.err : col.fg}
+                fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={0.6}>
+                {node.isBottleneck ? "DARBOĞAZ" : statusLabel(node.status)}
+              </text>
+            </g>
           )}
 
           {/* Sublabel — single-line truncate */}
