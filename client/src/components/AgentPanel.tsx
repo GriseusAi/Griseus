@@ -314,6 +314,49 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [loadingHistory, setLoadingHistory] = useState(false);
 
+  // Floating-panel drag state (Grok-style). Position is the offset in px from
+  // the bottom-right corner. {0,0} = anchored bottom-right with default margin.
+  const PANEL_W = 400;
+  const PANEL_H = 600;
+  const DEFAULT_MARGIN = 24;
+  const [pos, setPos] = useState<{ x: number; y: number }>({ x: 0, y: 0 });
+  const dragRef = useRef<{ startX: number; startY: number; baseX: number; baseY: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+
+  const onDragStart = useCallback((e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startY: e.clientY, baseX: pos.x, baseY: pos.y };
+    setDragging(true);
+  }, [pos.x, pos.y]);
+
+  useEffect(() => {
+    if (!dragging) return;
+    const onMove = (e: MouseEvent) => {
+      const d = dragRef.current;
+      if (!d) return;
+      // Drag right/down increases x/y from start; we anchor bottom-right, so
+      // moving the cursor right pulls the panel rightward (negative offset),
+      // moving up pulls it up (positive offset).
+      const dx = e.clientX - d.startX;
+      const dy = e.clientY - d.startY;
+      const nextX = d.baseX - dx;
+      const nextY = d.baseY - dy;
+      const maxX = window.innerWidth - PANEL_W - DEFAULT_MARGIN;
+      const maxY = window.innerHeight - PANEL_H - DEFAULT_MARGIN;
+      setPos({
+        x: Math.max(-DEFAULT_MARGIN, Math.min(maxX, nextX)),
+        y: Math.max(-DEFAULT_MARGIN, Math.min(maxY, nextY)),
+      });
+    };
+    const onUp = () => { setDragging(false); dragRef.current = null; };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+    return () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+  }, [dragging]);
+
   // Fetch sessions when history panel opens
   useEffect(() => {
     if (showHistory) {
@@ -498,101 +541,117 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
 
   return (
     <>
-      {/* Backdrop */}
-      <div
-        onClick={onClose}
-        style={{
-          position: "fixed", inset: 0, zIndex: 998,
-          background: "rgba(0,0,0,0.5)", backdropFilter: "blur(4px)",
-          opacity: open ? 1 : 0,
-          pointerEvents: open ? "auto" : "none",
-          transition: "opacity 0.3s ease",
-        }}
-      />
-
-      {/* Panel */}
+      {/* Floating panel — Grok-style: bottom-right, draggable, no backdrop. */}
       <div style={{
-        position: "fixed", top: 0, right: 0, bottom: 0,
-        width: 480, maxWidth: "92vw", zIndex: 999,
-        transform: open ? "translateX(0)" : "translateX(100%)",
-        transition: "transform 0.35s cubic-bezier(0.16, 1, 0.3, 1)",
+        position: "fixed",
+        right: DEFAULT_MARGIN + pos.x,
+        bottom: DEFAULT_MARGIN + pos.y,
+        width: PANEL_W, maxWidth: "94vw",
+        height: PANEL_H, maxHeight: "calc(100vh - 48px)",
+        zIndex: 999,
+        opacity: open ? 1 : 0,
+        transform: open ? "scale(1)" : "scale(0.96) translateY(8px)",
+        transformOrigin: "bottom right",
+        transition: dragging ? "none" : "opacity 0.18s ease, transform 0.22s cubic-bezier(0.16,1,0.3,1)",
+        pointerEvents: open ? "auto" : "none",
         display: "flex", flexDirection: "column",
-        background: C.bg, borderLeft: `1px solid ${C.glassBorder}`,
-        boxShadow: open ? "-12px 0 48px rgba(0,0,0,0.6)" : "none",
+        background: C.bg,
+        border: `1px solid ${C.glassBorder}`,
+        borderRadius: 18,
+        boxShadow: "0 20px 60px rgba(0,0,0,0.55), 0 2px 8px rgba(0,0,0,0.3)",
         backdropFilter: "blur(20px)",
+        overflow: "hidden",
       }}>
-        {/* Header */}
+        {/* Header — Grok-style: drag handle on the left, mini icon bar on the right. */}
         <div style={{
-          padding: "16px 20px", borderBottom: `1px solid ${C.glassBorder}`,
+          padding: "8px 10px 6px 12px",
+          borderBottom: `1px solid ${C.glassBorder}`,
           display: "flex", alignItems: "center", justifyContent: "space-between",
-          background: "rgba(8,8,16,0.9)", backdropFilter: "blur(16px)",
+          background: "rgba(8,8,16,0.92)", backdropFilter: "blur(16px)",
+          gap: 8,
         }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+          {/* Drag handle (⋮⋮) */}
+          <div
+            onMouseDown={onDragStart}
+            title="Sürükle"
+            style={{
+              display: "flex", alignItems: "center", gap: 1,
+              padding: "6px 4px",
+              cursor: dragging ? "grabbing" : "grab",
+              color: C.textDim, fontSize: 12, lineHeight: 1,
+              userSelect: "none",
+              flexShrink: 0,
+            }}
+          >
+            <span style={{ letterSpacing: -2 }}>⋮⋮</span>
+          </div>
+          {/* Brand row — compact */}
+          <div style={{ display: "flex", alignItems: "center", gap: 8, flex: 1, minWidth: 0 }}>
             <div style={{
-              width: 36, height: 36, borderRadius: 10,
+              width: 24, height: 24, borderRadius: "50%",
               background: C.accentGlow, border: `1px solid ${C.accentBorder}`,
               display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 18,
+              fontSize: 12, flexShrink: 0,
             }}>
               🧠
             </div>
-            <div>
-              <div style={{ fontSize: 15, fontWeight: 600, color: C.white, letterSpacing: -0.3 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 4, minWidth: 0 }}>
+              <span style={{ fontSize: 13, fontWeight: 600, color: C.white, letterSpacing: -0.2 }}>
                 Griseus
-              </div>
-              <div style={{ fontSize: 12, color: C.textSecondary }}>
-                Stok Danışmanı
-              </div>
+              </span>
+              <span style={{ fontSize: 11, color: C.textDim, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                @stok-danismani
+              </span>
             </div>
           </div>
-          <div style={{ display: "flex", gap: 6 }}>
-            {/* New chat */}
+          {/* Mini icon bar */}
+          <div style={{ display: "flex", gap: 2, flexShrink: 0 }}>
+            <button
+              onClick={() => setShowHistory(!showHistory)}
+              title="Geçmiş"
+              style={{
+                width: 26, height: 26, borderRadius: 6,
+                background: showHistory ? C.accentGlow : "transparent",
+                border: "none",
+                color: showHistory ? C.accent : C.textSecondary,
+                fontSize: 13, cursor: "pointer",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                transition: "all 0.15s",
+              }}
+              onMouseEnter={e => { if (!showHistory) e.currentTarget.style.background = C.glassHover; }}
+              onMouseLeave={e => { if (!showHistory) e.currentTarget.style.background = "transparent"; }}
+            >
+              ↺
+            </button>
             <button
               onClick={startNewChat}
               title="Yeni sohbet"
               style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: C.glass, border: `1px solid ${C.glassBorder}`,
-                color: C.textSecondary, fontSize: 15, cursor: "pointer",
+                width: 26, height: 26, borderRadius: 6,
+                background: "transparent", border: "none",
+                color: C.textSecondary, fontSize: 13, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 transition: "all 0.15s",
               }}
               onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.glass; e.currentTarget.style.color = C.textSecondary; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.textSecondary; }}
             >
-              +
+              ✎
             </button>
-            {/* History */}
-            <button
-              onClick={() => setShowHistory(!showHistory)}
-              title="Gecmis"
-              style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: showHistory ? C.accentGlow : C.glass,
-                border: `1px solid ${showHistory ? C.accentBorder : C.glassBorder}`,
-                color: showHistory ? C.accent : C.textSecondary, fontSize: 14, cursor: "pointer",
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all 0.15s",
-              }}
-              onMouseEnter={e => { if (!showHistory) { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; } }}
-              onMouseLeave={e => { if (!showHistory) { e.currentTarget.style.background = C.glass; e.currentTarget.style.color = C.textSecondary; } }}
-            >
-              ☰
-            </button>
-            {/* Close */}
             <button
               onClick={onClose}
+              title="Kapat"
               style={{
-                width: 32, height: 32, borderRadius: 8,
-                background: C.glass, border: `1px solid ${C.glassBorder}`,
-                color: C.textSecondary, fontSize: 16, cursor: "pointer",
+                width: 26, height: 26, borderRadius: 6,
+                background: "transparent", border: "none",
+                color: C.textSecondary, fontSize: 13, cursor: "pointer",
                 display: "flex", alignItems: "center", justifyContent: "center",
                 transition: "all 0.15s",
               }}
-              onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; }}
-              onMouseLeave={e => { e.currentTarget.style.background = C.glass; }}
+              onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; }}
+              onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.textSecondary; }}
             >
-              ✕
+              ⌃
             </button>
           </div>
         </div>
@@ -697,29 +756,29 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
         ) : (
         /* Chat Area */
         <div ref={scrollRef} style={{
-          flex: 1, overflowY: "auto", padding: "20px",
+          flex: 1, overflowY: "auto", padding: "12px 14px",
           scrollbarWidth: "thin",
           scrollbarColor: "rgba(255,255,255,0.08) transparent",
         }}>
           {/* Empty state — suggestions */}
           {messages.length === 0 && (
-            <div style={{ marginTop: 24 }}>
+            <div style={{ marginTop: 8 }}>
               <div style={{
-                fontSize: 20, fontWeight: 600, color: C.white,
-                marginBottom: 4, letterSpacing: -0.3,
+                fontSize: 16, fontWeight: 600, color: C.white,
+                marginBottom: 2, letterSpacing: -0.2,
               }}>
                 Merhaba 👋
               </div>
-              <div style={{ fontSize: 14, color: C.textSecondary, marginBottom: 20 }}>
+              <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 12 }}>
                 Size nasıl yardımcı olabilirim?
               </div>
-              <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+              <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
                 {SUGGESTIONS.map(s => (
                   <button key={s.text} onClick={() => sendMessage(s.text)} style={{
-                    padding: "12px 16px", borderRadius: 12, textAlign: "left",
+                    padding: "8px 12px", borderRadius: 10, textAlign: "left",
                     background: C.glass, border: `1px solid ${C.glassBorder}`,
-                    color: C.textSecondary, fontSize: 14, cursor: "pointer",
-                    transition: "all 0.2s", display: "flex", alignItems: "center", gap: 10,
+                    color: C.textSecondary, fontSize: 12, cursor: "pointer",
+                    transition: "all 0.2s", display: "flex", alignItems: "center", gap: 8,
                     backdropFilter: "blur(8px)",
                   }}
                     onMouseEnter={e => {
@@ -733,7 +792,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                       e.currentTarget.style.background = C.glass;
                     }}
                   >
-                    <span style={{ fontSize: 18 }}>{s.emoji}</span>
+                    <span style={{ fontSize: 14 }}>{s.emoji}</span>
                     <span>{s.text}</span>
                   </button>
                 ))}
@@ -744,14 +803,14 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
           {/* Messages */}
           {messages.map((m, i) => (
             <div key={i} style={{
-              marginBottom: 16,
+              marginBottom: 12,
               display: "flex", flexDirection: "column",
               alignItems: m.role === "user" ? "flex-end" : "flex-start",
             }}>
               <div style={{
-                maxWidth: m.role === "user" ? "85%" : "95%",
-                padding: m.role === "user" ? "10px 16px" : "16px 20px",
-                borderRadius: m.role === "user" ? "16px 16px 4px 16px" : "16px 16px 16px 4px",
+                maxWidth: m.role === "user" ? "85%" : "96%",
+                padding: m.role === "user" ? "7px 12px" : "10px 14px",
+                borderRadius: m.role === "user" ? "14px 14px 4px 14px" : "14px 14px 14px 4px",
                 background: m.role === "user" ? C.accentGlow : C.glassStrong,
                 border: `1px solid ${m.role === "user" ? C.accentBorder : C.glassBorder}`,
                 backdropFilter: "blur(12px)",
@@ -764,12 +823,12 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                     content={m.content}
                     onExpandDiagram={setExpandedSvg}
                     style={{
-                      fontSize: 14, lineHeight: 1.75, color: C.textPrimary,
+                      fontSize: 12.5, lineHeight: 1.65, color: C.textPrimary,
                       whiteSpace: "pre-wrap", wordBreak: "break-word",
                     }}
                   />
                 ) : (
-                  <div style={{ fontSize: 14, color: C.white, lineHeight: 1.6 }}>{m.content}</div>
+                  <div style={{ fontSize: 12.5, color: C.white, lineHeight: 1.55 }}>{m.content}</div>
                 )}
               </div>
 
@@ -821,24 +880,29 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
             </div>
           ))}
 
-          {/* Loading */}
+          {/* Loading — Grok-style "Thinking about your request" status. */}
           {loading && (
             <div style={{
-              display: "flex", alignItems: "center", gap: 10,
-              marginBottom: 16, padding: "12px 16px", borderRadius: 12,
+              display: "flex", flexDirection: "column", gap: 4,
+              marginBottom: 12, padding: "9px 12px", borderRadius: 10,
               background: C.glass, border: `1px solid ${C.glassBorder}`,
               backdropFilter: "blur(8px)",
             }}>
-              <div style={{ display: "flex", gap: 4 }}>
-                {[0, 1, 2].map(n => (
-                  <div key={n} style={{
-                    width: 6, height: 6, borderRadius: "50%", background: C.accent,
-                    animation: `agent-pulse 1.2s infinite ${n * 0.2}s`,
-                  }} />
-                ))}
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <div style={{ display: "flex", gap: 3 }}>
+                  {[0, 1, 2].map(n => (
+                    <div key={n} style={{
+                      width: 5, height: 5, borderRadius: "50%", background: C.accent,
+                      animation: `agent-pulse 1.2s infinite ${n * 0.2}s`,
+                    }} />
+                  ))}
+                </div>
+                <span style={{ fontSize: 12, color: C.textPrimary, fontWeight: 500 }}>
+                  Thinking about your request
+                </span>
               </div>
-              <span style={{ fontSize: 13, color: C.textSecondary }}>
-                {mode === "fast" ? "Yanıtlanıyor..." : mode === "research" ? "Derin analiz yapılıyor..." : mode === "visual" ? "Diyagram hazırlanıyor..." : "Analiz ediliyor..."}
+              <span style={{ fontSize: 11, color: C.textDim, paddingLeft: 28 }}>
+                {mode === "fast" ? "Hızlı yanıt hazırlanıyor…" : mode === "research" ? "Derin analiz, alt-ajanlar çalışıyor…" : mode === "visual" ? "Diyagram render ediliyor…" : "Stok ve BOM verileri çekiliyor…"}
               </span>
             </div>
           )}
@@ -846,9 +910,9 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
           {/* Error */}
           {error && (
             <div style={{
-              padding: "12px 16px", borderRadius: 12, background: C.errDim,
+              padding: "9px 12px", borderRadius: 10, background: C.errDim,
               border: `1px solid rgba(248,113,113,0.2)`, color: C.err,
-              fontSize: 13, marginBottom: 16,
+              fontSize: 12, marginBottom: 12,
             }}>
               {error}
             </div>
@@ -856,89 +920,70 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
         </div>
         )}
 
-        {/* Mode Selector */}
+        {/* Input Bar — Grok-style compact: textarea + Auto pill + send/stop. */}
         <div style={{
-          padding: "8px 16px 0", borderTop: `1px solid ${C.glassBorder}`,
-          background: "rgba(8,8,16,0.9)", backdropFilter: "blur(16px)",
-        }}>
-          <div style={{ display: "flex", gap: 6 }}>
-            {MODES.map(m => {
-              const active = mode === m.key;
-              return (
-                <button
-                  key={m.key}
-                  onClick={() => setMode(m.key)}
-                  style={{
-                    flex: 1, padding: "8px 4px", borderRadius: 10,
-                    background: active ? m.glow : "transparent",
-                    border: `1px solid ${active ? m.border : "transparent"}`,
-                    color: active ? m.color : C.textDim,
-                    cursor: "pointer", transition: "all 0.2s",
-                    display: "flex", flexDirection: "column", alignItems: "center", gap: 2,
-                  }}
-                  onMouseEnter={e => {
-                    if (!active) {
-                      e.currentTarget.style.color = m.color;
-                      e.currentTarget.style.background = "rgba(255,255,255,0.03)";
-                    }
-                  }}
-                  onMouseLeave={e => {
-                    if (!active) {
-                      e.currentTarget.style.color = C.textDim;
-                      e.currentTarget.style.background = "transparent";
-                    }
-                  }}
-                >
-                  <span style={{ fontSize: 16 }}>{m.icon}</span>
-                  <span style={{ fontSize: 11, fontWeight: active ? 600 : 400 }}>{m.label}</span>
-                  <span style={{ fontSize: 9, opacity: 0.6 }}>{m.sublabel}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-
-        {/* Input Bar */}
-        <div style={{
-          padding: "8px 16px 14px",
-          background: "rgba(8,8,16,0.9)", backdropFilter: "blur(16px)",
+          padding: "6px 10px 10px",
+          background: "rgba(8,8,16,0.92)", backdropFilter: "blur(16px)",
         }}>
           <div style={{
-            display: "flex", gap: 8, alignItems: "flex-end",
-            padding: "6px 6px 6px 14px", borderRadius: 14,
+            display: "flex", flexDirection: "column", gap: 6,
+            padding: "8px 10px 8px 12px", borderRadius: 14,
             background: C.glass, border: `1px solid ${C.glassBorder}`,
             transition: "border-color 0.2s",
-          }}
-            onFocus={() => {}}
-          >
+          }}>
             <textarea
               ref={inputRef}
               value={input}
               onChange={e => setInput(e.target.value)}
               onKeyDown={handleKeyDown}
-              placeholder="Bir soru sor..."
+              placeholder="Ask anything"
               rows={1}
               style={{
-                flex: 1, padding: "8px 0", border: "none", background: "transparent",
-                color: C.white, fontSize: 14, outline: "none", resize: "none",
+                width: "100%", padding: "2px 0", border: "none", background: "transparent",
+                color: C.white, fontSize: 13, outline: "none", resize: "none",
                 lineHeight: 1.5, fontFamily: "inherit",
+                maxHeight: 120,
               }}
             />
-            <button
-              onClick={() => sendMessage(input)}
-              disabled={loading || !input.trim()}
-              style={{
-                width: 36, height: 36, borderRadius: 10, border: "none",
-                background: input.trim() ? C.accent : "rgba(255,255,255,0.06)",
-                color: "#fff", fontSize: 16, cursor: input.trim() ? "pointer" : "default",
-                opacity: loading ? 0.5 : 1,
-                display: "flex", alignItems: "center", justifyContent: "center",
-                transition: "all 0.2s",
-                flexShrink: 0,
-              }}
-            >
-              ↑
-            </button>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+              {/* Auto / mode pill — surfaces the active mode label, click cycles. */}
+              <button
+                onClick={() => {
+                  const i = MODES.findIndex(x => x.key === mode);
+                  const next = MODES[(i + 1) % MODES.length];
+                  setMode(next.key);
+                }}
+                title="Mod değiştir"
+                style={{
+                  display: "flex", alignItems: "center", gap: 4,
+                  padding: "3px 8px", borderRadius: 999,
+                  background: "transparent", border: `1px solid ${C.glassBorder}`,
+                  color: C.textSecondary, fontSize: 11, cursor: "pointer",
+                  transition: "all 0.15s",
+                }}
+                onMouseEnter={e => { e.currentTarget.style.background = C.glassHover; e.currentTarget.style.color = C.white; }}
+                onMouseLeave={e => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = C.textSecondary; }}
+              >
+                <span>{MODES.find(x => x.key === mode)?.label || "Auto"}</span>
+                <span style={{ opacity: 0.6, fontSize: 9 }}>▾</span>
+              </button>
+              <button
+                onClick={() => sendMessage(input)}
+                disabled={loading || !input.trim()}
+                style={{
+                  width: 26, height: 26, borderRadius: "50%", border: "none",
+                  background: input.trim() ? C.white : "rgba(255,255,255,0.12)",
+                  color: input.trim() ? "#000" : C.textDim,
+                  fontSize: 13, cursor: input.trim() ? "pointer" : "default",
+                  opacity: loading ? 0.5 : 1,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  transition: "all 0.2s",
+                  flexShrink: 0, fontWeight: 700,
+                }}
+              >
+                ↑
+              </button>
+            </div>
           </div>
         </div>
 
