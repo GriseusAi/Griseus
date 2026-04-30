@@ -337,7 +337,7 @@ function drawGraph(
     ctx.lineWidth = 3;
     ctx.strokeStyle = "rgba(5,5,5,0.85)";
     ctx.strokeText(e.label, mx, my - 4);
-    ctx.fillStyle = isHighlighted ? "rgba(129,140,248,0.95)" : "rgba(255,255,255,0.7)";
+    ctx.fillStyle = C.white;
     ctx.fillText(e.label, mx, my - 4);
   }
 
@@ -405,7 +405,7 @@ function drawGraph(
     for (let i = 0; i < lines.length; i++) {
       ctx.strokeText(lines[i], n.x, n.y + r + 14 + i * 13);
     }
-    ctx.fillStyle = color;
+    ctx.fillStyle = C.white;
     for (let i = 0; i < lines.length; i++) {
       ctx.fillText(lines[i], n.x, n.y + r + 14 + i * 13);
     }
@@ -451,11 +451,11 @@ function drawGraph(
       ctx.strokeStyle = "rgba(5,5,5,0.9)";
       ctx.font = "bold 14px 'Outfit', sans-serif";
       ctx.strokeText(head, n.x, n.y - 4);
-      ctx.fillStyle = C.accent;
+      ctx.fillStyle = C.white;
       ctx.fillText(head, n.x, n.y - 4);
       ctx.font = "bold 10px 'Outfit', sans-serif";
       ctx.strokeText(tail, n.x, n.y + 9);
-      ctx.fillStyle = C.accent;
+      ctx.fillStyle = C.white;
       ctx.fillText(tail, n.x, n.y + 9);
       ctx.textBaseline = "alphabetic";
     }
@@ -1039,10 +1039,10 @@ export default function OntologyPage() {
           {/* Tier labels */}
           {graphReady && (
             <>
-              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 11, color: C.accent, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>ÜRÜN</div>
-              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 1 — DİREKT MALZEME</div>
-              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 2 — YARI MAMÜL</div>
-              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 3 — ALT BİLEŞEN</div>
+              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>ÜRÜN</div>
+              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 1 — DİREKT MALZEME</div>
+              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 2 — YARI MAMÜL</div>
+              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 11, color: C.white, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 3 — ALT BİLEŞEN</div>
             </>
           )}
 
