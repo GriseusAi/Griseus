@@ -1316,15 +1316,10 @@ export default function BhOntologyPage() {
                 const halfB = b.kind === "subassembly" ? 70 : b.kind === "subcomponent" ? 40 : 120;
                 const x1 = pa.x + halfA;
                 const x2 = pb.x - halfB;
-                const midX = (x1 + x2) / 2;
-                // Arc bowed upward to clear tiles
-                const arcRise = 40;
-                const ctrlY = pa.y - arcRise;
-                const path = `M ${x1} ${pa.y} Q ${midX} ${ctrlY} ${x2} ${pb.y}`;
                 const stroke = a.kind === "variable" ? C.variable : C.accent;
                 segments.push(
-                  <path key={`fam-${code}-${k}`}
-                    d={path} fill="none"
+                  <line key={`fam-${code}-${k}`}
+                    x1={x1} y1={pa.y} x2={x2} y2={pb.y}
                     stroke={stroke}
                     strokeWidth={isHovered ? 2.4 : 1.8}
                     opacity={isHovered ? 0.95 : 0.55}
@@ -1352,14 +1347,11 @@ export default function BhOntologyPage() {
                 if (child.deviceSku !== parent.deviceSku) continue;
                 const cp = effectivePositions[child.id];
                 if (!cp) continue;
-                const startY = pp.y + 70;          // bottom edge of subassembly circle (r=70)
-                const endY   = cp.y - 40;          // top edge of subcomponent circle (r=40)
-                const ctrl1Y = startY + Math.max(20, (endY - startY) * 0.45);
-                const ctrl2Y = endY   - Math.max(20, (endY - startY) * 0.45);
-                const path = `M ${pp.x} ${startY} C ${pp.x} ${ctrl1Y}, ${cp.x} ${ctrl2Y}, ${cp.x} ${endY}`;
+                const startY = pp.y + 70;
+                const endY   = cp.y - 40;
                 segments.push(
-                  <path key={`drill-${parent.id}-${child.id}`}
-                    d={path} fill="none"
+                  <line key={`drill-${parent.id}-${child.id}`}
+                    x1={pp.x} y1={startY} x2={cp.x} y2={endY}
                     stroke={C.accent}
                     strokeWidth={2}
                     opacity={0.65}
@@ -1401,7 +1393,7 @@ export default function BhOntologyPage() {
             const showLabel = connectedSet && (connectedSet.has(l.from) || connectedSet.has(l.to));
             return (
               <g key={i}>
-                <path d={curve} fill="none"
+                <line x1={pa.x} y1={pa.y + 28} x2={pb.x} y2={pb.y - 28}
                   stroke={stroke}
                   strokeWidth={isProb ? 2 : 1.3}
                   strokeLinecap="round"
