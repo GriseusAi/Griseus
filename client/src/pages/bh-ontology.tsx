@@ -101,7 +101,7 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v8-xlchart";
+const LAYOUT_KEY = "bh-ontology-layout-v9-foundry-tile";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 3200;
@@ -183,14 +183,14 @@ function dryRunCapacity(
 const DEVICE_ORDER = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"];
 const Y_CHART_TOP = 40;
 const Y_DEVICE = 420;         // XL chart için daha fazla üst boşluk
-const Y_TIER1_START = 580;    // device (96h) + 120 buffer
-const ROW_H = 195;            // component 160 + 35 gap
-const Y_SUBASSEMBLY_GAP = 160;
-const SUB_ROW_H = 210;        // subassembly circle 170 + 40 gap
-const Y_SUBCOMP_GAP = 170;    // parent circle merkezi → child row merkezi (85 radius + 55 child radius + 30 buffer)
-const SUBCOMP_ROW_H = 140;    // child 110 + 30 gap
-const Y_VARIABLE_GAP = 150;
-const VARIABLE_ROW_H = 170;   // triangle 130 + 40 gap
+const Y_TIER1_START = 560;    // device (96h) + 100 buffer (kart yataylaşınca daha az boşluk yetiyor)
+const ROW_H = 118;            // component 96 + 22 gap (Foundry-tile)
+const Y_SUBASSEMBLY_GAP = 70;
+const SUB_ROW_H = 110;        // subassembly tile 88 + 22 gap
+const Y_SUBCOMP_GAP = 90;     // parent tile alt sınırı + 22 buffer
+const SUBCOMP_ROW_H = 84;     // child tile 64 + 20 gap
+const Y_VARIABLE_GAP = 70;
+const VARIABLE_ROW_H = 110;   // variable tile 88 + 22 gap
 
 function defaultLayout(nodes: GraphNode[]): Record<string, { x: number; y: number }> {
   const pos: Record<string, { x: number; y: number }> = {};
@@ -1838,13 +1838,13 @@ function NodeView({
   /* Bar drag state (device mini-chart interaction) */
   const [barDrag, setBarDrag] = useState<{ idx: number; startClientY: number; startUnits: number; currentUnits: number } | null>(null);
 
-  // Shape sizes
+  // Shape sizes — Foundry "tile" pattern: yatay dikdörtgen + üst bant
   let w: number, h: number;
   if (isDevice)         { w = 240; h = 96; }
-  else if (isSub)       { w = 170; h = 170; }  // circle
-  else if (isSubComp)   { w = 110; h = 110; }  // small circle
-  else if (isVariable)  { w = 150; h = 130; }  // triangle
-  else                  { w = 200; h = 160; }  // square component — slightly wider for rich content
+  else if (isSub)       { w = 220; h = 88; }   // yarı-mamül tile
+  else if (isSubComp)   { w = 180; h = 64; }   // alt parça tile (daha kısa)
+  else if (isVariable)  { w = 220; h = 88; }   // variable tile
+  else                  { w = 240; h = 96; }   // component tile
 
   const displayStock = overrideStock !== undefined ? overrideStock : (node.currentStock ?? 0);
   const isOverridden = overrideStock !== undefined && overrideStock !== node.currentStock;
@@ -1908,36 +1908,20 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      {/* Main shape — gradient fills (Palantir digital-twin style) */}
-      {isSub || isSubComp ? (
-        <circle
-          className={pulsing ? "flash-bg" : undefined}
-          cx={w / 2} cy={h / 2} r={w / 2 - 2}
-          fill={statusGradientUrl(node.status, node.isBottleneck)}
-          stroke={col.fg}
-          strokeWidth={1.2}
-          strokeOpacity={0.55}
-          onPointerDown={onPointerDown}
-        />
-      ) : isVariable ? (
-        <polygon
-          className={pulsing ? "flash-bg" : undefined}
-          points={`${w / 2},4 ${w - 4},${h - 4} 4,${h - 4}`}
-          fill={statusGradientUrl(node.status, node.isBottleneck)}
-          stroke={col.fg}
-          strokeWidth={1.2}
-          strokeOpacity={0.55}
-          onPointerDown={onPointerDown}
-        />
-      ) : (
-        <rect className={pulsing ? "flash-bg" : undefined}
-          width={w} height={h} rx={isDevice ? 12 : isComponent ? 14 : 12}
-          fill={isDevice ? "url(#deviceGrad)" : statusGradientUrl(node.status, node.isBottleneck)}
-          stroke={isDevice ? C.accent : col.fg}
-          strokeWidth={isDevice ? 1.4 : 1}
-          strokeOpacity={isDevice ? 0.6 : 0.28}
-          filter={isComponent ? "url(#cardShadow)" : undefined}
-          onPointerDown={onPointerDown}
+      {/* Main tile — Foundry Process Mining pattern: white card + saturated top band */}
+      <rect className={pulsing ? "flash-bg" : undefined}
+        width={w} height={h} rx={6}
+        fill={isDevice ? "url(#deviceGrad)" : "#ffffff"}
+        stroke={isDevice ? C.accent : "rgba(15,23,42,0.12)"}
+        strokeWidth={1}
+        filter={!isDevice ? "url(#cardShadow)" : undefined}
+        onPointerDown={onPointerDown}
+      />
+      {/* Saturated status band — top, full width */}
+      {!isDevice && (
+        <rect width={w} height={isSubComp ? 5 : 7} rx={3}
+          fill={col.fg}
+          style={{ pointerEvents: "none" }}
         />
       )}
 
@@ -2115,206 +2099,149 @@ function NodeView({
             </>
           )}
         </>
-      ) : isSub || isSubComp || isVariable ? (
-        /* Simplified inner content for CIRCLES (subassembly/subcomponent) and TRIANGLE (variable) */
+      ) : (
+        /* Unified Foundry-tile content — landscape rect for component / subassembly / subcomponent / variable */
         <>
-          <g onClick={onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
-            {/* Device column badge top */}
-            {node.deviceSku && (
-              <text x={w / 2} y={isVariable ? h * 0.50 : 22} textAnchor="middle"
-                fill={C.dim} fontSize={9} fontFamily={mono} letterSpacing={1}>
-                {node.deviceSku.replace("BH.", "").replace(".SV", "")}
-              </text>
-            )}
-            {/* Code */}
-            <text x={w / 2} y={isVariable ? h * 0.68 : h / 2 - 6} textAnchor="middle"
-              fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.3}>
-              {node.label}
-            </text>
-            {/* Stock */}
-            {!editing && (
-              <text x={w / 2} y={isVariable ? h * 0.85 : h / 2 + 14} textAnchor="middle"
-                fill={isOverridden ? C.variable : col.fg} fontSize={isSubComp ? 14 : 18}
-                fontFamily={mono} fontWeight={600}>
-                {fmt(displayStock)}
-                <tspan fill={C.dim} fontSize={9}> {node.unit || "AD"}</tspan>
-              </text>
-            )}
-            {/* Edit input */}
-            {editing && (
-              <foreignObject x={w / 2 - 70} y={h / 2 + 2} width={140} height={32}>
-                <div style={{ display: "flex", alignItems: "center", gap: 4 }}
-                  onPointerDown={e => e.stopPropagation()}
-                  onClick={e => e.stopPropagation()}>
-                  <input autoFocus type="number" value={editVal}
-                    onChange={e => onEditChange(e.target.value)}
-                    onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
-                    disabled={saving}
-                    style={{ width: 72, fontSize: 12, fontFamily: mono, color: col.fg,
-                      background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 4,
-                      padding: "3px 6px", outline: "none" }}
-                  />
-                  <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
-                    fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
-                    background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
-                  }}>✓</button>
-                  <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
-                    fontSize: 11, padding: "3px 6px", borderRadius: 4, cursor: "pointer",
-                    background: "#f1f5f9", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
-                  }}>✕</button>
-                </div>
-              </foreignObject>
-            )}
-          </g>
-
-          {/* Expand button for subassembly */}
-          {isSub && node.hasChildren && (
-            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
-               onPointerDown={(e) => e.stopPropagation()}
-               style={{ cursor: "pointer" }}>
-              <circle cx={w / 2} cy={h - 4} r={12}
-                fill={expanded ? C.accentDim : C.surface}
-                stroke={expanded ? C.accent : C.border} strokeWidth={1.2} />
-              <text x={w / 2} y={h - 1} textAnchor="middle"
-                fill={expanded ? C.accent : C.mid} fontSize={11} fontFamily={mono} fontWeight={600}>
-                {expanded ? "−" : `+${node.childrenCount ?? ""}`}
-              </text>
-            </g>
-          )}
-
-          {/* Inspector icon (mini) — clickable area near top */}
+          {/* Inspector ⓘ (top-left, overlaps band) — not for subcomp (too small) */}
           {!isSubComp && (
             <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
-              <circle cx={isVariable ? 16 : 14} cy={14} r={9}
-                fill={isInspected ? C.okDim : "rgba(5,150,105,0.10)"}
-                stroke={isInspected ? C.okBorder : "rgba(5,150,105,0.30)"} strokeWidth={1} />
-              <text x={isVariable ? 16 : 14} y={17} textAnchor="middle"
-                fill={C.ok} fontSize={10} fontFamily={mono} fontWeight={600}>ⓘ</text>
+              <rect x={8} y={14} width={22} height={18} rx={4}
+                fill={isInspected ? C.okDim : "#ffffff"}
+                stroke={isInspected ? C.okBorder : "rgba(15,23,42,0.18)"} strokeWidth={0.8}/>
+              <text x={19} y={27} textAnchor="middle"
+                fill={isInspected ? C.ok : objType.displayMetadata.color} fontSize={11} fontFamily={mono} fontWeight={500}>
+                ⓘ
+              </text>
             </g>
           )}
-        </>
-      ) : (
-        /* Component — SQUARE content (w=160 h=160) */
-        <>
-          {/* Status accent — left side bar (Linear/Stripe style) */}
-          <rect x={0} y={14} width={3} height={h - 28} fill={col.fg} opacity={0.85} rx={1.5}/>
+          {/* What-if (top-right) — only component */}
+          {isComponent && (
+            <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
+              <rect x={w - 30} y={14} width={22} height={18} rx={4}
+                fill={C.variableDim} stroke={C.variableBorder} strokeWidth={0.8}/>
+              <text x={w - 19} y={27} textAnchor="middle" fill={C.variable} fontSize={9} fontFamily={mono} fontWeight={600}>W?</text>
+            </g>
+          )}
+          {/* Variable marker — small ▲ near code */}
+          {isVariable && (
+            <text x={12} y={28} fill={C.variable} fontSize={11} fontFamily={mono} fontWeight={700}>▲</text>
+          )}
 
-          <text x={10} y={24} fill={C.white} fontSize={14} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
+          {/* Code (top-left, after icons) */}
+          <text x={isSubComp ? 12 : (isVariable ? 28 : 36)} y={isSubComp ? 22 : 28}
+            fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
-          {node.isBottleneck && (
-            <text x={w - 10} y={24} textAnchor="end" fill={C.err} fontSize={9} fontFamily={mono}>
+
+          {/* Status label (top-right, small caps) — not for subcomp + skip when W? button covers */}
+          {!isSubComp && !isComponent && (
+            <text x={w - 12} y={28} textAnchor="end"
+              fill={col.fg} fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={1}>
+              {statusLabel(node.status)}
+            </text>
+          )}
+
+          {/* Bottleneck pill (component only, sublabel row right) */}
+          {isComponent && node.isBottleneck && (
+            <text x={w - 12} y={44} textAnchor="end" fill={C.err} fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={0.8}>
               ▲ DARBOĞAZ
             </text>
           )}
 
-          <foreignObject x={10} y={30} width={w - 20} height={16}>
-            <div style={{ fontSize: 11, color: C.dim, fontFamily: mono, lineHeight: "14px",
-              overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-              {node.sublabel}
-            </div>
-          </foreignObject>
+          {/* Sublabel — single-line truncate */}
+          {!isSubComp && (
+            <foreignObject x={12} y={36} width={isComponent && node.isBottleneck ? w - 96 : w - 24} height={14}>
+              <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, lineHeight: "13px",
+                overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                {node.sublabel}
+              </div>
+            </foreignObject>
+          )}
 
-          {/* Stock (editable) */}
+          {/* Stock + days row */}
           {editing ? (
-            <foreignObject x={10} y={50} width={w - 20} height={32}>
+            <foreignObject x={12} y={isSubComp ? 30 : 56} width={w - 24} height={isSubComp ? 28 : 32}>
               <div style={{ display: "flex", alignItems: "center", gap: 6 }}
-                onPointerDown={e => e.stopPropagation()}
-                onClick={e => e.stopPropagation()}>
+                onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
                 <input autoFocus type="number" value={editVal}
                   onChange={e => onEditChange(e.target.value)}
                   onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
                   disabled={saving}
-                  style={{ width: 90, fontSize: 15, fontFamily: mono, color: col.fg,
-                    background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 5,
-                    padding: "4px 8px", outline: "none" }}
+                  style={{ flex: 1, fontSize: isSubComp ? 12 : 14, fontFamily: mono, color: col.fg,
+                    background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 4,
+                    padding: "3px 8px", outline: "none" }}
                 />
                 <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
-                  fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
+                  fontSize: 12, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
                   background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
                 }}>✓</button>
                 <button onClick={e => { e.stopPropagation(); onCancelEdit(); }} style={{
-                  fontSize: 14, padding: "5px 10px", borderRadius: 5, cursor: "pointer",
+                  fontSize: 12, padding: "3px 8px", borderRadius: 4, cursor: "pointer",
                   background: "#f1f5f9", border: `1px solid ${C.border}`, color: C.mid, fontFamily: mono,
                 }}>✕</button>
               </div>
             </foreignObject>
           ) : (
-            <g onClick={onStartEdit} style={{ cursor: "pointer" }}>
-              <text x={10} y={72} fill={isOverridden ? C.variable : col.fg} fontSize={24} fontFamily={mono} fontWeight={600}>
+            <g onClick={isSubComp ? undefined : onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
+              <text x={12} y={isSubComp ? 48 : 78}
+                fill={isOverridden ? C.variable : col.fg}
+                fontSize={isSubComp ? 18 : 22} fontFamily={mono} fontWeight={700} letterSpacing={-0.3}>
                 {fmt(displayStock)}
               </text>
-              <text x={10 + String(fmt(displayStock)).length * 14 + 6} y={72} fill={C.dim} fontSize={11} fontFamily={mono}>
-                {node.unit || "AD"} ✎
+              <text x={12 + String(fmt(displayStock)).length * (isSubComp ? 11 : 13) + 6} y={isSubComp ? 48 : 78}
+                fill={C.dim} fontSize={isSubComp ? 9 : 11} fontFamily={mono}>
+                {node.unit || "AD"}{!isSubComp && " ✎"}
               </text>
-              <text x={w - 10} y={72} textAnchor="end" fill={col.fg} fontSize={10} fontFamily={mono} fontWeight={500} letterSpacing={0.5} opacity={0.9}>
-                {statusLabel(node.status)}
-              </text>
+              {!isSubComp && node.daysLeft !== null && node.daysLeft !== undefined && (
+                <text x={w - 12} y={78} textAnchor="end"
+                  fill={node.daysLeft < 30 ? C.err : node.daysLeft < 90 ? C.warn : C.mid}
+                  fontSize={11} fontFamily={mono} fontWeight={600}>
+                  {node.daysLeft > 365 ? "> 1yıl" : `${Math.round(node.daysLeft)}g`}
+                  {node.depletionMonth ? ` · ${node.depletionMonth}` : ""}
+                </text>
+              )}
+              {/* Subcomponent: status label sağda */}
+              {isSubComp && (
+                <text x={w - 12} y={48} textAnchor="end"
+                  fill={col.fg} fontSize={8} fontFamily={mono} fontWeight={700} letterSpacing={0.8}>
+                  {statusLabel(node.status)}
+                </text>
+              )}
             </g>
           )}
 
-          {/* L1 Kinetics row */}
-          <g style={{ pointerEvents: "none" }}>
-            <text x={10} y={94} fill={vel.color} fontSize={14} fontFamily={mono} fontWeight={500}>
-              {vel.icon}
+          {/* Burn rate (component only — sublabel row right) */}
+          {isComponent && !editing && !node.isBottleneck && (
+            <text x={w - 12} y={44} textAnchor="end" fill={vel.color} fontSize={9} fontFamily={mono} fontWeight={500}>
+              {vel.icon} {node.dailyBurnRate && node.dailyBurnRate > 0 ? `${node.dailyBurnRate.toFixed(1)}/g` : "durağan"}
             </text>
-            <text x={32} y={94} fill={C.dim} fontSize={10} fontFamily={mono}>
-              {node.dailyBurnRate && node.dailyBurnRate > 0
-                ? `${node.dailyBurnRate.toFixed(1)}/gün`
-                : "durağan"}
-            </text>
-            {node.daysLeft !== null && node.daysLeft !== undefined && (
-              <text x={w - 10} y={94} textAnchor="end"
-                fill={node.daysLeft < 30 ? C.err : node.daysLeft < 90 ? C.warn : C.mid}
-                fontSize={10} fontFamily={mono}>
-                {node.daysLeft > 365 ? "> 1yıl" : `${Math.round(node.daysLeft)}g`}
-                {node.depletionMonth ? ` · ${node.depletionMonth}` : ""}
-              </text>
-            )}
-          </g>
+          )}
 
-          {/* Inspector (ℹ) button — sol üstte obj type icon'u tıklanabilir */}
-          <g onClick={(e) => { e.stopPropagation(); onStartInspect(e); }} style={{ cursor: "pointer" }}>
-            <rect x={-10} y={4} width={30} height={22} rx={5}
-              fill={isInspected ? C.okDim : "rgba(5,150,105,0.08)"}
-              stroke={isInspected ? C.okBorder : "rgba(5,150,105,0.28)"} strokeWidth={1}/>
-            <text x={5} y={19} textAnchor="middle" fill={objType.displayMetadata.color} fontSize={14} fontFamily={mono} fontWeight={500}>
-              {objType.displayMetadata.icon}
-            </text>
-          </g>
-
-          {/* What-if button — 32x22 */}
-          <g onClick={(e) => { e.stopPropagation(); onStartWhatIf(); }} style={{ cursor: "pointer" }}>
-            <rect x={w - 40} y={4} width={32} height={22} rx={5}
-              fill={C.variableDim} stroke={C.variableBorder} strokeWidth={1}/>
-            <text x={w - 24} y={19} textAnchor="middle" fill={C.variable} fontSize={10} fontFamily={mono} fontWeight={500}>W?</text>
-          </g>
-
-          {/* Expand button — yarı mamül için (+/−) */}
-          {node.hasChildren && (
+          {/* Expand (+N) button — bottom-right (sub + component with children) */}
+          {(isSub || isComponent) && node.hasChildren && (
             <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
                onPointerDown={(e) => e.stopPropagation()}
                style={{ cursor: "pointer" }}>
-              <rect x={-10} y={h - 14} width={28} height={22} rx={5}
-                fill={expanded ? C.accentDim : C.surface}
-                stroke={expanded ? C.accent : C.border} strokeWidth={1}/>
-              <text x={4} y={h + 2} textAnchor="middle"
-                fill={expanded ? C.accent : C.mid} fontSize={13} fontFamily={mono} fontWeight={500}>
-                {expanded ? "−" : `+${node.childrenCount}`}
+              <rect x={w - 32} y={h - 22} width={26} height={18} rx={4}
+                fill={expanded ? C.accentDim : "#ffffff"}
+                stroke={expanded ? C.accent : "rgba(15,23,42,0.18)"} strokeWidth={0.8}/>
+              <text x={w - 19} y={h - 9} textAnchor="middle"
+                fill={expanded ? C.accent : C.mid} fontSize={10} fontFamily={mono} fontWeight={600}>
+                {expanded ? "−" : `+${node.childrenCount ?? ""}`}
               </text>
             </g>
           )}
 
-          {/* usedBy badges */}
-          {node.usedBy.length > 0 && (
-            <foreignObject x={0} y={h} width={w} height={18}>
-              <div style={{ display: "flex", gap: 3, paddingLeft: 24, flexWrap: "wrap" }}>
+          {/* usedBy badges — only component, below tile */}
+          {isComponent && node.usedBy.length > 0 && (
+            <foreignObject x={0} y={h + 2} width={w} height={16}>
+              <div style={{ display: "flex", gap: 3, paddingLeft: 12, flexWrap: "wrap" }}>
                 {node.usedBy.map(sku => {
                   const abbr = sku.replace("BH.", "").replace(".SV", "");
                   return (
                     <span key={sku} style={{
-                      fontSize: 9, fontFamily: mono, padding: "2px 6px", borderRadius: 4,
+                      fontSize: 8, fontFamily: mono, padding: "1px 5px", borderRadius: 3,
                       background: node.isShared ? C.accentDim : "#f1f5f9",
                       color: node.isShared ? C.accent : C.dim,
                       border: `1px solid ${node.isShared ? C.accent + "40" : C.border}`,
