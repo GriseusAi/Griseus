@@ -11,21 +11,21 @@ import { useStockWebSocket, type StockUpdateEvent } from "@/lib/useStockWebSocke
    Palantir-style interactive force graph with live simulation
    ═══════════════════════════════════════════════════════════ */
 
+import { CT, CT_FONT } from "@/lib/claude-theme";
 const C = {
-  bg: "#f8fafc", surface: "#0e0e14", surfaceHover: "#15151c",
-  border: "rgba(255,255,255,0.10)", borderActive: "rgba(255,255,255,0.22)",
-  accent: "#818cf8", accentDim: "rgba(99,102,241,0.18)", accentGlow: "rgba(99,102,241,0.30)",
-  ok: "#10b981", okDim: "rgba(16,185,129,0.18)", okBorder: "rgba(16,185,129,0.30)",
-  warn: "#f59e0b", warnDim: "rgba(245,158,11,0.18)", warnBorder: "rgba(245,158,11,0.30)",
-  err: "#ef4444", errDim: "rgba(239,68,68,0.18)", errBorder: "rgba(239,68,68,0.30)",
-  blue: "#38bdf8", purple: "#a78bfa", cyan: "#22d3ee",
-  white: "#f0f0f5", mid: "#9a9aa8", dim: "#94a3b8", dimmer: "#cbd5e1",
-  // Light-bg-specific (canvas + tier labels + outer page text)
-  ink: "#0a0a0e", inkSub: "#475569", canvasGrid: "rgba(15,23,42,0.06)",
-  canvasEdge: "rgba(15,23,42,0.32)", canvasEdgeFaint: "rgba(15,23,42,0.18)",
-  canvasHalo: "rgba(255,255,255,0.92)",
+  bg: CT.bg, surface: CT.surface, surfaceHover: CT.surfaceHover,
+  border: CT.border, borderActive: CT.borderStrong,
+  accent: CT.accent, accentDim: CT.accentSoft, accentGlow: CT.accentEdge,
+  ok: CT.ok, okDim: CT.okSoft, okBorder: "rgba(63,143,91,0.28)",
+  warn: CT.warn, warnDim: CT.warnSoft, warnBorder: "rgba(184,118,28,0.28)",
+  err: CT.err, errDim: CT.errSoft, errBorder: "rgba(179,64,55,0.28)",
+  blue: CT.info, purple: "#8a72c7", cyan: "#3aa5b8",
+  white: CT.ink, mid: CT.inkSub, dim: CT.inkMuted, dimmer: CT.inkFaint,
+  ink: CT.ink, inkSub: CT.inkSub, canvasGrid: CT.canvasGrid,
+  canvasEdge: CT.canvasEdge, canvasEdgeFaint: "rgba(20,20,19,0.18)",
+  canvasHalo: CT.canvasHalo,
 };
-const mono = "'Outfit', sans-serif";
+const mono = CT_FONT;
 const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 /* ── Types ── */
@@ -717,7 +717,7 @@ export default function OntologyPage() {
       <div style={{ display: "flex", height: "calc(100vh - 48px)" }}>
         {/* ═══ LEFT: Controls + Simulation Panel — dark sidebar on light page ═══ */}
         <div style={{
-          width: 340, background: "#0a0a0e", borderRight: `1px solid rgba(15,23,42,0.08)`, padding: 20,
+          width: 340, background: CT.bgAlt, borderRight: `1px solid ${CT.border}`, padding: 20,
           overflowY: "auto", display: "flex", flexDirection: "column", gap: 16,
         }}>
           {/* Header */}

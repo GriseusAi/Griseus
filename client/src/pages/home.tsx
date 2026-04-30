@@ -1,30 +1,13 @@
 import { useLocation } from "wouter";
 import TopNav from "@/components/top-nav";
 import { useSKU } from "@/lib/sku-context";
-
-const C = {
-  bg: "#f8fafc",
-  surface: "#0e0e14",
-  surfaceHover: "#15151c",
-  border: "rgba(255,255,255,0.10)",
-  borderHover: "rgba(129,140,248,0.45)",
-  accent: "#818cf8",
-  accentDim: "rgba(129,140,248,0.12)",
-  ink: "#0a0a0e",
-  cardInk: "#f0f0f5",
-  mid: "#5a6072",
-  midOnDark: "#9a9aa8",
-  dim: "#94a3b8",
-};
-
-const mono = "'Outfit', sans-serif";
+import { CT, CT_FONT } from "@/lib/claude-theme";
 
 type Tile = {
   label: string;
   icon: string;
   path: string;
   tagline: string;
-  accent: string;
 };
 
 export default function Home() {
@@ -32,130 +15,80 @@ export default function Home() {
   const { selectedSku } = useSKU();
 
   const tiles: Tile[] = [
-    {
-      label: "Stok Durumu",
-      icon: "\u{1F3ED}",
-      path: "/stok/durum",
-      tagline: "Tüm bileşenlerin canlı stok ve durum paneli",
-      accent: "#60a5fa",
-    },
-    {
-      label: "Ürün İstihbaratı",
-      icon: "\u{1F4CA}",
-      path: `/stok/urun/${selectedSku}`,
-      tagline: "SKU bazlı derin analiz ve üretim zekası",
-      accent: "#34d399",
-    },
-    {
-      label: "Sihir",
-      icon: "⬡",
-      path: "/sihir",
-      tagline: "Palantir-seviye ontology deneyimi",
-      accent: "#f472b6",
-    },
-    {
-      label: "Veri Yükle",
-      icon: "\u{1F4C2}",
-      path: "/veri-yukle",
-      tagline: "ERP/Excel import ve cihaz onboarding",
-      accent: "#fbbf24",
-    },
+    { label: "Stok Durumu", icon: "\u{1F3ED}", path: "/stok/durum", tagline: "Tüm bileşenlerin canlı stok ve durum paneli" },
+    { label: "Ürün İstihbaratı", icon: "\u{1F4CA}", path: `/stok/urun/${selectedSku}`, tagline: "SKU bazlı derin analiz ve üretim zekası" },
+    { label: "Sihir", icon: "⬡", path: "/sihir", tagline: "Palantir-seviye ontology deneyimi" },
+    { label: "Veri Yükle", icon: "\u{1F4C2}", path: "/veri-yukle", tagline: "ERP/Excel import ve cihaz onboarding" },
   ];
 
   return (
-    <div style={{ minHeight: "100vh", background: C.bg, color: C.ink, fontFamily: mono }}>
+    <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
       <TopNav />
 
-      <div style={{
-        maxWidth: 1100, margin: "0 auto", padding: "64px 32px 96px",
-      }}>
-        <div style={{ textAlign: "center", marginBottom: 48 }}>
-          <div style={{
-            fontSize: 11, letterSpacing: 2.4, color: C.accent,
-            fontWeight: 500, marginBottom: 10,
-          }}>
-            GRISEUS · HOME
+      <div style={{ maxWidth: 980, margin: "0 auto", padding: "72px 32px 96px" }}>
+        <div style={{ marginBottom: 56 }}>
+          <div style={{ fontSize: 11, letterSpacing: 1.6, color: CT.accent, fontWeight: 500, marginBottom: 14, textTransform: "uppercase" }}>
+            Griseus
           </div>
-          <h1 style={{
-            fontSize: 32, fontWeight: 300, margin: 0, color: C.ink, letterSpacing: -0.4,
-          }}>
+          <h1 style={{ fontSize: 36, fontWeight: 500, margin: 0, color: CT.ink, letterSpacing: -0.6, lineHeight: 1.15 }}>
             Nereden başlamak istersin?
           </h1>
-          <div style={{ fontSize: 13, color: C.mid, marginTop: 10 }}>
+          <div style={{ fontSize: 15, color: CT.inkSub, marginTop: 12, lineHeight: 1.6 }}>
             Dört temel çalışma alanı — tek tıkla aç.
           </div>
         </div>
 
-        <div style={{
-          display: "grid",
-          gridTemplateColumns: "repeat(2, 1fr)",
-          gap: 20,
-        }}>
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(2, 1fr)", gap: 16 }}>
           {tiles.map(t => (
             <button
               key={t.path}
               onClick={() => navigate(t.path)}
               style={{
                 textAlign: "left",
-                padding: "28px 28px",
-                borderRadius: 16,
-                background: C.surface,
-                border: `1px solid ${C.border}`,
-                color: C.cardInk,
+                padding: "24px 24px 22px",
+                borderRadius: 14,
+                background: CT.surface,
+                border: `1px solid ${CT.border}`,
+                color: CT.ink,
                 cursor: "pointer",
-                fontFamily: mono,
-                transition: "all 0.18s ease",
+                fontFamily: CT_FONT,
+                transition: "border-color 0.15s ease, background 0.15s ease, transform 0.15s ease",
                 display: "flex",
                 flexDirection: "column",
                 gap: 14,
-                minHeight: 180,
-                position: "relative",
-                overflow: "hidden",
-                boxShadow: "0 4px 20px rgba(15,23,42,0.08)",
+                minHeight: 160,
               }}
               onMouseEnter={(e) => {
-                e.currentTarget.style.background = C.surfaceHover;
-                e.currentTarget.style.border = `1px solid ${t.accent}55`;
-                e.currentTarget.style.transform = "translateY(-2px)";
+                e.currentTarget.style.background = CT.surfaceHover;
+                e.currentTarget.style.borderColor = CT.borderStrong;
+                e.currentTarget.style.transform = "translateY(-1px)";
               }}
               onMouseLeave={(e) => {
-                e.currentTarget.style.background = C.surface;
-                e.currentTarget.style.border = `1px solid ${C.border}`;
+                e.currentTarget.style.background = CT.surface;
+                e.currentTarget.style.borderColor = CT.border;
                 e.currentTarget.style.transform = "translateY(0)";
               }}
             >
               <div style={{
-                position: "absolute", top: 0, left: 0, right: 0, height: 2,
-                background: `linear-gradient(90deg, ${t.accent}, transparent)`,
-                opacity: 0.6,
-              }} />
-
-              <div style={{
-                width: 52, height: 52, borderRadius: 12,
-                background: `${t.accent}18`,
-                border: `1px solid ${t.accent}35`,
+                width: 40, height: 40, borderRadius: 10,
+                background: CT.surfaceMuted,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 26,
+                fontSize: 20,
               }}>
                 {t.icon}
               </div>
 
               <div>
-                <div style={{
-                  fontSize: 20, fontWeight: 400, color: C.cardInk, marginBottom: 6, letterSpacing: -0.2,
-                }}>
+                <div style={{ fontSize: 17, fontWeight: 500, color: CT.ink, marginBottom: 4, letterSpacing: -0.2 }}>
                   {t.label}
                 </div>
-                <div style={{ fontSize: 12, color: C.midOnDark, lineHeight: 1.55 }}>
+                <div style={{ fontSize: 13, color: CT.inkSub, lineHeight: 1.5 }}>
                   {t.tagline}
                 </div>
               </div>
 
-              <div style={{
-                marginTop: "auto",
-                fontSize: 10, letterSpacing: 1.4, color: t.accent, fontWeight: 500,
-              }}>
-                AÇ →
+              <div style={{ marginTop: "auto", fontSize: 12, color: CT.accent, fontWeight: 500 }}>
+                Aç →
               </div>
             </button>
           ))}
