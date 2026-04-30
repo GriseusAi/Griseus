@@ -70,6 +70,7 @@ interface BomComponent {
   isSubAssembly?: boolean;
   hasChildren?: boolean;
   lastCountedAt?: string;
+  children?: BomComponent[];
 }
 interface CapacityResp {
   product: string;
@@ -88,6 +89,7 @@ type PositionOverrides = Record<string, Record<string, XY>>;
 const ORDERS_KEY = "griseus_strategy_orders_v1";
 const POS_KEY = "griseus_strategy_positions_v3";
 const VIEW_KEY = "griseus_strategy_viewport_v2";
+const EXPAND_KEY = "griseus_strategy_expanded_v1";
 
 const safeParse = <T,>(raw: string | null, fallback: T): T => {
   if (!raw) return fallback;
@@ -155,9 +157,9 @@ function defaultPositions(order: Order, components: BomComponent[], yOffset: num
   return pos;
 }
 
-/* ─────── Sürüklenebilir SVG node ─────── */
+/* ─────── Sürüklenebilir + tıklanabilir SVG node ─────── */
 function DragNode({
-  pos, width, height, onDrag, children, setSvgPoint, onPointerDownExtra,
+  pos, width, height, onDrag, children, setSvgPoint, onTap,
 }: {
   pos: XY;
   width: number;
@@ -165,15 +167,16 @@ function DragNode({
   onDrag: (xy: XY) => void;
   children: React.ReactNode;
   setSvgPoint: (e: React.PointerEvent) => XY;
-  onPointerDownExtra?: () => void;
+  onTap?: () => void;
 }) {
   const offsetRef = useRef<XY>({ x: 0, y: 0 });
+  const downAtRef = useRef<XY | null>(null);
   const handleDown = (e: React.PointerEvent) => {
     e.stopPropagation();
     (e.target as HTMLElement).setPointerCapture?.(e.pointerId);
     const p = setSvgPoint(e);
     offsetRef.current = { x: p.x - pos.x, y: p.y - pos.y };
-    onPointerDownExtra?.();
+    downAtRef.current = { x: e.clientX, y: e.clientY };
   };
   const handleMove = (e: React.PointerEvent) => {
     if (e.buttons === 0) return;
@@ -182,6 +185,12 @@ function DragNode({
   };
   const handleUp = (e: React.PointerEvent) => {
     (e.target as HTMLElement).releasePointerCapture?.(e.pointerId);
+    if (onTap && downAtRef.current) {
+      const dx = e.clientX - downAtRef.current.x;
+      const dy = e.clientY - downAtRef.current.y;
+      if (Math.abs(dx) < 5 && Math.abs(dy) < 5) onTap();
+    }
+    downAtRef.current = null;
   };
   return (
     <foreignObject x={pos.x} y={pos.y} width={width} height={height} style={{ overflow: "visible" }}>
@@ -189,7 +198,7 @@ function DragNode({
         onPointerDown={handleDown}
         onPointerMove={handleMove}
         onPointerUp={handleUp}
-        style={{ width, height, cursor: "grab", touchAction: "none", userSelect: "none" }}
+        style={{ width, height, cursor: onTap ? "pointer" : "grab", touchAction: "none", userSelect: "none" }}
       >
         {children}
       </div>
@@ -612,6 +621,7 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
 function OrderBlock({
   order, capacity, stock, loading,
   positions, defaults, onMove,
+  expandedSubs, toggleSub,
   onRemove, onEdit,
   setSvgPoint,
   allOrders, stockBySku,
@@ -623,6 +633,8 @@ function OrderBlock({
   positions: Record<string, XY>;
   defaults: Record<string, XY>;
   onMove: (nodeId: string, xy: XY) => void;
+  expandedSubs: Set<string>;
+  toggleSub: (code: string) => void;
   onRemove: () => void;
   onEdit: () => void;
   setSvgPoint: (e: React.PointerEvent) => XY;
@@ -715,25 +727,119 @@ function OrderBlock({
         </div>
       </DragNode>
 
-      {/* Yarımamül daireleri */}
+      {/* Yarımamül daireleri + drill-down children */}
       {subs.map(c => {
         const sp = get(`sub:${order.id}:${c.code}`);
         const isShort = c.shortfall > 0;
+        const open = expandedSubs.has(c.code);
+        const children = c.children ?? [];
+        const childGap = 44;
+        const childStartY = sp.y + SUB_R - ((children.length - 1) * childGap) / 2 - COMP_H / 2;
+        const childX = sp.x + SUB_R * 2 + 80;
+        const subCenter = { x: sp.x + SUB_R, y: sp.y + SUB_R };
         return (
-          <DragNode key={`sub:${c.code}`} pos={sp} width={SUB_R * 2} height={SUB_R * 2}
-            onDrag={(xy) => onMove(`sub:${order.id}:${c.code}`, xy)} setSvgPoint={setSvgPoint}>
-            <div title={c.name} style={{
-              width: SUB_R * 2, height: SUB_R * 2, borderRadius: "50%",
-              background: C.cardBg, color: C.cardInk,
-              border: isShort ? `2px solid ${C.shortfall}` : `1.5px solid rgba(255,255,255,0.18)`,
-              display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-              boxShadow: "0 5px 18px rgba(0,0,0,0.35)", fontFamily: mono,
-            }}>
-              <div style={{ fontSize: 9, fontWeight: 700 }}>{c.code.length > 9 ? c.code.slice(0, 8) + "…" : c.code}</div>
-              <div style={{ fontSize: 7, color: C.cardSub, marginTop: 1 }}>{fmtTR(c.currentStock)} ad</div>
-              {isShort && <div style={{ fontSize: 7, color: C.shortfall, marginTop: 1, fontWeight: 700 }}>−{fmtTR(c.shortfall)}</div>}
-            </div>
-          </DragNode>
+          <g key={`sub-grp:${c.code}`}>
+            {/* Drill-down child edges */}
+            {open && children.map((ch, i) => {
+              const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
+              const cpos = positions[overrideId] ?? { x: childX, y: childStartY + i * childGap };
+              const childCenter = { x: cpos.x, y: cpos.y + COMP_H / 2 };
+              const cpx = (subCenter.x + childCenter.x) / 2;
+              const path = `M ${subCenter.x + SUB_R - 2} ${subCenter.y} C ${cpx} ${subCenter.y}, ${cpx} ${childCenter.y}, ${childCenter.x} ${childCenter.y}`;
+              const childNeeded = order.quantity * ch.requiredPerUnit;
+              const childShort = Math.max(0, Math.ceil(childNeeded - ch.currentStock));
+              return <path key={`ce:${ch.code}`} d={path}
+                stroke={childShort > 0 ? C.shortfall : C.edge}
+                strokeWidth={childShort > 0 ? 1.5 : 1.1}
+                strokeDasharray={childShort > 0 ? "5 5" : "3 5"} fill="none" />;
+            })}
+
+            {/* Sub circle */}
+            <DragNode pos={sp} width={SUB_R * 2} height={SUB_R * 2}
+              onDrag={(xy) => onMove(`sub:${order.id}:${c.code}`, xy)}
+              setSvgPoint={setSvgPoint}
+              onTap={children.length > 0 ? () => toggleSub(c.code) : undefined}>
+              <div title={`${c.name}${children.length > 0 ? ` · tıkla → ${children.length} alt bileşen` : ""}`} style={{
+                width: SUB_R * 2, height: SUB_R * 2, borderRadius: "50%",
+                background: C.cardBg, color: C.cardInk,
+                border: open ? `2px solid ${C.accent}`
+                  : isShort ? `2px solid ${C.shortfall}`
+                  : `1.5px solid rgba(255,255,255,0.18)`,
+                display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                boxShadow: open ? `0 0 0 4px ${C.accentSoft}, 0 5px 18px rgba(0,0,0,0.35)` : "0 5px 18px rgba(0,0,0,0.35)",
+                fontFamily: mono, position: "relative", transition: "box-shadow 0.2s, border 0.2s",
+              }}>
+                <div style={{ fontSize: 9, fontWeight: 700 }}>{c.code.length > 9 ? c.code.slice(0, 8) + "…" : c.code}</div>
+                <div style={{ fontSize: 7, color: C.cardSub, marginTop: 1 }}>{fmtTR(c.currentStock)} ad</div>
+                {isShort && <div style={{ fontSize: 7, color: C.shortfall, marginTop: 1, fontWeight: 700 }}>−{fmtTR(c.shortfall)}</div>}
+                {children.length > 0 && (
+                  <div style={{
+                    position: "absolute", top: -6, right: -6,
+                    width: 16, height: 16, borderRadius: "50%",
+                    background: open ? C.accent : C.cardBgAlt,
+                    border: `1px solid ${open ? C.accent : "rgba(255,255,255,0.3)"}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 9, color: open ? "#ffffff" : C.cardSub, fontWeight: 700,
+                  }}>{open ? "−" : `+${children.length}`}</div>
+                )}
+              </div>
+            </DragNode>
+
+            {/* Drill-down child cards */}
+            {open && children.map((ch, i) => {
+              const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
+              const cpos = positions[overrideId] ?? { x: childX, y: childStartY + i * childGap };
+              const childNeeded = order.quantity * ch.requiredPerUnit;
+              const childShort = Math.max(0, Math.ceil(childNeeded - ch.currentStock));
+              const childIsSub = (ch.children?.length ?? 0) > 0 || ch.isSubAssembly;
+              if (childIsSub) {
+                // Nested sub-assembly → smaller circle (Tier 2C)
+                return (
+                  <DragNode key={`subchild:${ch.code}`} pos={cpos} width={SUB_R * 2 - 8} height={SUB_R * 2 - 8}
+                    onDrag={(xy) => onMove(overrideId, xy)} setSvgPoint={setSvgPoint}
+                    onTap={() => toggleSub(`${c.code}/${ch.code}`)}>
+                    <div title={ch.name} style={{
+                      width: SUB_R * 2 - 8, height: SUB_R * 2 - 8, borderRadius: "50%",
+                      background: C.cardBgAlt, color: C.cardInk,
+                      border: `1.5px dashed ${C.accent}66`,
+                      display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                      fontFamily: mono, boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
+                    }}>
+                      <div style={{ fontSize: 8, fontWeight: 700 }}>{ch.code.length > 9 ? ch.code.slice(0, 8) + "…" : ch.code}</div>
+                      <div style={{ fontSize: 6, color: C.cardSub, marginTop: 1 }}>{fmtTR(ch.currentStock)}</div>
+                    </div>
+                  </DragNode>
+                );
+              }
+              return (
+                <DragNode key={`subchild:${ch.code}`} pos={cpos} width={COMP_W - 30} height={COMP_H - 4}
+                  onDrag={(xy) => onMove(overrideId, xy)} setSvgPoint={setSvgPoint}>
+                  <div title={ch.name} style={{
+                    width: "100%", height: "100%", boxSizing: "border-box",
+                    background: C.cardBgAlt, color: C.cardInk, borderRadius: 7,
+                    padding: "4px 8px", display: "flex", alignItems: "center", gap: 5,
+                    boxShadow: "0 2px 10px rgba(0,0,0,0.25)", fontFamily: mono,
+                    border: childShort > 0 ? `1.5px solid ${C.shortfall}` : `1px solid ${C.accent}33`,
+                  }}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {ch.code}
+                      </div>
+                      <div style={{ fontSize: 7, color: C.cardSub, marginTop: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        {fmtTR(ch.currentStock)} {ch.unit || "ad"}
+                      </div>
+                    </div>
+                    {childShort > 0 && (
+                      <div style={{
+                        background: C.shortfallSoft, color: C.shortfall,
+                        fontSize: 7, padding: "1px 4px", borderRadius: 3, fontWeight: 700, whiteSpace: "nowrap",
+                      }}>−{fmtTR(childShort)}</div>
+                    )}
+                  </div>
+                </DragNode>
+              );
+            })}
+          </g>
         );
       })}
 
@@ -885,6 +991,18 @@ export default function StrategyCanvasPage() {
     () => safeParse<PositionOverrides>(localStorage.getItem(POS_KEY), {}),
   );
   useEffect(() => { localStorage.setItem(POS_KEY, JSON.stringify(posOverrides)); }, [posOverrides]);
+
+  const [expandedSubs, setExpandedSubs] = useState<Record<string, string[]>>(
+    () => safeParse<Record<string, string[]>>(localStorage.getItem(EXPAND_KEY), {}),
+  );
+  useEffect(() => { localStorage.setItem(EXPAND_KEY, JSON.stringify(expandedSubs)); }, [expandedSubs]);
+  const toggleSub = useCallback((orderId: string, code: string) => {
+    setExpandedSubs(prev => {
+      const cur = prev[orderId] ?? [];
+      const next = cur.includes(code) ? cur.filter(c => c !== code) : [...cur, code];
+      return { ...prev, [orderId]: next };
+    });
+  }, []);
 
   const [modalOpen, setModalOpen] = useState(orders.length === 0);
   const [editing, setEditing] = useState<Order | null>(null);
@@ -1042,7 +1160,7 @@ export default function StrategyCanvasPage() {
   }, [orders.length, Object.keys(stockBySku).length]);
 
   return (
-    <div style={{
+    <div className="native-light" style={{
       minHeight: "100vh", background: C.bg, color: C.ink,
       fontFamily: mono, fontFeatureSettings: INTER_FEATS,
       // @ts-ignore
@@ -1107,6 +1225,8 @@ export default function StrategyCanvasPage() {
                   positions={posOverrides[o.id] ?? {}}
                   defaults={allDefaults[o.id] ?? {}}
                   onMove={(nodeId, xy) => moveNode(o.id, nodeId, xy)}
+                  expandedSubs={new Set(expandedSubs[o.id] ?? [])}
+                  toggleSub={(code) => toggleSub(o.id, code)}
                   onRemove={() => removeOrder(o.id)}
                   onEdit={() => { setEditing(o); setModalOpen(true); }}
                   setSvgPoint={setSvgPoint}
