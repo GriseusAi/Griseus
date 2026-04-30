@@ -61,6 +61,23 @@ type NavItem = {
 
 function useNavItems(): NavItem[] {
   return [
+    {
+      path: "/",
+      label: "",
+      iconNode: (
+        <img
+          src="/bomb-favicon-32.png"
+          alt="Griseus"
+          style={{
+            width: 20,
+            height: 20,
+            display: "block",
+            filter:
+              "drop-shadow(2px 2px 0 rgba(194,65,12,0.55)) drop-shadow(4px 4px 0 rgba(124,45,18,0.45)) drop-shadow(6px 6px 0 rgba(67,20,7,0.35))",
+          }}
+        />
+      ),
+    },
     { path: "/ontology", label: "Ontology", iconNode: <OctopusIcon /> },
     { path: "/lineage", label: "LineAge", icon: "\u21DD" },
   ];
