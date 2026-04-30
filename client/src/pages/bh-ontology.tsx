@@ -667,7 +667,7 @@ export default function BhOntologyPage() {
   const inspectedNode = useMemo(() => inspectedId ? nodes.find(n => n.id === inspectedId) : null, [inspectedId, nodes]);
 
   /* Çoklu seçim (Cmd/Shift+click) */
-  const { toggle: toggleSelection } = useSelection();
+  const { toggle: toggleSelection, isSelected, clear: clearSelection } = useSelection();
   const handleNodeClick = useCallback((n: GraphNode, e?: React.MouseEvent) => {
     if (e && (e.metaKey || e.shiftKey || e.ctrlKey)) {
       const code = n.code || n.id;
@@ -810,18 +810,64 @@ export default function BhOntologyPage() {
   /* Viewport pan/zoom */
   const [viewport, setViewport] = useState({ x: 0, y: 0, scale: 1 });
   const [panStart, setPanStart] = useState<{ x: number; y: number; vx: number; vy: number } | null>(null);
+  /* Lasso (rectangle) selection — desktop-style click-and-drag on empty area */
+  const [lasso, setLasso] = useState<{ x0: number; y0: number; x1: number; y1: number; additive: boolean } | null>(null);
   const handleBgPointerDown = (e: React.PointerEvent) => {
     if (dragId) return;
-    setPanStart({ x: e.clientX, y: e.clientY, vx: viewport.x, vy: viewport.y });
+    // Space-held OR shift+alt → pan instead of lasso (escape hatch)
+    if (e.altKey) {
+      setPanStart({ x: e.clientX, y: e.clientY, vx: viewport.x, vy: viewport.y });
+      return;
+    }
+    const { x, y } = toSvgCoords(e);
+    setLasso({ x0: x, y0: y, x1: x, y1: y, additive: e.shiftKey || e.metaKey || e.ctrlKey });
+    (e.currentTarget as Element).setPointerCapture(e.pointerId);
   };
   const handleBgPointerMove = (e: React.PointerEvent) => {
+    if (lasso) {
+      const { x, y } = toSvgCoords(e);
+      setLasso(prev => prev ? { ...prev, x1: x, y1: y } : null);
+      return;
+    }
     if (panStart && !dragId) {
       const dx = e.clientX - panStart.x;
       const dy = e.clientY - panStart.y;
       setViewport(v => ({ ...v, x: panStart.vx + dx / v.scale, y: panStart.vy + dy / v.scale }));
     }
   };
-  const handleBgPointerUp = () => setPanStart(null);
+  const handleBgPointerUp = () => {
+    if (lasso) {
+      const xMin = Math.min(lasso.x0, lasso.x1);
+      const xMax = Math.max(lasso.x0, lasso.x1);
+      const yMin = Math.min(lasso.y0, lasso.y1);
+      const yMax = Math.max(lasso.y0, lasso.y1);
+      const moved = Math.abs(xMax - xMin) > 6 && Math.abs(yMax - yMin) > 6;
+      if (moved) {
+        if (!lasso.additive) clearSelection();
+        for (const n of nodes) {
+          const p = effectivePositions[n.id];
+          if (!p) continue;
+          if (p.x < xMin || p.x > xMax || p.y < yMin || p.y > yMax) continue;
+          if (isSelected(n.code || n.id)) continue;
+          toggleSelection({
+            code: n.code || n.id,
+            label: n.label,
+            kind: n.kind,
+            currentStock: n.currentStock,
+            dailyBurnRate: n.dailyBurnRate,
+            daysLeft: n.daysLeft,
+            usedBy: n.usedBy ?? [],
+            isShared: n.isShared,
+            isBottleneck: n.isBottleneck,
+            status: n.status,
+          });
+        }
+      }
+      setLasso(null);
+      return;
+    }
+    setPanStart(null);
+  };
 
   /* Zoom helpers — cursor merkezli. centerX/Y = screen pixel (isteğe bağlı). */
   const zoomAtScreen = useCallback((factor: number, centerX?: number, centerY?: number) => {
@@ -1565,6 +1611,21 @@ export default function BhOntologyPage() {
                   <div style={{ marginTop: 10, fontSize: 9, color: C.dim, letterSpacing: 0.5 }}>Tıkla → detay inceleyici</div>
                 </div>
               </foreignObject>
+            );
+          })()}
+
+          {/* Lasso rectangle (rectangle-select like Finder) */}
+          {lasso && (() => {
+            const x = Math.min(lasso.x0, lasso.x1);
+            const y = Math.min(lasso.y0, lasso.y1);
+            const w = Math.abs(lasso.x1 - lasso.x0);
+            const h = Math.abs(lasso.y1 - lasso.y0);
+            return (
+              <rect x={x} y={y} width={w} height={h}
+                fill="rgba(217,119,87,0.08)"
+                stroke={C.accent} strokeWidth={1.4}
+                style={{ pointerEvents: "none" }}
+              />
             );
           })()}
         </svg>
