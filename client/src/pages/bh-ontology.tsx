@@ -2162,7 +2162,7 @@ function NodeView({
         /* Circle content — centered text for yarı-mamül (140) and alt-parça (80) */
         <>
           <text x={w / 2} y={isSubComp ? 34 : 60} textAnchor="middle"
-            fill={C.white} fontSize={isSubComp ? 10 : 12} fontFamily={mono} fontWeight={600} letterSpacing={0.2}
+            fill={C.white} fontSize={isSubComp ? 12 : 14} fontFamily={mono} fontWeight={700} letterSpacing={0}
             onPointerDown={onPointerDown}
             style={{ cursor: "grab" }}>
             {node.label}
@@ -2189,12 +2189,12 @@ function NodeView({
             <g onClick={isSubComp ? undefined : onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
               <text x={w / 2} y={isSubComp ? 54 : 92} textAnchor="middle"
                 fill={isOverridden ? C.variable : col.fg}
-                fontSize={isSubComp ? 16 : 24} fontFamily={mono} fontWeight={700} letterSpacing={-0.3}>
+                fontSize={isSubComp ? 18 : 28} fontFamily={mono} fontWeight={700} letterSpacing={-0.5}>
                 {fmt(displayStock)}
               </text>
               {!isSubComp && (
-                <text x={w / 2} y={114} textAnchor="middle"
-                  fill={C.dim} fontSize={9} fontFamily={mono}>
+                <text x={w / 2} y={116} textAnchor="middle"
+                  fill={C.mid} fontSize={11} fontFamily={mono} fontWeight={500}>
                   {node.unit || "AD"} ✎
                 </text>
               )}
@@ -2224,8 +2224,8 @@ function NodeView({
           )}
 
           {/* Code (top-left, after stripe) — primary identity */}
-          <text x={isSubComp ? 10 : (isVariable ? 24 : 12)} y={isSubComp ? 20 : 24}
-            fill={C.white} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={600} letterSpacing={0.2}
+          <text x={isSubComp ? 10 : (isVariable ? 24 : 12)} y={isSubComp ? 22 : 26}
+            fill={C.white} fontSize={isSubComp ? 13 : 15} fontFamily={mono} fontWeight={700} letterSpacing={0}
             onPointerDown={onPointerDown}>
             {node.label}
           </text>
@@ -2237,9 +2237,9 @@ function NodeView({
                 fill={node.isBottleneck ? C.errDim : col.bg}
                 stroke="none"
               />
-              <text x={w - (node.isBottleneck ? 45 : 34)} y={23} textAnchor="middle"
+              <text x={w - (node.isBottleneck ? 45 : 34)} y={24} textAnchor="middle"
                 fill={node.isBottleneck ? C.err : col.fg}
-                fontSize={9} fontFamily={mono} fontWeight={700} letterSpacing={0.6}>
+                fontSize={10} fontFamily={mono} fontWeight={700} letterSpacing={0.4}>
                 {node.isBottleneck ? "DARBOĞAZ" : statusLabel(node.status)}
               </text>
             </g>
@@ -2247,8 +2247,8 @@ function NodeView({
 
           {/* Sublabel — single-line truncate */}
           {!isSubComp && (
-            <foreignObject x={12} y={36} width={isComponent && node.isBottleneck ? w - 96 : w - 24} height={14}>
-              <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, lineHeight: "13px",
+            <foreignObject x={12} y={38} width={isComponent && node.isBottleneck ? w - 96 : w - 24} height={16}>
+              <div style={{ fontSize: 12, color: C.mid, fontFamily: mono, fontWeight: 500, lineHeight: "15px",
                 overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                 {node.sublabel}
               </div>
@@ -2280,19 +2280,19 @@ function NodeView({
             </foreignObject>
           ) : (
             <g onClick={isSubComp ? undefined : onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
-              <text x={12} y={isSubComp ? 48 : 78}
+              <text x={12} y={isSubComp ? 48 : 80}
                 fill={isOverridden ? C.variable : col.fg}
-                fontSize={isSubComp ? 18 : 22} fontFamily={mono} fontWeight={700} letterSpacing={-0.3}>
+                fontSize={isSubComp ? 20 : 26} fontFamily={mono} fontWeight={700} letterSpacing={-0.5}>
                 {fmt(displayStock)}
               </text>
-              <text x={12 + String(fmt(displayStock)).length * (isSubComp ? 11 : 13) + 6} y={isSubComp ? 48 : 78}
-                fill={C.dim} fontSize={isSubComp ? 9 : 11} fontFamily={mono}>
+              <text x={12 + String(fmt(displayStock)).length * (isSubComp ? 12 : 15) + 8} y={isSubComp ? 48 : 80}
+                fill={C.mid} fontSize={isSubComp ? 11 : 13} fontFamily={mono} fontWeight={500}>
                 {node.unit || "AD"}{!isSubComp && " ✎"}
               </text>
               {!isSubComp && node.daysLeft !== null && node.daysLeft !== undefined && (
-                <text x={w - 12} y={78} textAnchor="end"
+                <text x={w - 12} y={80} textAnchor="end"
                   fill={node.daysLeft < 30 ? C.err : node.daysLeft < 90 ? C.warn : C.mid}
-                  fontSize={11} fontFamily={mono} fontWeight={600}>
+                  fontSize={13} fontFamily={mono} fontWeight={700}>
                   {node.daysLeft > 365 ? "> 1yıl" : `${Math.round(node.daysLeft)}g`}
                   {node.depletionMonth ? ` · ${node.depletionMonth}` : ""}
                 </text>
