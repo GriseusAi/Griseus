@@ -841,6 +841,7 @@ function DragNode({
         width, height,
         cursor: (onTap || onMultiSelect) ? "pointer" : "grab",
         touchAction: "none", userSelect: "none",
+        pointerEvents: "auto",
         ...(asCircle ? { borderRadius: "50%" } : {}),
         ...style,
       }}
@@ -1508,10 +1509,11 @@ export default function StrategyCanvasPage() {
           </div>
         ) : (
           <div style={{
-            position: "absolute", left: 0, top: 0, width: 0, height: 0,
+            position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
             transformOrigin: "0 0",
             transform: `translate3d(${viewport.vx}px, ${viewport.vy}px, 0) scale(${viewport.scale})`,
             willChange: "transform",
+            pointerEvents: "none",
           }}>
             <EdgesLayer
               orders={orders}
