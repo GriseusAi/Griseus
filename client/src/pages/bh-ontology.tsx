@@ -1241,6 +1241,13 @@ export default function BhOntologyPage() {
               <feComponentTransfer><feFuncA type="linear" slope="0.35"/></feComponentTransfer>
               <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
             </filter>
+            {/* Card drop-shadow — Claude.ai/Linear style soft elevation */}
+            <filter id="cardShadow" x="-10%" y="-10%" width="120%" height="125%">
+              <feGaussianBlur in="SourceAlpha" stdDeviation="3"/>
+              <feOffset dx="0" dy="2" result="offsetblur"/>
+              <feComponentTransfer><feFuncA type="linear" slope="0.18"/></feComponentTransfer>
+              <feMerge><feMergeNode/><feMergeNode in="SourceGraphic"/></feMerge>
+            </filter>
           </defs>
           <rect x={-viewport.x} y={-viewport.y} width={CANVAS_W / viewport.scale} height={CANVAS_H / viewport.scale} fill="url(#grid)" />
 
@@ -1924,11 +1931,12 @@ function NodeView({
         />
       ) : (
         <rect className={pulsing ? "flash-bg" : undefined}
-          width={w} height={h} rx={isDevice ? 8 : isComponent ? 6 : 10}
+          width={w} height={h} rx={isDevice ? 12 : isComponent ? 14 : 12}
           fill={isDevice ? "url(#deviceGrad)" : statusGradientUrl(node.status, node.isBottleneck)}
           stroke={isDevice ? C.accent : col.fg}
-          strokeWidth={isDevice ? 1.4 : 1.2}
-          strokeOpacity={isDevice ? 0.7 : 0.55}
+          strokeWidth={isDevice ? 1.4 : 1}
+          strokeOpacity={isDevice ? 0.6 : 0.28}
+          filter={isComponent ? "url(#cardShadow)" : undefined}
           onPointerDown={onPointerDown}
         />
       )}
@@ -2188,8 +2196,8 @@ function NodeView({
       ) : (
         /* Component — SQUARE content (w=160 h=160) */
         <>
-          {/* Status stripe top */}
-          <rect width={w} height={4} fill={col.fg} opacity={0.75} rx={2}/>
+          {/* Status accent — left side bar (Linear/Stripe style) */}
+          <rect x={0} y={14} width={3} height={h - 28} fill={col.fg} opacity={0.85} rx={1.5}/>
 
           <text x={10} y={24} fill={C.white} fontSize={14} fontFamily={mono} fontWeight={600} letterSpacing={0.3}
             onPointerDown={onPointerDown}>
