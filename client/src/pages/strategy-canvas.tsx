@@ -780,7 +780,7 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
    DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
    ──────────────────────────────────────────────────────────────────── */
 function DragNode({
-  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle,
+  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle, viewport,
 }: {
   pos: XY;
   width: number;
@@ -792,6 +792,7 @@ function DragNode({
   children: React.ReactNode;
   style?: React.CSSProperties;
   asCircle?: boolean;
+  viewport: { vx: number; vy: number; scale: number };
 }) {
   const offsetRef = useRef<XY>({ x: 0, y: 0 });
   const downAtRef = useRef<{ x: number; y: number; t: number; shift: boolean } | null>(null);
@@ -829,6 +830,10 @@ function DragNode({
       onTap();
     }
   };
+  const sx = pos.x * viewport.scale + viewport.vx;
+  const sy = pos.y * viewport.scale + viewport.vy;
+  const sw = width * viewport.scale;
+  const sh = height * viewport.scale;
   return (
     <div
       onPointerDown={handleDown}
@@ -837,16 +842,22 @@ function DragNode({
       onClick={handleClick}
       style={{
         position: "absolute",
-        left: pos.x, top: pos.y,
-        width, height,
+        left: sx, top: sy,
+        width: sw, height: sh,
         cursor: (onTap || onMultiSelect) ? "pointer" : "grab",
         touchAction: "none", userSelect: "none",
-        pointerEvents: "auto",
         ...(asCircle ? { borderRadius: "50%" } : {}),
         ...style,
       }}
     >
-      {children}
+      <div style={{
+        width, height,
+        transform: `scale(${viewport.scale})`,
+        transformOrigin: "0 0",
+        ...(asCircle ? { borderRadius: "50%" } : {}),
+      }}>
+        {children}
+      </div>
     </div>
   );
 }
@@ -859,7 +870,7 @@ function OrderBlock({
   positions, defaults, onMove,
   expandedSubs, toggleSub,
   onRemove, onEdit,
-  getMouseInWorld,
+  getMouseInWorld, viewport,
   allOrders, stockBySku,
 }: {
   order: Order;
@@ -874,6 +885,7 @@ function OrderBlock({
   onRemove: () => void;
   onEdit: () => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
   allOrders: Order[];
   stockBySku: Record<string, StockResp>;
 }) {
@@ -914,7 +926,7 @@ function OrderBlock({
     <>
       {/* Atomlar — saf HTML div, transform parent içinde uniform hareket eder */}
       <DragNode pos={orderP} width={ORDER_W} height={ORDER_H}
-        onDrag={(xy) => onMove(`order:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        onDrag={(xy) => onMove(`order:${order.id}`, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}>
         <div style={cardWrap()}>
           <div style={cardLabel}>SİPARİŞ</div>
           <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>{order.customer || "Bayi"}</div>
@@ -929,7 +941,7 @@ function OrderBlock({
       </DragNode>
 
       <DragNode pos={productP} width={PRODUCT_W} height={PRODUCT_H}
-        onDrag={(xy) => onMove(`product:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        onDrag={(xy) => onMove(`product:${order.id}`, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}>
         <div style={cardWrap()}>
           <div style={cardLabel}>MAMUL</div>
           <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}>{fmtTR(order.quantity)} adet</div>
@@ -950,7 +962,7 @@ function OrderBlock({
           <div key={`sub-grp:${c.code}`}>
             <DragNode pos={sp} width={SUB_R * 2} height={SUB_R * 2}
               onDrag={(xy) => onMove(`sub:${order.id}:${c.code}`, xy)}
-              getMouseInWorld={getMouseInWorld}
+              getMouseInWorld={getMouseInWorld} viewport={viewport}
               onTap={children.length > 0 ? () => toggleSub(c.code) : undefined}
               onMultiSelect={() => sel.toggle(buildItem(c, "subassembly"))}
               asCircle>
@@ -990,7 +1002,7 @@ function OrderBlock({
               if (childIsSub) {
                 return (
                   <DragNode key={overrideId} pos={cpos} width={SUB_R * 2 - 8} height={SUB_R * 2 - 8}
-                    onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}
+                    onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}
                     onMultiSelect={() => sel.toggle(buildItem(ch, "subcomponent"))} asCircle>
                     <div title={`${ch.name} · Shift+tıkla → seç`} style={{
                       width: "100%", height: "100%", borderRadius: "50%",
@@ -1007,7 +1019,7 @@ function OrderBlock({
               }
               return (
                 <DragNode key={overrideId} pos={cpos} width={COMP_W - 30} height={COMP_H - 4}
-                  onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}
+                  onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}
                   onMultiSelect={() => sel.toggle(buildItem(ch, "subcomponent"))}>
                   <div title={`${ch.name} · Shift+tıkla → seç`} style={{
                     width: "100%", height: "100%", boxSizing: "border-box",
@@ -1045,7 +1057,7 @@ function OrderBlock({
         const isShort = c.shortfall > 0;
         return (
           <DragNode key={`comp:${c.code}`} pos={cp} width={COMP_W} height={COMP_H}
-            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} getMouseInWorld={getMouseInWorld}
+            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}
             onMultiSelect={() => sel.toggle(buildItem(c, "component"))}>
             <div title={`${c.name} · Shift+tıkla → seç`} style={{
               width: "100%", height: "100%", boxSizing: "border-box",
@@ -1076,7 +1088,7 @@ function OrderBlock({
 
       {/* Strateji panel — pure HTML div, transform parent içinde */}
       <DragNode pos={panelP} width={PANEL_W} height={PANEL_H}
-        onDrag={(xy) => onMove(`panel:${order.id}`, xy)} getMouseInWorld={getMouseInWorld}>
+        onDrag={(xy) => onMove(`panel:${order.id}`, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}>
         <StrategyPanel s={strategy} order={order} loading={loading} enriched={enriched} />
       </DragNode>
     </>
@@ -1099,15 +1111,17 @@ const btnGhost: React.CSSProperties = {
 /* ════════════════════════════════════════════════════════════════════
    EDGES — tek SVG overlay, world koordinatlarında, transform parent'ı içinde
    ──────────────────────────────────────────────────────────────────── */
-function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByOrder }: {
+function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByOrder, viewport }: {
   orders: Order[];
   allDefaults: Record<string, Record<string, XY>>;
   posOverrides: PositionOverrides;
   stockBySku: Record<string, StockResp>;
   expandedByOrder: Record<string, string[]>;
+  viewport: { vx: number; vy: number; scale: number };
 }) {
   type EdgeSeg = { d: string; short: boolean; key: string };
   const edges: EdgeSeg[] = [];
+  const T = (x: number, y: number) => ({ x: x * viewport.scale + viewport.vx, y: y * viewport.scale + viewport.vy });
 
   orders.forEach(order => {
     const stock = stockBySku[order.sku];
@@ -1117,9 +1131,9 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
     const get = (id: string): XY => overrides[id] ?? defaults[id] ?? { x: 0, y: 0 };
     const orderP = get(`order:${order.id}`);
     const productP = get(`product:${order.id}`);
-    const orderRight = { x: orderP.x + ORDER_W, y: orderP.y + ORDER_H / 2 };
-    const productLeft = { x: productP.x, y: productP.y + PRODUCT_H / 2 };
-    const productRight = { x: productP.x + PRODUCT_W, y: productP.y + PRODUCT_H / 2 };
+    const orderRight = T(orderP.x + ORDER_W, orderP.y + ORDER_H / 2);
+    const productLeft = T(productP.x, productP.y + PRODUCT_H / 2);
+    const productRight = T(productP.x + PRODUCT_W, productP.y + PRODUCT_H / 2);
 
     edges.push({ key: `e:o2p:${order.id}`, short: false,
       d: `M ${orderRight.x} ${orderRight.y} L ${productLeft.x} ${productLeft.y}` });
@@ -1129,39 +1143,41 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
     const flats = top.filter(c => !(c.isSubAssembly || c.hasChildren));
     const expanded = new Set(expandedByOrder[order.id] ?? []);
 
+    const hub = T(productP.x + PRODUCT_W + 90, productP.y + PRODUCT_H / 2);
     if (subs.length > 0 || flats.length > 0) {
       edges.push({ key: `e:p2hub:${order.id}`, short: false,
-        d: `M ${productRight.x} ${productRight.y} L ${productRight.x + 90} ${productRight.y}` });
+        d: `M ${productRight.x} ${productRight.y} L ${hub.x} ${hub.y}` });
     }
-    const hubX = productRight.x + 90;
-    const hubY = productRight.y;
+    const hubX = hub.x;
+    const hubY = hub.y;
 
     subs.forEach(c => {
       const sp = get(`sub:${order.id}:${c.code}`);
-      const sc = { x: sp.x + SUB_R, y: sp.y + SUB_R };
+      const sc = T(sp.x + SUB_R, sp.y + SUB_R);
+      const subLeft = T(sp.x, sp.y + SUB_R);
       const cpx = (hubX + sc.x) / 2;
       const needed = order.quantity * c.requiredPerUnit;
       const short = needed - c.currentStock > 0;
       edges.push({
         key: `e:sub:${order.id}:${c.code}`, short,
-        d: `M ${hubX} ${hubY} C ${cpx} ${hubY}, ${cpx} ${sc.y}, ${sc.x - SUB_R} ${sc.y}`,
+        d: `M ${hubX} ${hubY} C ${cpx} ${hubY}, ${cpx} ${sc.y}, ${subLeft.x} ${subLeft.y}`,
       });
 
-      // Drill-down children
       if (expanded.has(c.code) && c.children) {
         const childGap = 44;
         const childStartY = sp.y + SUB_R - ((c.children.length - 1) * childGap) / 2 - COMP_H / 2;
         const childX = sp.x + SUB_R * 2 + 80;
+        const subRight = T(sp.x + SUB_R * 2, sp.y + SUB_R);
         c.children.forEach((ch, i) => {
           const overrideId = `subchild:${order.id}:${c.code}:${ch.code}`;
           const cpos = overrides[overrideId] ?? { x: childX, y: childStartY + i * childGap };
           const childNeed = order.quantity * ch.requiredPerUnit;
           const cs = childNeed - ch.currentStock > 0;
-          const childCenter = { x: cpos.x, y: cpos.y + COMP_H / 2 };
+          const childCenter = T(cpos.x, cpos.y + COMP_H / 2);
           const cmid = (sc.x + childCenter.x) / 2;
           edges.push({
             key: `e:subch:${order.id}:${c.code}:${ch.code}`, short: cs,
-            d: `M ${sc.x + SUB_R - 2} ${sc.y} C ${cmid} ${sc.y}, ${cmid} ${childCenter.y}, ${childCenter.x} ${childCenter.y}`,
+            d: `M ${subRight.x} ${subRight.y} C ${cmid} ${subRight.y}, ${cmid} ${childCenter.y}, ${childCenter.x} ${childCenter.y}`,
           });
         });
       }
@@ -1169,7 +1185,7 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
 
     flats.forEach(c => {
       const cp = get(`comp:${order.id}:${c.code}`);
-      const cc = { x: cp.x, y: cp.y + COMP_H / 2 };
+      const cc = T(cp.x, cp.y + COMP_H / 2);
       const cpx = (hubX + cc.x) / 2;
       const needed = order.quantity * c.requiredPerUnit;
       const short = needed - c.currentStock > 0;
@@ -1182,7 +1198,7 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
 
   return (
     <svg style={{
-      position: "absolute", left: 0, top: 0, width: 4000, height: 4000,
+      position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
       pointerEvents: "none", overflow: "visible",
     }}>
       {edges.map(e => (
@@ -1508,19 +1524,14 @@ export default function StrategyCanvasPage() {
             <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ İlk siparişi ekle</button>
           </div>
         ) : (
-          <div style={{
-            position: "absolute", left: 0, top: 0, width: "100%", height: "100%",
-            transformOrigin: "0 0",
-            transform: `translate3d(${viewport.vx}px, ${viewport.vy}px, 0) scale(${viewport.scale})`,
-            willChange: "transform",
-            pointerEvents: "none",
-          }}>
+          <>
             <EdgesLayer
               orders={orders}
               allDefaults={allDefaults}
               posOverrides={posOverrides}
               stockBySku={stockBySku}
               expandedByOrder={expandedSubs}
+              viewport={viewport}
             />
             {orders.map(o => (
               <OrderBlock
@@ -1536,12 +1547,12 @@ export default function StrategyCanvasPage() {
                 toggleSub={(code) => toggleSub(o.id, code)}
                 onRemove={() => removeOrder(o.id)}
                 onEdit={() => { setEditing(o); setModalOpen(true); }}
-                getMouseInWorld={getMouseInWorld}
+                getMouseInWorld={getMouseInWorld} viewport={viewport}
                 allOrders={orders}
                 stockBySku={stockBySku}
               />
             ))}
-          </div>
+          </>
         )}
 
         <div style={{
