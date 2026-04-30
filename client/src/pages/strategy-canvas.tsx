@@ -944,11 +944,13 @@ function OrderBlock({
               onDrag={(xy) => onMove(`sub:${order.id}:${c.code}`, xy)}
               getMouseInWorld={getMouseInWorld}
               onTap={children.length > 0 ? () => toggleSub(c.code) : undefined}
+              onMultiSelect={() => sel.toggle(buildItem(c, "subassembly"))}
               asCircle>
-              <div title={`${c.name}${children.length > 0 ? ` · tıkla → ${children.length} alt bileşen` : ""}`} style={{
+              <div title={`${c.name}${children.length > 0 ? ` · tıkla → ${children.length} alt bileşen · Shift+tıkla → seç` : " · Shift+tıkla → seç"}`} style={{
                 width: "100%", height: "100%", borderRadius: "50%",
                 background: C.cardBg, color: C.cardInk,
-                border: open ? `2px solid ${C.accent}`
+                border: sel.isSelected(c.code) ? `2px solid ${C.accent}`
+                  : open ? `2px solid ${C.accent}`
                   : isShort ? `2px solid ${C.shortfall}`
                   : `1.5px solid rgba(255,255,255,0.18)`,
                 display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
@@ -980,11 +982,12 @@ function OrderBlock({
               if (childIsSub) {
                 return (
                   <DragNode key={overrideId} pos={cpos} width={SUB_R * 2 - 8} height={SUB_R * 2 - 8}
-                    onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld} asCircle>
-                    <div title={ch.name} style={{
+                    onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}
+                    onMultiSelect={() => sel.toggle(buildItem(ch, "subcomponent"))} asCircle>
+                    <div title={`${ch.name} · Shift+tıkla → seç`} style={{
                       width: "100%", height: "100%", borderRadius: "50%",
                       background: C.cardBgAlt, color: C.cardInk,
-                      border: `1.5px dashed ${C.accent}66`,
+                      border: sel.isSelected(ch.code) ? `2px solid ${C.accent}` : `1.5px dashed ${C.accent}66`,
                       display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
                       fontFamily: mono, boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
                     }}>
@@ -996,13 +999,15 @@ function OrderBlock({
               }
               return (
                 <DragNode key={overrideId} pos={cpos} width={COMP_W - 30} height={COMP_H - 4}
-                  onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}>
-                  <div title={ch.name} style={{
+                  onDrag={(xy) => onMove(overrideId, xy)} getMouseInWorld={getMouseInWorld}
+                  onMultiSelect={() => sel.toggle(buildItem(ch, "subcomponent"))}>
+                  <div title={`${ch.name} · Shift+tıkla → seç`} style={{
                     width: "100%", height: "100%", boxSizing: "border-box",
                     background: C.cardBgAlt, color: C.cardInk, borderRadius: 7,
                     padding: "4px 8px", display: "flex", alignItems: "center", gap: 5,
                     boxShadow: "0 2px 10px rgba(0,0,0,0.25)", fontFamily: mono,
-                    border: childShort > 0 ? `1.5px solid ${C.shortfall}` : `1px solid ${C.accent}33`,
+                    border: sel.isSelected(ch.code) ? `2px solid ${C.accent}`
+                      : childShort > 0 ? `1.5px solid ${C.shortfall}` : `1px solid ${C.accent}33`,
                   }}>
                     <div style={{ flex: 1, minWidth: 0 }}>
                       <div style={{ fontSize: 9, fontWeight: 700, lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -1032,13 +1037,15 @@ function OrderBlock({
         const isShort = c.shortfall > 0;
         return (
           <DragNode key={`comp:${c.code}`} pos={cp} width={COMP_W} height={COMP_H}
-            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} getMouseInWorld={getMouseInWorld}>
-            <div title={c.name} style={{
+            onDrag={(xy) => onMove(`comp:${order.id}:${c.code}`, xy)} getMouseInWorld={getMouseInWorld}
+            onMultiSelect={() => sel.toggle(buildItem(c, "component"))}>
+            <div title={`${c.name} · Shift+tıkla → seç`} style={{
               width: "100%", height: "100%", boxSizing: "border-box",
               background: C.cardBg, color: C.cardInk, borderRadius: 8,
               padding: "5px 9px", display: "flex", alignItems: "center", gap: 6,
               boxShadow: "0 3px 12px rgba(0,0,0,0.30)", fontFamily: mono,
-              border: isShort ? `1.5px solid ${C.shortfall}` : "1.5px solid transparent",
+              border: sel.isSelected(c.code) ? `2px solid ${C.accent}`
+                : isShort ? `1.5px solid ${C.shortfall}` : "1.5px solid transparent",
             }}>
               <div style={{ flex: 1, minWidth: 0 }}>
                 <div style={{ fontSize: 10, fontWeight: 700, lineHeight: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
