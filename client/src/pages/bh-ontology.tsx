@@ -1221,8 +1221,8 @@ export default function BhOntologyPage() {
             );
           })()}
 
-          {/* Horizontal "shared" dashed lines between visual copies of same code */}
-          {(() => {
+          {/* Shared-code connector lines: only visible on hover (declutter default) */}
+          {connectedSet && (() => {
             const byCode = new Map<string, GraphNode[]>();
             for (const n of nodes) {
               if (n.kind !== "component" && n.kind !== "subassembly" && n.kind !== "variable") continue;
@@ -1233,7 +1233,6 @@ export default function BhOntologyPage() {
             const segments: React.ReactElement[] = [];
             byCode.forEach((copies, code) => {
               if (copies.length < 2) return;
-              // Sort by device column order for consistent left-to-right lines
               const sorted = [...copies].sort((a, b) =>
                 DEVICE_ORDER.indexOf(a.deviceSku ?? "") - DEVICE_ORDER.indexOf(b.deviceSku ?? "")
               );
@@ -1242,17 +1241,16 @@ export default function BhOntologyPage() {
                 const b = sorted[k + 1];
                 const pa = positions[a.id]; const pb = positions[b.id];
                 if (!pa || !pb) continue;
-                const isHovered = connectedSet && (connectedSet.has(a.id) || connectedSet.has(b.id));
-                const op = (isHovered ? 0.75 : 0.35);
+                const isHovered = connectedSet.has(a.id) || connectedSet.has(b.id);
+                if (!isHovered) continue;
                 segments.push(
                   <line key={`shared-${code}-${k}`}
                     x1={pa.x + 60} y1={pa.y}
                     x2={pb.x - 60} y2={pb.y}
                     stroke={a.kind === "variable" ? C.variable : C.accent}
-                    strokeWidth={1}
-                    strokeDasharray="4 4"
-                    opacity={op}
-                    style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
+                    strokeWidth={1.5}
+                    opacity={0.7}
+                    style={{ pointerEvents: "none" }}
                   />
                 );
               }
@@ -1260,17 +1258,19 @@ export default function BhOntologyPage() {
             return segments;
           })()}
 
-          {/* Links — Palantir digital-twin style: solid thin, rounded cap, soft color */}
+          {/* Links — visible only when this tile/its neighbor is hovered (declutter) */}
           {links.map((l, i) => {
             const pa = positions[l.from]; const pb = positions[l.to];
             if (!pa || !pb) return null;
             const nodeTo = nodes.find(n => n.id === l.to);
             const nodeFrom = nodes.find(n => n.id === l.from);
             const isProb = nodeTo?.status === "critical" || nodeTo?.isBottleneck;
-            const stroke = isProb ? "#dc2626cc" : "rgba(15,23,42,0.28)";
-            const isConnected = !connectedSet || connectedSet.has(l.from) || connectedSet.has(l.to);
+            const stroke = isProb ? C.err : "#141413";
+            const isConnected = !!connectedSet && (connectedSet.has(l.from) || connectedSet.has(l.to));
             const linkInFilter = !filterActive || ((nodeFrom && matchesFilter(nodeFrom)) || (nodeTo && matchesFilter(nodeTo)));
-            const opacity = (isProb ? 0.9 : 0.6) * (isConnected ? 1 : 0.2) * (linkInFilter ? 1 : 0.2);
+            // Default invisible; only show on hover or filter-active context
+            if (!isConnected && !filterActive) return null;
+            const opacity = (isProb ? 0.9 : 0.55) * (isConnected ? 1 : 0.3) * (linkInFilter ? 1 : 0.2);
             const midX = (pa.x + pb.x) / 2; const midY = (pa.y + pb.y) / 2;
             // Softer curve, vertical-biased (Palantir uses gentle bezier)
             const dx = Math.abs(pb.x - pa.x);
@@ -1822,7 +1822,7 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      {/* Main tile — Blueprint Callout pattern: pastel for problem states, white for healthy */}
+      {/* Main tile — defined slate-black border, problem states keep pastel bg + left stripe */}
       {(() => {
         const isProblem = node.isBottleneck
           || node.status === "critical"
@@ -1831,20 +1831,18 @@ function NodeView({
         const tileFill = isDevice
           ? "url(#deviceGrad)"
           : isProblem ? col.bg : "#ffffff";
-        const tileStroke = isDevice
-          ? C.accent
-          : isProblem ? col.border : C.border;
+        const tileStroke = isDevice ? C.accent : "#141413";
         return (
           <>
             <rect className={pulsing ? "flash-bg" : undefined}
               width={w} height={h} rx={8}
               fill={tileFill}
               stroke={tileStroke}
-              strokeWidth={1}
-              filter={!isDevice && isProblem ? "url(#cardShadow)" : undefined}
+              strokeWidth={1.5}
+              filter={!isDevice ? "url(#cardShadow)" : undefined}
               onPointerDown={onPointerDown}
             />
-            {/* Status stripe — left edge, only for problem states (sakin görünüm) */}
+            {/* Status stripe — left edge, problem states only */}
             {!isDevice && isProblem && (
               <rect x={0} y={0} width={3} height={h} rx={0}
                 fill={col.fg}
