@@ -290,7 +290,7 @@ function drawGraph(
   ctx.clearRect(0, 0, width, height);
 
   // Background grid
-  ctx.strokeStyle = "rgba(255,255,255,0.02)";
+  ctx.strokeStyle = "rgba(255,255,255,0.04)";
   ctx.lineWidth = 1;
   for (let x = 0; x < width; x += 40) { ctx.beginPath(); ctx.moveTo(x, 0); ctx.lineTo(x, height); ctx.stroke(); }
   for (let y = 0; y < height; y += 40) { ctx.beginPath(); ctx.moveTo(0, y); ctx.lineTo(width, y); ctx.stroke(); }
@@ -306,14 +306,14 @@ function drawGraph(
     const isHighlighted = selectedNode === e.source || selectedNode === e.target;
     const sc = sim?.components.find(c => c.code === e.target);
     const edgeColor = sim && sc
-      ? (sc.surplus < 0 ? C.err : sc.isBottleneck ? C.warn : "rgba(255,255,255,0.08)")
-      : isHighlighted ? "rgba(129,140,248,0.4)" : "rgba(255,255,255,0.06)";
+      ? (sc.surplus < 0 ? C.err : sc.isBottleneck ? C.warn : "rgba(255,255,255,0.32)")
+      : isHighlighted ? "rgba(129,140,248,0.75)" : "rgba(255,255,255,0.28)";
 
     ctx.beginPath();
     ctx.moveTo(s.x, s.y);
     ctx.lineTo(t.x, t.y);
     ctx.strokeStyle = edgeColor;
-    ctx.lineWidth = isHighlighted ? 2 : 1;
+    ctx.lineWidth = isHighlighted ? 2.5 : 1.4;
     ctx.stroke();
 
     // Flow animation dots when simulating
@@ -331,9 +331,13 @@ function drawGraph(
 
     // Edge label
     const mx = (s.x + t.x) / 2, my = (s.y + t.y) / 2;
-    ctx.font = "9px 'Outfit', sans-serif";
-    ctx.fillStyle = "rgba(255,255,255,0.15)";
+    ctx.font = "bold 11px 'Outfit', sans-serif";
     ctx.textAlign = "center";
+    // Halo for legibility against grid bg
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(5,5,5,0.85)";
+    ctx.strokeText(e.label, mx, my - 4);
+    ctx.fillStyle = isHighlighted ? "rgba(129,140,248,0.95)" : "rgba(255,255,255,0.7)";
     ctx.fillText(e.label, mx, my - 4);
   }
 
@@ -392,22 +396,31 @@ function drawGraph(
       }
     }
 
-    // Label
-    ctx.font = n.isProduct ? "bold 11px 'Outfit', sans-serif" : "10px 'Outfit', sans-serif";
-    ctx.fillStyle = color;
+    // Label (with halo for legibility)
+    ctx.font = n.isProduct ? "bold 13px 'Outfit', sans-serif" : "bold 11px 'Outfit', sans-serif";
     ctx.textAlign = "center";
     const lines = n.label.split("\n");
+    ctx.lineWidth = 3.5;
+    ctx.strokeStyle = "rgba(5,5,5,0.9)";
     for (let i = 0; i < lines.length; i++) {
-      ctx.fillText(lines[i], n.x, n.y + r + 12 + i * 12);
+      ctx.strokeText(lines[i], n.x, n.y + r + 14 + i * 13);
+    }
+    ctx.fillStyle = color;
+    for (let i = 0; i < lines.length; i++) {
+      ctx.fillText(lines[i], n.x, n.y + r + 14 + i * 13);
     }
 
     // Stock number inside node
     if (!n.isProduct) {
-      ctx.font = "bold 10px 'Outfit', sans-serif";
-      ctx.fillStyle = C.white;
+      ctx.font = "bold 11px 'Outfit', sans-serif";
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
-      ctx.fillText(n.stock > 9999 ? `${(n.stock / 1000).toFixed(1)}k` : String(Math.round(n.stock)), n.x, n.y);
+      const stockText = n.stock > 9999 ? `${(n.stock / 1000).toFixed(1)}k` : String(Math.round(n.stock));
+      ctx.lineWidth = 3;
+      ctx.strokeStyle = "rgba(5,5,5,0.9)";
+      ctx.strokeText(stockText, n.x, n.y);
+      ctx.fillStyle = C.white;
+      ctx.fillText(stockText, n.x, n.y);
       ctx.textBaseline = "alphabetic";
 
       // Yari-mamul için expand/collapse işareti (kuzeydoğu köşesi)
@@ -429,20 +442,27 @@ function drawGraph(
         ctx.textBaseline = "alphabetic";
       }
     } else {
-      ctx.font = "bold 13px 'Outfit', sans-serif";
-      ctx.fillStyle = C.accent;
       ctx.textAlign = "center";
       ctx.textBaseline = "middle";
       const skuParts = n.id.split(/[.\-]/);
-      ctx.fillText(skuParts[0] || n.id, n.x, n.y - 4);
-      ctx.font = "9px 'Outfit', sans-serif";
-      ctx.fillText(skuParts.slice(1).join("-") || "", n.x, n.y + 8);
+      const head = skuParts[0] || n.id;
+      const tail = skuParts.slice(1).join("-") || "";
+      ctx.lineWidth = 3.5;
+      ctx.strokeStyle = "rgba(5,5,5,0.9)";
+      ctx.font = "bold 14px 'Outfit', sans-serif";
+      ctx.strokeText(head, n.x, n.y - 4);
+      ctx.fillStyle = C.accent;
+      ctx.fillText(head, n.x, n.y - 4);
+      ctx.font = "bold 10px 'Outfit', sans-serif";
+      ctx.strokeText(tail, n.x, n.y + 9);
+      ctx.fillStyle = C.accent;
+      ctx.fillText(tail, n.x, n.y + 9);
       ctx.textBaseline = "alphabetic";
     }
   }
 
   // Legend — status-based (stok durumu ile ayni)
-  ctx.font = "9px 'Outfit', sans-serif";
+  ctx.font = "bold 11px 'Outfit', sans-serif";
   ctx.textAlign = "left";
   const legendItems = [
         { color: C.accent, label: "Ürün" },
@@ -452,10 +472,14 @@ function drawGraph(
         { color: C.err, label: "Kritik / Darboğaz" },
       ];
   for (let i = 0; i < legendItems.length; i++) {
-    const lx = 16, ly = height - 80 + i * 16;
-    ctx.beginPath(); ctx.arc(lx, ly, 4, 0, Math.PI * 2);
+    const lx = 16, ly = height - 90 + i * 18;
+    ctx.beginPath(); ctx.arc(lx, ly, 5, 0, Math.PI * 2);
     ctx.fillStyle = legendItems[i].color; ctx.fill();
-    ctx.fillStyle = C.dim; ctx.fillText(legendItems[i].label, lx + 10, ly + 3);
+    ctx.lineWidth = 3;
+    ctx.strokeStyle = "rgba(5,5,5,0.9)";
+    ctx.strokeText(legendItems[i].label, lx + 12, ly + 4);
+    ctx.fillStyle = C.white;
+    ctx.fillText(legendItems[i].label, lx + 12, ly + 4);
   }
 }
 
@@ -1015,10 +1039,10 @@ export default function OntologyPage() {
           {/* Tier labels */}
           {graphReady && (
             <>
-              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 9, color: C.dim, letterSpacing: 1 }}>ÜRÜN</div>
-              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 9, color: C.dim, letterSpacing: 1 }}>TIER 1 — DİREKT MALZEME</div>
-              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 9, color: C.dim, letterSpacing: 1 }}>TIER 2 — YARI MAMÜL</div>
-              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 9, color: C.dim, letterSpacing: 1 }}>TIER 3 — ALT BİLEŞEN</div>
+              <div style={{ position: "absolute", top: 60, left: 20, fontSize: 11, color: C.accent, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>ÜRÜN</div>
+              <div style={{ position: "absolute", top: 180, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 1 — DİREKT MALZEME</div>
+              <div style={{ position: "absolute", top: 300, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 2 — YARI MAMÜL</div>
+              <div style={{ position: "absolute", top: 420, left: 20, fontSize: 11, color: C.mid, letterSpacing: 1.5, fontWeight: 600, textShadow: "0 0 4px rgba(0,0,0,0.9)" }}>TIER 3 — ALT BİLEŞEN</div>
             </>
           )}
 
