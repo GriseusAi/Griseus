@@ -1232,7 +1232,7 @@ export default function BhOntologyPage() {
           onPointerMove={(e) => { handleBgPointerMove(e); handlePointerMove(e); }}
           onPointerUp={() => { handleBgPointerUp(); handlePointerUp(); }}
           onWheel={handleWheel}
-          style={{ display: "block", userSelect: "none" }}
+          style={{ display: "block", userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" } as React.CSSProperties}
         >
           <defs>
             <pattern id="grid" width="40" height="40" patternUnits="userSpaceOnUse">
@@ -2100,7 +2100,8 @@ function NodeView({
         };
 
         return (
-          <g transform={`translate(${chartXOffset}, 0)`}>
+          <g transform={`translate(${chartXOffset}, 0)`}
+             style={{ userSelect: "none", WebkitUserSelect: "none", MozUserSelect: "none" } as React.CSSProperties}>
             {/* Chart frame — subtle background */}
             <rect x={-4} y={chartYBase - chartH - 4} width={chartW + 8} height={chartH + 8} rx={4}
               fill="#f8fafc" stroke="#f1f5f9" strokeWidth={0.5}
@@ -2145,30 +2146,30 @@ function NodeView({
                     rx={2}
                     style={{ pointerEvents: "none", transition: isDragging ? "none" : "height 0.15s" }}
                   />
-                  {/* Month label at bottom — daha büyük */}
-                  <text x={barX + barW / 2} y={chartYBase + 16}
-                    textAnchor="middle" fill={C.mid} fontSize={12} fontFamily={mono} fontWeight={500}
-                    style={{ pointerEvents: "none" }}>
-                    {s.label}
-                  </text>
-                  {/* Value label — her bar üzerinde görünsün (sadece değer varsa) */}
-                  {effectiveUnits > 0 && !isDragging && (
-                    <text x={barX + barW / 2} y={chartYBase - hBar - 6}
-                      textAnchor="middle"
-                      fill={isPeak ? C.warn : C.white}
-                      fontSize={isPeak ? 14 : 11}
-                      fontFamily={mono} fontWeight={isPeak ? 700 : 500}
-                      style={{ pointerEvents: "none" }}>
+                  {/* Month label — alternate (collision avoidance) */}
+                  {(i % 2 === 0 || i === barCount - 1) && (
+                    <text x={barX + barW / 2} y={chartYBase + 18}
+                      textAnchor="middle" fill={C.mid} fontSize={12} fontFamily={mono} fontWeight={600}
+                      style={{ pointerEvents: "none", userSelect: "none" } as React.CSSProperties}>
+                      {s.label}
+                    </text>
+                  )}
+                  {/* Value label — only on peak */}
+                  {isPeak && effectiveUnits > 0 && !isDragging && (
+                    <text x={barX + barW / 2} y={chartYBase - hBar - 8}
+                      textAnchor="middle" fill={C.warn}
+                      fontSize={14} fontFamily={mono} fontWeight={700}
+                      style={{ pointerEvents: "none", userSelect: "none" } as React.CSSProperties}>
                       {effectiveUnits}
                     </text>
                   )}
-                  {/* Drag preview */}
+                  {/* Drag preview — light cream tooltip */}
                   {isDragging && (
-                    <g style={{ pointerEvents: "none" }}>
-                      <rect x={barX - 20} y={chartYBase - hBar - 30}
-                        width={barW + 40} height={22} rx={4}
-                        fill="rgba(10,10,15,0.97)" stroke={C.variable} strokeWidth={1.2} />
-                      <text x={barX + barW / 2} y={chartYBase - hBar - 14}
+                    <g style={{ pointerEvents: "none", userSelect: "none" } as React.CSSProperties}>
+                      <rect x={barX - 24} y={chartYBase - hBar - 32}
+                        width={barW + 48} height={24} rx={4}
+                        fill="#ffffff" stroke={C.variable} strokeWidth={1.5} />
+                      <text x={barX + barW / 2} y={chartYBase - hBar - 15}
                         textAnchor="middle" fill={C.variable} fontSize={14} fontFamily={mono} fontWeight={700}>
                         {fmt(barDrag!.currentUnits)}
                       </text>
