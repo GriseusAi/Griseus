@@ -101,7 +101,7 @@ interface GraphLink {
   linkTypeApiName: "consumes" | "assembles" | "sharedAcross";
 }
 
-const LAYOUT_KEY = "bh-ontology-layout-v9-foundry-tile";
+const LAYOUT_KEY = "bh-ontology-layout-v10-circle-drilldown";
 const EXPANDED_KEY = "bh-ontology-expanded-v1";
 const CANVAS_W = 2200;
 const CANVAS_H = 3200;
@@ -182,13 +182,13 @@ function dryRunCapacity(
    Her satır yüksekliği şekil boyutu + min 30px gap olmalı, yoksa üst üste biner. */
 const DEVICE_ORDER = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"];
 const Y_CHART_TOP = 40;
-const Y_DEVICE = 420;         // XL chart için daha fazla üst boşluk
-const Y_TIER1_START = 560;    // device (96h) + 100 buffer (kart yataylaşınca daha az boşluk yetiyor)
-const ROW_H = 118;            // component 96 + 22 gap (Foundry-tile)
-const Y_SUBASSEMBLY_GAP = 70;
-const SUB_ROW_H = 110;        // subassembly tile 88 + 22 gap
-const Y_SUBCOMP_GAP = 90;     // parent tile alt sınırı + 22 buffer
-const SUBCOMP_ROW_H = 84;     // child tile 64 + 20 gap
+const Y_DEVICE = 420;
+const Y_TIER1_START = 560;    // device (96h) + 100 buffer
+const ROW_H = 118;            // component 96 + 22 gap
+const Y_SUBASSEMBLY_GAP = 90;
+const SUB_ROW_H = 162;        // subassembly circle 140 + 22 gap
+const Y_SUBCOMP_GAP = 110;    // parent circle r=70 + buffer 40 → child center
+const SUBCOMP_ROW_H = 100;    // child circle 80 + 20 gap
 const Y_VARIABLE_GAP = 70;
 const VARIABLE_ROW_H = 110;   // variable tile 88 + 22 gap
 
@@ -1228,8 +1228,8 @@ export default function BhOntologyPage() {
             );
           })()}
 
-          {/* Shared-code connector lines: only visible on hover (declutter default) */}
-          {connectedSet && (() => {
+          {/* Family-bond arcs: kıvrımlı şeffaf bezier between same-code tiles (BH grubu ailesi) */}
+          {(() => {
             const byCode = new Map<string, GraphNode[]>();
             for (const n of nodes) {
               if (n.kind !== "component" && n.kind !== "subassembly" && n.kind !== "variable") continue;
@@ -1248,20 +1248,65 @@ export default function BhOntologyPage() {
                 const b = sorted[k + 1];
                 const pa = positions[a.id]; const pb = positions[b.id];
                 if (!pa || !pb) continue;
-                const isHovered = connectedSet.has(a.id) || connectedSet.has(b.id);
-                if (!isHovered) continue;
+                const isHovered = connectedSet && (connectedSet.has(a.id) || connectedSet.has(b.id));
+                // Tile half-widths: circle r=70 / 40, rect ~120; arc starts at edge
+                const halfA = a.kind === "subassembly" ? 70 : a.kind === "subcomponent" ? 40 : 120;
+                const halfB = b.kind === "subassembly" ? 70 : b.kind === "subcomponent" ? 40 : 120;
+                const x1 = pa.x + halfA;
+                const x2 = pb.x - halfB;
+                const midX = (x1 + x2) / 2;
+                // Arc bowed upward to clear tiles
+                const arcRise = 40;
+                const ctrlY = pa.y - arcRise;
+                const path = `M ${x1} ${pa.y} Q ${midX} ${ctrlY} ${x2} ${pb.y}`;
+                const stroke = a.kind === "variable" ? C.variable : C.accent;
                 segments.push(
-                  <line key={`shared-${code}-${k}`}
-                    x1={pa.x + 60} y1={pa.y}
-                    x2={pb.x - 60} y2={pb.y}
-                    stroke={a.kind === "variable" ? C.variable : C.accent}
-                    strokeWidth={1.5}
-                    opacity={0.7}
-                    style={{ pointerEvents: "none" }}
+                  <path key={`fam-${code}-${k}`}
+                    d={path} fill="none"
+                    stroke={stroke}
+                    strokeWidth={isHovered ? 2 : 1.2}
+                    opacity={isHovered ? 0.7 : 0.22}
+                    strokeLinecap="round"
+                    style={{ pointerEvents: "none", transition: "opacity 0.2s" }}
                   />
                 );
               }
             });
+            return segments;
+          })()}
+
+          {/* Drill-down arcs: expanded yarı-mamülden alt-parça children'a kıvrımlı şeffaf */}
+          {(() => {
+            const segments: React.ReactElement[] = [];
+            for (const parent of nodes) {
+              if (parent.kind !== "subassembly" || !parent.code) continue;
+              if (!expandedSubs.has(parent.code)) continue;
+              const pp = positions[parent.id];
+              if (!pp) continue;
+              for (const child of nodes) {
+                if (child.kind !== "subcomponent") continue;
+                if (child.parentSubCode !== parent.code) continue;
+                // Only children in the SAME device column as parent (visual locality)
+                if (child.deviceSku !== parent.deviceSku) continue;
+                const cp = positions[child.id];
+                if (!cp) continue;
+                const startY = pp.y + 70;          // bottom edge of subassembly circle (r=70)
+                const endY   = cp.y - 40;          // top edge of subcomponent circle (r=40)
+                const ctrl1Y = startY + Math.max(20, (endY - startY) * 0.45);
+                const ctrl2Y = endY   - Math.max(20, (endY - startY) * 0.45);
+                const path = `M ${pp.x} ${startY} C ${pp.x} ${ctrl1Y}, ${cp.x} ${ctrl2Y}, ${cp.x} ${endY}`;
+                segments.push(
+                  <path key={`drill-${parent.id}-${child.id}`}
+                    d={path} fill="none"
+                    stroke={C.accent}
+                    strokeWidth={1.4}
+                    opacity={0.30}
+                    strokeLinecap="round"
+                    style={{ pointerEvents: "none" }}
+                  />
+                );
+              }
+            }
             return segments;
           })()}
 
@@ -1759,13 +1804,13 @@ function NodeView({
   /* Bar drag state (device mini-chart interaction) */
   const [barDrag, setBarDrag] = useState<{ idx: number; startClientY: number; startUnits: number; currentUnits: number } | null>(null);
 
-  // Shape sizes — Foundry "tile" pattern: yatay dikdörtgen + üst bant
+  // Shape sizes — yarı-mamül + alt-parça dairesel; component / variable / device dikdörtgen
   let w: number, h: number;
   if (isDevice)         { w = 240; h = 96; }
-  else if (isSub)       { w = 220; h = 88; }   // yarı-mamül tile
-  else if (isSubComp)   { w = 180; h = 64; }   // alt parça tile (daha kısa)
-  else if (isVariable)  { w = 220; h = 88; }   // variable tile
-  else                  { w = 240; h = 96; }   // component tile
+  else if (isSub)       { w = 140; h = 140; }  // CIRCLE — yarı-mamül
+  else if (isSubComp)   { w = 80;  h = 80;  }  // CIRCLE — alt-parça (drill-down)
+  else if (isVariable)  { w = 220; h = 88; }
+  else                  { w = 240; h = 96; }
 
   const displayStock = overrideStock !== undefined ? overrideStock : (node.currentStock ?? 0);
   const isOverridden = overrideStock !== undefined && overrideStock !== node.currentStock;
@@ -1828,7 +1873,7 @@ function NodeView({
           fill="none" stroke={C.ok} strokeWidth={2.5} opacity={0.95}/>
       )}
 
-      {/* Main tile — defined slate-black border, problem states keep pastel bg + left stripe */}
+      {/* Main shape — circle for subassembly/subcomponent, rect for everything else */}
       {(() => {
         const isProblem = node.isBottleneck
           || node.status === "critical"
@@ -1837,7 +1882,23 @@ function NodeView({
         const tileFill = isDevice
           ? "url(#deviceGrad)"
           : isProblem ? col.bg : "#ffffff";
-        const tileStroke = isDevice ? C.accent : "#141413";
+        // Problem circles get saturated stroke (since left-stripe doesn't suit circles)
+        const tileStroke = isDevice
+          ? C.accent
+          : (isSub || isSubComp) && isProblem ? col.fg : "#141413";
+        const strokeW = isDevice ? 1.5 : (isSub || isSubComp) && isProblem ? 2 : 1.5;
+        if (isSub || isSubComp) {
+          return (
+            <circle
+              className={pulsing ? "flash-bg" : undefined}
+              cx={w / 2} cy={h / 2} r={w / 2 - 1}
+              fill={tileFill}
+              stroke={tileStroke}
+              strokeWidth={strokeW}
+              onPointerDown={onPointerDown}
+            />
+          );
+        }
         return (
           <>
             <rect className={pulsing ? "flash-bg" : undefined}
@@ -1847,7 +1908,7 @@ function NodeView({
               strokeWidth={1.5}
               onPointerDown={onPointerDown}
             />
-            {/* Status stripe — left edge, problem states only */}
+            {/* Status stripe — left edge, problem rectangle states only */}
             {!isDevice && isProblem && (
               <rect x={0} y={0} width={3} height={h} rx={0}
                 fill={col.fg}
@@ -2032,8 +2093,65 @@ function NodeView({
             </>
           )}
         </>
+      ) : (isSub || isSubComp) ? (
+        /* Circle content — centered text for yarı-mamül (140) and alt-parça (80) */
+        <>
+          <text x={w / 2} y={isSubComp ? 34 : 60} textAnchor="middle"
+            fill={C.white} fontSize={isSubComp ? 10 : 12} fontFamily={mono} fontWeight={600} letterSpacing={0.2}
+            onPointerDown={onPointerDown}
+            style={{ cursor: "grab" }}>
+            {node.label}
+          </text>
+          {editing ? (
+            <foreignObject x={w / 2 - 60} y={isSubComp ? 38 : 70} width={120} height={28}>
+              <div style={{ display: "flex", alignItems: "center", gap: 4 }}
+                onPointerDown={e => e.stopPropagation()} onClick={e => e.stopPropagation()}>
+                <input autoFocus type="number" value={editVal}
+                  onChange={e => onEditChange(e.target.value)}
+                  onKeyDown={e => { if (e.key === "Enter") onSaveEdit(); else if (e.key === "Escape") onCancelEdit(); }}
+                  disabled={saving}
+                  style={{ flex: 1, fontSize: isSubComp ? 11 : 13, fontFamily: mono, color: col.fg,
+                    background: "#ffffff", border: `1px solid ${col.fg}70`, borderRadius: 4,
+                    padding: "2px 6px", outline: "none" }}
+                />
+                <button onClick={e => { e.stopPropagation(); onSaveEdit(); }} disabled={saving} style={{
+                  fontSize: 11, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
+                  background: C.okDim, border: `1px solid ${C.okBorder}`, color: C.ok, fontFamily: mono,
+                }}>✓</button>
+              </div>
+            </foreignObject>
+          ) : (
+            <g onClick={isSubComp ? undefined : onStartEdit} style={{ cursor: isSubComp ? "default" : "pointer" }}>
+              <text x={w / 2} y={isSubComp ? 54 : 92} textAnchor="middle"
+                fill={isOverridden ? C.variable : col.fg}
+                fontSize={isSubComp ? 16 : 24} fontFamily={mono} fontWeight={700} letterSpacing={-0.3}>
+                {fmt(displayStock)}
+              </text>
+              {!isSubComp && (
+                <text x={w / 2} y={114} textAnchor="middle"
+                  fill={C.dim} fontSize={9} fontFamily={mono}>
+                  {node.unit || "AD"} ✎
+                </text>
+              )}
+            </g>
+          )}
+          {/* Sub: expand button on the bottom-right rim of circle */}
+          {isSub && node.hasChildren && (
+            <g onClick={(e) => { e.stopPropagation(); onToggleExpand(); }}
+               onPointerDown={(e) => e.stopPropagation()}
+               style={{ cursor: "pointer" }}>
+              <circle cx={w - 16} cy={h - 16} r={12}
+                fill={expanded ? C.accent : "#ffffff"}
+                stroke="#141413" strokeWidth={1.5} />
+              <text x={w - 16} y={h - 12} textAnchor="middle"
+                fill={expanded ? "#ffffff" : "#141413"} fontSize={11} fontFamily={mono} fontWeight={700}>
+                {expanded ? "−" : `+${node.childrenCount ?? ""}`}
+              </text>
+            </g>
+          )}
+        </>
       ) : (
-        /* Unified Foundry-tile content — landscape rect for component / subassembly / subcomponent / variable */
+        /* Rect content — component / variable */
         <>
           {/* Variable marker — small ▲ near code */}
           {isVariable && (
