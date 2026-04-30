@@ -18,25 +18,25 @@ import { useSelection } from "@/lib/selection-context";
    ═══════════════════════════════════════════════════════════ */
 
 const C = {
-  // Anthropic Claude.ai inspired — warm cream canvas, coral accent, soft warm grays
-  bg: "#FAF9F5",                                    // signature cream canvas
-  panelBg: "#FFFFFF",                               // pure white surface for cards
-  surface: "#F5F4EE", surfaceHover: "#EDEBE3",      // sidebar/secondary tint
-  border: "rgba(31,29,26,0.08)", borderActive: "rgba(31,29,26,0.18)",
-  accent: "#CC785C", accentDim: "rgba(204,120,92,0.10)",   // Anthropic coral
-  ok: "#3D7A5A", okDim: "rgba(61,122,90,0.10)", okBorder: "rgba(61,122,90,0.28)",
-  warn: "#B7791F", warnDim: "rgba(183,121,31,0.10)", warnBorder: "rgba(183,121,31,0.28)",
-  variable: "#CC785C", variableDim: "rgba(204,120,92,0.10)", variableBorder: "rgba(204,120,92,0.32)",
-  err: "#B73A3A", errDim: "rgba(183,58,58,0.10)", errBorder: "rgba(183,58,58,0.28)",
-  blue: "#5C6F8E", blueDim: "rgba(92,111,142,0.08)", blueBorder: "rgba(92,111,142,0.26)",
+  // Anthropic design system tokens — ivory/slate/clay swatch (anthropic.com brand CSS)
+  bg: "#FAF9F5",                                       // ivory-light  (canvas)
+  panelBg: "#FFFFFF",                                  // white surface (cards)
+  surface: "#F0EEE6", surfaceHover: "#E8E6DC",         // ivory-medium / ivory-dark
+  border: "rgba(20,20,19,0.10)", borderActive: "rgba(20,20,19,0.20)",  // slate-faded
+  accent: "#D97757", accentDim: "rgba(217,119,87,0.10)",   // Clay (signature coral)
+  ok: "#61C554", okDim: "rgba(97,197,84,0.10)", okBorder: "rgba(97,197,84,0.32)",
+  warn: "#F4BF4F", warnDim: "rgba(244,191,79,0.12)", warnBorder: "rgba(244,191,79,0.36)",
+  variable: "#D97757", variableDim: "rgba(217,119,87,0.10)", variableBorder: "rgba(217,119,87,0.34)",
+  err: "#EA384C", errDim: "rgba(234,56,76,0.10)", errBorder: "rgba(234,56,76,0.30)",
+  blue: "#146EF5", blueDim: "rgba(20,110,245,0.08)", blueBorder: "rgba(20,110,245,0.26)",
   purple: "#7E6699",
-  // Token names kept for diff stability — `white` = primary ink, `dim*` = neutral
-  white: "#1F1D1A", mid: "#5C5B57", dim: "#8B8A85", dimmer: "#E5E5E2",
+  // Token names kept for diff stability — `white` = primary ink (slate-dark)
+  white: "#141413", mid: "#3D3D3A", dim: "#5E5D59", dimmer: "#E8E6DC",
 };
-// Anthropic uses Styrene A/B (proprietary, Commercial Type). Public fallback chain →
-// system-ui (SF Pro on Mac/iOS, Segoe UI on Windows) which visually resembles Styrene.
-const mono = "'Styrene A', 'Söhne', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif";
-const INTER_FEATURES = "normal"; // system-ui already balanced, no extra features needed
+// Anthropic ships custom Anthropic Sans (woff2) at cdn.prod.website-files.com.
+// Fallback chain → Söhne (older Claude) → system-ui (SF Pro / Segoe UI).
+const mono = "'Anthropic Sans', 'Söhne', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
+const INTER_FEATURES = "normal";
 const fmt = (n: number) => n.toLocaleString("tr-TR");
 
 const BH_SKUS = ["BH.50ST.SV", "BH.50UT.SV", "BH.55ST.SV", "BH.55UT.SV"] as const;
@@ -1837,7 +1837,7 @@ function NodeView({
         return (
           <>
             <rect className={pulsing ? "flash-bg" : undefined}
-              width={w} height={h} rx={4}
+              width={w} height={h} rx={8}
               fill={tileFill}
               stroke={tileStroke}
               strokeWidth={1}
