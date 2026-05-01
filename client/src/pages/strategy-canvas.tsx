@@ -1393,7 +1393,69 @@ function CustomersPanel({
             onPointerDown={(e) => e.stopPropagation()}
             style={{ padding: "10px 12px", overflowY: "auto", flex: 1 }}
           >
-            {customers.map(c => {
+            {(["elektrikli", "gazlı"] as const).map(catKey => {
+              const catCustomers = customers.filter(c => c.category === catKey);
+              if (catCustomers.length === 0) return null;
+              const catLabel = catKey === "elektrikli" ? "Elektrikli müşteriler" : "Gazlı müşteriler";
+              const accent = catKey === "elektrikli" ? C.ok : C.info;
+              const tag = catKey === "elektrikli" ? "ELK" : "GAZ";
+              const isCatOpen = expandedSet.has(`cat:${catKey}`);
+              const totalOrders = catCustomers.reduce(
+                (s, c) => s + (ordersByCustomer[c.label.toLowerCase()]?.length ?? 0), 0,
+              );
+              return (
+                <div key={catKey} style={{ marginBottom: 8 }}>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); onToggleCustomer(`cat:${catKey}`); }}
+                    style={{
+                      padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                      display: "flex", alignItems: "center", gap: 8,
+                      background: isCatOpen ? `${accent}1a` : "rgba(255,255,255,0.04)",
+                      border: `1px solid ${isCatOpen ? `${accent}66` : C.panelEdge}`,
+                      borderLeft: `3px solid ${accent}`,
+                    }}
+                  >
+                    <span style={{
+                      fontSize: 9, letterSpacing: 1, fontWeight: 700,
+                      color: accent, padding: "1px 5px",
+                      background: `${accent}22`, borderRadius: 3,
+                    }}>{tag}</span>
+                    <div style={{ flex: 1, fontSize: 12, fontWeight: 700 }}>{catLabel}</div>
+                    <span style={{ fontSize: 10, color: C.cardSub }}>
+                      {catCustomers.length}{totalOrders > 0 && ` · ${totalOrders} sip.`}
+                    </span>
+                    <span style={{ fontSize: 11, color: C.cardSub }}>{isCatOpen ? "▾" : "▸"}</span>
+                  </div>
+
+                  {isCatOpen && (
+                    <div style={{ marginTop: 4, paddingLeft: 8 }}>
+                      {catCustomers.map(c => {
+                        const customerOrders = ordersByCustomer[c.label.toLowerCase()] ?? [];
+                        const isExpanded = expandedSet.has(c.id);
+                        const hasOrders = customerOrders.length > 0;
+                        const catColor = accent;
+                        return (
+                          <CustomerRow
+                            key={c.id}
+                            c={c}
+                            customerOrders={customerOrders}
+                            isExpanded={isExpanded}
+                            hasOrders={hasOrders}
+                            catColor={catColor}
+                            onToggleCustomer={onToggleCustomer}
+                            onEditOrder={onEditOrder}
+                            onCreateOrderFor={onCreateOrderFor}
+                            onRemoveCustomer={onRemoveCustomer}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+            {/* Kategorisiz müşteri varsa düz olarak listele */}
+            {customers.filter(c => c.category !== "elektrikli" && c.category !== "gazlı").map(c => {
               const customerOrders = ordersByCustomer[c.label.toLowerCase()] ?? [];
               const isExpanded = expandedSet.has(c.id);
               const hasOrders = customerOrders.length > 0;
@@ -1587,6 +1649,106 @@ function CustomersPanel({
   );
 }
 
+/* Customer row helper (CustomersPanel altında ortak kullanım) */
+function CustomerRow({
+  c, customerOrders, isExpanded, hasOrders, catColor,
+  onToggleCustomer, onEditOrder, onCreateOrderFor, onRemoveCustomer,
+}: {
+  c: Customer;
+  customerOrders: Order[];
+  isExpanded: boolean;
+  hasOrders: boolean;
+  catColor: string;
+  onToggleCustomer: (id: string) => void;
+  onEditOrder: (o: Order) => void;
+  onCreateOrderFor: (label: string) => void;
+  onRemoveCustomer: (id: string) => void;
+}) {
+  return (
+    <div style={{ marginBottom: 4 }}>
+      <div
+        onClick={(e) => { e.stopPropagation(); onToggleCustomer(c.id); }}
+        style={{
+          height: CUSTOMERS_CHIP_H,
+          display: "flex", alignItems: "center", gap: 8,
+          padding: "0 10px", borderRadius: 6, cursor: "pointer",
+          background: isExpanded ? "rgba(255,255,255,0.07)" : "transparent",
+          border: hasOrders ? `1px solid ${catColor}66` : `1px solid transparent`,
+          transition: "background 0.1s",
+        }}
+        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+        onMouseLeave={(e) => (e.currentTarget.style.background = isExpanded ? "rgba(255,255,255,0.07)" : "transparent")}
+      >
+        <div style={{
+          width: 6, height: 6, borderRadius: "50%",
+          background: hasOrders ? catColor : "rgba(255,255,255,0.2)",
+        }} />
+        <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>{c.label}</div>
+        {hasOrders && (
+          <span style={{
+            background: `${catColor}22`, color: catColor,
+            padding: "1px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700,
+          }}>
+            {customerOrders.length}
+          </span>
+        )}
+        <span style={{ fontSize: 11, color: C.cardSub }}>{isExpanded ? "▾" : "▸"}</span>
+      </div>
+      {isExpanded && (
+        <div style={{ padding: "4px 6px 8px 24px" }}>
+          {customerOrders.length === 0 ? (
+            <div style={{ fontSize: 10, color: C.cardSub, padding: "4px 0 8px" }}>(henüz sipariş yok)</div>
+          ) : customerOrders.map(o => (
+            <div
+              key={o.id}
+              onClick={(e) => { e.stopPropagation(); onEditOrder(o); }}
+              style={{
+                padding: "8px 10px", marginBottom: 4,
+                background: "rgba(255,255,255,0.04)",
+                border: `1px solid ${C.panelEdge}`,
+                borderRadius: 6, cursor: "pointer", transition: "background 0.1s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+            >
+              <div style={{ fontSize: 12, fontWeight: 700 }}>
+                {o.sku} <span style={{ color: C.cardSub, fontWeight: 400 }}>×{fmtTR(o.quantity)}</span>
+              </div>
+              <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
+                {o.deadline ? new Date(o.deadline).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" }) : "—"}
+              </div>
+            </div>
+          ))}
+          <button
+            onClick={(e) => { e.stopPropagation(); onCreateOrderFor(c.label); }}
+            style={{
+              width: "100%", padding: "5px 8px", marginTop: 2,
+              background: "transparent", border: `1px dashed ${C.cardSub}66`,
+              borderRadius: 5, color: C.cardSub,
+              fontSize: 10, fontFamily: mono, cursor: "pointer",
+            }}
+          >+ sipariş ekle</button>
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              if (customerOrders.length > 0) {
+                alert(`${c.label} için ${customerOrders.length} sipariş var — önce siparişleri taşıyın/silin.`);
+                return;
+              }
+              if (confirm(`${c.label} müşterisini sil?`)) onRemoveCustomer(c.id);
+            }}
+            style={{
+              width: "100%", padding: "3px 8px", marginTop: 4,
+              background: "transparent", border: "none",
+              color: C.shortfall, fontSize: 9, fontFamily: mono, cursor: "pointer", opacity: 0.6,
+            }}
+          >müşteriyi sil</button>
+        </div>
+      )}
+    </div>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════════
    CATEGORIES PANEL — Elektrikli / Gazlı daireleri, click → filter products
    ──────────────────────────────────────────────────────────────────── */
@@ -1738,24 +1900,64 @@ function ProductsPalette({
 }
 
 /* ════════════════════════════════════════════════════════════════════
-   PRODUCTION STAGES — Üretim / Depo / Satış halkaları
+   PRODUCTION STAGES — Üretim / Depo / Satış halkaları, drill-down
+   Tıkla → o aşamadaki sipariş listesi açılır
    ──────────────────────────────────────────────────────────────────── */
+
+// Bir siparişi 60% üretim + 25% depo + 15% satış olarak böl (proxy)
+function splitOrderByStage(o: Order) {
+  const prod = Math.floor(o.quantity * 0.6);
+  const depo = Math.floor(o.quantity * 0.25);
+  const sat = o.quantity - prod - depo;
+  return { prod, depo, sat };
+}
+
 function ProductionStagesPanel({
-  pos, orders, onMove, getMouseInWorld, viewport,
+  pos, orders, onMove, onSelectOrder, getMouseInWorld, viewport,
 }: {
   pos: XY;
   orders: Order[];
   onMove: (xy: XY) => void;
+  onSelectOrder: (o: Order) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
 }) {
-  const W = 200, H = 320;
-  // Sayım: tüm orders'ın total quantity'si — ileride üretim/depo/satış allocation
-  // detaylandırılabilir. Şimdilik proxy.
-  const totalQty = orders.reduce((s, o) => s + o.quantity, 0);
-  const productionQty = Math.round(totalQty * 0.6);
-  const depoQty = Math.round(totalQty * 0.25);
-  const salesQty = totalQty - productionQty - depoQty;
+  const [openStage, setOpenStage] = useState<"uretim" | "depo" | "satis" | null>(null);
+
+  const stageData = useMemo(() => {
+    const items = {
+      uretim: [] as Array<{ o: Order; qty: number }>,
+      depo:   [] as Array<{ o: Order; qty: number }>,
+      satis:  [] as Array<{ o: Order; qty: number }>,
+    };
+    for (const o of orders) {
+      const split = splitOrderByStage(o);
+      if (split.prod > 0) items.uretim.push({ o, qty: split.prod });
+      if (split.depo > 0) items.depo.push({ o, qty: split.depo });
+      if (split.sat  > 0) items.satis.push({ o, qty: split.sat });
+    }
+    return items;
+  }, [orders]);
+
+  const totalProd = stageData.uretim.reduce((s, x) => s + x.qty, 0);
+  const totalDepo = stageData.depo.reduce((s, x) => s + x.qty, 0);
+  const totalSat  = stageData.satis.reduce((s, x) => s + x.qty, 0);
+
+  const stages = [
+    { key: "uretim" as const, label: "Üretim", qty: totalProd, color: C.warn, items: stageData.uretim },
+    { key: "depo"   as const, label: "Depo",   qty: totalDepo, color: C.info, items: stageData.depo },
+    { key: "satis"  as const, label: "Satış",  qty: totalSat,  color: C.ok,   items: stageData.satis },
+  ];
+
+  const W = 220;
+  const baseH = 80;
+  const stageRowH = 80;
+  const expandedExtra = (key: "uretim" | "depo" | "satis") => {
+    if (openStage !== key) return 0;
+    const items = stages.find(s => s.key === key)!.items;
+    return items.length === 0 ? 32 : items.length * 50 + 12;
+  };
+  const H = baseH + stageRowH * 3 + expandedExtra("uretim") + expandedExtra("depo") + expandedExtra("satis") + 14;
 
   return (
     <DragNode pos={pos} width={W} height={H} onDrag={onMove}
@@ -1769,28 +1971,66 @@ function ProductionStagesPanel({
           <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent }}>◇ AKIŞ</div>
           <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>Üretim hattı</div>
         </div>
-        {[
-          { label: "Üretim", qty: productionQty, color: C.warn },
-          { label: "Depo",   qty: depoQty,       color: C.info },
-          { label: "Satış",  qty: salesQty,      color: C.ok   },
-        ].map(stage => (
-          <div key={stage.label} style={{
-            display: "flex", alignItems: "center", gap: 10, marginTop: 8,
-          }}>
-            <div style={{
-              width: 56, height: 56, borderRadius: "50%",
-              background: `${stage.color}22`, border: `2px solid ${stage.color}`,
-              display: "flex", alignItems: "center", justifyContent: "center",
-              fontSize: 11, fontWeight: 700, color: stage.color,
-            }}>
-              {stage.label}
-            </div>
-            <div>
-              <div style={{ fontSize: 16, fontWeight: 700 }}>{fmtTR(stage.qty)}</div>
-              <div style={{ fontSize: 9, color: C.cardSub }}>adet</div>
-            </div>
-          </div>
-        ))}
+
+        <div onPointerDown={(e) => e.stopPropagation()}>
+          {stages.map(stage => {
+            const isOpen = openStage === stage.key;
+            return (
+              <div key={stage.key} style={{ marginBottom: 6 }}>
+                <div
+                  onClick={(e) => { e.stopPropagation(); setOpenStage(isOpen ? null : stage.key); }}
+                  style={{
+                    display: "flex", alignItems: "center", gap: 10, padding: "6px 4px",
+                    cursor: "pointer", borderRadius: 6,
+                    background: isOpen ? `${stage.color}1a` : "transparent",
+                  }}
+                  onMouseEnter={(e) => { if (!isOpen) e.currentTarget.style.background = "rgba(255,255,255,0.04)"; }}
+                  onMouseLeave={(e) => { if (!isOpen) e.currentTarget.style.background = "transparent"; }}
+                >
+                  <div style={{
+                    width: 56, height: 56, borderRadius: "50%",
+                    background: `${stage.color}22`, border: `2px solid ${stage.color}`,
+                    display: "flex", alignItems: "center", justifyContent: "center",
+                    fontSize: 11, fontWeight: 700, color: stage.color,
+                  }}>{stage.label}</div>
+                  <div style={{ flex: 1 }}>
+                    <div style={{ fontSize: 16, fontWeight: 700 }}>{fmtTR(stage.qty)}</div>
+                    <div style={{ fontSize: 9, color: C.cardSub }}>{stage.items.length} cihaz</div>
+                  </div>
+                  <span style={{ fontSize: 11, color: C.cardSub }}>{isOpen ? "▾" : "▸"}</span>
+                </div>
+                {isOpen && (
+                  <div style={{ paddingLeft: 12, paddingTop: 4 }}>
+                    {stage.items.length === 0 ? (
+                      <div style={{ fontSize: 10, color: C.cardSub, padding: "4px 0" }}>(boş)</div>
+                    ) : stage.items.map(({ o, qty }) => (
+                      <div
+                        key={o.id}
+                        onClick={(e) => { e.stopPropagation(); onSelectOrder(o); }}
+                        style={{
+                          padding: "6px 8px", marginBottom: 3,
+                          background: "rgba(255,255,255,0.04)",
+                          border: `1px solid ${C.panelEdge}`,
+                          borderLeft: `3px solid ${stage.color}`,
+                          borderRadius: 4, cursor: "pointer",
+                          display: "flex", justifyContent: "space-between", alignItems: "center", gap: 6,
+                        }}
+                      >
+                        <div style={{ minWidth: 0 }}>
+                          <div style={{ fontSize: 11, fontWeight: 700 }}>{o.sku}</div>
+                          <div style={{ fontSize: 9, color: C.cardSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                            {o.customer}
+                          </div>
+                        </div>
+                        <div style={{ fontSize: 11, fontWeight: 700, color: stage.color }}>×{fmtTR(qty)}</div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            );
+          })}
+        </div>
       </div>
     </DragNode>
   );
@@ -2206,8 +2446,8 @@ function OntologySearchBox({
   }, [q, scenarios, activeId]);
 
   const placeholder = scenarios.length > 0
-    ? `Senaryolarda ara (${scenarios.length}) veya yeni isim yaz...`
-    : "Yeni senaryo adı yaz veya ara...";
+    ? `Senaryo ara (${scenarios.length}) — yaz, tıkla, canvas o senaryoya geçer`
+    : "Senaryo adı yaz, Enter — şu anki canvas senaryo olarak kaydedilir";
 
   return (
     <div ref={wrapRef} style={{ position: "relative", flex: "1 1 320px", maxWidth: 480 }}>
@@ -3109,6 +3349,7 @@ export default function StrategyCanvasPage() {
           pos={stagesPos}
           orders={orders}
           onMove={setStagesPos}
+          onSelectOrder={focusOrderOnCanvas}
           getMouseInWorld={getMouseInWorld}
           viewport={viewport}
         />
