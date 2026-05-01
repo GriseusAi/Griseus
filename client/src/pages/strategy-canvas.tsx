@@ -2562,69 +2562,122 @@ function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
     atom.highlight === "green" ? "#10b981" :
     atom.highlight === "blue"  ? "#38bdf8" : null;
 
-  // Common ortak stiller — X stadyum kart estetiği (cardBg + ince border)
+  // X stadyum estetiği — tüm atomlar için ortak shell
+  const xCard = (kindLabel: string, content: React.ReactNode, opts?: {
+    border?: string; circle?: boolean; padding?: number; accentLabel?: string;
+  }): React.CSSProperties & { __content?: React.ReactNode } => ({
+    width: "100%", height: "100%", boxSizing: "border-box",
+    background: C.cardBg, color: C.cardInk,
+    borderRadius: opts?.circle ? "50%" : 12,
+    border: opts?.border ?? `1px solid ${C.panelEdge}`,
+    padding: opts?.padding ?? 12,
+    boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+    fontFamily: mono,
+    display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+  });
+
+  const labelLine = (text: string, color: string = C.cardSub): React.ReactNode => (
+    <div style={{ fontSize: 9, color, letterSpacing: 1.6, fontWeight: 600 }}>{text}</div>
+  );
+
   if (atom.kind === "label") {
+    // "Customers" master label — beyaz arka plan, vurgulu
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: "#ffffff", color: "#0a0a0e",
-        borderRadius: 6, display: "flex",
-        alignItems: "center", justifyContent: "center",
-        fontFamily: mono, fontSize: 14, fontWeight: 700,
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 12, padding: 12,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+        border: `1px solid ${C.panelEdge}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+        fontFamily: mono,
       }}>
-        {atom.label}
+        {labelLine("◇ KÖK")}
+        <div style={{ fontSize: 16, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
   }
+
   if (atom.kind === "customer-chip") {
-    const bg = accent ?? "#e8e6dc";
-    const fg = accent ? "#fff" : "#0a0a0e";
+    const stripe = accent ?? "rgba(255,255,255,0.16)";
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: bg, color: fg,
-        borderRadius: 4, display: "flex",
-        alignItems: "center", justifyContent: "center",
-        fontFamily: mono, fontSize: 14, fontWeight: 700,
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 12, padding: "8px 10px",
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
+        fontFamily: mono,
       }}>
-        {atom.label}
+        {labelLine("MÜŞTERİ", accent ?? C.cardSub)}
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
   }
-  if (atom.kind === "category" || atom.kind === "stage") {
+
+  if (atom.kind === "category") {
+    const stripe = atom.label === "Elektrikli" ? "#10b981" : "#38bdf8";
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: atom.kind === "category" ? "#cfcfcf" : "rgba(207,207,207,0.95)",
-        color: "#0a0a0e", borderRadius: "50%",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: mono, fontSize: 16, fontWeight: 500,
-        boxShadow: "0 6px 22px rgba(0,0,0,0.22)",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: "50%",
+        border: `1.5px solid ${stripe}55`,
+        boxShadow: `0 0 0 6px ${stripe}10, 0 6px 22px rgba(0,0,0,0.42)`,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        fontFamily: mono, padding: 8,
       }}>
-        {atom.label}
+        {labelLine("KATEGORİ", stripe)}
+        <div style={{ fontSize: 18, fontWeight: 700, textAlign: "center" }}>{atom.label}</div>
       </div>
     );
   }
+
+  if (atom.kind === "stage") {
+    const stripe = atom.label === "Üretim" ? "#f59e0b"
+                  : atom.label === "Depo"   ? "#38bdf8" : "#10b981";
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: "50%",
+        border: `1.5px solid ${stripe}55`,
+        boxShadow: `0 0 0 5px ${stripe}10, 0 6px 22px rgba(0,0,0,0.42)`,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        fontFamily: mono, padding: 6,
+      }}>
+        {labelLine("AKIŞ", stripe)}
+        <div style={{ fontSize: 14, fontWeight: 700, textAlign: "center" }}>{atom.label}</div>
+      </div>
+    );
+  }
+
   if (atom.kind === "product") {
-    const bg = accent ?? "rgba(232,230,220,0.9)";
-    const fg = accent ? "#fff" : "#0a0a0e";
+    const stripe = accent ?? "rgba(255,255,255,0.18)";
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: bg, color: fg,
-        borderRadius: 6, padding: "8px 12px",
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
-        fontFamily: mono, boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 12, padding: "10px 12px",
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+        fontFamily: mono,
       }}>
+        {labelLine("MAMUL", accent ?? C.cardSub)}
         <div style={{ fontSize: 14, fontWeight: 700 }}>{atom.label}</div>
         {atom.sub && (
-          <div style={{ display: "flex", gap: 4 }}>
+          <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
             {atom.sub.split(" · ").map(s => (
               <div key={s} style={{
-                width: 22, height: 22, borderRadius: "50%",
-                background: "rgba(255,255,255,0.2)",
+                width: 18, height: 18, borderRadius: "50%",
+                background: "rgba(255,255,255,0.08)", color: C.cardInk,
                 display: "flex", alignItems: "center", justifyContent: "center",
-                fontSize: 11, fontWeight: 700,
+                fontSize: 10, fontWeight: 700,
+                border: `1px solid ${stripe}`,
               }}>{s}</div>
             ))}
           </div>
@@ -2632,61 +2685,89 @@ function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
       </div>
     );
   }
+
   if (atom.kind === "component") {
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: "#cfcfcf", color: "#0a0a0e",
+        background: C.cardBg, color: C.cardInk,
         borderRadius: "50%",
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: mono, fontSize: 28, fontWeight: 700,
-        border: "2px solid rgba(239,68,68,0.6)",
+        border: "1.5px solid rgba(239,68,68,0.55)",
+        boxShadow: "0 0 0 5px rgba(239,68,68,0.08), 0 6px 22px rgba(0,0,0,0.42)",
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+        fontFamily: mono,
       }}>
-        {atom.label}
+        {labelLine("BİLEŞEN", "#ef4444")}
+        <div style={{ fontSize: 22, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
   }
+
   if (atom.kind === "factory") {
     return (
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
         borderRadius: 12, padding: 10,
+        border: `1px solid ${C.panelEdge}`,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
         display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-        boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+        fontFamily: mono,
       }}>
-        <div style={{ fontSize: 11, color: C.cardSub, letterSpacing: 2 }}>FABRİKA</div>
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{atom.label}</div>
+        {labelLine("FABRİKA")}
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
   }
-  if (atom.kind === "lead-pill" || atom.kind === "deadline-pill") {
-    const bg = accent ?? C.cardBg;
-    const fg = accent ? "#fff" : C.cardInk;
+
+  if (atom.kind === "lead-pill") {
+    const stripe = accent ?? "rgba(255,255,255,0.4)";
     return (
       <div style={{
         width: "100%", height: "100%",
-        background: bg, color: fg,
-        borderRadius: 6,
-        display: "flex", alignItems: "center", justifyContent: "center",
-        fontFamily: mono, fontSize: 12, fontWeight: 700,
-        boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 8, padding: "6px 10px",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
+        fontFamily: mono, boxShadow: "0 4px 12px rgba(0,0,0,0.32)",
       }}>
-        {atom.label}
+        {labelLine("LEAD", accent ?? C.cardSub)}
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
   }
+
+  if (atom.kind === "deadline-pill") {
+    const stripe = accent ?? "rgba(255,255,255,0.4)";
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 8, padding: "6px 10px",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
+        fontFamily: mono, boxShadow: "0 4px 12px rgba(0,0,0,0.32)",
+      }}>
+        {labelLine("TESLİM", accent ?? C.cardSub)}
+        <div style={{ fontSize: 12, fontWeight: 700 }}>{atom.label}</div>
+      </div>
+    );
+  }
+
   if (atom.kind === "flask") {
     return (
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
         border: "1.5px solid rgba(245,158,11,0.6)",
-        borderRadius: 12, padding: 12,
-        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
-        boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+        boxShadow: "0 0 0 5px rgba(245,158,11,0.08), 0 6px 22px rgba(0,0,0,0.42)",
+        borderRadius: 12, padding: "10px 12px",
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+        fontFamily: mono,
       }}>
-        <div style={{ fontSize: 11, color: "#f59e0b", letterSpacing: 2, fontWeight: 700 }}>TEPKIME</div>
+        {labelLine("TEPKİME", "#f59e0b")}
         <div style={{ fontSize: 13, fontWeight: 700 }}>{atom.label}</div>
       </div>
     );
