@@ -34,11 +34,35 @@ const supplySchema = z.object({
   leadDays: z.number().int().positive(),
 });
 
+const bomEntrySchema = z.object({
+  code: z.string().min(1),
+  requiredPerUnit: z.number().positive(),
+  tier: z.number().int().nonnegative(),
+  parentCode: z.string().nullable(),
+});
+
+const contextOverrideSchema = z.object({
+  devices: z.array(
+    z.object({
+      sku: z.string().min(1),
+      inWarehouse: z.number().int().nonnegative(),
+      bom: z.array(bomEntrySchema),
+    }),
+  ),
+  components: z.array(
+    z.object({
+      code: z.string().min(1),
+      currentStock: z.number().nonnegative(),
+    }),
+  ),
+});
+
 const inputSchema = z.object({
   devices: z.array(deviceSchema).min(1).max(10),
   supplyOrders: z.array(supplySchema).optional(),
   startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
   horizonDays: z.number().int().positive().max(365).optional(),
+  contextOverride: contextOverrideSchema.optional(),
 });
 
 // POST /api/strategy/reaction-equation
@@ -49,7 +73,27 @@ router.post("/reaction-equation", async (req: Request, res: Response) => {
   }
 
   const input: SchedulerInput = parsed.data;
+  const ctxOverride = parsed.data.contextOverride;
   const skus = input.devices.map((d) => d.sku);
+
+  // ── Bypass DB if caller provides full context (used by demo/senaryo page) ──
+  if (ctxOverride) {
+    const ctx: SchedulerCtx = {
+      devices: ctxOverride.devices,
+      components: ctxOverride.components,
+    };
+    const result = generateScenarios(input, ctx);
+    const contextSummary = ctxOverride.devices.map((d) => {
+      const req = input.devices.find((x) => x.sku === d.sku);
+      return {
+        sku: d.sku,
+        requested: req?.qty ?? 0,
+        inWarehouse: d.inWarehouse,
+        toProduce: Math.max(0, (req?.qty ?? 0) - d.inWarehouse),
+      };
+    });
+    return res.json({ ...result, contextSummary });
+  }
 
   // 1) Read product → stock_levels.inWarehouse
   const productRows = await db

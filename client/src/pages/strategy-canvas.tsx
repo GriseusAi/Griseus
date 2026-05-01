@@ -1692,6 +1692,13 @@ export default function StrategyCanvasPage() {
           <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡ sığdır</button>
           <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲ layout</button>
           <button
+            onClick={() => navigate("/ontology/senaryo")}
+            style={hdrBtnGhost}
+            title="Müşteri senaryoları — koyu mod canlı görsel"
+          >
+            ◇ Senaryo
+          </button>
+          <button
             onClick={toggleFlaskOpen}
             style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
             title="Tepkime denklemi (siparişleri sürükle veya tek tıkla doldur, AI iki senaryo üretir)"
