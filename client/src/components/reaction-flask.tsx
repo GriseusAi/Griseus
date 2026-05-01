@@ -209,7 +209,7 @@ export function ReactionFlask({
               fontSize: 18,
             }}
           >
-            🧪
+            T
           </div>
           <div>
             <div style={{ fontSize: 13, fontWeight: 600 }}>Tepkime Denklemi</div>
@@ -252,11 +252,11 @@ export function ReactionFlask({
               alignItems: "center",
             }}
           >
-            <div style={{ fontSize: 22, opacity: 0.5 }}>🧪</div>
+            <div style={{ fontSize: 11, opacity: 0.5, letterSpacing: 2, color: CT.inkSub, fontWeight: 700 }}>TEPKIME</div>
             <div>
               Boş flask. Sipariş kartlarını <b style={{ color: CT.ink }}>buraya sürükle</b>,
               <br />
-              kart üstündeki <span style={{ color: CT.accent, fontWeight: 600 }}>🧪+</span> butona bas,
+              kart üstündeki <span style={{ color: CT.accent, fontWeight: 600 }}>+ tepkime</span> butona bas,
               <br />
               ya da aşağıdaki tek tıkla doldur.
             </div>
@@ -441,7 +441,7 @@ export function ReactionFlask({
             gap: 8,
           }}
         >
-          {busy ? <Spinner /> : "🧪"} Tepkime başlat
+          {busy ? <Spinner /> : null} Tepkime başlat
         </button>
       </div>
     </div>

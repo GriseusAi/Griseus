@@ -6,6 +6,7 @@ import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import { useAgentPanel } from "@/App";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
+import BhOntologyPage from "@/pages/bh-ontology";
 import {
   ReactionFlask,
   type FlaskItem,
@@ -100,6 +101,11 @@ interface ScenarioSnapshot {
     expandedCustomers?: string[];
     flaskItems?: FlaskItem[];
     flaskSupplies?: SupplyItem[];
+    // v2: kaydet basınca canvas görseli birebir geri gelsin
+    viewport?: { vx: number; vy: number; scale: number };
+    customersPanelPos?: { x: number; y: number };
+    flaskOpen?: boolean;
+    reactionResult?: unknown;
   };
 }
 
@@ -999,7 +1005,7 @@ function OrderBlock({
             );
           }}
         >
-          <div style={cardLabel}>SİPARİŞ · sürükle 🧪</div>
+          <div style={cardLabel}>SİPARİŞ · sürükle</div>
           <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>{order.customer || "Bayi"}</div>
           <div style={{ fontSize: 11, color: C.cardSub, marginTop: 2 }}>
             <b>{order.deadline ? new Date(order.deadline).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" }) : "—"}</b> son tarih
@@ -1007,7 +1013,7 @@ function OrderBlock({
           <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
             <button onPointerDown={(e) => e.stopPropagation()} onClick={onEdit} style={btnGhost}>düzenle</button>
             <button onPointerDown={(e) => e.stopPropagation()} onClick={onRemove} style={btnGhost}>kaldır</button>
-            <button onPointerDown={(e) => e.stopPropagation()} onClick={onAddToFlask} style={btnFlask} title="Tepkime denklemine ekle">🧪+</button>
+            <button onPointerDown={(e) => e.stopPropagation()} onClick={onAddToFlask} style={btnFlask} title="Tepkime denklemine ekle">+ tepkime</button>
           </div>
         </div>
       </DragNode>
@@ -1539,7 +1545,7 @@ function CustomersPanel({
                           borderRadius: 4, color: C.cardInk, cursor: "pointer",
                         }}
                       >
-                        {cat === "elektrikli" ? "⚡ elektrikli" : "♨ gazlı"}
+                        {cat === "elektrikli" ? "elektrikli" : "gazlı"}
                       </button>
                     ))}
                   </div>
@@ -1625,7 +1631,7 @@ function CategoriesPanel({
                   cursor: "pointer", transition: "all 0.15s",
                 }}
               >
-                <div style={{ fontSize: 22 }}>{cat === "elektrikli" ? "⚡" : "♨"}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, color: cat === "elektrikli" ? C.ok : C.info, letterSpacing: 1 }}>{cat === "elektrikli" ? "ELK" : "GAZ"}</div>
                 <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, color: active ? accent : C.cardInk }}>
                   {cat === "elektrikli" ? "Elektrikli" : "Gazlı"}
                 </div>
@@ -1711,7 +1717,7 @@ function ProductsPalette({
                 onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
                 onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
               >
-                <span style={{ fontSize: 12 }}>{cat === "elektrikli" ? "⚡" : "♨"}</span>
+                <span style={{ width: 10, height: 10, borderRadius: 2, background: cat === "elektrikli" ? C.ok : C.info, display: "inline-block" }} />
                 <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>{sku}</span>
                 {count > 0 && (
                   <span style={{
@@ -1813,7 +1819,7 @@ function FactoryWidget({
         alignItems: "center", justifyContent: "center", gap: 6,
         boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
       }}>
-        <div style={{ fontSize: 56, lineHeight: 1 }}>🏭</div>
+        <div style={{ fontSize: 11, letterSpacing: 2, color: C.cardSub, fontWeight: 700, padding: "16px 0" }}>FABRİKA</div>
         <div style={{ fontSize: 11, fontWeight: 700 }}>Fabrika</div>
         <div style={{ fontSize: 9, color: C.cardSub }}>
           {orderCount === 0 ? "boşta" : `${orderCount} aktif sipariş`}
@@ -1958,7 +1964,7 @@ function SupplyEquationPanel({
             cursor: entries.length === 0 ? "not-allowed" : "pointer",
           }}
         >
-          🧪 Tepkime'ye uygula
+          Tepkime'ye uygula
         </button>
       </div>
     </DragNode>
@@ -2049,7 +2055,7 @@ function OrderModal({
               >
                 {c.label}
                 <span style={{ marginLeft: 4, opacity: 0.5, fontSize: 9 }}>
-                  {c.category === "elektrikli" ? "⚡" : c.category === "gazlı" ? "♨" : ""}
+                  {c.category === "elektrikli" ? "ELK" : c.category === "gazlı" ? "GAZ" : ""}
                 </span>
               </button>
             ))}
@@ -2096,24 +2102,34 @@ const inp: React.CSSProperties = {
 /* ════════════════════════════════════════════════════════════════════
    ONTOLOGY SEARCH — header'da BH Grupları gibi alt-canvas'ları bulma
    ──────────────────────────────────────────────────────────────────── */
-type SearchEntry = { label: string; sub: string; keywords: string[]; path: string; icon: string };
+type SearchEntry = {
+  label: string;
+  sub: string;
+  keywords: string[];
+  icon: string;
+  // ya navigation hedef path'i, ya da inline view swap (BH gibi — aynı /ontology
+  // sayfasında kalıp sadece canvas değişir).
+  path?: string;
+  viewSwap?: "strategy" | "bh";
+};
 const ONTOLOGY_SEARCH_CATALOG: SearchEntry[] = [
   {
     label: "BH Grupları",
     sub: "Varlık Felsefesi — 4 Cihaz · Canlı Zincir",
     keywords: ["bh", "grup", "varlık", "varlik", "felsefe", "ontoloji", "ontology", "cihaz", "zincir", "canvas", "bh.50", "bh.55"],
-    path: "/ontology/bh",
     icon: "◈",
+    viewSwap: "bh",
   },
 ];
 
 type SearchHit =
-  | { kind: "page"; label: string; sub: string; icon: string; path: string }
+  | { kind: "page"; label: string; sub: string; icon: string; path?: string; viewSwap?: "strategy" | "bh" }
   | { kind: "scenario"; label: string; sub: string; icon: string; scenarioId: string }
   | { kind: "scenario_save_new"; label: string; sub: string; icon: string };
 
 function OntologySearchBox({
   onNavigate,
+  onSetView,
   scenarios,
   activeId,
   onLoadScenario,
@@ -2121,6 +2137,7 @@ function OntologySearchBox({
   onSaveAs,
 }: {
   onNavigate: (path: string) => void;
+  onSetView?: (v: "strategy" | "bh") => void;
   scenarios: ScenarioSnapshot[];
   activeId: string | null;
   onLoadScenario: (id: string) => void;
@@ -2170,7 +2187,7 @@ function OntologySearchBox({
           it.sub.toLowerCase().includes(term) ||
           it.keywords.some(k => k.includes(term))
         ) {
-          hits.push({ kind: "page", label: it.label, sub: it.sub, icon: it.icon, path: it.path });
+          hits.push({ kind: "page", label: it.label, sub: it.sub, icon: it.icon, path: it.path, viewSwap: it.viewSwap });
         }
       }
     }
@@ -2303,11 +2320,16 @@ function OntologySearchBox({
                 </button>
               );
             }
-            // page
+            // page (path navigate VEYA inline viewSwap)
+            const handlePageClick = () => {
+              if (m.viewSwap && onSetView) onSetView(m.viewSwap);
+              else if (m.path) onNavigate(m.path);
+              setOpen(false); setQ("");
+            };
             return (
               <button
-                key={`p-${m.path}`}
-                onClick={() => { onNavigate(m.path); setOpen(false); setQ(""); }}
+                key={`p-${m.path ?? m.viewSwap ?? m.label}`}
+                onClick={handlePageClick}
                 style={{
                   display: "flex", flexDirection: "column", alignItems: "flex-start",
                   width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
@@ -2333,9 +2355,18 @@ function OntologySearchBox({
 /* ════════════════════════════════════════════════════════════════════
    PAGE
    ──────────────────────────────────────────────────────────────────── */
+const VIEW_MODE_KEY = "griseus_ontology_view_v1";
+
 export default function StrategyCanvasPage() {
   const qc = useQueryClient();
   const [, navigate] = useLocation();
+
+  // /ontology sayfasında inline canvas swap — strategy ↔ bh (BhOntologyPage embedded)
+  const [viewMode, setViewMode] = useState<"strategy" | "bh">(() => {
+    const saved = localStorage.getItem(VIEW_MODE_KEY);
+    return saved === "bh" ? "bh" : "strategy";
+  });
+  useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); }, [viewMode]);
 
   const [orders, setOrders] = useState<Order[]>(() => safeParse<Order[]>(localStorage.getItem(ORDERS_KEY), []));
   useEffect(() => { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); }, [orders]);
@@ -2818,6 +2849,12 @@ export default function StrategyCanvasPage() {
     }}>
       <TopNav connected={connected} />
 
+      {/* Inline canvas swap — BH Grupları arama'dan tıklanınca aynı /ontology sayfasında
+          BhOntologyPage'i embedded modda gösterir; URL değişmez. */}
+      {viewMode === "bh" ? (
+        <BhOntologyPage embedded onBackToStrategy={() => setViewMode("strategy")} />
+      ) : (<>
+
       {/* Header */}
       <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, borderBottom: `1px solid ${C.edgeFaint}` }}>
         <div style={{ flex: "0 0 auto" }}>
@@ -2842,6 +2879,7 @@ export default function StrategyCanvasPage() {
         </div>
         <OntologySearchBox
           onNavigate={navigate}
+          onSetView={setViewMode}
           scenarios={scenarios}
           activeId={activeScenarioId}
           onLoadScenario={loadScenario}
@@ -2872,7 +2910,7 @@ export default function StrategyCanvasPage() {
               style={scenariosOpen ? hdrBtnAccent : hdrBtnGhost}
               title="Tüm kayıtlı senaryoları aç"
             >
-              📂 Senaryolarım{scenarios.length > 0 ? ` (${scenarios.length})` : ""}
+              Senaryolarım{scenarios.length > 0 ? ` (${scenarios.length})` : ""}
             </button>
             {scenariosOpen && (
               <div style={{
@@ -2929,7 +2967,7 @@ export default function StrategyCanvasPage() {
                           <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>
                             {s.payload.orders.length} sipariş
                             {(s.payload.customers ?? []).length > 0 && ` · ${(s.payload.customers ?? []).length} müşteri`}
-                            {(s.payload.flaskItems ?? []).length > 0 && ` · 🧪 ${(s.payload.flaskItems ?? []).length}`}
+                            {(s.payload.flaskItems ?? []).length > 0 && ` · tepkime ${(s.payload.flaskItems ?? []).length}`}
                             {" · "}{date}
                           </div>
                         </div>
@@ -2979,7 +3017,7 @@ export default function StrategyCanvasPage() {
             style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
             title="Tepkime denklemi (siparişleri sürükle veya tek tıkla doldur, AI iki senaryo üretir)"
           >
-            🧪 Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
+            Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
           </button>
           <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Sipariş</button>
         </div>
@@ -3167,6 +3205,8 @@ export default function StrategyCanvasPage() {
           onClose={() => setReactionResult(null)}
         />
       )}
+
+      </>)}
     </div>
   );
 }
