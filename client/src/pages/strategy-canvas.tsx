@@ -1581,6 +1581,390 @@ function CustomersPanel({
   );
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   CATEGORIES PANEL — Elektrikli / Gazlı daireleri, click → filter products
+   ──────────────────────────────────────────────────────────────────── */
+function CategoriesPanel({
+  pos, activeCategory, onMove, onSelect, getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  activeCategory: "elektrikli" | "gazlı" | null;
+  onMove: (xy: XY) => void;
+  onSelect: (cat: "elektrikli" | "gazlı" | null) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const W = 220, H = 290;
+  return (
+    <DragNode pos={pos} width={W} height={H} onDrag={onMove}
+      getMouseInWorld={getMouseInWorld} viewport={viewport}>
+      <div style={{
+        width: W, height: H, background: C.panelBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`, borderRadius: 12, padding: 14,
+        fontFamily: mono, display: "flex", flexDirection: "column", gap: 10,
+        boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+      }}>
+        <div>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent }}>◇ KATEGORİ</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>Cihaz tipi</div>
+        </div>
+        <div onPointerDown={(e) => e.stopPropagation()}
+          style={{ display: "flex", flexDirection: "column", gap: 8, alignItems: "center" }}>
+          {(["elektrikli", "gazlı"] as const).map(cat => {
+            const active = activeCategory === cat;
+            const accent = cat === "elektrikli" ? C.ok : C.info;
+            return (
+              <div
+                key={cat}
+                onClick={(e) => { e.stopPropagation(); onSelect(active ? null : cat); }}
+                style={{
+                  width: 90, height: 90, borderRadius: "50%",
+                  background: active ? `${accent}33` : "rgba(255,255,255,0.06)",
+                  border: `2px solid ${active ? accent : C.panelEdge}`,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  cursor: "pointer", transition: "all 0.15s",
+                }}
+              >
+                <div style={{ fontSize: 22 }}>{cat === "elektrikli" ? "⚡" : "♨"}</div>
+                <div style={{ fontSize: 11, fontWeight: 700, marginTop: 2, color: active ? accent : C.cardInk }}>
+                  {cat === "elektrikli" ? "Elektrikli" : "Gazlı"}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+        {activeCategory && (
+          <div style={{ fontSize: 9, color: C.cardSub, textAlign: "center" }}>
+            ürünler filtrelendi · iptal için tekrar tıkla
+          </div>
+        )}
+      </div>
+    </DragNode>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PRODUCTS PALETTE — bütün SKU'lar kart olarak, click → sipariş oluştur
+   ──────────────────────────────────────────────────────────────────── */
+function ProductsPalette({
+  pos, activeCategory, orders, onMove, onCreateOrderForSku, getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  activeCategory: "elektrikli" | "gazlı" | null;
+  orders: Order[];
+  onMove: (xy: XY) => void;
+  onCreateOrderForSku: (sku: string) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  // SKU → category heuristic
+  const skuCategory = (sku: string): "elektrikli" | "gazlı" =>
+    sku.startsWith("GSS") ? "gazlı" : "elektrikli";
+
+  const filtered = ALL_SKUS.filter(sku =>
+    !activeCategory || skuCategory(sku) === activeCategory,
+  );
+
+  const orderCountBySku: Record<string, number> = {};
+  for (const o of orders) orderCountBySku[o.sku] = (orderCountBySku[o.sku] ?? 0) + 1;
+
+  const W = 230;
+  const rowH = 38;
+  const H = 60 + filtered.length * (rowH + 4);
+
+  return (
+    <DragNode pos={pos} width={W} height={H} onDrag={onMove}
+      getMouseInWorld={getMouseInWorld} viewport={viewport}>
+      <div style={{
+        width: W, height: H, background: C.panelBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`, borderRadius: 12, padding: 12,
+        fontFamily: mono, boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ marginBottom: 8 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent }}>◇ ÜRÜNLER</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>
+            Mamul kataloğu
+            <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 400, marginLeft: 6 }}>
+              ({filtered.length}{activeCategory && `/${ALL_SKUS.length}`})
+            </span>
+          </div>
+        </div>
+        <div onPointerDown={(e) => e.stopPropagation()}
+          style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+          {filtered.map(sku => {
+            const cat = skuCategory(sku);
+            const accent = cat === "elektrikli" ? C.ok : C.info;
+            const count = orderCountBySku[sku] ?? 0;
+            return (
+              <div
+                key={sku}
+                onClick={(e) => { e.stopPropagation(); onCreateOrderForSku(sku); }}
+                style={{
+                  height: rowH, padding: "0 10px",
+                  display: "flex", alignItems: "center", gap: 8,
+                  borderRadius: 6, cursor: "pointer",
+                  background: "rgba(255,255,255,0.04)",
+                  border: `1px solid ${count > 0 ? `${accent}66` : C.panelEdge}`,
+                  borderLeft: `3px solid ${accent}`,
+                  transition: "background 0.1s",
+                }}
+                onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+                onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+              >
+                <span style={{ fontSize: 12 }}>{cat === "elektrikli" ? "⚡" : "♨"}</span>
+                <span style={{ fontSize: 12, fontWeight: 700, flex: 1 }}>{sku}</span>
+                {count > 0 && (
+                  <span style={{
+                    background: `${accent}22`, color: accent,
+                    padding: "1px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700,
+                  }}>{count}</span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+        <div style={{ fontSize: 9, color: C.cardSub, textAlign: "center", marginTop: 8 }}>
+          tıkla → o SKU ile sipariş aç
+        </div>
+      </div>
+    </DragNode>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   PRODUCTION STAGES — Üretim / Depo / Satış halkaları
+   ──────────────────────────────────────────────────────────────────── */
+function ProductionStagesPanel({
+  pos, orders, onMove, getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  orders: Order[];
+  onMove: (xy: XY) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const W = 200, H = 320;
+  // Sayım: tüm orders'ın total quantity'si — ileride üretim/depo/satış allocation
+  // detaylandırılabilir. Şimdilik proxy.
+  const totalQty = orders.reduce((s, o) => s + o.quantity, 0);
+  const productionQty = Math.round(totalQty * 0.6);
+  const depoQty = Math.round(totalQty * 0.25);
+  const salesQty = totalQty - productionQty - depoQty;
+
+  return (
+    <DragNode pos={pos} width={W} height={H} onDrag={onMove}
+      getMouseInWorld={getMouseInWorld} viewport={viewport}>
+      <div style={{
+        width: W, height: H, background: C.panelBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`, borderRadius: 12, padding: 14,
+        fontFamily: mono, boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent }}>◇ AKIŞ</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>Üretim hattı</div>
+        </div>
+        {[
+          { label: "Üretim", qty: productionQty, color: C.warn },
+          { label: "Depo",   qty: depoQty,       color: C.info },
+          { label: "Satış",  qty: salesQty,      color: C.ok   },
+        ].map(stage => (
+          <div key={stage.label} style={{
+            display: "flex", alignItems: "center", gap: 10, marginTop: 8,
+          }}>
+            <div style={{
+              width: 56, height: 56, borderRadius: "50%",
+              background: `${stage.color}22`, border: `2px solid ${stage.color}`,
+              display: "flex", alignItems: "center", justifyContent: "center",
+              fontSize: 11, fontWeight: 700, color: stage.color,
+            }}>
+              {stage.label}
+            </div>
+            <div>
+              <div style={{ fontSize: 16, fontWeight: 700 }}>{fmtTR(stage.qty)}</div>
+              <div style={{ fontSize: 9, color: C.cardSub }}>adet</div>
+            </div>
+          </div>
+        ))}
+      </div>
+    </DragNode>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   FACTORY WIDGET — fabrika ikonu (decorative + status)
+   ──────────────────────────────────────────────────────────────────── */
+function FactoryWidget({
+  pos, orderCount, onMove, getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  orderCount: number;
+  onMove: (xy: XY) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const W = 140, H = 140;
+  return (
+    <DragNode pos={pos} width={W} height={H} onDrag={onMove}
+      getMouseInWorld={getMouseInWorld} viewport={viewport}>
+      <div style={{
+        width: W, height: H, background: C.panelBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`, borderRadius: 12, padding: 12,
+        fontFamily: mono, display: "flex", flexDirection: "column",
+        alignItems: "center", justifyContent: "center", gap: 6,
+        boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ fontSize: 56, lineHeight: 1 }}>🏭</div>
+        <div style={{ fontSize: 11, fontWeight: 700 }}>Fabrika</div>
+        <div style={{ fontSize: 9, color: C.cardSub }}>
+          {orderCount === 0 ? "boşta" : `${orderCount} aktif sipariş`}
+        </div>
+      </div>
+    </DragNode>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SUPPLY EQUATION — paylaşılan bileşen + qty + lead, Tepkime'ye besleme
+   ──────────────────────────────────────────────────────────────────── */
+interface SupplyEntry { id: string; code: string; qty: number; leadDays: number; }
+
+function SupplyEquationPanel({
+  pos, entries, onMove, onChange, onApplyToFlask, getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  entries: SupplyEntry[];
+  onMove: (xy: XY) => void;
+  onChange: (next: SupplyEntry[]) => void;
+  onApplyToFlask: (entries: SupplyEntry[]) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const W = 280;
+  const rowH = 78;
+  const H = 100 + entries.length * rowH + 70;
+  const maxLead = entries.reduce((m, e) => Math.max(m, e.leadDays), 0);
+
+  return (
+    <DragNode pos={pos} width={W} height={H} onDrag={onMove}
+      getMouseInWorld={getMouseInWorld} viewport={viewport}>
+      <div style={{
+        width: W, height: H, background: C.panelBg, color: C.cardInk,
+        border: `2px solid ${C.shortfall}66`, borderRadius: 12, padding: 14,
+        fontFamily: mono, boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+      }}>
+        <div style={{ marginBottom: 10 }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.shortfall }}>◇ TEDARİK DENKLEMİ</div>
+          <div style={{ fontSize: 13, fontWeight: 700, marginTop: 2 }}>Paylaşılan bileşenler</div>
+        </div>
+
+        <div onPointerDown={(e) => e.stopPropagation()}
+          style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+          {entries.map(en => (
+            <div key={en.id} style={{
+              padding: 8, borderRadius: 8,
+              background: "rgba(255,255,255,0.04)",
+              border: `1px solid ${C.panelEdge}`,
+              display: "flex", flexDirection: "column", gap: 4,
+            }}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <div style={{
+                  width: 32, height: 32, borderRadius: "50%",
+                  background: C.cardSub, color: C.bg,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  fontSize: 14, fontWeight: 700,
+                }}>{en.code}</div>
+                <input
+                  value={en.code}
+                  onChange={(e) => onChange(entries.map(x => x.id === en.id ? { ...x, code: e.target.value } : x))}
+                  style={{
+                    flex: 1, fontSize: 11, padding: "4px 6px",
+                    background: "transparent", border: `1px solid ${C.panelEdge}`,
+                    borderRadius: 4, color: C.cardInk, fontFamily: mono,
+                  }}
+                />
+                <button
+                  onClick={() => onChange(entries.filter(x => x.id !== en.id))}
+                  style={{
+                    background: "transparent", border: "none", color: C.cardSub,
+                    cursor: "pointer", fontSize: 12, padding: "2px 4px", fontFamily: mono,
+                  }}
+                >✕</button>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+                <span style={{ fontSize: 10, color: C.cardSub, width: 30 }}>×</span>
+                <input
+                  type="number" min={1}
+                  value={en.qty}
+                  onChange={(e) => onChange(entries.map(x => x.id === en.id ? { ...x, qty: parseInt(e.target.value, 10) || 0 } : x))}
+                  style={{
+                    flex: 1, fontSize: 11, padding: "4px 6px",
+                    background: "transparent", border: `1px solid ${C.panelEdge}`,
+                    borderRadius: 4, color: C.cardInk, fontFamily: mono, textAlign: "right",
+                  }}
+                />
+                <span style={{ fontSize: 10, color: C.cardSub }}>→</span>
+                <input
+                  type="number" min={1}
+                  value={en.leadDays}
+                  onChange={(e) => onChange(entries.map(x => x.id === en.id ? { ...x, leadDays: parseInt(e.target.value, 10) || 0 } : x))}
+                  style={{
+                    width: 50, fontSize: 11, padding: "4px 6px",
+                    background: "transparent", border: `1px solid ${C.panelEdge}`,
+                    borderRadius: 4, color: C.cardInk, fontFamily: mono, textAlign: "right",
+                  }}
+                />
+                <span style={{ fontSize: 10, color: C.cardSub }}>g</span>
+              </div>
+            </div>
+          ))}
+        </div>
+
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            const id = `sup_${Date.now().toString(36)}`;
+            onChange([...entries, { id, code: "?", qty: 100, leadDays: 14 }]);
+          }}
+          style={{
+            width: "100%", padding: "5px 8px", marginTop: 6,
+            background: "transparent", border: `1px dashed ${C.cardSub}66`,
+            borderRadius: 5, color: C.cardSub,
+            fontSize: 10, fontFamily: mono, cursor: "pointer",
+          }}
+        >
+          + bileşen ekle
+        </button>
+
+        <div style={{
+          marginTop: 8, padding: "8px 10px",
+          background: `${C.shortfall}22`, border: `1px solid ${C.shortfall}66`,
+          borderRadius: 6, display: "flex", alignItems: "center", justifyContent: "space-between",
+        }}>
+          <span style={{ fontSize: 10, color: C.cardSub }}>max tedarik</span>
+          <span style={{ fontSize: 14, fontWeight: 700, color: C.shortfall }}>{maxLead} gün</span>
+        </div>
+
+        <button
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onApplyToFlask(entries); }}
+          disabled={entries.length === 0}
+          style={{
+            width: "100%", padding: "6px 10px", marginTop: 6,
+            background: entries.length === 0 ? "transparent" : C.accent,
+            border: `1px solid ${entries.length === 0 ? C.panelEdge : C.accent}`,
+            borderRadius: 6, color: entries.length === 0 ? C.cardSub : "#fff",
+            fontSize: 11, fontFamily: mono, fontWeight: 700,
+            cursor: entries.length === 0 ? "not-allowed" : "pointer",
+          }}
+        >
+          🧪 Tepkime'ye uygula
+        </button>
+      </div>
+    </DragNode>
+  );
+}
+
 function OrderModal({
   initial, onClose, onSave, customers, prefilledCustomer, onAutoCreateCustomer,
 }: {
@@ -2022,13 +2406,46 @@ export default function StrategyCanvasPage() {
   // Sipariş oluştururken müşteri ön-seçimi
   const [pendingNewOrderCustomer, setPendingNewOrderCustomer] = useState<string | null>(null);
 
-  // Customers panel position (free-form)
+  // Free-form widget pozisyonları
   const [customersPanelPos, setCustomersPanelPos] = useState<XY>(() =>
     safeParse<XY>(localStorage.getItem("griseus_customers_panel_pos_v1"), { x: -300, y: 60 }),
   );
-  useEffect(() => {
-    localStorage.setItem("griseus_customers_panel_pos_v1", JSON.stringify(customersPanelPos));
-  }, [customersPanelPos]);
+  useEffect(() => { localStorage.setItem("griseus_customers_panel_pos_v1", JSON.stringify(customersPanelPos)); }, [customersPanelPos]);
+
+  const [categoriesPos, setCategoriesPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_categories_pos_v1"), { x: -40, y: 60 }),
+  );
+  useEffect(() => { localStorage.setItem("griseus_categories_pos_v1", JSON.stringify(categoriesPos)); }, [categoriesPos]);
+
+  const [productsPos, setProductsPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_products_pos_v1"), { x: 220, y: 60 }),
+  );
+  useEffect(() => { localStorage.setItem("griseus_products_pos_v1", JSON.stringify(productsPos)); }, [productsPos]);
+
+  const [stagesPos, setStagesPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_stages_pos_v1"), { x: 480, y: 60 }),
+  );
+  useEffect(() => { localStorage.setItem("griseus_stages_pos_v1", JSON.stringify(stagesPos)); }, [stagesPos]);
+
+  const [factoryPos, setFactoryPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_factory_pos_v1"), { x: 700, y: 60 }),
+  );
+  useEffect(() => { localStorage.setItem("griseus_factory_pos_v1", JSON.stringify(factoryPos)); }, [factoryPos]);
+
+  const [supplyPos, setSupplyPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_supply_pos_v1"), { x: 880, y: 60 }),
+  );
+  useEffect(() => { localStorage.setItem("griseus_supply_pos_v1", JSON.stringify(supplyPos)); }, [supplyPos]);
+
+  const [supplyEntries, setSupplyEntries] = useState<SupplyEntry[]>(() =>
+    safeParse<SupplyEntry[]>(localStorage.getItem("griseus_supply_entries_v1"), [
+      { id: "sup_a", code: "a", qty: 300, leadDays: 15 },
+      { id: "sup_b", code: "b", qty: 180, leadDays: 12 },
+    ]),
+  );
+  useEffect(() => { localStorage.setItem("griseus_supply_entries_v1", JSON.stringify(supplyEntries)); }, [supplyEntries]);
+
+  const [activeCategory, setActiveCategory] = useState<"elektrikli" | "gazlı" | null>(null);
 
   const handleCreateOrderFor = useCallback((customerLabel: string) => {
     setPendingNewOrderCustomer(customerLabel);
@@ -2586,7 +3003,7 @@ export default function StrategyCanvasPage() {
           touchAction: "none", userSelect: "none",
         }}
       >
-        {/* Customers panel — her zaman görünür (boş canvas'ta da örnek müşteriler vardır) */}
+        {/* ─── Workbench widget'ları (her zaman görünür, draggable) ─── */}
         <CustomersPanel
           pos={customersPanelPos}
           customers={customers}
@@ -2603,16 +3020,67 @@ export default function StrategyCanvasPage() {
           getMouseInWorld={getMouseInWorld}
           viewport={viewport}
         />
+        <CategoriesPanel
+          pos={categoriesPos}
+          activeCategory={activeCategory}
+          onMove={setCategoriesPos}
+          onSelect={setActiveCategory}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+        <ProductsPalette
+          pos={productsPos}
+          activeCategory={activeCategory}
+          orders={orders}
+          onMove={setProductsPos}
+          onCreateOrderForSku={(sku) => {
+            const o: Order = {
+              id: `o_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+              customer: "",
+              sku,
+              quantity: 100,
+              deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+              createdAt: Date.now(),
+            };
+            setEditing(o);
+            setModalOpen(true);
+          }}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+        <ProductionStagesPanel
+          pos={stagesPos}
+          orders={orders}
+          onMove={setStagesPos}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+        <FactoryWidget
+          pos={factoryPos}
+          orderCount={orders.length}
+          onMove={setFactoryPos}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+        <SupplyEquationPanel
+          pos={supplyPos}
+          entries={supplyEntries}
+          onMove={setSupplyPos}
+          onChange={setSupplyEntries}
+          onApplyToFlask={(entries) => {
+            setFlaskSupplies(entries.map(e => ({
+              id: e.id,
+              componentCode: e.code,
+              qty: e.qty,
+              leadDays: e.leadDays,
+            })));
+            setFlaskOpen(true);
+          }}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
 
-        {orders.length === 0 ? (
-          <div style={{
-            display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
-            height: "100%", color: C.mid, gap: 12, pointerEvents: "auto",
-          }}>
-            <div style={{ fontSize: 14 }}>Solda örnek müşteriler — birine tıkla, "+ sipariş ekle" ile başla</div>
-            <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Genel sipariş</button>
-          </div>
-        ) : (
+        {orders.length === 0 ? null : (
           <>
             <EdgesLayer
               orders={orders}

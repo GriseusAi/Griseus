@@ -316,8 +316,18 @@ function saveLayout(layout: Record<string, { x: number; y: number }>) {
 
 /* ═══════════════════════════════════════════════════════════
    COMPONENT
+   embedded: parent (ör. StrategyCanvasPage) zaten TopNav render ediyorsa
+             true geç → kendi TopNav'ımızı atla.
+   onBackToStrategy: embedded modda "← STRATEJİ" butonu navigate yerine
+                     callback'i çağırır (URL değişmez).
    ═══════════════════════════════════════════════════════════ */
-export default function BhOntologyPage() {
+export default function BhOntologyPage({
+  embedded = false,
+  onBackToStrategy,
+}: {
+  embedded?: boolean;
+  onBackToStrategy?: () => void;
+} = {}) {
   const qc = useQueryClient();
 
   /* 4 BH BOM + capacity + intelligence parallel fetch */
@@ -1006,7 +1016,7 @@ export default function BhOntologyPage() {
           width: 20px; height: 20px; cursor: grab;
         }
       `}</style>
-      <TopNav connected={connected} />
+      {!embedded && <TopNav connected={connected} />}
 
       {/* Header */}
       <div style={{ padding: "16px 24px", borderBottom: `1px solid ${C.border}`, display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -1154,7 +1164,7 @@ export default function BhOntologyPage() {
         </div>
 
         {/* Strateji butonu → freeform canvas (artık ontology home) */}
-        <button onClick={() => navigate("/ontology")} style={{
+        <button onClick={() => { if (onBackToStrategy) onBackToStrategy(); else navigate("/ontology"); }} style={{
           padding: "6px 12px", borderRadius: 16, cursor: "pointer",
           fontSize: 10, fontFamily: mono, fontWeight: 500, letterSpacing: 1,
           background: C.variableDim, border: `1px solid ${C.variableBorder}`,
