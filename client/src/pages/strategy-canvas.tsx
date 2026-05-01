@@ -2165,6 +2165,20 @@ export default function StrategyCanvasPage() {
     setReactionResult(null);
     setActiveScenarioId(null);
   }, [orders.length, activeScenario, overwriteActive, promptSaveAs]);
+
+  // "Senaryolarım" dropdown — header'da prominent buton
+  const [scenariosOpen, setScenariosOpen] = useState(false);
+  const scenariosRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!scenariosOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (scenariosRef.current && !scenariosRef.current.contains(e.target as Node)) {
+        setScenariosOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [scenariosOpen]);
   const FLASK_COLORS = ["#3f8f5b", "#3d6fb0", "#c96442", "#b8761c", "#8b5cf6", "#0891b2", "#dc2626"];
   const addOrderToFlask = useCallback((o: Order) => {
     setFlaskItems(prev => {
@@ -2435,6 +2449,114 @@ export default function StrategyCanvasPage() {
               ⎘ farklı kaydet
             </button>
           )}
+          <div ref={scenariosRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setScenariosOpen(o => !o)}
+              style={scenariosOpen ? hdrBtnAccent : hdrBtnGhost}
+              title="Tüm kayıtlı senaryoları aç"
+            >
+              📂 Senaryolarım{scenarios.length > 0 ? ` (${scenarios.length})` : ""}
+            </button>
+            {scenariosOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70,
+                width: 360, maxHeight: 480, overflowY: "auto",
+                background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
+                borderRadius: 10, boxShadow: "0 12px 32px rgba(15,23,42,0.18)",
+                padding: 6,
+              }}>
+                <div style={{
+                  padding: "8px 10px", fontSize: 9, color: C.mid, letterSpacing: 1.5,
+                  fontFamily: mono, borderBottom: `1px solid ${C.edgeFaint}`, marginBottom: 4,
+                }}>
+                  KAYITLI SENARYOLAR · {scenarios.length}
+                </div>
+                {scenarios.length === 0 ? (
+                  <div style={{ padding: "16px 12px", fontSize: 12, color: C.mid, fontFamily: mono, textAlign: "center", lineHeight: 1.5 }}>
+                    Henüz senaryo yok.<br />
+                    Üstte "◈ senaryo yap" butonuna bas — şu anki canvas senaryo olarak kaydedilir.
+                  </div>
+                ) : [...scenarios]
+                  .sort((a, b) => b.updatedAt - a.updatedAt)
+                  .map(s => {
+                    const isActive = s.id === activeScenarioId;
+                    const date = new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" });
+                    return (
+                      <div
+                        key={s.id}
+                        style={{
+                          display: "flex", alignItems: "center", gap: 8,
+                          padding: "8px 10px", borderRadius: 6,
+                          background: isActive ? C.accentSoft : "transparent",
+                          cursor: "pointer", marginBottom: 2,
+                        }}
+                        onClick={() => { loadScenario(s.id); setScenariosOpen(false); }}
+                        onMouseEnter={(e) => { if (!isActive) e.currentTarget.style.background = "#f5f3ec"; }}
+                        onMouseLeave={(e) => { if (!isActive) e.currentTarget.style.background = "transparent"; }}
+                      >
+                        <span style={{ color: C.accent, fontSize: 14 }}>◇</span>
+                        <div style={{ flex: 1, minWidth: 0 }}>
+                          <div style={{
+                            fontSize: 13, fontWeight: 600, color: C.ink, fontFamily: mono,
+                            overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap",
+                          }}>
+                            {s.name}
+                            {isActive && (
+                              <span style={{
+                                marginLeft: 6, fontSize: 9, padding: "1px 5px",
+                                background: C.accent, color: "#fff", borderRadius: 3,
+                                letterSpacing: 0.5, fontWeight: 700,
+                              }}>AÇIK</span>
+                            )}
+                          </div>
+                          <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>
+                            {s.payload.orders.length} sipariş
+                            {(s.payload.customers ?? []).length > 0 && ` · ${(s.payload.customers ?? []).length} müşteri`}
+                            {(s.payload.flaskItems ?? []).length > 0 && ` · 🧪 ${(s.payload.flaskItems ?? []).length}`}
+                            {" · "}{date}
+                          </div>
+                        </div>
+                        <button
+                          title="kopya"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            const newName = window.prompt("Kopya adı:", `${s.name} (kopya)`);
+                            if (!newName) return;
+                            const id = `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+                            const copy: ScenarioSnapshot = {
+                              ...s, id, name: newName,
+                              createdAt: Date.now(), updatedAt: Date.now(),
+                            };
+                            setScenarios(prev => [...prev, copy]);
+                          }}
+                          style={{
+                            background: "transparent", border: "none", color: C.mid,
+                            cursor: "pointer", padding: "4px 6px", fontFamily: mono, fontSize: 12,
+                          }}
+                        >⎘</button>
+                        <button
+                          title="sil"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (confirm(`"${s.name}" senaryosunu sil?`)) deleteScenarioById(s.id);
+                          }}
+                          style={{
+                            background: "transparent", border: "none", color: C.mid,
+                            cursor: "pointer", padding: "4px 6px", fontFamily: mono, fontSize: 12,
+                          }}
+                        >✕</button>
+                      </div>
+                    );
+                  })}
+                <div style={{
+                  padding: "8px 10px", fontSize: 10, color: C.mid, fontFamily: mono,
+                  borderTop: `1px solid ${C.edgeFaint}`, marginTop: 4, lineHeight: 1.5,
+                }}>
+                  💡 Arama kutusuna boş tıklayınca da liste açılır
+                </div>
+              </div>
+            )}
+          </div>
           <button
             onClick={toggleFlaskOpen}
             style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
