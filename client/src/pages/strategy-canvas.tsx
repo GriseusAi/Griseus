@@ -82,6 +82,23 @@ const ORDERS_KEY = "griseus_strategy_orders_v1";
 const POS_KEY = "griseus_strategy_positions_v3";
 const VIEW_KEY = "griseus_strategy_viewport_v2";
 const EXPAND_KEY = "griseus_strategy_expanded_v1";
+const SCENARIOS_KEY = "griseus_scenarios_v1";
+const ACTIVE_SCENARIO_KEY = "griseus_scenario_active_v1";
+
+interface ScenarioSnapshot {
+  id: string;
+  name: string;
+  description?: string;
+  createdAt: number;
+  updatedAt: number;
+  payload: {
+    orders: Order[];
+    posOverrides: PositionOverrides;
+    expandedSubs: Record<string, string[]>;
+    flaskItems?: FlaskItem[];
+    flaskSupplies?: SupplyItem[];
+  };
+}
 
 const safeParse = <T,>(raw: string | null, fallback: T): T => {
   if (!raw) return fallback;
@@ -1333,7 +1350,26 @@ const ONTOLOGY_SEARCH_CATALOG: SearchEntry[] = [
   },
 ];
 
-function OntologySearchBox({ onNavigate }: { onNavigate: (path: string) => void }) {
+type SearchHit =
+  | { kind: "page"; label: string; sub: string; icon: string; path: string }
+  | { kind: "scenario"; label: string; sub: string; icon: string; scenarioId: string }
+  | { kind: "scenario_save_new"; label: string; sub: string; icon: string };
+
+function OntologySearchBox({
+  onNavigate,
+  scenarios,
+  activeId,
+  onLoadScenario,
+  onDeleteScenario,
+  onSaveAs,
+}: {
+  onNavigate: (path: string) => void;
+  scenarios: ScenarioSnapshot[];
+  activeId: string | null;
+  onLoadScenario: (id: string) => void;
+  onDeleteScenario: (id: string) => void;
+  onSaveAs: (name: string) => void;
+}) {
   const [q, setQ] = useState("");
   const [open, setOpen] = useState(false);
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -1346,23 +1382,78 @@ function OntologySearchBox({ onNavigate }: { onNavigate: (path: string) => void 
     return () => document.removeEventListener("mousedown", onClick);
   }, []);
 
-  const matches = useMemo(() => {
+  const matches = useMemo<SearchHit[]>(() => {
     const term = q.trim().toLowerCase();
-    if (!term) return [];
-    return ONTOLOGY_SEARCH_CATALOG.filter(it =>
-      it.label.toLowerCase().includes(term) ||
-      it.sub.toLowerCase().includes(term) ||
-      it.keywords.some(k => k.includes(term)),
-    );
-  }, [q]);
+    const hits: SearchHit[] = [];
+
+    // Senaryolar — boş arama da listelensin (en yenisi üstte)
+    const scs = [...scenarios].sort((a, b) => b.updatedAt - a.updatedAt);
+    for (const s of scs) {
+      const matchTerm =
+        !term ||
+        s.name.toLowerCase().includes(term) ||
+        (s.description ?? "").toLowerCase().includes(term);
+      if (!matchTerm) continue;
+      const orderCount = s.payload.orders.length;
+      const date = new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" });
+      hits.push({
+        kind: "scenario",
+        label: s.name + (s.id === activeId ? "  (açık)" : ""),
+        sub: s.description ?? `${orderCount} sipariş · ${date}`,
+        icon: "◇",
+        scenarioId: s.id,
+      });
+    }
+
+    // Sayfa kataloğu (BH gibi)
+    if (term) {
+      for (const it of ONTOLOGY_SEARCH_CATALOG) {
+        if (
+          it.label.toLowerCase().includes(term) ||
+          it.sub.toLowerCase().includes(term) ||
+          it.keywords.some(k => k.includes(term))
+        ) {
+          hits.push({ kind: "page", label: it.label, sub: it.sub, icon: it.icon, path: it.path });
+        }
+      }
+    }
+
+    // "Yeni senaryo olarak kaydet" — kullanıcı yeni isim yazmışsa
+    if (term && term.length >= 2 && !scs.some(s => s.name.toLowerCase() === term)) {
+      hits.push({
+        kind: "scenario_save_new",
+        label: `"${q}" olarak kaydet`,
+        sub: "yeni senaryo · mevcut canvas hali ile",
+        icon: "+",
+      });
+    }
+
+    return hits;
+  }, [q, scenarios, activeId]);
+
+  const placeholder = scenarios.length > 0
+    ? `Senaryolarda ara (${scenarios.length}) veya yeni isim yaz...`
+    : "Yeni senaryo adı yaz veya ara...";
 
   return (
-    <div ref={wrapRef} style={{ position: "relative", flex: "1 1 320px", maxWidth: 460 }}>
+    <div ref={wrapRef} style={{ position: "relative", flex: "1 1 320px", maxWidth: 480 }}>
       <input
         value={q}
         onChange={e => { setQ(e.target.value); setOpen(true); }}
         onFocus={() => setOpen(true)}
-        placeholder="Ara: BH grupları, ontoloji, varlık felsefesi…"
+        onKeyDown={(e) => {
+          if (e.key === "Enter" && q.trim()) {
+            const exact = scenarios.find(s => s.name.toLowerCase() === q.trim().toLowerCase());
+            if (exact) {
+              onLoadScenario(exact.id);
+            } else {
+              onSaveAs(q.trim());
+            }
+            setOpen(false);
+            setQ("");
+          }
+        }}
+        placeholder={placeholder}
         style={{
           width: "100%", padding: "9px 12px 9px 32px",
           background: "#ffffff",
@@ -1382,33 +1473,100 @@ function OntologySearchBox({ onNavigate }: { onNavigate: (path: string) => void 
           fontSize: 14, padding: "4px 8px", fontFamily: mono,
         }}>✕</button>
       )}
-      {open && q.trim() && (
+      {open && (
         <div style={{
           position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 60,
           background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
           borderRadius: 8, boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
-          padding: 4,
+          padding: 4, maxHeight: 360, overflowY: "auto",
         }}>
           {matches.length === 0 ? (
             <div style={{ padding: "10px 12px", fontSize: 11, color: C.mid, fontFamily: mono }}>
-              Sonuç yok — "BH grupları" deneyin
+              {scenarios.length === 0
+                ? "Henüz senaryo yok. İsim yazıp Enter'a bas → kaydedilir."
+                : "Sonuç yok"}
             </div>
-          ) : matches.map(m => (
-            <button key={m.path} onClick={() => { onNavigate(m.path); setOpen(false); setQ(""); }}
-              style={{
-                display: "flex", flexDirection: "column", alignItems: "flex-start",
-                width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
-                background: "transparent", border: "none", textAlign: "left",
-              }}
-              onMouseEnter={e => (e.currentTarget.style.background = C.accentSoft)}
-              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
-              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.ink, fontFamily: mono }}>
-                <span style={{ color: C.accent }}>{m.icon}</span>
-                <span>{m.label}</span>
-              </div>
-              <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>{m.sub}</div>
-            </button>
-          ))}
+          ) : matches.map((m, idx) => {
+            if (m.kind === "scenario") {
+              return (
+                <div
+                  key={`s-${m.scenarioId}`}
+                  style={{
+                    display: "flex", alignItems: "center",
+                    width: "100%", padding: "8px 10px", borderRadius: 6,
+                    background: m.scenarioId === activeId ? C.accentSoft : "transparent",
+                    cursor: "pointer", gap: 8,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = C.accentSoft)}
+                  onMouseLeave={e => (e.currentTarget.style.background = m.scenarioId === activeId ? C.accentSoft : "transparent")}
+                  onClick={() => { onLoadScenario(m.scenarioId); setOpen(false); setQ(""); }}
+                >
+                  <div style={{ display: "flex", flexDirection: "column", flex: 1, alignItems: "flex-start" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.ink, fontFamily: mono }}>
+                      <span style={{ color: C.accent }}>{m.icon}</span>
+                      <span>{m.label}</span>
+                    </div>
+                    <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>{m.sub}</div>
+                  </div>
+                  <button
+                    title="senaryoyu sil"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      if (confirm(`"${m.label.replace("  (açık)", "")}" senaryosunu silelim mi?`)) {
+                        onDeleteScenario(m.scenarioId);
+                      }
+                    }}
+                    style={{
+                      background: "transparent", border: "none", color: C.mid,
+                      cursor: "pointer", fontSize: 14, padding: "4px 8px", fontFamily: mono,
+                    }}
+                  >✕</button>
+                </div>
+              );
+            }
+            if (m.kind === "scenario_save_new") {
+              return (
+                <button
+                  key={`save-${idx}`}
+                  onClick={() => { onSaveAs(q.trim()); setOpen(false); setQ(""); }}
+                  style={{
+                    display: "flex", flexDirection: "column", alignItems: "flex-start",
+                    width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                    background: "transparent", border: `1px dashed ${C.accent}`, textAlign: "left",
+                    marginTop: 4,
+                  }}
+                  onMouseEnter={e => (e.currentTarget.style.background = C.accentSoft)}
+                  onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.accent, fontFamily: mono, fontWeight: 600 }}>
+                    <span>{m.icon}</span>
+                    <span>{m.label}</span>
+                  </div>
+                  <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>{m.sub}</div>
+                </button>
+              );
+            }
+            // page
+            return (
+              <button
+                key={`p-${m.path}`}
+                onClick={() => { onNavigate(m.path); setOpen(false); setQ(""); }}
+                style={{
+                  display: "flex", flexDirection: "column", alignItems: "flex-start",
+                  width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                  background: "transparent", border: "none", textAlign: "left",
+                }}
+                onMouseEnter={e => (e.currentTarget.style.background = C.accentSoft)}
+                onMouseLeave={e => (e.currentTarget.style.background = "transparent")}
+              >
+                <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.ink, fontFamily: mono }}>
+                  <span style={{ color: C.accent }}>{m.icon}</span>
+                  <span>{m.label}</span>
+                </div>
+                <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>{m.sub}</div>
+              </button>
+            );
+          })}
         </div>
       )}
     </div>
@@ -1454,6 +1612,118 @@ export default function StrategyCanvasPage() {
   const [flaskItems, setFlaskItems] = useState<FlaskItem[]>([]);
   const [flaskSupplies, setFlaskSupplies] = useState<SupplyItem[]>([]);
   const [reactionResult, setReactionResult] = useState<ReactionResult | null>(null);
+
+  /* ── Senaryo yönetimi (canvas state'i adlı kayıt olarak yaşar) ── */
+  const [scenarios, setScenarios] = useState<ScenarioSnapshot[]>(
+    () => safeParse<ScenarioSnapshot[]>(localStorage.getItem(SCENARIOS_KEY), []),
+  );
+  const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
+    () => localStorage.getItem(ACTIVE_SCENARIO_KEY),
+  );
+  useEffect(() => {
+    localStorage.setItem(SCENARIOS_KEY, JSON.stringify(scenarios));
+  }, [scenarios]);
+  useEffect(() => {
+    if (activeScenarioId) localStorage.setItem(ACTIVE_SCENARIO_KEY, activeScenarioId);
+    else localStorage.removeItem(ACTIVE_SCENARIO_KEY);
+  }, [activeScenarioId]);
+  const activeScenario = useMemo(
+    () => scenarios.find(s => s.id === activeScenarioId) ?? null,
+    [scenarios, activeScenarioId],
+  );
+
+  const buildSnapshot = useCallback(
+    (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
+      id,
+      name,
+      description: prev?.description,
+      createdAt: prev?.createdAt ?? Date.now(),
+      updatedAt: Date.now(),
+      payload: {
+        orders,
+        posOverrides,
+        expandedSubs,
+        flaskItems,
+        flaskSupplies,
+      },
+    }),
+    [orders, posOverrides, expandedSubs, flaskItems, flaskSupplies],
+  );
+
+  const saveScenarioAs = useCallback((rawName: string) => {
+    const name = rawName.trim();
+    if (!name) return;
+    const existing = scenarios.find(s => s.name.toLowerCase() === name.toLowerCase());
+    const id = existing?.id ?? `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    const snap = buildSnapshot(id, name, existing);
+    setScenarios(prev => {
+      const without = prev.filter(s => s.id !== id);
+      return [...without, snap];
+    });
+    setActiveScenarioId(id);
+  }, [scenarios, buildSnapshot]);
+
+  const overwriteActive = useCallback(() => {
+    if (!activeScenario) return false;
+    const snap = buildSnapshot(activeScenario.id, activeScenario.name, activeScenario);
+    setScenarios(prev => prev.map(s => s.id === activeScenario.id ? snap : s));
+    return true;
+  }, [activeScenario, buildSnapshot]);
+
+  const promptSaveAs = useCallback(() => {
+    const def = activeScenario?.name ?? `Senaryo ${scenarios.length + 1}`;
+    const name = window.prompt("Senaryo adı:", def);
+    if (!name) return;
+    saveScenarioAs(name);
+  }, [activeScenario, scenarios.length, saveScenarioAs]);
+
+  const handleQuickSave = useCallback(() => {
+    if (activeScenario) {
+      overwriteActive();
+    } else {
+      promptSaveAs();
+    }
+  }, [activeScenario, overwriteActive, promptSaveAs]);
+
+  const loadScenario = useCallback((id: string) => {
+    const s = scenarios.find(x => x.id === id);
+    if (!s) return;
+    setOrders(s.payload.orders);
+    setPosOverrides(s.payload.posOverrides);
+    setExpandedSubs(s.payload.expandedSubs);
+    setFlaskItems(s.payload.flaskItems ?? []);
+    setFlaskSupplies(s.payload.flaskSupplies ?? []);
+    setReactionResult(null);
+    setActiveScenarioId(id);
+    setModalOpen(false);
+    setEditing(null);
+  }, [scenarios]);
+
+  const deleteScenarioById = useCallback((id: string) => {
+    setScenarios(prev => prev.filter(s => s.id !== id));
+    if (activeScenarioId === id) setActiveScenarioId(null);
+  }, [activeScenarioId]);
+
+  const newBlankScenario = useCallback(() => {
+    if (orders.length > 0) {
+      const ok = window.confirm(
+        activeScenario
+          ? `"${activeScenario.name}" üstündeki çalışmalar kaydedilecek mi? OK = kaydet, İptal = boş canvas (kayıtsız değişiklikler kaybolur)`
+          : "Mevcut canvas'ı senaryo olarak kaydedeyim mi? OK = kaydet, İptal = boş canvas",
+      );
+      if (ok) {
+        if (activeScenario) overwriteActive();
+        else promptSaveAs();
+      }
+    }
+    setOrders([]);
+    setPosOverrides({});
+    setExpandedSubs({});
+    setFlaskItems([]);
+    setFlaskSupplies([]);
+    setReactionResult(null);
+    setActiveScenarioId(null);
+  }, [orders.length, activeScenario, overwriteActive, promptSaveAs]);
   const FLASK_COLORS = ["#3f8f5b", "#3d6fb0", "#c96442", "#b8761c", "#8b5cf6", "#0891b2", "#dc2626"];
   const addOrderToFlask = useCallback((o: Order) => {
     setFlaskItems(prev => {
@@ -1680,24 +1950,50 @@ export default function StrategyCanvasPage() {
       <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, borderBottom: `1px solid ${C.edgeFaint}` }}>
         <div style={{ flex: "0 0 auto" }}>
           <div style={{ fontSize: 9, color: C.accent, letterSpacing: 2 }}>◇ STRATEJİ CANVAS</div>
-          <div style={{ fontSize: 18, marginTop: 2, color: C.ink }}>Sipariş → Mamul → BOM → Aksiyon Kuyruğu · Canlı Domino</div>
+          <div style={{ fontSize: 18, marginTop: 2, color: C.ink, display: "flex", alignItems: "center", gap: 8 }}>
+            {activeScenario ? activeScenario.name : "Çalışma alanı"}
+            {activeScenario && (
+              <span style={{
+                fontSize: 9, padding: "2px 6px",
+                background: C.accentSoft, color: C.accent,
+                borderRadius: 4, fontFamily: mono, letterSpacing: 0.5,
+              }}>
+                AÇIK
+              </span>
+            )}
+          </div>
           <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
-            Bayi siparişi ekle · fan-out otomatik · sürükle, zoom, sığdır · stok değişince yeniden hesapla
+            {scenarios.length === 0
+              ? "Senaryolar arama kutusunda yaşar — isim yazıp Enter ile kaydet, sonra arayıp aç"
+              : `${scenarios.length} senaryo kayıtlı · arama kutusunda yaz veya yenisini başlat`}
           </div>
         </div>
-        <OntologySearchBox onNavigate={navigate} />
-        <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
+        <OntologySearchBox
+          onNavigate={navigate}
+          scenarios={scenarios}
+          activeId={activeScenarioId}
+          onLoadScenario={loadScenario}
+          onDeleteScenario={deleteScenarioById}
+          onSaveAs={saveScenarioAs}
+        />
+        <div style={{ display: "flex", gap: 8, flex: "0 0 auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button onClick={() => zoomBy(1.2)} style={hdrBtnGhost} title="Yakınlaştır">+</button>
           <button onClick={() => zoomBy(0.83)} style={hdrBtnGhost} title="Uzaklaştır">−</button>
-          <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡ sığdır</button>
-          <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲ layout</button>
+          <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡</button>
+          <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲</button>
+          <button onClick={newBlankScenario} style={hdrBtnGhost} title="Yeni boş senaryo">⊘ yeni</button>
           <button
-            onClick={() => navigate("/ontology/senaryo")}
+            onClick={handleQuickSave}
             style={hdrBtnGhost}
-            title="Müşteri senaryoları — koyu mod canlı görsel"
+            title={activeScenario ? `'${activeScenario.name}' senaryosunu güncelle` : "Şu anki canvas'ı senaryo olarak kaydet"}
           >
-            ◇ Senaryo
+            ◈ {activeScenario ? "kaydet" : "senaryo yap"}
           </button>
+          {activeScenario && (
+            <button onClick={promptSaveAs} style={hdrBtnGhost} title="Yeni isimle kopya kaydet">
+              ⎘ farklı kaydet
+            </button>
+          )}
           <button
             onClick={toggleFlaskOpen}
             style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
@@ -1705,7 +2001,7 @@ export default function StrategyCanvasPage() {
           >
             🧪 Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
           </button>
-          <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Sipariş ekle</button>
+          <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Sipariş</button>
         </div>
       </div>
 
