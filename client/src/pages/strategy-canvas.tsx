@@ -2244,7 +2244,7 @@ function SupplyEquationPanel({
 type SceneAtomKind =
   | "label" | "customer-chip" | "category" | "product" | "stage"
   | "factory" | "component" | "lead-pill" | "deadline-pill" | "flask"
-  | "supply-bracket";
+  | "supply-bracket" | "timeline-s1" | "timeline-s2";
 
 interface SceneAtom {
   id: string;
@@ -2334,6 +2334,10 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
   // Flask
   atoms.push({ id: "flask", kind: "flask", label: "Tepkime · GSA 15  GSS20P", x: 760, y: 880, w: 280, h: 100 });
 
+  // S1 ve S2 timeline kartları (alt iki kolon)
+  atoms.push({ id: "tl-s1", kind: "timeline-s1", label: "S1", x: 80,  y: 1050, w: 760, h: 380 });
+  atoms.push({ id: "tl-s2", kind: "timeline-s2", label: "S2", x: 920, y: 1050, w: 800, h: 380 });
+
   return atoms;
 }
 
@@ -2396,6 +2400,10 @@ const SCENE_EDGES: SceneEdge[] = [
   // Flask → product cards (subtle)
   { fromId: "p-GSA15",  toId: "flask", color: "rgba(16,185,129,0.4)", dashed: true, curveK: 0.6 },
   { fromId: "p-GSS20P", toId: "flask", color: "rgba(56,189,248,0.4)", dashed: true, curveK: 0.6 },
+
+  // Flask → S1, S2 timeline cards
+  { fromId: "flask", toId: "tl-s1", color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "flask", toId: "tl-s2", color: "rgba(255,255,255,0.5)", dashed: false },
 ];
 
 // Atom merkezi hesabı — port'a göre kenar noktası
@@ -2683,7 +2691,131 @@ function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
       </div>
     );
   }
+  if (atom.kind === "timeline-s1") {
+    return <TimelineCard which="S1" />;
+  }
+  if (atom.kind === "timeline-s2") {
+    return <TimelineCard which="S2" />;
+  }
   return <div>{atom.label}</div>;
+}
+
+function TimelineCard({ which }: { which: "S1" | "S2" }) {
+  const ok = which === "S2";
+  // X axis: 1 May, 15 May, 1 Haz (gün 0 → 31)
+  const ticks = [
+    { label: "1 May.",  pct: 0 },
+    { label: "15 May",  pct: 14 / 31 * 100 },
+    { label: "1 Haz.",  pct: 100 },
+  ];
+  // Bars
+  const bars = which === "S1"
+    ? [
+        { lane: 0, label: "x100 GSA 15",          startPct: 0,            widthPct: 30 / 31 * 100, dur: "30 gün", color: "#ffffff" },
+        { lane: 1, label: "a ve b tedarik süresi", startPct: 0,            widthPct: 15 / 31 * 100, dur: "15 gün", color: "#ffffff" },
+        { lane: 2, label: "x10 GSS20P",            startPct: 0,            widthPct: 2 / 31 * 100,  dur: "2 gün",  color: "#ffffff" },
+        { lane: 2, label: "x40 GSS20P",            startPct: 15 / 31 * 100, widthPct: 8 / 31 * 100, dur: "8 gün",  color: "#ef4444" },
+      ]
+    : [
+        { lane: 0, label: "x60 GSA 15",            startPct: 0,            widthPct: 18 / 31 * 100, dur: "18 gün", color: "#ffffff" },
+        { lane: 0, label: "x40 GSA 15",            startPct: 18 / 31 * 100, widthPct: 12 / 31 * 100, dur: "12 gün", color: "#ffffff" },
+        { lane: 1, label: "a ve b tedarik süresi", startPct: 0,            widthPct: 15 / 31 * 100, dur: "15 gün", color: "#ffffff" },
+        { lane: 2, label: "x50 GSS20P",            startPct: 0,            widthPct: 10 / 31 * 100, dur: "10 gün", color: "#ffffff" },
+      ];
+  const note = which === "S1"
+    ? "G2 müşterisine teslim 8 gün gecikmeli ulaşır."
+    : "AI aracılığıyla aşamalar akıllı bir şekilde üst üste oturtularak teslimler müşterilere gecikme olmadan tamamlanır.";
+
+  return (
+    <div style={{
+      width: "100%", height: "100%",
+      background: C.cardBg, color: C.cardInk,
+      borderRadius: 12, padding: "16px 18px",
+      boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+      display: "flex", flexDirection: "column", gap: 10,
+      border: ok ? "1.5px solid rgba(16,185,129,0.45)" : `1px solid ${C.panelEdge}`,
+    }}>
+      {/* Title */}
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{
+          fontSize: 22, fontWeight: 700, fontFamily: mono,
+          color: ok ? "#10b981" : C.cardInk,
+        }}>{which}</div>
+        {ok && (
+          <div style={{
+            width: 22, height: 22, borderRadius: 4,
+            background: "rgba(16,185,129,0.2)", color: "#10b981",
+            display: "flex", alignItems: "center", justifyContent: "center",
+            fontSize: 14, fontWeight: 700,
+          }}>✓</div>
+        )}
+      </div>
+
+      {/* X axis ticks */}
+      <div style={{ position: "relative", height: 14, marginLeft: 0 }}>
+        {ticks.map((t, i) => (
+          <div key={i} style={{
+            position: "absolute", left: `${t.pct}%`, top: 0,
+            transform: i === 0 ? "translateX(0)" : i === ticks.length - 1 ? "translateX(-100%)" : "translateX(-50%)",
+            fontSize: 11, color: C.cardSub, fontFamily: mono,
+          }}>{t.label}</div>
+        ))}
+      </div>
+
+      {/* Bars (3 lanes) */}
+      <div style={{ display: "flex", flexDirection: "column", gap: 12, flex: 1 }}>
+        {[0, 1, 2].map(laneIdx => {
+          const laneBars = bars.filter(b => b.lane === laneIdx);
+          return (
+            <div key={laneIdx} style={{
+              position: "relative", height: 32,
+              borderTop: `1px dashed ${C.panelEdge}`, borderBottom: `1px dashed ${C.panelEdge}`,
+            }}>
+              {/* Vertical guides at ticks */}
+              {ticks.map((t, i) => (
+                <div key={i} style={{
+                  position: "absolute", left: `${t.pct}%`, top: -2, bottom: -2, width: 1,
+                  background: "rgba(255,255,255,0.08)", pointerEvents: "none",
+                }}/>
+              ))}
+              {laneBars.map((b, i) => (
+                <div key={i} style={{
+                  position: "absolute",
+                  left: `${b.startPct}%`,
+                  width: `${b.widthPct}%`,
+                  top: 4, height: 22,
+                  background: "transparent",
+                  border: `2px solid ${b.color}`,
+                  borderRadius: 2,
+                  display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
+                  paddingTop: 1,
+                }}>
+                  <div style={{
+                    fontSize: 10, color: b.color, fontFamily: mono, fontWeight: 600,
+                    whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis",
+                    width: "100%", textAlign: "center",
+                  }}>
+                    {b.label}
+                  </div>
+                  <div style={{
+                    fontSize: 9, color: b.color, fontFamily: mono,
+                    fontStyle: "italic", marginTop: -1,
+                  }}>{b.dur}</div>
+                </div>
+              ))}
+            </div>
+          );
+        })}
+      </div>
+
+      {/* Note */}
+      <div style={{
+        fontSize: 11, color: ok ? "#10b981" : C.shortfall,
+        fontFamily: mono, lineHeight: 1.5,
+        marginTop: 4,
+      }}>{note}</div>
+    </div>
+  );
 }
 
 function OrderModal({
@@ -3255,7 +3387,7 @@ export default function StrategyCanvasPage() {
     const exists = scenarios.find(s => s.name.toLowerCase().includes("customers"));
     if (exists) return;
     const seed: ScenarioSnapshot = {
-      id: "s_customers_seed_v2",
+      id: "s_customers_seed_v3",
       name: "Customers Senaryosu",
       description: "Atomlar + kıvrımlı oklar — kullanıcının senaryo şemasının canlı kopyası",
       createdAt: Date.now(),
@@ -3277,8 +3409,11 @@ export default function StrategyCanvasPage() {
         flaskSupplies: [],
       },
     };
-    // Eski v1 seed'ini temizle (varsa) — replace
-    setScenarios(prev => [...prev.filter(s => s.id !== "s_customers_seed_v1"), seed]);
+    // Eski seed sürümlerini temizle (replace)
+    setScenarios(prev => [
+      ...prev.filter(s => s.id !== "s_customers_seed_v1" && s.id !== "s_customers_seed_v2"),
+      seed,
+    ]);
   }, [scenarios]);
 
   const buildSnapshot = useCallback(
@@ -3900,7 +4035,7 @@ export default function StrategyCanvasPage() {
         }}
       >
         {/* ─── Workbench widget'ları — sadece widgetVis bayrağı açıksa render ─── */}
-        {widgetVis.customers && (
+        {!widgetVis.scene && widgetVis.customers && (
           <CustomersPanel
             pos={customersPanelPos}
             customers={customers}
@@ -3918,7 +4053,7 @@ export default function StrategyCanvasPage() {
             viewport={viewport}
           />
         )}
-        {widgetVis.categories && (
+        {!widgetVis.scene && widgetVis.categories && (
           <CategoriesPanel
             pos={categoriesPos}
             activeCategory={activeCategory}
@@ -3928,7 +4063,7 @@ export default function StrategyCanvasPage() {
             viewport={viewport}
           />
         )}
-        {widgetVis.products && (
+        {!widgetVis.scene && widgetVis.products && (
           <ProductsPalette
             pos={productsPos}
             activeCategory={activeCategory}
@@ -3950,7 +4085,7 @@ export default function StrategyCanvasPage() {
             viewport={viewport}
           />
         )}
-        {widgetVis.stages && (
+        {!widgetVis.scene && widgetVis.stages && (
           <ProductionStagesPanel
             pos={stagesPos}
             orders={orders}
@@ -3960,7 +4095,7 @@ export default function StrategyCanvasPage() {
             viewport={viewport}
           />
         )}
-        {widgetVis.factory && (
+        {!widgetVis.scene && widgetVis.factory && (
           <FactoryWidget
             pos={factoryPos}
             orderCount={orders.length}
@@ -3977,7 +4112,7 @@ export default function StrategyCanvasPage() {
             viewport={viewport}
           />
         )}
-        {widgetVis.supply && (
+        {!widgetVis.scene && widgetVis.supply && (
           <SupplyEquationPanel
             pos={supplyPos}
             entries={supplyEntries}
