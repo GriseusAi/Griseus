@@ -3460,13 +3460,11 @@ export default function StrategyCanvasPage() {
     [scenarios, activeScenarioId],
   );
 
-  // İlk açılışta "Customers Senaryosu" yoksa seed et — kullanıcı arattığında bulsun
+  // İlk açılışta "Customers Senaryosu" sahne sürümünü garantiye al
   const customersSeedRef = useRef(false);
   useEffect(() => {
     if (customersSeedRef.current) return;
     customersSeedRef.current = true;
-    const exists = scenarios.find(s => s.name.toLowerCase().includes("customers"));
-    if (exists) return;
     const seed: ScenarioSnapshot = {
       id: "s_customers_seed_v3",
       name: "Customers Senaryosu",
@@ -3490,11 +3488,39 @@ export default function StrategyCanvasPage() {
         flaskSupplies: [],
       },
     };
-    // Eski seed sürümlerini temizle (replace)
-    setScenarios(prev => [
-      ...prev.filter(s => s.id !== "s_customers_seed_v1" && s.id !== "s_customers_seed_v2"),
-      seed,
-    ]);
+    // Migrasyon: tüm eski "customers" varyantlarını sil + yenisini koy
+    let needsActiveReset = false;
+    setScenarios(prev => {
+      const filtered = prev.filter(s => {
+        const isOld = s.id === "s_customers_seed_v1" || s.id === "s_customers_seed_v2";
+        const isCustomersByName = s.name.toLowerCase().includes("customers")
+          && s.id !== "s_customers_seed_v3";
+        if (isOld || isCustomersByName) {
+          if (s.id === activeScenarioId) needsActiveReset = true;
+          return false;
+        }
+        return true;
+      });
+      if (filtered.find(s => s.id === seed.id)) return filtered;
+      return [...filtered, seed];
+    });
+    // Aktif senaryo silinen eski v2 ise → yeni seed'i aktif yap
+    if (needsActiveReset) {
+      setTimeout(() => {
+        setActiveScenarioId(seed.id);
+        setOrders([]);
+        setPosOverrides({});
+        setExpandedSubs({});
+        setCustomers(SAMPLE_CUSTOMERS);
+        setCustomersPanelOpen(false);
+        setExpandedCustomers([]);
+        setWidgetVis(CUSTOMERS_SCENE_VIS);
+        setScenePositions({});
+        setFlaskItems([]);
+        setFlaskSupplies([]);
+        setReactionResult(null);
+      }, 50);
+    }
   }, [scenarios]);
 
   const buildSnapshot = useCallback(
