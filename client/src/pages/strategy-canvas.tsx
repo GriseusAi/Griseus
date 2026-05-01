@@ -935,8 +935,23 @@ function OrderBlock({
       {/* Atomlar — saf HTML div, transform parent içinde uniform hareket eder */}
       <DragNode pos={orderP} width={ORDER_W} height={ORDER_H}
         onDrag={(xy) => onMove(`order:${order.id}`, xy)} getMouseInWorld={getMouseInWorld} viewport={viewport}>
-        <div style={cardWrap()}>
-          <div style={cardLabel}>SİPARİŞ</div>
+        <div
+          style={cardWrap()}
+          draggable
+          onDragStart={(e) => {
+            e.dataTransfer.effectAllowed = "copy";
+            e.dataTransfer.setData(
+              "application/x-griseus-order",
+              JSON.stringify({
+                sku: order.sku,
+                qty: order.quantity,
+                deadline: order.deadline,
+                orderId: order.id,
+              }),
+            );
+          }}
+        >
+          <div style={cardLabel}>SİPARİŞ · sürükle 🧪</div>
           <div style={{ fontSize: 14, fontWeight: 700, lineHeight: 1.2 }}>{order.customer || "Bayi"}</div>
           <div style={{ fontSize: 11, color: C.cardSub, marginTop: 2 }}>
             <b>{order.deadline ? new Date(order.deadline).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "numeric" }) : "—"}</b> son tarih
@@ -1457,6 +1472,56 @@ export default function StrategyCanvasPage() {
     });
     setFlaskOpen(true);
   }, []);
+  const addAllOrdersToFlask = useCallback(() => {
+    setFlaskItems(prev => {
+      const merged = [...prev];
+      orders.forEach((o) => {
+        const exists = merged.find(x => x.sku === o.sku && x.deadline === o.deadline);
+        if (exists) {
+          exists.qty = exists.qty; // keep manual edit
+        } else {
+          const color = FLASK_COLORS[merged.length % FLASK_COLORS.length];
+          merged.push({
+            id: `o_${o.id}_${Date.now()}`,
+            sku: o.sku,
+            qty: o.quantity,
+            deadline: o.deadline || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+            color,
+          });
+        }
+      });
+      return merged;
+    });
+  }, [orders]);
+  const handleFlaskDropPayload = useCallback(
+    (p: { sku: string; qty: number; deadline: string; orderId?: string }) => {
+      setFlaskItems(prev => {
+        const exists = prev.find(x => x.sku === p.sku && x.deadline === p.deadline);
+        if (exists) {
+          return prev.map(x => x === exists ? { ...x, qty: x.qty + p.qty } : x);
+        }
+        const color = FLASK_COLORS[prev.length % FLASK_COLORS.length];
+        return [...prev, {
+          id: `d_${p.orderId ?? "x"}_${Date.now()}`,
+          sku: p.sku,
+          qty: p.qty,
+          deadline: p.deadline || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+          color,
+        }];
+      });
+    },
+    [],
+  );
+  const toggleFlaskOpen = useCallback(() => {
+    setFlaskOpen(prev => {
+      const next = !prev;
+      // İlk açılışta + flask boş + canvas'ta sipariş varsa otomatik tümünü ekle
+      if (next && flaskItems.length === 0 && orders.length > 0) {
+        addAllOrdersToFlask();
+      }
+      return next;
+    });
+  }, [flaskItems.length, orders.length, addAllOrdersToFlask]);
 
   const skuSet = useMemo(() => Array.from(new Set(orders.map(o => o.sku))), [orders]);
   const stockQueries = useQueries({
@@ -1627,9 +1692,9 @@ export default function StrategyCanvasPage() {
           <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡ sığdır</button>
           <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲ layout</button>
           <button
-            onClick={() => setFlaskOpen(o => !o)}
+            onClick={toggleFlaskOpen}
             style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
-            title="Tepkime denklemi (cihazları flask'a sürükle, AI senaryo üretir)"
+            title="Tepkime denklemi (siparişleri sürükle veya tek tıkla doldur, AI iki senaryo üretir)"
           >
             🧪 Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
           </button>
@@ -1723,6 +1788,9 @@ export default function StrategyCanvasPage() {
           result={reactionResult}
           setResult={setReactionResult}
           onClose={() => setFlaskOpen(false)}
+          pendingOrdersCount={orders.length}
+          onAddAll={addAllOrdersToFlask}
+          onDropPayload={handleFlaskDropPayload}
         />
       )}
 

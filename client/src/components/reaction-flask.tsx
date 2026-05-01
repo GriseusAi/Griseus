@@ -86,6 +86,9 @@ export function ReactionFlask({
   result,
   setResult,
   onClose,
+  pendingOrdersCount,
+  onAddAll,
+  onDropPayload,
 }: {
   items: FlaskItem[];
   setItems: (next: FlaskItem[]) => void;
@@ -94,10 +97,29 @@ export function ReactionFlask({
   result: ReactionResult | null;
   setResult: (r: ReactionResult | null) => void;
   onClose: () => void;
+  pendingOrdersCount: number;
+  onAddAll: () => void;
+  onDropPayload: (payload: { sku: string; qty: number; deadline: string; orderId?: string }) => void;
 }) {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showSupply, setShowSupply] = useState(false);
+  const [dragOver, setDragOver] = useState(false);
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setDragOver(false);
+    try {
+      const raw = e.dataTransfer.getData("application/x-griseus-order");
+      if (!raw) return;
+      const payload = JSON.parse(raw);
+      if (payload?.sku && payload?.qty && payload?.deadline) {
+        onDropPayload(payload);
+      }
+    } catch {
+      /* ignore malformed drag */
+    }
+  };
 
   const startReaction = async () => {
     if (items.length === 0) {
@@ -133,6 +155,14 @@ export function ReactionFlask({
 
   return (
     <div
+      onDragOver={(e) => {
+        if (e.dataTransfer.types.includes("application/x-griseus-order")) {
+          e.preventDefault();
+          setDragOver(true);
+        }
+      }}
+      onDragLeave={() => setDragOver(false)}
+      onDrop={handleDrop}
       style={{
         position: "fixed",
         right: 24,
@@ -143,12 +173,15 @@ export function ReactionFlask({
         display: "flex",
         flexDirection: "column",
         background: CT.surface,
-        border: `1px solid ${CT.borderStrong}`,
+        border: dragOver ? `2px dashed ${CT.accent}` : `1px solid ${CT.borderStrong}`,
         borderRadius: 14,
-        boxShadow: "0 12px 36px rgba(20,20,19,0.16)",
+        boxShadow: dragOver
+          ? `0 0 0 4px ${CT.accentSoft}, 0 12px 36px rgba(20,20,19,0.18)`
+          : "0 12px 36px rgba(20,20,19,0.16)",
         fontFamily: CT_FONT,
         color: CT.ink,
         overflow: "hidden",
+        transition: "border 0.12s, box-shadow 0.12s",
       }}
     >
       {/* Header */}
@@ -206,20 +239,45 @@ export function ReactionFlask({
         {items.length === 0 && (
           <div
             style={{
-              padding: 18,
+              padding: 16,
               border: `1px dashed ${CT.borderStrong}`,
               borderRadius: 10,
               fontSize: 11,
               color: CT.inkSub,
               textAlign: "center",
               lineHeight: 1.6,
+              display: "flex",
+              flexDirection: "column",
+              gap: 10,
+              alignItems: "center",
             }}
           >
-            Boş flask. Canvas'ta bir sipariş kartının
-            <br />
-            <span style={{ color: CT.accent, fontWeight: 600 }}>🧪+ Tepkime'ye ekle</span> butonuna bas
-            <br />
-            ya da aşağıdan elle ekle.
+            <div style={{ fontSize: 22, opacity: 0.5 }}>🧪</div>
+            <div>
+              Boş flask. Sipariş kartlarını <b style={{ color: CT.ink }}>buraya sürükle</b>,
+              <br />
+              kart üstündeki <span style={{ color: CT.accent, fontWeight: 600 }}>🧪+</span> butona bas,
+              <br />
+              ya da aşağıdaki tek tıkla doldur.
+            </div>
+            {pendingOrdersCount > 0 && (
+              <button
+                onClick={onAddAll}
+                style={{
+                  padding: "8px 14px",
+                  background: CT.accent,
+                  border: "none",
+                  borderRadius: 8,
+                  cursor: "pointer",
+                  color: "#fff",
+                  fontFamily: CT_FONT,
+                  fontSize: 11,
+                  fontWeight: 600,
+                }}
+              >
+                + Tüm siparişleri ekle ({pendingOrdersCount})
+              </button>
+            )}
           </div>
         )}
 
