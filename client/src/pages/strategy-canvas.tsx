@@ -93,16 +93,18 @@ interface WidgetVisibility {
   stages: boolean;
   factory: boolean;
   supply: boolean;
+  scene: boolean;
 }
 
 const DEFAULT_WIDGET_VIS: WidgetVisibility = {
   customers: false, categories: false, products: false,
-  stages: false, factory: false, supply: false,
+  stages: false, factory: false, supply: false, scene: false,
 };
 
-const ALL_WIDGETS_ON: WidgetVisibility = {
-  customers: true, categories: true, products: true,
-  stages: true, factory: true, supply: true,
+// Customers Senaryosu için: panel'leri değil, sahne (atomlar + kıvrımlı oklar) açar
+const CUSTOMERS_SCENE_VIS: WidgetVisibility = {
+  customers: false, categories: false, products: false,
+  stages: false, factory: false, supply: false, scene: true,
 };
 
 interface ScenarioSnapshot {
@@ -120,6 +122,7 @@ interface ScenarioSnapshot {
     expandedCustomers?: string[];
     widgetVisibility?: WidgetVisibility;
     supplyEntries?: { id: string; code: string; qty: number; leadDays: number }[];
+    scenePositions?: Record<string, XY>;
     flaskItems?: FlaskItem[];
     flaskSupplies?: SupplyItem[];
     // v2: kaydet basınca canvas görseli birebir geri gelsin
@@ -2232,6 +2235,457 @@ function SupplyEquationPanel({
   );
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   CUSTOMERS SCENE — bireysel atomlar (X stadyum kart stili) + kıvrımlı
+   bezier oklar. Customers Senaryosu için. Her atom DragNode, pozisyonlar
+   posOverrides["scene"] altında persist edilir.
+   ──────────────────────────────────────────────────────────────────── */
+
+type SceneAtomKind =
+  | "label" | "customer-chip" | "category" | "product" | "stage"
+  | "factory" | "component" | "lead-pill" | "deadline-pill" | "flask"
+  | "supply-bracket";
+
+interface SceneAtom {
+  id: string;
+  kind: SceneAtomKind;
+  label: string;
+  x: number; y: number; w: number; h: number;
+  highlight?: "green" | "blue" | null;
+  sub?: string;
+}
+
+interface SceneEdge {
+  fromId: string; toId: string;
+  color?: string;
+  dashed?: boolean;
+  label?: string;
+  curveK?: number;  // bezier control offset multiplier
+  fromPort?: "n"|"s"|"e"|"w";
+  toPort?: "n"|"s"|"e"|"w";
+}
+
+// Sahne kurulumu — kullanıcının senaryo fotoğrafına yakın layout, draggable
+function makeDefaultSceneAtoms(): SceneAtom[] {
+  // X = 0 sol, sağa doğru artar. Y = 0 üst, aşağı artar.
+  const atoms: SceneAtom[] = [];
+
+  // Customers label
+  atoms.push({ id: "lbl-customers", kind: "label", label: "Customers", x: 60, y: 380, w: 130, h: 44 });
+
+  // Customer chips (sol kolon)
+  const chipX = 240;
+  const customerSpec: Array<{ id: string; label: string; hl?: "green" | "blue" }> = [
+    { id: "c-En", label: "En" },
+    { id: "c-E3", label: "E3", hl: "green" },
+    { id: "c-E2", label: "E2" },
+    { id: "c-E1", label: "E1" },
+    { id: "c-G1", label: "G1" },
+    { id: "c-G2", label: "G2", hl: "blue" },
+    { id: "c-G3", label: "G3" },
+    { id: "c-Gn", label: "Gn" },
+  ];
+  customerSpec.forEach((c, i) => {
+    atoms.push({
+      id: c.id, kind: "customer-chip", label: c.label,
+      x: chipX, y: 100 + i * 76, w: 110, h: 40, highlight: c.hl,
+    });
+  });
+
+  // Categories (Elektrikli, Gazlı) — büyük gri daireler
+  atoms.push({ id: "cat-elektrikli", kind: "category", label: "Elektrikli", x: 540, y: 220, w: 150, h: 150 });
+  atoms.push({ id: "cat-gazli",      kind: "category", label: "Gazlı",     x: 540, y: 540, w: 150, h: 150 });
+
+  // Products
+  atoms.push({ id: "p-Z-elek",  kind: "product", label: "Z-elektrikli", x: 760, y: 130, w: 180, h: 56 });
+  atoms.push({ id: "p-GSA15",   kind: "product", label: "GSA 15", x: 760, y: 240, w: 180, h: 70, highlight: "green", sub: "a · b" });
+  atoms.push({ id: "p-T-elek",  kind: "product", label: "T-elektrikli", x: 760, y: 360, w: 180, h: 56 });
+  atoms.push({ id: "p-X-gazli", kind: "product", label: "X-gazlı", x: 760, y: 460, w: 180, h: 56 });
+  atoms.push({ id: "p-Y-gazli", kind: "product", label: "Y-gazlı", x: 760, y: 540, w: 180, h: 56 });
+  atoms.push({ id: "p-GSS20P",  kind: "product", label: "GSS20P", x: 760, y: 640, w: 180, h: 70, highlight: "blue",  sub: "a · b" });
+
+  // Deadline pills
+  atoms.push({ id: "pill-d-E3", kind: "deadline-pill", label: "Teslim = 1 Haz",  x: 540, y: 130, w: 150, h: 36, highlight: "green" });
+  atoms.push({ id: "pill-d-G2", kind: "deadline-pill", label: "Teslim = 15 Mayıs", x: 540, y: 720, w: 170, h: 36, highlight: "blue" });
+
+  // Lead pills
+  atoms.push({ id: "pill-lead-GSA15", kind: "lead-pill", label: "30 gün", x: 1080, y: 200, w: 90, h: 36, highlight: "green" });
+  atoms.push({ id: "pill-lead-GSS20P", kind: "lead-pill", label: "10 gün", x: 1080, y: 700, w: 90, h: 36, highlight: "blue" });
+
+  // Stages
+  atoms.push({ id: "stg-uretim", kind: "stage", label: "Üretim", x: 1100, y: 280, w: 130, h: 130 });
+  atoms.push({ id: "stg-depo",   kind: "stage", label: "Depo",   x: 1100, y: 440, w: 130, h: 130 });
+  atoms.push({ id: "stg-satis",  kind: "stage", label: "Satış",  x: 1100, y: 600, w: 130, h: 130 });
+
+  // Factory
+  atoms.push({ id: "fact",  kind: "factory", label: "Fabrika", x: 1340, y: 420, w: 150, h: 130 });
+
+  // Components a / b (paylaşılan)
+  atoms.push({ id: "comp-a", kind: "component", label: "a", x: 1620, y: 480, w: 80, h: 80 });
+  atoms.push({ id: "comp-b", kind: "component", label: "b", x: 1620, y: 600, w: 80, h: 80 });
+
+  // Supply pills (×300, ×180) ve lead pills (15g, 12g) ve max
+  atoms.push({ id: "sup-a-qty",  kind: "lead-pill", label: "× 300", x: 1740, y: 490, w: 80, h: 36 });
+  atoms.push({ id: "sup-a-lead", kind: "lead-pill", label: "15 gün", x: 1850, y: 490, w: 90, h: 36 });
+  atoms.push({ id: "sup-b-qty",  kind: "lead-pill", label: "× 180", x: 1740, y: 610, w: 80, h: 36 });
+  atoms.push({ id: "sup-b-lead", kind: "lead-pill", label: "12 gün", x: 1850, y: 610, w: 90, h: 36 });
+  atoms.push({ id: "sup-max",    kind: "lead-pill", label: "max 15 gün", x: 1980, y: 550, w: 110, h: 40, highlight: "green" });
+
+  // Flask
+  atoms.push({ id: "flask", kind: "flask", label: "Tepkime · GSA 15  GSS20P", x: 760, y: 880, w: 280, h: 100 });
+
+  return atoms;
+}
+
+const SCENE_EDGES: SceneEdge[] = [
+  // Customers label → all chips (faint dashed)
+  ...["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"].map(id => ({
+    fromId: "lbl-customers", toId: id, dashed: true, color: "rgba(255,255,255,0.18)",
+  })),
+  // E3 (green) → Elektrikli circle
+  { fromId: "c-E3", toId: "cat-elektrikli", color: "#10b981", dashed: true, label: "x200", curveK: 0.4 },
+  // G2 (blue) → Gazlı circle
+  { fromId: "c-G2", toId: "cat-gazli", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
+
+  // Elektrikli → all electric products (faint)
+  { fromId: "cat-elektrikli", toId: "p-Z-elek", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-elektrikli", toId: "p-GSA15",  dashed: true, color: "rgba(255,255,255,0.45)" },
+  { fromId: "cat-elektrikli", toId: "p-T-elek", dashed: true, color: "rgba(255,255,255,0.22)" },
+
+  // Gazlı → all gas products
+  { fromId: "cat-gazli", toId: "p-X-gazli", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-Y-gazli", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-GSS20P", dashed: true, color: "rgba(255,255,255,0.45)" },
+
+  // GSA15 → Üretim, Depo, Satış (green)
+  { fromId: "p-GSA15", toId: "stg-uretim", color: "#10b981", dashed: true, label: "x100", curveK: 0.35 },
+  { fromId: "p-GSA15", toId: "stg-depo",   color: "#10b981", dashed: true, label: "x50",  curveK: 0.5 },
+  { fromId: "p-GSA15", toId: "stg-satis",  color: "#10b981", dashed: true, label: "x50",  curveK: 0.7 },
+
+  // GSS20P → Üretim
+  { fromId: "p-GSS20P", toId: "stg-uretim", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
+
+  // Stages → Factory
+  { fromId: "stg-uretim", toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
+  { fromId: "stg-depo",   toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
+  { fromId: "stg-satis",  toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
+
+  // Cross-product red curves (paylaşılan a/b)
+  { fromId: "p-GSA15",  toId: "p-GSS20P", color: "#ef4444", dashed: true, label: "x110/x120", curveK: 0.6 },
+
+  // Tedarik denklemi: GSS20P → a, b (red)
+  { fromId: "p-GSS20P", toId: "comp-a", color: "#ef4444", dashed: true, label: "tedarik denklemi", curveK: 0.7 },
+  { fromId: "p-GSS20P", toId: "comp-b", color: "#ef4444", dashed: true, curveK: 0.7 },
+
+  // a → ×300 → 15g
+  { fromId: "comp-a", toId: "sup-a-qty",  color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "sup-a-qty", toId: "sup-a-lead", color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "sup-a-lead", toId: "sup-max", color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "comp-b", toId: "sup-b-qty",  color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "sup-b-qty", toId: "sup-b-lead", color: "rgba(255,255,255,0.5)", dashed: false },
+  { fromId: "sup-b-lead", toId: "sup-max", color: "rgba(255,255,255,0.5)", dashed: false },
+
+  // Lead pill → relevant flow
+  { fromId: "pill-lead-GSA15", toId: "stg-uretim", color: "rgba(16,185,129,0.4)", dashed: true },
+  { fromId: "pill-lead-GSS20P", toId: "stg-uretim", color: "rgba(56,189,248,0.4)", dashed: true },
+
+  // Deadline pill → customer chip
+  { fromId: "pill-d-E3", toId: "c-E3", color: "rgba(16,185,129,0.5)", dashed: true },
+  { fromId: "pill-d-G2", toId: "c-G2", color: "rgba(56,189,248,0.5)", dashed: true },
+
+  // Flask → product cards (subtle)
+  { fromId: "p-GSA15",  toId: "flask", color: "rgba(16,185,129,0.4)", dashed: true, curveK: 0.6 },
+  { fromId: "p-GSS20P", toId: "flask", color: "rgba(56,189,248,0.4)", dashed: true, curveK: 0.6 },
+];
+
+// Atom merkezi hesabı — port'a göre kenar noktası
+function atomCenter(a: SceneAtom): { x: number; y: number } {
+  return { x: a.x + a.w / 2, y: a.y + a.h / 2 };
+}
+function atomPort(a: SceneAtom, port?: "n"|"s"|"e"|"w"): { x: number; y: number } {
+  const c = atomCenter(a);
+  if (!port) return c;
+  if (port === "n") return { x: c.x, y: a.y };
+  if (port === "s") return { x: c.x, y: a.y + a.h };
+  if (port === "e") return { x: a.x + a.w, y: c.y };
+  return { x: a.x, y: c.y };
+}
+
+function CustomersSceneRenderer({
+  positions, onMove, getMouseInWorld, viewport,
+}: {
+  positions: Record<string, XY>;
+  onMove: (id: string, xy: XY) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const atoms = useMemo(() => {
+    const defaults = makeDefaultSceneAtoms();
+    return defaults.map(a => {
+      const p = positions[a.id];
+      return p ? { ...a, x: p.x, y: p.y } : a;
+    });
+  }, [positions]);
+
+  const atomById = useMemo(() => {
+    const m: Record<string, SceneAtom> = {};
+    for (const a of atoms) m[a.id] = a;
+    return m;
+  }, [atoms]);
+
+  // SVG bounding box: world coords so we draw in the same transformed space
+  const bbox = useMemo(() => {
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    for (const a of atoms) {
+      minX = Math.min(minX, a.x);
+      minY = Math.min(minY, a.y);
+      maxX = Math.max(maxX, a.x + a.w);
+      maxY = Math.max(maxY, a.y + a.h);
+    }
+    return { minX: minX - 200, minY: minY - 100, maxX: maxX + 200, maxY: maxY + 100 };
+  }, [atoms]);
+
+  const W = bbox.maxX - bbox.minX;
+  const H = bbox.maxY - bbox.minY;
+
+  return (
+    <>
+      {/* SVG edge layer — world coords, transform by viewport */}
+      <svg
+        width={W}
+        height={H}
+        style={{
+          position: "absolute",
+          left: bbox.minX * viewport.scale + viewport.vx,
+          top: bbox.minY * viewport.scale + viewport.vy,
+          width: W * viewport.scale,
+          height: H * viewport.scale,
+          pointerEvents: "none",
+        }}
+        viewBox={`0 0 ${W} ${H}`}
+      >
+        {SCENE_EDGES.map((e, i) => {
+          const a = atomById[e.fromId];
+          const b = atomById[e.toId];
+          if (!a || !b) return null;
+          const p1 = atomPort(a, e.fromPort);
+          const p2 = atomPort(b, e.toPort);
+          // Bezier control points (curve)
+          const dx = p2.x - p1.x;
+          const dy = p2.y - p1.y;
+          const k = e.curveK ?? 0.5;
+          const c1x = p1.x + dx * k;
+          const c1y = p1.y;
+          const c2x = p2.x - dx * k;
+          const c2y = p2.y;
+          // Translate into svg coord space (subtract bbox.minX/Y)
+          const x1 = p1.x - bbox.minX, y1 = p1.y - bbox.minY;
+          const x2 = p2.x - bbox.minX, y2 = p2.y - bbox.minY;
+          const cx1 = c1x - bbox.minX, cy1 = c1y - bbox.minY;
+          const cx2 = c2x - bbox.minX, cy2 = c2y - bbox.minY;
+          const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+          const midX = (x1 + x2) / 2;
+          const midY = (y1 + y2) / 2 - 6;
+          return (
+            <g key={i}>
+              <path
+                d={path}
+                stroke={e.color ?? "rgba(255,255,255,0.4)"}
+                strokeWidth={1.5}
+                fill="none"
+                strokeDasharray={e.dashed ? "5 4" : undefined}
+              />
+              {e.label && (
+                <text
+                  x={midX} y={midY}
+                  fill={e.color ?? "rgba(255,255,255,0.85)"}
+                  fontSize={13}
+                  fontFamily={mono}
+                  fontWeight={600}
+                  textAnchor="middle"
+                >
+                  {e.label}
+                </text>
+              )}
+            </g>
+          );
+        })}
+      </svg>
+
+      {/* Atom layer — DragNode'lar */}
+      {atoms.map(a => (
+        <SceneAtomNode
+          key={a.id}
+          atom={a}
+          onMove={(xy) => onMove(a.id, xy)}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+      ))}
+    </>
+  );
+}
+
+function SceneAtomNode({
+  atom, onMove, getMouseInWorld, viewport,
+}: {
+  atom: SceneAtom;
+  onMove: (xy: XY) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  return (
+    <DragNode
+      pos={{ x: atom.x, y: atom.y }}
+      width={atom.w}
+      height={atom.h}
+      onDrag={onMove}
+      getMouseInWorld={getMouseInWorld}
+      viewport={viewport}
+      asCircle={atom.kind === "category" || atom.kind === "stage" || atom.kind === "component"}
+    >
+      <SceneAtomVisual atom={atom} />
+    </DragNode>
+  );
+}
+
+function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
+  const accent =
+    atom.highlight === "green" ? "#10b981" :
+    atom.highlight === "blue"  ? "#38bdf8" : null;
+
+  // Common ortak stiller — X stadyum kart estetiği (cardBg + ince border)
+  if (atom.kind === "label") {
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: "#ffffff", color: "#0a0a0e",
+        borderRadius: 6, display: "flex",
+        alignItems: "center", justifyContent: "center",
+        fontFamily: mono, fontSize: 14, fontWeight: 700,
+      }}>
+        {atom.label}
+      </div>
+    );
+  }
+  if (atom.kind === "customer-chip") {
+    const bg = accent ?? "#e8e6dc";
+    const fg = accent ? "#fff" : "#0a0a0e";
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: bg, color: fg,
+        borderRadius: 4, display: "flex",
+        alignItems: "center", justifyContent: "center",
+        fontFamily: mono, fontSize: 14, fontWeight: 700,
+      }}>
+        {atom.label}
+      </div>
+    );
+  }
+  if (atom.kind === "category" || atom.kind === "stage") {
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: atom.kind === "category" ? "#cfcfcf" : "rgba(207,207,207,0.95)",
+        color: "#0a0a0e", borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: mono, fontSize: 16, fontWeight: 500,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.22)",
+      }}>
+        {atom.label}
+      </div>
+    );
+  }
+  if (atom.kind === "product") {
+    const bg = accent ?? "rgba(232,230,220,0.9)";
+    const fg = accent ? "#fff" : "#0a0a0e";
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: bg, color: fg,
+        borderRadius: 6, padding: "8px 12px",
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+        fontFamily: mono, boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
+      }}>
+        <div style={{ fontSize: 14, fontWeight: 700 }}>{atom.label}</div>
+        {atom.sub && (
+          <div style={{ display: "flex", gap: 4 }}>
+            {atom.sub.split(" · ").map(s => (
+              <div key={s} style={{
+                width: 22, height: 22, borderRadius: "50%",
+                background: "rgba(255,255,255,0.2)",
+                display: "flex", alignItems: "center", justifyContent: "center",
+                fontSize: 11, fontWeight: 700,
+              }}>{s}</div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
+  }
+  if (atom.kind === "component") {
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: "#cfcfcf", color: "#0a0a0e",
+        borderRadius: "50%",
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: mono, fontSize: 28, fontWeight: 700,
+        border: "2px solid rgba(239,68,68,0.6)",
+      }}>
+        {atom.label}
+      </div>
+    );
+  }
+  if (atom.kind === "factory") {
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 12, padding: 10,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+      }}>
+        <div style={{ fontSize: 11, color: C.cardSub, letterSpacing: 2 }}>FABRİKA</div>
+        <div style={{ fontSize: 16, fontWeight: 700 }}>{atom.label}</div>
+      </div>
+    );
+  }
+  if (atom.kind === "lead-pill" || atom.kind === "deadline-pill") {
+    const bg = accent ?? C.cardBg;
+    const fg = accent ? "#fff" : C.cardInk;
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: bg, color: fg,
+        borderRadius: 6,
+        display: "flex", alignItems: "center", justifyContent: "center",
+        fontFamily: mono, fontSize: 12, fontWeight: 700,
+        boxShadow: "0 4px 12px rgba(0,0,0,0.25)",
+      }}>
+        {atom.label}
+      </div>
+    );
+  }
+  if (atom.kind === "flask") {
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        border: "1.5px solid rgba(245,158,11,0.6)",
+        borderRadius: 12, padding: 12,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 4,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+      }}>
+        <div style={{ fontSize: 11, color: "#f59e0b", letterSpacing: 2, fontWeight: 700 }}>TEPKIME</div>
+        <div style={{ fontSize: 13, fontWeight: 700 }}>{atom.label}</div>
+      </div>
+    );
+  }
+  return <div>{atom.label}</div>;
+}
+
 function OrderModal({
   initial, onClose, onSave, customers, prefilledCustomer, onAutoCreateCustomer,
 }: {
@@ -2739,6 +3193,16 @@ export default function StrategyCanvasPage() {
 
   const [activeCategory, setActiveCategory] = useState<"elektrikli" | "gazlı" | null>(null);
 
+  // Customers Senaryosu sahne atom pozisyonları (kullanıcı sürükledikçe persist)
+  const [scenePositions, setScenePositions] = useState<Record<string, XY>>(() =>
+    safeParse<Record<string, XY>>(localStorage.getItem("griseus_scene_pos_v1"), {}),
+  );
+  useEffect(() => { localStorage.setItem("griseus_scene_pos_v1", JSON.stringify(scenePositions)); }, [scenePositions]);
+  const moveSceneAtom = useCallback((id: string, xy: XY) => {
+    setScenePositions(prev => ({ ...prev, [id]: xy }));
+  }, []);
+  const resetScenePositions = useCallback(() => setScenePositions({}), []);
+
   // Workbench widget görünürlüğü — senaryo state'inin parçası, default kapalı
   // İlk mount'ta sadece DEFAULT yükle — eski v1 sürümünden kalma "hepsi açık" temizlenir.
   const [widgetVis, setWidgetVis] = useState<WidgetVisibility>(() => DEFAULT_WIDGET_VIS);
@@ -2791,9 +3255,9 @@ export default function StrategyCanvasPage() {
     const exists = scenarios.find(s => s.name.toLowerCase().includes("customers"));
     if (exists) return;
     const seed: ScenarioSnapshot = {
-      id: "s_customers_seed_v1",
+      id: "s_customers_seed_v2",
       name: "Customers Senaryosu",
-      description: "Müşteriler · Kategori · Ürünler · Akış · Fabrika · Tedarik denklemi",
+      description: "Atomlar + kıvrımlı oklar — kullanıcının senaryo şemasının canlı kopyası",
       createdAt: Date.now(),
       updatedAt: Date.now(),
       payload: {
@@ -2801,9 +3265,10 @@ export default function StrategyCanvasPage() {
         posOverrides: {},
         expandedSubs: {},
         customers: SAMPLE_CUSTOMERS,
-        customersPanelOpen: true,
-        expandedCustomers: ["cat:elektrikli", "cat:gazlı"],
-        widgetVisibility: ALL_WIDGETS_ON,
+        customersPanelOpen: false,
+        expandedCustomers: [],
+        widgetVisibility: CUSTOMERS_SCENE_VIS,
+        scenePositions: {}, // default layout from makeDefaultSceneAtoms
         supplyEntries: [
           { id: "sup_a", code: "a", qty: 300, leadDays: 15 },
           { id: "sup_b", code: "b", qty: 180, leadDays: 12 },
@@ -2812,7 +3277,8 @@ export default function StrategyCanvasPage() {
         flaskSupplies: [],
       },
     };
-    setScenarios(prev => [...prev, seed]);
+    // Eski v1 seed'ini temizle (varsa) — replace
+    setScenarios(prev => [...prev.filter(s => s.id !== "s_customers_seed_v1"), seed]);
   }, [scenarios]);
 
   const buildSnapshot = useCallback(
@@ -2831,6 +3297,7 @@ export default function StrategyCanvasPage() {
         expandedCustomers,
         widgetVisibility: widgetVis,
         supplyEntries,
+        scenePositions,
         flaskItems,
         flaskSupplies,
         viewport,
@@ -2839,7 +3306,7 @@ export default function StrategyCanvasPage() {
         reactionResult,
       },
     }),
-    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, widgetVis, supplyEntries, flaskItems, flaskSupplies, viewport, customersPanelPos, flaskOpen, reactionResult],
+    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, widgetVis, supplyEntries, scenePositions, flaskItems, flaskSupplies, viewport, customersPanelPos, flaskOpen, reactionResult],
   );
 
   const saveScenarioAs = useCallback((rawName: string) => {
@@ -2899,6 +3366,7 @@ export default function StrategyCanvasPage() {
     // Eski senaryolarda widgetVisibility yok → DEFAULT (hepsi kapalı) → workbench görünmez
     setWidgetVis(s.payload.widgetVisibility ?? DEFAULT_WIDGET_VIS);
     if (s.payload.supplyEntries) setSupplyEntries(s.payload.supplyEntries);
+    setScenePositions(s.payload.scenePositions ?? {});
     setFlaskItems(s.payload.flaskItems ?? []);
     setFlaskSupplies(s.payload.flaskSupplies ?? []);
     if (s.payload.viewport) setViewport(s.payload.viewport);
@@ -3261,12 +3729,13 @@ export default function StrategyCanvasPage() {
                   fontFamily: mono, borderBottom: `1px solid ${C.edgeFaint}`, marginBottom: 4,
                 }}>WORKBENCH PARÇALARI</div>
                 {([
-                  { k: "customers", l: "Müşteriler" },
-                  { k: "categories", l: "Kategori (Elektrikli/Gazlı)" },
-                  { k: "products", l: "Ürün kataloğu" },
-                  { k: "stages", l: "Akış (Üretim/Depo/Satış)" },
-                  { k: "factory", l: "Fabrika" },
-                  { k: "supply", l: "Tedarik denklemi" },
+                  { k: "scene", l: "Sahne (atomlar + kıvrımlı oklar)" },
+                  { k: "customers", l: "Müşteriler paneli (drill-down)" },
+                  { k: "categories", l: "Kategori paneli" },
+                  { k: "products", l: "Ürün kataloğu paneli" },
+                  { k: "stages", l: "Akış paneli" },
+                  { k: "factory", l: "Fabrika kutusu" },
+                  { k: "supply", l: "Tedarik denklemi paneli" },
                 ] as const).map(w => (
                   <button
                     key={w.k}
@@ -3496,6 +3965,14 @@ export default function StrategyCanvasPage() {
             pos={factoryPos}
             orderCount={orders.length}
             onMove={setFactoryPos}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.scene && (
+          <CustomersSceneRenderer
+            positions={scenePositions}
+            onMove={moveSceneAtom}
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
           />
