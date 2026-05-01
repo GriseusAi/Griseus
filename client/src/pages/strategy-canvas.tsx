@@ -95,10 +95,41 @@ interface ScenarioSnapshot {
     orders: Order[];
     posOverrides: PositionOverrides;
     expandedSubs: Record<string, string[]>;
+    customers?: Customer[];
+    customersPanelOpen?: boolean;
+    expandedCustomers?: string[];
     flaskItems?: FlaskItem[];
     flaskSupplies?: SupplyItem[];
   };
 }
+
+interface Customer {
+  id: string;
+  label: string;
+  category?: "elektrikli" | "gazlı" | string;
+  note?: string;
+}
+
+const CUSTOMERS_KEY = "griseus_customers_v1";
+const CUSTOMERS_PANEL_OPEN_KEY = "griseus_customers_panel_open_v1";
+const CUSTOMERS_EXPANDED_KEY = "griseus_customers_expanded_v1";
+
+// Hipotetik müşteri seed'i — kullanıcının resmindeki E1-E3, G1-G3, En, Gn pattern'i
+const SAMPLE_CUSTOMERS: Customer[] = [
+  { id: "c_E1", label: "E1", category: "elektrikli" },
+  { id: "c_E2", label: "E2", category: "elektrikli" },
+  { id: "c_E3", label: "E3", category: "elektrikli" },
+  { id: "c_G1", label: "G1", category: "gazlı" },
+  { id: "c_G2", label: "G2", category: "gazlı" },
+  { id: "c_G3", label: "G3", category: "gazlı" },
+  { id: "c_En", label: "En", category: "elektrikli" },
+  { id: "c_Gn", label: "Gn", category: "gazlı" },
+];
+
+const CUSTOMERS_PANEL_W = 240;
+const CUSTOMERS_HEADER_H = 56;
+const CUSTOMERS_CHIP_H = 38;
+const CUSTOMERS_ORDER_ROW_H = 56;
 
 const safeParse = <T,>(raw: string | null, fallback: T): T => {
   if (!raw) return fallback;
@@ -1258,14 +1289,309 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
 }
 
 /* ─────── Order Modal ─────── */
+/* ════════════════════════════════════════════════════════════════════
+   CUSTOMERS PANEL — free-form, draggable, drill-down
+   Canvas'ta sol tarafta yaşar. Click header → toggle open. Click chip →
+   o müşterinin siparişleri inline açılır. "+ sipariş" → modal pre-fill.
+   ──────────────────────────────────────────────────────────────────── */
+function CustomersPanel({
+  pos, customers, orders, isOpen, expanded,
+  onMove, onTogglePanel, onToggleCustomer,
+  onCreateOrderFor, onEditOrder, onRemoveCustomer, onAddCustomer,
+  getMouseInWorld, viewport,
+}: {
+  pos: XY;
+  customers: Customer[];
+  orders: Order[];
+  isOpen: boolean;
+  expanded: string[];
+  onMove: (xy: XY) => void;
+  onTogglePanel: () => void;
+  onToggleCustomer: (id: string) => void;
+  onCreateOrderFor: (label: string) => void;
+  onEditOrder: (o: Order) => void;
+  onRemoveCustomer: (id: string) => void;
+  onAddCustomer: (label: string, category?: string) => void;
+  getMouseInWorld: (e: React.PointerEvent) => XY;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const [adding, setAdding] = useState(false);
+  const [newLabel, setNewLabel] = useState("");
+  const [newCategory, setNewCategory] = useState<"elektrikli" | "gazlı">("elektrikli");
+
+  const ordersByCustomer = useMemo(() => {
+    const m: Record<string, Order[]> = {};
+    for (const o of orders) {
+      const key = o.customer.trim().toLowerCase();
+      (m[key] ??= []).push(o);
+    }
+    return m;
+  }, [orders]);
+
+  const expandedSet = new Set(expanded);
+
+  // Compute total panel height based on content
+  const itemsHeight = isOpen
+    ? customers.reduce((sum, c) => {
+        const customerOrders = ordersByCustomer[c.label.toLowerCase()] ?? [];
+        const open = expandedSet.has(c.id);
+        return sum + CUSTOMERS_CHIP_H + 4 +
+          (open ? customerOrders.length * CUSTOMERS_ORDER_ROW_H + 36 : 0);
+      }, 0) + (adding ? 92 : 36) + 16
+    : 0;
+
+  const totalH = CUSTOMERS_HEADER_H + itemsHeight;
+
+  return (
+    <DragNode
+      pos={pos}
+      width={CUSTOMERS_PANEL_W}
+      height={totalH}
+      onDrag={onMove}
+      getMouseInWorld={getMouseInWorld}
+      viewport={viewport}
+    >
+      <div style={{
+        width: CUSTOMERS_PANEL_W, height: totalH,
+        background: C.panelBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`, borderRadius: 12,
+        boxShadow: "0 12px 30px rgba(0,0,0,0.3)",
+        display: "flex", flexDirection: "column", overflow: "hidden",
+        fontFamily: mono,
+      }}>
+        {/* Header — click to toggle */}
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => { e.stopPropagation(); onTogglePanel(); }}
+          style={{
+            height: CUSTOMERS_HEADER_H, padding: "12px 14px",
+            display: "flex", alignItems: "center", justifyContent: "space-between",
+            cursor: "pointer", borderBottom: isOpen ? `1px solid ${C.panelEdge}` : "none",
+            background: "rgba(255,255,255,0.03)",
+          }}
+        >
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent }}>◇ MÜŞTERİLER</div>
+            <div style={{ fontSize: 14, fontWeight: 700, marginTop: 2 }}>
+              Customers
+              <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 400, marginLeft: 6 }}>
+                ({customers.length})
+              </span>
+            </div>
+          </div>
+          <div style={{ fontSize: 14, color: C.cardSub }}>{isOpen ? "▾" : "▸"}</div>
+        </div>
+
+        {isOpen && (
+          <div
+            onPointerDown={(e) => e.stopPropagation()}
+            style={{ padding: "10px 12px", overflowY: "auto", flex: 1 }}
+          >
+            {customers.map(c => {
+              const customerOrders = ordersByCustomer[c.label.toLowerCase()] ?? [];
+              const isExpanded = expandedSet.has(c.id);
+              const hasOrders = customerOrders.length > 0;
+              const catColor = c.category === "elektrikli" ? C.ok
+                            : c.category === "gazlı" ? C.info : C.mid;
+              return (
+                <div key={c.id} style={{ marginBottom: 4 }}>
+                  <div
+                    onClick={(e) => { e.stopPropagation(); onToggleCustomer(c.id); }}
+                    style={{
+                      height: CUSTOMERS_CHIP_H,
+                      display: "flex", alignItems: "center", gap: 8,
+                      padding: "0 10px", borderRadius: 6, cursor: "pointer",
+                      background: isExpanded ? "rgba(255,255,255,0.07)" : "transparent",
+                      border: hasOrders ? `1px solid ${catColor}66` : `1px solid transparent`,
+                      transition: "background 0.1s",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.06)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = isExpanded ? "rgba(255,255,255,0.07)" : "transparent")}
+                  >
+                    <div style={{
+                      width: 6, height: 6, borderRadius: "50%",
+                      background: hasOrders ? catColor : "rgba(255,255,255,0.2)",
+                    }} />
+                    <div style={{ fontSize: 13, fontWeight: 700, flex: 1 }}>{c.label}</div>
+                    {hasOrders && (
+                      <span style={{
+                        background: `${catColor}22`, color: catColor,
+                        padding: "1px 6px", borderRadius: 4, fontSize: 10, fontWeight: 700,
+                      }}>
+                        {customerOrders.length}
+                      </span>
+                    )}
+                    <span style={{ fontSize: 11, color: C.cardSub }}>{isExpanded ? "▾" : "▸"}</span>
+                  </div>
+
+                  {isExpanded && (
+                    <div style={{ padding: "4px 6px 8px 24px" }}>
+                      {customerOrders.length === 0 ? (
+                        <div style={{ fontSize: 10, color: C.cardSub, padding: "4px 0 8px" }}>
+                          (henüz sipariş yok)
+                        </div>
+                      ) : customerOrders.map(o => (
+                        <div
+                          key={o.id}
+                          onClick={(e) => { e.stopPropagation(); onEditOrder(o); }}
+                          style={{
+                            padding: "8px 10px", marginBottom: 4,
+                            background: "rgba(255,255,255,0.04)",
+                            border: `1px solid ${C.panelEdge}`,
+                            borderRadius: 6, cursor: "pointer",
+                            transition: "background 0.1s",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.04)")}
+                        >
+                          <div style={{ fontSize: 12, fontWeight: 700 }}>
+                            {o.sku} <span style={{ color: C.cardSub, fontWeight: 400 }}>×{fmtTR(o.quantity)}</span>
+                          </div>
+                          <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
+                            {o.deadline ? new Date(o.deadline).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" }) : "—"}
+                          </div>
+                        </div>
+                      ))}
+                      <button
+                        onClick={(e) => { e.stopPropagation(); onCreateOrderFor(c.label); }}
+                        style={{
+                          width: "100%", padding: "5px 8px", marginTop: 2,
+                          background: "transparent", border: `1px dashed ${C.cardSub}66`,
+                          borderRadius: 5, color: C.cardSub,
+                          fontSize: 10, fontFamily: mono, cursor: "pointer",
+                        }}
+                        onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${C.cardSub}66`; e.currentTarget.style.color = C.cardSub; }}
+                      >
+                        + sipariş ekle
+                      </button>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          if (customerOrders.length > 0) {
+                            alert(`${c.label} için ${customerOrders.length} sipariş var — önce siparişleri taşıyın/silin.`);
+                            return;
+                          }
+                          if (confirm(`${c.label} müşterisini sil?`)) onRemoveCustomer(c.id);
+                        }}
+                        style={{
+                          width: "100%", padding: "3px 8px", marginTop: 4,
+                          background: "transparent", border: "none",
+                          color: C.shortfall, fontSize: 9, fontFamily: mono, cursor: "pointer", opacity: 0.6,
+                        }}
+                      >
+                        müşteriyi sil
+                      </button>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {/* Add new customer */}
+            <div style={{ marginTop: 8, paddingTop: 8, borderTop: `1px solid ${C.panelEdge}` }}>
+              {!adding ? (
+                <button
+                  onClick={(e) => { e.stopPropagation(); setAdding(true); }}
+                  style={{
+                    width: "100%", padding: "6px 10px",
+                    background: "transparent", border: `1px dashed ${C.cardSub}66`,
+                    borderRadius: 6, color: C.cardSub,
+                    fontSize: 11, fontFamily: mono, cursor: "pointer",
+                  }}
+                  onMouseEnter={(e) => { e.currentTarget.style.borderColor = C.accent; e.currentTarget.style.color = C.accent; }}
+                  onMouseLeave={(e) => { e.currentTarget.style.borderColor = `${C.cardSub}66`; e.currentTarget.style.color = C.cardSub; }}
+                >
+                  + yeni müşteri
+                </button>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  <input
+                    autoFocus
+                    value={newLabel}
+                    onChange={e => setNewLabel(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && newLabel.trim()) {
+                        onAddCustomer(newLabel.trim(), newCategory);
+                        setNewLabel(""); setAdding(false);
+                      }
+                      if (e.key === "Escape") { setAdding(false); setNewLabel(""); }
+                    }}
+                    placeholder="müşteri kodu / adı"
+                    style={{
+                      padding: "6px 8px", fontSize: 12,
+                      background: "rgba(255,255,255,0.06)",
+                      border: `1px solid ${C.panelEdge}`, borderRadius: 4,
+                      color: C.cardInk, fontFamily: mono, outline: "none",
+                    }}
+                  />
+                  <div style={{ display: "flex", gap: 4 }}>
+                    {(["elektrikli", "gazlı"] as const).map(cat => (
+                      <button
+                        key={cat}
+                        onClick={(e) => { e.stopPropagation(); setNewCategory(cat); }}
+                        style={{
+                          flex: 1, padding: "4px 6px", fontSize: 10, fontFamily: mono,
+                          background: newCategory === cat
+                            ? (cat === "elektrikli" ? `${C.ok}33` : `${C.info}33`)
+                            : "rgba(255,255,255,0.04)",
+                          border: `1px solid ${newCategory === cat ? (cat === "elektrikli" ? C.ok : C.info) : C.panelEdge}`,
+                          borderRadius: 4, color: C.cardInk, cursor: "pointer",
+                        }}
+                      >
+                        {cat === "elektrikli" ? "⚡ elektrikli" : "♨ gazlı"}
+                      </button>
+                    ))}
+                  </div>
+                  <div style={{ display: "flex", gap: 4 }}>
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (newLabel.trim()) {
+                          onAddCustomer(newLabel.trim(), newCategory);
+                          setNewLabel(""); setAdding(false);
+                        }
+                      }}
+                      style={{
+                        flex: 1, padding: "5px 8px", fontSize: 11, fontWeight: 700,
+                        background: C.accent, border: "none", borderRadius: 4,
+                        color: "#fff", cursor: "pointer", fontFamily: mono,
+                      }}
+                    >
+                      ekle
+                    </button>
+                    <button
+                      onClick={(e) => { e.stopPropagation(); setAdding(false); setNewLabel(""); }}
+                      style={{
+                        padding: "5px 12px", fontSize: 11,
+                        background: "transparent", border: `1px solid ${C.panelEdge}`,
+                        borderRadius: 4, color: C.cardSub, cursor: "pointer", fontFamily: mono,
+                      }}
+                    >
+                      iptal
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
+    </DragNode>
+  );
+}
+
 function OrderModal({
-  initial, onClose, onSave,
+  initial, onClose, onSave, customers, prefilledCustomer, onAutoCreateCustomer,
 }: {
   initial?: Order | null;
   onClose: () => void;
   onSave: (o: Order) => void;
+  customers: Customer[];
+  prefilledCustomer?: string | null;
+  onAutoCreateCustomer?: (label: string, category?: string) => void;
 }) {
-  const [customer, setCustomer] = useState(initial?.customer ?? "");
+  const [customer, setCustomer] = useState(initial?.customer ?? prefilledCustomer ?? "");
   const [sku, setSku] = useState<string>(initial?.sku ?? ALL_SKUS[0]);
   const [quantity, setQuantity] = useState<string>(initial ? String(initial.quantity) : "100");
   const [deadline, setDeadline] = useState<string>(
@@ -1274,9 +1600,20 @@ function OrderModal({
   const submit = () => {
     const q = parseInt(quantity, 10);
     if (!sku || isNaN(q) || q <= 0) return;
+    const finalCustomer = customer.trim() || "Bayi";
+    // If user typed a new customer name not in the list, auto-create
+    if (
+      finalCustomer !== "Bayi" &&
+      onAutoCreateCustomer &&
+      !customers.some(c => c.label.toLowerCase() === finalCustomer.toLowerCase())
+    ) {
+      // electrical SKUs get elektrikli, gas-related get gazlı (heuristic)
+      const cat = sku.startsWith("ELT") || sku.startsWith("BH") ? "elektrikli" : "gazlı";
+      onAutoCreateCustomer(finalCustomer, cat);
+    }
     onSave({
       id: initial?.id ?? `o_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-      customer: customer.trim() || "Bayi",
+      customer: finalCustomer,
       sku, quantity: q, deadline,
       createdAt: initial?.createdAt ?? Date.now(),
     });
@@ -1297,7 +1634,43 @@ function OrderModal({
         </div>
         <div style={{ fontSize: 18, marginBottom: 14 }}>Strateji canvas'a bayi siparişi ekle</div>
         <label style={lbl}>BAYİ / MÜŞTERİ</label>
-        <input value={customer} onChange={e => setCustomer(e.target.value)} placeholder="Örn: Ankara Bayi" style={inp} />
+        <input
+          value={customer}
+          onChange={e => setCustomer(e.target.value)}
+          placeholder="Listeden seç veya yeni isim yaz"
+          list="strategy-customer-list"
+          style={inp}
+        />
+        <datalist id="strategy-customer-list">
+          {customers.map(c => (
+            <option key={c.id} value={c.label}>{c.category ?? ""}</option>
+          ))}
+        </datalist>
+        {customers.length > 0 && (
+          <div style={{ display: "flex", gap: 4, flexWrap: "wrap", marginTop: 6 }}>
+            {customers.map(c => (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => setCustomer(c.label)}
+                style={{
+                  padding: "3px 8px",
+                  background: customer === c.label
+                    ? (c.category === "elektrikli" ? "rgba(16,185,129,0.25)" : "rgba(59,130,246,0.25)")
+                    : "rgba(255,255,255,0.06)",
+                  border: `1px solid ${customer === c.label ? C.accent : C.panelEdge}`,
+                  borderRadius: 4, color: C.cardInk,
+                  fontSize: 10, fontFamily: mono, cursor: "pointer",
+                }}
+              >
+                {c.label}
+                <span style={{ marginLeft: 4, opacity: 0.5, fontSize: 9 }}>
+                  {c.category === "elektrikli" ? "⚡" : c.category === "gazlı" ? "♨" : ""}
+                </span>
+              </button>
+            ))}
+          </div>
+        )}
         <div style={{ display: "flex", gap: 12, marginTop: 12 }}>
           <div style={{ flex: 1 }}>
             <label style={lbl}>MAMUL (SKU)</label>
@@ -1600,12 +1973,74 @@ export default function StrategyCanvasPage() {
     });
   }, []);
 
-  const [modalOpen, setModalOpen] = useState(orders.length === 0);
+  const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
 
   const initialView = safeParse<{ vx: number; vy: number; scale: number }>(localStorage.getItem(VIEW_KEY), { vx: 0, vy: 0, scale: 0.85 });
   const [viewport, setViewport] = useState(initialView);
   useEffect(() => { localStorage.setItem(VIEW_KEY, JSON.stringify(viewport)); }, [viewport]);
+
+  /* ── Müşteri kayıtları (free-form, drillable, hypothetical seed) ── */
+  const [customers, setCustomers] = useState<Customer[]>(() => {
+    const stored = safeParse<Customer[] | null>(localStorage.getItem(CUSTOMERS_KEY), null);
+    return stored && stored.length > 0 ? stored : SAMPLE_CUSTOMERS;
+  });
+  useEffect(() => { localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customers)); }, [customers]);
+
+  const [customersPanelOpen, setCustomersPanelOpen] = useState<boolean>(
+    () => safeParse<boolean>(localStorage.getItem(CUSTOMERS_PANEL_OPEN_KEY), true),
+  );
+  useEffect(() => { localStorage.setItem(CUSTOMERS_PANEL_OPEN_KEY, JSON.stringify(customersPanelOpen)); }, [customersPanelOpen]);
+
+  const [expandedCustomers, setExpandedCustomers] = useState<string[]>(
+    () => safeParse<string[]>(localStorage.getItem(CUSTOMERS_EXPANDED_KEY), []),
+  );
+  useEffect(() => { localStorage.setItem(CUSTOMERS_EXPANDED_KEY, JSON.stringify(expandedCustomers)); }, [expandedCustomers]);
+
+  const toggleCustomer = useCallback((id: string) => {
+    setExpandedCustomers(prev => prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]);
+  }, []);
+
+  const addCustomer = useCallback((label: string, category?: string) => {
+    const trimmed = label.trim();
+    if (!trimmed) return null;
+    const id = `c_${trimmed.replace(/[^a-zA-Z0-9]/g, "_")}_${Date.now().toString(36).slice(-4)}`;
+    const c: Customer = { id, label: trimmed, category: (category as Customer["category"]) ?? "elektrikli" };
+    setCustomers(prev => [...prev, c]);
+    return c;
+  }, []);
+
+  const removeCustomer = useCallback((id: string) => {
+    setCustomers(prev => prev.filter(c => c.id !== id));
+    setExpandedCustomers(prev => prev.filter(x => x !== id));
+  }, []);
+
+  const renameCustomer = useCallback((id: string, newLabel: string) => {
+    setCustomers(prev => prev.map(c => c.id === id ? { ...c, label: newLabel } : c));
+  }, []);
+
+  // Sipariş oluştururken müşteri ön-seçimi
+  const [pendingNewOrderCustomer, setPendingNewOrderCustomer] = useState<string | null>(null);
+
+  // Customers panel position (free-form)
+  const [customersPanelPos, setCustomersPanelPos] = useState<XY>(() =>
+    safeParse<XY>(localStorage.getItem("griseus_customers_panel_pos_v1"), { x: -300, y: 60 }),
+  );
+  useEffect(() => {
+    localStorage.setItem("griseus_customers_panel_pos_v1", JSON.stringify(customersPanelPos));
+  }, [customersPanelPos]);
+
+  const handleCreateOrderFor = useCallback((customerLabel: string) => {
+    setPendingNewOrderCustomer(customerLabel);
+    setEditing(null);
+    setModalOpen(true);
+  }, []);
+
+  // Click an order in the panel → focus its card on canvas (zoom + pan)
+  const focusOrderOnCanvas = useCallback((order: Order) => {
+    setEditing(order);
+    setModalOpen(true);
+  }, []);
 
   /* ── Tepkime Denklemi (reaction flask) state ── */
   const [flaskOpen, setFlaskOpen] = useState(false);
@@ -1643,11 +2078,14 @@ export default function StrategyCanvasPage() {
         orders,
         posOverrides,
         expandedSubs,
+        customers,
+        customersPanelOpen,
+        expandedCustomers,
         flaskItems,
         flaskSupplies,
       },
     }),
-    [orders, posOverrides, expandedSubs, flaskItems, flaskSupplies],
+    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, flaskItems, flaskSupplies],
   );
 
   const saveScenarioAs = useCallback((rawName: string) => {
@@ -1691,6 +2129,9 @@ export default function StrategyCanvasPage() {
     setOrders(s.payload.orders);
     setPosOverrides(s.payload.posOverrides);
     setExpandedSubs(s.payload.expandedSubs);
+    if (s.payload.customers) setCustomers(s.payload.customers);
+    if (typeof s.payload.customersPanelOpen === "boolean") setCustomersPanelOpen(s.payload.customersPanelOpen);
+    if (s.payload.expandedCustomers) setExpandedCustomers(s.payload.expandedCustomers);
     setFlaskItems(s.payload.flaskItems ?? []);
     setFlaskSupplies(s.payload.flaskSupplies ?? []);
     setReactionResult(null);
@@ -2023,13 +2464,31 @@ export default function StrategyCanvasPage() {
           touchAction: "none", userSelect: "none",
         }}
       >
+        {/* Customers panel — her zaman görünür (boş canvas'ta da örnek müşteriler vardır) */}
+        <CustomersPanel
+          pos={customersPanelPos}
+          customers={customers}
+          orders={orders}
+          isOpen={customersPanelOpen}
+          expanded={expandedCustomers}
+          onMove={setCustomersPanelPos}
+          onTogglePanel={() => setCustomersPanelOpen(o => !o)}
+          onToggleCustomer={toggleCustomer}
+          onCreateOrderFor={handleCreateOrderFor}
+          onEditOrder={focusOrderOnCanvas}
+          onRemoveCustomer={removeCustomer}
+          onAddCustomer={(label, cat) => { addCustomer(label, cat); }}
+          getMouseInWorld={getMouseInWorld}
+          viewport={viewport}
+        />
+
         {orders.length === 0 ? (
           <div style={{
             display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center",
             height: "100%", color: C.mid, gap: 12, pointerEvents: "auto",
           }}>
-            <div style={{ fontSize: 14 }}>Boş canvas — sipariş ekleyerek başla</div>
-            <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ İlk siparişi ekle</button>
+            <div style={{ fontSize: 14 }}>Solda örnek müşteriler — birine tıkla, "+ sipariş ekle" ile başla</div>
+            <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Genel sipariş</button>
           </div>
         ) : (
           <>
@@ -2077,8 +2536,23 @@ export default function StrategyCanvasPage() {
       {modalOpen && (
         <OrderModal
           initial={editing}
-          onClose={() => { setModalOpen(false); setEditing(null); }}
-          onSave={upsertOrder}
+          customers={customers}
+          prefilledCustomer={pendingNewOrderCustomer}
+          onAutoCreateCustomer={(label, cat) => { addCustomer(label, cat); }}
+          onClose={() => {
+            setModalOpen(false);
+            setEditing(null);
+            setPendingNewOrderCustomer(null);
+          }}
+          onSave={(o) => {
+            upsertOrder(o);
+            setPendingNewOrderCustomer(null);
+            // Otomatik o müşteriyi panel'de aç
+            const cust = customers.find(c => c.label.toLowerCase() === o.customer.toLowerCase());
+            if (cust && !expandedCustomers.includes(cust.id)) {
+              setExpandedCustomers(prev => [...prev, cust.id]);
+            }
+          }}
         />
       )}
 
