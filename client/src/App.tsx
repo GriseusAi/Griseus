@@ -97,9 +97,10 @@ function App() {
           <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
           <Route path="/sihir" component={PalantirPage} />
           <Route path="/lineage" component={LineAgePage} />
-          <Route path="/ontology" component={BhOntologyPage} />
+          <Route path="/ontology" component={StrategyCanvasPage} />
+          <Route path="/ontology/bh" component={BhOntologyPage} />
           <Route path="/ontology/simulate" component={OntologySimulatePage} />
-          <Route path="/ontology/strategy" component={StrategyCanvasPage} />
+          <Route path="/ontology/strategy"><Redirect to="/ontology" /></Route>
           <Route path="/pipeline" component={PipelineRunsPage} />
           <Route path="/twin-health" component={TwinHealthPage} />
           <Route path="/loop" component={DecisionLoopPage} />

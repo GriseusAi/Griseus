@@ -1153,13 +1153,13 @@ export default function BhOntologyPage() {
           )}
         </div>
 
-        {/* Strateji butonu → freeform canvas */}
-        <button onClick={() => navigate("/ontology/strategy")} style={{
+        {/* Strateji butonu → freeform canvas (artık ontology home) */}
+        <button onClick={() => navigate("/ontology")} style={{
           padding: "6px 12px", borderRadius: 16, cursor: "pointer",
           fontSize: 10, fontFamily: mono, fontWeight: 500, letterSpacing: 1,
           background: C.variableDim, border: `1px solid ${C.variableBorder}`,
           color: C.variable, transition: "all 0.15s",
-        }}>◇ STRATEJİ →</button>
+        }}>← STRATEJİ</button>
       </div>
 
       {/* Object Inspector drawer — sağ */}

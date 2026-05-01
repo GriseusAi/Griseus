@@ -1292,6 +1292,102 @@ const inp: React.CSSProperties = {
 };
 
 /* ════════════════════════════════════════════════════════════════════
+   ONTOLOGY SEARCH — header'da BH Grupları gibi alt-canvas'ları bulma
+   ──────────────────────────────────────────────────────────────────── */
+type SearchEntry = { label: string; sub: string; keywords: string[]; path: string; icon: string };
+const ONTOLOGY_SEARCH_CATALOG: SearchEntry[] = [
+  {
+    label: "BH Grupları",
+    sub: "Varlık Felsefesi — 4 Cihaz · Canlı Zincir",
+    keywords: ["bh", "grup", "varlık", "varlik", "felsefe", "ontoloji", "ontology", "cihaz", "zincir", "canvas", "bh.50", "bh.55"],
+    path: "/ontology/bh",
+    icon: "◈",
+  },
+];
+
+function OntologySearchBox({ onNavigate }: { onNavigate: (path: string) => void }) {
+  const [q, setQ] = useState("");
+  const [open, setOpen] = useState(false);
+  const wrapRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function onClick(e: MouseEvent) {
+      if (wrapRef.current && !wrapRef.current.contains(e.target as Node)) setOpen(false);
+    }
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, []);
+
+  const matches = useMemo(() => {
+    const term = q.trim().toLowerCase();
+    if (!term) return [];
+    return ONTOLOGY_SEARCH_CATALOG.filter(it =>
+      it.label.toLowerCase().includes(term) ||
+      it.sub.toLowerCase().includes(term) ||
+      it.keywords.some(k => k.includes(term)),
+    );
+  }, [q]);
+
+  return (
+    <div ref={wrapRef} style={{ position: "relative", flex: "1 1 320px", maxWidth: 460 }}>
+      <input
+        value={q}
+        onChange={e => { setQ(e.target.value); setOpen(true); }}
+        onFocus={() => setOpen(true)}
+        placeholder="Ara: BH grupları, ontoloji, varlık felsefesi…"
+        style={{
+          width: "100%", padding: "9px 12px 9px 32px",
+          background: "#ffffff",
+          border: `1px solid ${q ? C.accent : C.edgeFaint}`,
+          borderRadius: 8, color: C.ink, fontFamily: mono, fontSize: 12,
+          outline: "none", transition: "border 0.15s",
+        }}
+      />
+      <span style={{
+        position: "absolute", left: 11, top: "50%", transform: "translateY(-50%)",
+        fontSize: 12, color: C.mid, pointerEvents: "none",
+      }}>◎</span>
+      {q && (
+        <button onClick={() => { setQ(""); setOpen(false); }} style={{
+          position: "absolute", right: 6, top: "50%", transform: "translateY(-50%)",
+          background: "transparent", border: "none", color: C.mid, cursor: "pointer",
+          fontSize: 14, padding: "4px 8px", fontFamily: mono,
+        }}>✕</button>
+      )}
+      {open && q.trim() && (
+        <div style={{
+          position: "absolute", top: "calc(100% + 6px)", left: 0, right: 0, zIndex: 60,
+          background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
+          borderRadius: 8, boxShadow: "0 8px 24px rgba(15,23,42,0.12)",
+          padding: 4,
+        }}>
+          {matches.length === 0 ? (
+            <div style={{ padding: "10px 12px", fontSize: 11, color: C.mid, fontFamily: mono }}>
+              Sonuç yok — "BH grupları" deneyin
+            </div>
+          ) : matches.map(m => (
+            <button key={m.path} onClick={() => { onNavigate(m.path); setOpen(false); setQ(""); }}
+              style={{
+                display: "flex", flexDirection: "column", alignItems: "flex-start",
+                width: "100%", padding: "8px 10px", borderRadius: 6, cursor: "pointer",
+                background: "transparent", border: "none", textAlign: "left",
+              }}
+              onMouseEnter={e => (e.currentTarget.style.background = C.accentSoft)}
+              onMouseLeave={e => (e.currentTarget.style.background = "transparent")}>
+              <div style={{ display: "flex", alignItems: "center", gap: 6, fontSize: 12, color: C.ink, fontFamily: mono }}>
+                <span style={{ color: C.accent }}>{m.icon}</span>
+                <span>{m.label}</span>
+              </div>
+              <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>{m.sub}</div>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
    PAGE
    ──────────────────────────────────────────────────────────────────── */
 export default function StrategyCanvasPage() {
@@ -1479,16 +1575,16 @@ export default function StrategyCanvasPage() {
       <TopNav connected={connected} />
 
       {/* Header */}
-      <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", borderBottom: `1px solid ${C.edgeFaint}` }}>
-        <div>
+      <div style={{ padding: "16px 28px", display: "flex", justifyContent: "space-between", alignItems: "center", gap: 16, borderBottom: `1px solid ${C.edgeFaint}` }}>
+        <div style={{ flex: "0 0 auto" }}>
           <div style={{ fontSize: 9, color: C.accent, letterSpacing: 2 }}>◇ STRATEJİ CANVAS</div>
           <div style={{ fontSize: 18, marginTop: 2, color: C.ink }}>Sipariş → Mamul → BOM → Aksiyon Kuyruğu · Canlı Domino</div>
           <div style={{ fontSize: 11, color: C.mid, marginTop: 2 }}>
             Bayi siparişi ekle · fan-out otomatik · sürükle, zoom, sığdır · stok değişince yeniden hesapla
           </div>
         </div>
-        <div style={{ display: "flex", gap: 8 }}>
-          <button onClick={() => navigate("/ontology")} style={hdrBtnGhost}>← Ontoloji</button>
+        <OntologySearchBox onNavigate={navigate} />
+        <div style={{ display: "flex", gap: 8, flex: "0 0 auto" }}>
           <button onClick={() => zoomBy(1.2)} style={hdrBtnGhost} title="Yakınlaştır">+</button>
           <button onClick={() => zoomBy(0.83)} style={hdrBtnGhost} title="Uzaklaştır">−</button>
           <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡ sığdır</button>
