@@ -6,6 +6,13 @@ import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import { useAgentPanel } from "@/App";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
+import {
+  ReactionFlask,
+  type FlaskItem,
+  type SupplyItem,
+  type ReactionResult,
+} from "@/components/reaction-flask";
+import { ReactionGantt } from "@/components/reaction-gantt";
 
 /* ════════════════════════════════════════════════════════════════════
    STRATEGY CANVAS v5 — Pure HTML + CSS transform (no SVG foreignObject)
@@ -869,7 +876,7 @@ function OrderBlock({
   order, capacity, stock, loading,
   positions, defaults, onMove,
   expandedSubs, toggleSub,
-  onRemove, onEdit,
+  onRemove, onEdit, onAddToFlask,
   getMouseInWorld, viewport,
   allOrders, stockBySku,
 }: {
@@ -884,6 +891,7 @@ function OrderBlock({
   toggleSub: (code: string) => void;
   onRemove: () => void;
   onEdit: () => void;
+  onAddToFlask: () => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
   allOrders: Order[];
@@ -936,6 +944,7 @@ function OrderBlock({
           <div style={{ display: "flex", gap: 6, marginTop: "auto" }}>
             <button onPointerDown={(e) => e.stopPropagation()} onClick={onEdit} style={btnGhost}>düzenle</button>
             <button onPointerDown={(e) => e.stopPropagation()} onClick={onRemove} style={btnGhost}>kaldır</button>
+            <button onPointerDown={(e) => e.stopPropagation()} onClick={onAddToFlask} style={btnFlask} title="Tepkime denklemine ekle">🧪+</button>
           </div>
         </div>
       </DragNode>
@@ -1106,6 +1115,10 @@ const cardLabel: React.CSSProperties = { fontSize: 9, color: C.cardSub, letterSp
 const btnGhost: React.CSSProperties = {
   background: "transparent", border: `1px solid ${C.cardSub}40`, borderRadius: 6,
   padding: "2px 8px", fontSize: 10, color: C.cardSub, cursor: "pointer", fontFamily: mono,
+};
+const btnFlask: React.CSSProperties = {
+  background: "rgba(201,100,66,0.18)", border: `1px solid rgba(201,100,66,0.55)`, borderRadius: 6,
+  padding: "2px 8px", fontSize: 10, color: "#f0a98a", cursor: "pointer", fontFamily: mono, fontWeight: 600,
 };
 
 /* ════════════════════════════════════════════════════════════════════
@@ -1421,6 +1434,30 @@ export default function StrategyCanvasPage() {
   const [viewport, setViewport] = useState(initialView);
   useEffect(() => { localStorage.setItem(VIEW_KEY, JSON.stringify(viewport)); }, [viewport]);
 
+  /* ── Tepkime Denklemi (reaction flask) state ── */
+  const [flaskOpen, setFlaskOpen] = useState(false);
+  const [flaskItems, setFlaskItems] = useState<FlaskItem[]>([]);
+  const [flaskSupplies, setFlaskSupplies] = useState<SupplyItem[]>([]);
+  const [reactionResult, setReactionResult] = useState<ReactionResult | null>(null);
+  const FLASK_COLORS = ["#3f8f5b", "#3d6fb0", "#c96442", "#b8761c", "#8b5cf6", "#0891b2", "#dc2626"];
+  const addOrderToFlask = useCallback((o: Order) => {
+    setFlaskItems(prev => {
+      const exists = prev.find(x => x.sku === o.sku && x.deadline === o.deadline);
+      if (exists) {
+        return prev.map(x => x === exists ? { ...x, qty: x.qty + o.quantity } : x);
+      }
+      const color = FLASK_COLORS[prev.length % FLASK_COLORS.length];
+      return [...prev, {
+        id: `o_${o.id}_${Date.now()}`,
+        sku: o.sku,
+        qty: o.quantity,
+        deadline: o.deadline || new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+        color,
+      }];
+    });
+    setFlaskOpen(true);
+  }, []);
+
   const skuSet = useMemo(() => Array.from(new Set(orders.map(o => o.sku))), [orders]);
   const stockQueries = useQueries({
     queries: skuSet.map(sku => ({ queryKey: [`/api/bom/${sku}/stock`], enabled: !!sku })),
@@ -1589,6 +1626,13 @@ export default function StrategyCanvasPage() {
           <button onClick={() => zoomBy(0.83)} style={hdrBtnGhost} title="Uzaklaştır">−</button>
           <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡ sığdır</button>
           <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲ layout</button>
+          <button
+            onClick={() => setFlaskOpen(o => !o)}
+            style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
+            title="Tepkime denklemi (cihazları flask'a sürükle, AI senaryo üretir)"
+          >
+            🧪 Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
+          </button>
           <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Sipariş ekle</button>
         </div>
       </div>
@@ -1643,6 +1687,7 @@ export default function StrategyCanvasPage() {
                 toggleSub={(code) => toggleSub(o.id, code)}
                 onRemove={() => removeOrder(o.id)}
                 onEdit={() => { setEditing(o); setModalOpen(true); }}
+                onAddToFlask={() => addOrderToFlask(o)}
                 getMouseInWorld={getMouseInWorld} viewport={viewport}
                 allOrders={orders}
                 stockBySku={stockBySku}
@@ -1668,6 +1713,25 @@ export default function StrategyCanvasPage() {
           onSave={upsertOrder}
         />
       )}
+
+      {flaskOpen && (
+        <ReactionFlask
+          items={flaskItems}
+          setItems={setFlaskItems}
+          supplies={flaskSupplies}
+          setSupplies={setFlaskSupplies}
+          result={reactionResult}
+          setResult={setReactionResult}
+          onClose={() => setFlaskOpen(false)}
+        />
+      )}
+
+      {reactionResult && (
+        <ReactionGantt
+          result={reactionResult}
+          onClose={() => setReactionResult(null)}
+        />
+      )}
     </div>
   );
 }
@@ -1681,4 +1745,14 @@ const hdrBtnAccent: React.CSSProperties = {
   padding: "9px 16px", borderRadius: 8, cursor: "pointer",
   background: C.accent, border: "none", color: "#ffffff",
   fontFamily: mono, fontSize: 12, fontWeight: 700,
+};
+const hdrBtnFlask: React.CSSProperties = {
+  padding: "9px 14px", borderRadius: 8, cursor: "pointer",
+  background: "rgba(201,100,66,0.15)", border: `1px solid rgba(201,100,66,0.55)`,
+  color: "#c96442", fontFamily: mono, fontSize: 12, fontWeight: 600,
+};
+const hdrBtnFlaskActive: React.CSSProperties = {
+  padding: "9px 14px", borderRadius: 8, cursor: "pointer",
+  background: "#c96442", border: `1px solid #c96442`,
+  color: "#ffffff", fontFamily: mono, fontSize: 12, fontWeight: 700,
 };

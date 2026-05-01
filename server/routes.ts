@@ -32,6 +32,7 @@ import opsMonitoringRouter from "./routes/ops-monitoring";
 import sddiRouter from "./routes/sddi";
 import workshopRouter from "./routes/workshop";
 import chartRouter from "./routes/chart";
+import strategyRouter from "./routes/strategy";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
@@ -69,6 +70,7 @@ export async function registerRoutes(
   app.use("/api/sddi", sddiRouter);
   app.use("/api/workshop", workshopRouter);
   app.use("/api/chart", chartRouter);
+  app.use("/api/strategy", strategyRouter);
 
   // Auto-seed ontology on first boot (idempotent)
   seedOntology().catch(err => console.error("[ontology] Seed error:", err.message));
