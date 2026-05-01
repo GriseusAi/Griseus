@@ -2531,9 +2531,13 @@ export default function StrategyCanvasPage() {
         expandedCustomers,
         flaskItems,
         flaskSupplies,
+        viewport,
+        customersPanelPos,
+        flaskOpen,
+        reactionResult,
       },
     }),
-    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, flaskItems, flaskSupplies],
+    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, flaskItems, flaskSupplies, viewport, customersPanelPos, flaskOpen, reactionResult],
   );
 
   const saveScenarioAs = useCallback((rawName: string) => {
@@ -2563,13 +2567,23 @@ export default function StrategyCanvasPage() {
     saveScenarioAs(name);
   }, [activeScenario, scenarios.length, saveScenarioAs]);
 
+  const [justSaved, setJustSaved] = useState(false);
+  const justSavedTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const flashSaved = useCallback(() => {
+    setJustSaved(true);
+    if (justSavedTimerRef.current) clearTimeout(justSavedTimerRef.current);
+    justSavedTimerRef.current = setTimeout(() => setJustSaved(false), 1500);
+  }, []);
+  useEffect(() => () => { if (justSavedTimerRef.current) clearTimeout(justSavedTimerRef.current); }, []);
+
   const handleQuickSave = useCallback(() => {
     if (activeScenario) {
       overwriteActive();
+      flashSaved();
     } else {
       promptSaveAs();
     }
-  }, [activeScenario, overwriteActive, promptSaveAs]);
+  }, [activeScenario, overwriteActive, promptSaveAs, flashSaved]);
 
   const loadScenario = useCallback((id: string) => {
     const s = scenarios.find(x => x.id === id);
@@ -2582,7 +2596,10 @@ export default function StrategyCanvasPage() {
     if (s.payload.expandedCustomers) setExpandedCustomers(s.payload.expandedCustomers);
     setFlaskItems(s.payload.flaskItems ?? []);
     setFlaskSupplies(s.payload.flaskSupplies ?? []);
-    setReactionResult(null);
+    if (s.payload.viewport) setViewport(s.payload.viewport);
+    if (s.payload.customersPanelPos) setCustomersPanelPos(s.payload.customersPanelPos);
+    setFlaskOpen(s.payload.flaskOpen ?? false);
+    setReactionResult((s.payload.reactionResult as ReactionResult | null) ?? null);
     setActiveScenarioId(id);
     setModalOpen(false);
     setEditing(null);
@@ -2894,10 +2911,12 @@ export default function StrategyCanvasPage() {
           <button onClick={newBlankScenario} style={hdrBtnGhost} title="Yeni boş senaryo">⊘ yeni</button>
           <button
             onClick={handleQuickSave}
-            style={hdrBtnGhost}
+            style={justSaved
+              ? { ...hdrBtnGhost, color: C.ok, borderColor: C.ok, background: C.okSoft }
+              : hdrBtnGhost}
             title={activeScenario ? `'${activeScenario.name}' senaryosunu güncelle` : "Şu anki canvas'ı senaryo olarak kaydet"}
           >
-            ◈ {activeScenario ? "kaydet" : "senaryo yap"}
+            {justSaved ? "✓ kaydedildi" : `◈ ${activeScenario ? "kaydet" : "senaryo yap"}`}
           </button>
           {activeScenario && (
             <button onClick={promptSaveAs} style={hdrBtnGhost} title="Yeni isimle kopya kaydet">
