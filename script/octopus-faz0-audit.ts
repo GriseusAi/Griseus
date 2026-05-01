@@ -65,7 +65,7 @@ const __dirname = path.dirname(__filename);
     auditResults.push({ layer: "L6 WSBroadcast", status: "SKIP", finding: "No runtime mutation endpoints yet for new atoms (FAZ 1 task)" });
 
     // L7 Agent — agent tools do not yet expose atoms
-    auditResults.push({ layer: "L7 Agent", status: "YELLOW", finding: "CEO Agent tools do not include Plant/Line/Run/etc lookups yet (FAZ 1 task)" });
+    auditResults.push({ layer: "L7 Agent", status: "YELLOW", finding: "gix tools do not include Plant/Line/Run/etc lookups yet (FAZ 1 task)" });
 
     // L8 Ontology Integrity
     const expectObj = 16, expectLink = 6;

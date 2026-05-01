@@ -1136,7 +1136,7 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
       logAudit({
         entity: "component_stock", entityId: code, action: "update",
         field: "currentStock", previousValue: oldStock, newValue: newStock,
-        reason: input.reason || "CEO Agent tarafından güncellendi",
+        reason: input.reason || "gix tarafından güncellendi",
         actor: "ceo_agent",
       });
 

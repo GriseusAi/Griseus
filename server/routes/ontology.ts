@@ -7,7 +7,7 @@
  *
  * Architecture:
  *   ┌─────────────────────────────────────────────┐
- *   │  AIP Layer (CEO Agent, multi-agent v2)      │
+ *   │  AIP Layer (gix, multi-agent v2)            │
  *   │  → reads ontology to discover capabilities  │
  *   ├─────────────────────────────────────────────┤
  *   │  ONTOLOGY (this file)                       │

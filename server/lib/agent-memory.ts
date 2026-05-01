@@ -1,7 +1,7 @@
 /**
  * Agent Decision Memory (ADM)
  *
- * CEO Agent'ın karar hafızası — geçmiş etkileşimlerden öğrenir.
+ * gix'in karar hafızası — geçmiş etkileşimlerden öğrenir.
  *
  * Her sohbet:
  *   1. Sorgu embedding'i çıkarılır (Voyage AI)

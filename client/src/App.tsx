@@ -19,7 +19,7 @@ import SelectionPanel from "@/components/selection-panel";
    │  /stok/hareket  → Hızlı Giriş (üretim şefi)       │
    │  /stok/urun/:sku → Ürün İstihbaratı (BOM/kapasite) │
    │  /planlama      → Prediktif Planlama (Forecast+BOM)  │
-   │  /engine        → CEO Agent (redirect → panel)      │
+   │  /engine        → gix (redirect → panel)            │
    │  /admin         → Platform Architecture (Admin)     │
    │  /login         → Giriş                             │
    └─────────────────────────────────────────────────────┘

@@ -165,7 +165,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
           );
         })}
 
-        {/* CEO Agent — toggle panel */}
+        {/* gix — toggle panel */}
         <button
           onClick={toggleAgent}
           style={{
@@ -178,7 +178,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
           }}
         >
           <span style={{ fontSize: 14 }}>{"\u{1F916}"}</span>
-          <span className="nav-label">CEO Agent</span>
+          <span className="nav-label">gix</span>
         </button>
       </div>
 

@@ -102,7 +102,7 @@ const layers: Layer[] = [
       { id: "stok", label: "Stok Durumu", sublabel: "Komuta Merkezi", icon: "🏠", color: P.green, x: 10, y: 50 },
       { id: "hizli", label: "Hızlı Giriş", sublabel: "Üretim girişi", icon: "▸", color: P.orange, x: 30, y: 50 },
       { id: "istihbarat", label: "Ürün İstihbaratı", sublabel: "BOM · Simülasyon", icon: "🔍", color: P.blue, x: 50, y: 50 },
-      { id: "agent", label: "CEO Agent", sublabel: "Doğal dil arayüzü", icon: "🤖", color: P.accent, x: 70, y: 50 },
+      { id: "agent", label: "gix", sublabel: "Doğal dil arayüzü", icon: "🤖", color: P.accent, x: 70, y: 50 },
       { id: "auto", label: "Automations", sublabel: "Otomatik aksiyonlar", icon: "🔁", color: P.cyan, x: 90, y: 50 },
     ],
   },
@@ -335,7 +335,7 @@ function DetailPanel({ layer }: { layer: Layer | null }) {
     governance: "Kullanıcı rolleri ve yetkilendirme. Üretim şefi sadece Hızlı Giriş'i, yönetim tüm sayfaları görebilir. AI agent'ın yapabilecekleri de kontrollüdür.",
     ontology: "Sistemin kalbi. Ürünler, BOM ağacı (43 bileşen, 3 tier), stok seviyeleri, hareketler ve satın alma önerileri birbirine bağlı ontoloji objeleri olarak modellenir.",
     intelligence: "OODA döngüsünün beyni. Tüketim hızı analizi, trend tespiti, proaktif uyarılar ve 5 agent tool'u ile gerçek zamanlı karar destek sistemi.",
-    apps: "Son kullanıcı arayüzleri. Her biri ontoloji katmanının farklı bir görünümü — Stok Durumu komuta merkezi, Hızlı Giriş üretim akışı, CEO Agent doğal dil arayüzü.",
+    apps: "Son kullanıcı arayüzleri. Her biri ontoloji katmanının farklı bir görünümü — Stok Durumu komuta merkezi, Hızlı Giriş üretim akışı, gix doğal dil arayüzü.",
   };
 
   return (
