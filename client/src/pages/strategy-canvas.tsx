@@ -86,6 +86,25 @@ const EXPAND_KEY = "griseus_strategy_expanded_v1";
 const SCENARIOS_KEY = "griseus_scenarios_v1";
 const ACTIVE_SCENARIO_KEY = "griseus_scenario_active_v1";
 
+interface WidgetVisibility {
+  customers: boolean;
+  categories: boolean;
+  products: boolean;
+  stages: boolean;
+  factory: boolean;
+  supply: boolean;
+}
+
+const DEFAULT_WIDGET_VIS: WidgetVisibility = {
+  customers: false, categories: false, products: false,
+  stages: false, factory: false, supply: false,
+};
+
+const ALL_WIDGETS_ON: WidgetVisibility = {
+  customers: true, categories: true, products: true,
+  stages: true, factory: true, supply: true,
+};
+
 interface ScenarioSnapshot {
   id: string;
   name: string;
@@ -99,6 +118,8 @@ interface ScenarioSnapshot {
     customers?: Customer[];
     customersPanelOpen?: boolean;
     expandedCustomers?: string[];
+    widgetVisibility?: WidgetVisibility;
+    supplyEntries?: { id: string; code: string; qty: number; leadDays: number }[];
     flaskItems?: FlaskItem[];
     flaskSupplies?: SupplyItem[];
     // v2: kaydet basınca canvas görseli birebir geri gelsin
@@ -2718,6 +2739,13 @@ export default function StrategyCanvasPage() {
 
   const [activeCategory, setActiveCategory] = useState<"elektrikli" | "gazlı" | null>(null);
 
+  // Workbench widget görünürlüğü — senaryo state'inin parçası, default kapalı
+  // İlk mount'ta sadece DEFAULT yükle — eski v1 sürümünden kalma "hepsi açık" temizlenir.
+  const [widgetVis, setWidgetVis] = useState<WidgetVisibility>(() => DEFAULT_WIDGET_VIS);
+  const toggleWidget = useCallback((k: keyof WidgetVisibility) => {
+    setWidgetVis(prev => ({ ...prev, [k]: !prev[k] }));
+  }, []);
+
   const handleCreateOrderFor = useCallback((customerLabel: string) => {
     setPendingNewOrderCustomer(customerLabel);
     setEditing(null);
@@ -2755,6 +2783,38 @@ export default function StrategyCanvasPage() {
     [scenarios, activeScenarioId],
   );
 
+  // İlk açılışta "Customers Senaryosu" yoksa seed et — kullanıcı arattığında bulsun
+  const customersSeedRef = useRef(false);
+  useEffect(() => {
+    if (customersSeedRef.current) return;
+    customersSeedRef.current = true;
+    const exists = scenarios.find(s => s.name.toLowerCase().includes("customers"));
+    if (exists) return;
+    const seed: ScenarioSnapshot = {
+      id: "s_customers_seed_v1",
+      name: "Customers Senaryosu",
+      description: "Müşteriler · Kategori · Ürünler · Akış · Fabrika · Tedarik denklemi",
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+      payload: {
+        orders: [],
+        posOverrides: {},
+        expandedSubs: {},
+        customers: SAMPLE_CUSTOMERS,
+        customersPanelOpen: true,
+        expandedCustomers: ["cat:elektrikli", "cat:gazlı"],
+        widgetVisibility: ALL_WIDGETS_ON,
+        supplyEntries: [
+          { id: "sup_a", code: "a", qty: 300, leadDays: 15 },
+          { id: "sup_b", code: "b", qty: 180, leadDays: 12 },
+        ],
+        flaskItems: [],
+        flaskSupplies: [],
+      },
+    };
+    setScenarios(prev => [...prev, seed]);
+  }, [scenarios]);
+
   const buildSnapshot = useCallback(
     (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
       id,
@@ -2769,6 +2829,8 @@ export default function StrategyCanvasPage() {
         customers,
         customersPanelOpen,
         expandedCustomers,
+        widgetVisibility: widgetVis,
+        supplyEntries,
         flaskItems,
         flaskSupplies,
         viewport,
@@ -2777,7 +2839,7 @@ export default function StrategyCanvasPage() {
         reactionResult,
       },
     }),
-    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, flaskItems, flaskSupplies, viewport, customersPanelPos, flaskOpen, reactionResult],
+    [orders, posOverrides, expandedSubs, customers, customersPanelOpen, expandedCustomers, widgetVis, supplyEntries, flaskItems, flaskSupplies, viewport, customersPanelPos, flaskOpen, reactionResult],
   );
 
   const saveScenarioAs = useCallback((rawName: string) => {
@@ -2834,6 +2896,9 @@ export default function StrategyCanvasPage() {
     if (s.payload.customers) setCustomers(s.payload.customers);
     if (typeof s.payload.customersPanelOpen === "boolean") setCustomersPanelOpen(s.payload.customersPanelOpen);
     if (s.payload.expandedCustomers) setExpandedCustomers(s.payload.expandedCustomers);
+    // Eski senaryolarda widgetVisibility yok → DEFAULT (hepsi kapalı) → workbench görünmez
+    setWidgetVis(s.payload.widgetVisibility ?? DEFAULT_WIDGET_VIS);
+    if (s.payload.supplyEntries) setSupplyEntries(s.payload.supplyEntries);
     setFlaskItems(s.payload.flaskItems ?? []);
     setFlaskSupplies(s.payload.flaskSupplies ?? []);
     if (s.payload.viewport) setViewport(s.payload.viewport);
@@ -2870,6 +2935,20 @@ export default function StrategyCanvasPage() {
     setReactionResult(null);
     setActiveScenarioId(null);
   }, [orders.length, activeScenario, overwriteActive, promptSaveAs]);
+
+  // "+ widget" dropdown — kullanıcı tek tek workbench parçalarını açar
+  const [widgetMenuOpen, setWidgetMenuOpen] = useState(false);
+  const widgetMenuRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!widgetMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (widgetMenuRef.current && !widgetMenuRef.current.contains(e.target as Node)) {
+        setWidgetMenuOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", onClick);
+    return () => document.removeEventListener("mousedown", onClick);
+  }, [widgetMenuOpen]);
 
   // "Senaryolarım" dropdown — header'da prominent buton
   const [scenariosOpen, setScenariosOpen] = useState(false);
@@ -3163,6 +3242,57 @@ export default function StrategyCanvasPage() {
               ⎘ farklı kaydet
             </button>
           )}
+          <div ref={widgetMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setWidgetMenuOpen(o => !o)}
+              style={widgetMenuOpen ? hdrBtnAccent : hdrBtnGhost}
+              title="Workbench widget'larını ekle/kaldır"
+            >
+              + widget
+            </button>
+            {widgetMenuOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70,
+                width: 220, background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
+                borderRadius: 10, boxShadow: "0 12px 32px rgba(15,23,42,0.18)", padding: 6,
+              }}>
+                <div style={{
+                  padding: "6px 10px", fontSize: 9, color: C.mid, letterSpacing: 1.5,
+                  fontFamily: mono, borderBottom: `1px solid ${C.edgeFaint}`, marginBottom: 4,
+                }}>WORKBENCH PARÇALARI</div>
+                {([
+                  { k: "customers", l: "Müşteriler" },
+                  { k: "categories", l: "Kategori (Elektrikli/Gazlı)" },
+                  { k: "products", l: "Ürün kataloğu" },
+                  { k: "stages", l: "Akış (Üretim/Depo/Satış)" },
+                  { k: "factory", l: "Fabrika" },
+                  { k: "supply", l: "Tedarik denklemi" },
+                ] as const).map(w => (
+                  <button
+                    key={w.k}
+                    onClick={() => toggleWidget(w.k)}
+                    style={{
+                      width: "100%", display: "flex", alignItems: "center", gap: 8,
+                      padding: "7px 10px", borderRadius: 6,
+                      background: widgetVis[w.k] ? C.accentSoft : "transparent",
+                      border: "none", cursor: "pointer",
+                      fontSize: 12, color: C.ink, fontFamily: mono, textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => { if (!widgetVis[w.k]) e.currentTarget.style.background = "#f5f3ec"; }}
+                    onMouseLeave={(e) => { if (!widgetVis[w.k]) e.currentTarget.style.background = "transparent"; }}
+                  >
+                    <span style={{
+                      width: 16, height: 16, display: "inline-flex",
+                      alignItems: "center", justifyContent: "center",
+                      border: `1.5px solid ${widgetVis[w.k] ? C.accent : C.mid}`,
+                      borderRadius: 3, fontSize: 10, color: C.accent, fontWeight: 700,
+                    }}>{widgetVis[w.k] ? "✓" : ""}</span>
+                    <span style={{ flex: 1 }}>{w.l}</span>
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
           <div ref={scenariosRef} style={{ position: "relative" }}>
             <button
               onClick={() => setScenariosOpen(o => !o)}
@@ -3300,83 +3430,95 @@ export default function StrategyCanvasPage() {
           touchAction: "none", userSelect: "none",
         }}
       >
-        {/* ─── Workbench widget'ları (her zaman görünür, draggable) ─── */}
-        <CustomersPanel
-          pos={customersPanelPos}
-          customers={customers}
-          orders={orders}
-          isOpen={customersPanelOpen}
-          expanded={expandedCustomers}
-          onMove={setCustomersPanelPos}
-          onTogglePanel={() => setCustomersPanelOpen(o => !o)}
-          onToggleCustomer={toggleCustomer}
-          onCreateOrderFor={handleCreateOrderFor}
-          onEditOrder={focusOrderOnCanvas}
-          onRemoveCustomer={removeCustomer}
-          onAddCustomer={(label, cat) => { addCustomer(label, cat); }}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-        <CategoriesPanel
-          pos={categoriesPos}
-          activeCategory={activeCategory}
-          onMove={setCategoriesPos}
-          onSelect={setActiveCategory}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-        <ProductsPalette
-          pos={productsPos}
-          activeCategory={activeCategory}
-          orders={orders}
-          onMove={setProductsPos}
-          onCreateOrderForSku={(sku) => {
-            const o: Order = {
-              id: `o_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
-              customer: "",
-              sku,
-              quantity: 100,
-              deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
-              createdAt: Date.now(),
-            };
-            setEditing(o);
-            setModalOpen(true);
-          }}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-        <ProductionStagesPanel
-          pos={stagesPos}
-          orders={orders}
-          onMove={setStagesPos}
-          onSelectOrder={focusOrderOnCanvas}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-        <FactoryWidget
-          pos={factoryPos}
-          orderCount={orders.length}
-          onMove={setFactoryPos}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-        <SupplyEquationPanel
-          pos={supplyPos}
-          entries={supplyEntries}
-          onMove={setSupplyPos}
-          onChange={setSupplyEntries}
-          onApplyToFlask={(entries) => {
-            setFlaskSupplies(entries.map(e => ({
-              id: e.id,
-              componentCode: e.code,
-              qty: e.qty,
-              leadDays: e.leadDays,
-            })));
-            setFlaskOpen(true);
-          }}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
+        {/* ─── Workbench widget'ları — sadece widgetVis bayrağı açıksa render ─── */}
+        {widgetVis.customers && (
+          <CustomersPanel
+            pos={customersPanelPos}
+            customers={customers}
+            orders={orders}
+            isOpen={customersPanelOpen}
+            expanded={expandedCustomers}
+            onMove={setCustomersPanelPos}
+            onTogglePanel={() => setCustomersPanelOpen(o => !o)}
+            onToggleCustomer={toggleCustomer}
+            onCreateOrderFor={handleCreateOrderFor}
+            onEditOrder={focusOrderOnCanvas}
+            onRemoveCustomer={removeCustomer}
+            onAddCustomer={(label, cat) => { addCustomer(label, cat); }}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.categories && (
+          <CategoriesPanel
+            pos={categoriesPos}
+            activeCategory={activeCategory}
+            onMove={setCategoriesPos}
+            onSelect={setActiveCategory}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.products && (
+          <ProductsPalette
+            pos={productsPos}
+            activeCategory={activeCategory}
+            orders={orders}
+            onMove={setProductsPos}
+            onCreateOrderForSku={(sku) => {
+              const o: Order = {
+                id: `o_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+                customer: "",
+                sku,
+                quantity: 100,
+                deadline: new Date(Date.now() + 30 * 86400000).toISOString().slice(0, 10),
+                createdAt: Date.now(),
+              };
+              setEditing(o);
+              setModalOpen(true);
+            }}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.stages && (
+          <ProductionStagesPanel
+            pos={stagesPos}
+            orders={orders}
+            onMove={setStagesPos}
+            onSelectOrder={focusOrderOnCanvas}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.factory && (
+          <FactoryWidget
+            pos={factoryPos}
+            orderCount={orders.length}
+            onMove={setFactoryPos}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
+        {widgetVis.supply && (
+          <SupplyEquationPanel
+            pos={supplyPos}
+            entries={supplyEntries}
+            onMove={setSupplyPos}
+            onChange={setSupplyEntries}
+            onApplyToFlask={(entries) => {
+              setFlaskSupplies(entries.map(e => ({
+                id: e.id,
+                componentCode: e.code,
+                qty: e.qty,
+                leadDays: e.leadDays,
+              })));
+              setFlaskOpen(true);
+            }}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        )}
 
         {orders.length === 0 ? null : (
           <>
