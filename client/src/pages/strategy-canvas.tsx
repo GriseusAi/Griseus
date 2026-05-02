@@ -6298,6 +6298,20 @@ export default function StrategyCanvasPage() {
     localStorage.setItem("griseus_clear_all_orders_v1", "done");
   }, [sceneCustomAtoms]);
 
+  // Migration v2: müşteri↔kategori custom edge'leri (x100, x300 mavi vs.) hala
+  // localStorage'da kalmıştı — bu sefer sceneCustomEdges'in TAMAMINI sıfırla.
+  const clearAllCustomEdgesRef = useRef(false);
+  useEffect(() => {
+    if (clearAllCustomEdgesRef.current) return;
+    if (localStorage.getItem("griseus_clear_all_custom_edges_v1") === "done") {
+      clearAllCustomEdgesRef.current = true;
+      return;
+    }
+    clearAllCustomEdgesRef.current = true;
+    if (sceneCustomEdges.length > 0) setSceneCustomEdges([]);
+    localStorage.setItem("griseus_clear_all_custom_edges_v1", "done");
+  }, [sceneCustomEdges]);
+
   const buildSnapshot = useCallback(
     (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
       id,
