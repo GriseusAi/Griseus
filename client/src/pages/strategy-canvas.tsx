@@ -4400,6 +4400,8 @@ function CustomersSceneRenderer({
             viewport={viewport}
             shapeOverride={shapeOverrides[a.id]}
             dimmed={dimmed}
+            capacity={a.kind === "product" ? sceneCapacityBySku[a.id.replace(/^p-/, "")] : undefined}
+            capacityLoading={a.kind === "product" ? sceneCapacityLoading : undefined}
             onContextMenu={isCustomAtom ? (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -6538,7 +6540,10 @@ export default function StrategyCanvasPage() {
   const anyLoading = stockQueries.some(q => q.isLoading) || capacityQueries.some(q => q.isLoading);
 
   const handleStockUpdate = useCallback(() => {
-    skuSet.forEach(sku => {
+    // Sipariş SKU'ları + sahne canvas'taki tüm cihazlar (ALL_SKUS).
+    // MAMUL kutuları stok güncellemesi sonrası canlı maxProducible'ı yenilemeli.
+    const targets = new Set<string>([...skuSet, ...ALL_SKUS]);
+    targets.forEach(sku => {
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
     });
