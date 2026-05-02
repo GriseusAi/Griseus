@@ -36,6 +36,13 @@ import LineAgePage from "@/pages/ontology"; // lineage force-graph sayfası
 import BhOntologyPage from "@/pages/bh-ontology";
 import OntologySimulatePage from "@/pages/ontology-simulate";
 import StrategyCanvasPage from "@/pages/strategy-canvas";
+import SceneErrorBoundary from "@/components/SceneErrorBoundary";
+
+const StrategyCanvasGuarded = () => (
+  <SceneErrorBoundary>
+    <StrategyCanvasPage />
+  </SceneErrorBoundary>
+);
 import VeriYukle from "@/pages/veri-yukle";
 import PipelineRunsPage from "@/pages/pipeline-runs";
 import TwinHealthPage from "@/pages/twin-health";
@@ -97,7 +104,7 @@ function App() {
           <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
           <Route path="/sihir" component={PalantirPage} />
           <Route path="/lineage" component={LineAgePage} />
-          <Route path="/ontology" component={StrategyCanvasPage} />
+          <Route path="/ontology" component={StrategyCanvasGuarded} />
           <Route path="/ontology/bh" component={BhOntologyPage} />
           <Route path="/ontology/simulate" component={OntologySimulatePage} />
           <Route path="/ontology/senaryo"><Redirect to="/ontology" /></Route>

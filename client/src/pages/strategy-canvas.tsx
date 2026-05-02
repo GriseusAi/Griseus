@@ -3704,26 +3704,36 @@ function CustomersSceneRenderer({
     if (expandedDeviceIds.size === 0) return; // BOM kapanırken viewport'u zorla değiştirme
 
     const t = setTimeout(() => {
-      const rect = wrapperRef.current?.getBoundingClientRect();
-      if (!rect) return;
-      const atomsNow = visibleAtomsRef.current;
-      if (atomsNow.length === 0) return;
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      for (const a of atomsNow) {
-        if (a.x < minX) minX = a.x;
-        if (a.y < minY) minY = a.y;
-        if (a.x + a.w > maxX) maxX = a.x + a.w;
-        if (a.y + a.h > maxY) maxY = a.y + a.h;
+      try {
+        const rect = wrapperRef.current?.getBoundingClientRect();
+        if (!rect || rect.width < 50 || rect.height < 50) return; // wrapper henüz mount edilmedi/gizli
+        const atomsNow = visibleAtomsRef.current;
+        if (atomsNow.length === 0) return;
+        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+        for (const a of atomsNow) {
+          if (!isFinite(a.x) || !isFinite(a.y) || !isFinite(a.w) || !isFinite(a.h)) continue;
+          if (a.x < minX) minX = a.x;
+          if (a.y < minY) minY = a.y;
+          if (a.x + a.w > maxX) maxX = a.x + a.w;
+          if (a.y + a.h > maxY) maxY = a.y + a.h;
+        }
+        if (!isFinite(minX) || !isFinite(maxX)) return; // hiç geçerli atom yok
+        const padding = 60;
+        const W = maxX - minX + padding * 2;
+        const H = maxY - minY + padding * 2;
+        if (W <= 0 || H <= 0) return;
+        const scaleX = rect.width / Math.max(1, W);
+        const scaleY = rect.height / Math.max(1, H);
+        let scale = Math.min(scaleX, scaleY);
+        if (!isFinite(scale) || scale <= 0) return;
+        scale = Math.max(0.18, Math.min(1.0, scale));
+        const vx = -(minX - padding) * scale;
+        const vy = -(minY - padding) * scale;
+        if (!isFinite(vx) || !isFinite(vy)) return;
+        setViewport({ vx, vy, scale });
+      } catch (err) {
+        console.error("[strategy-canvas] auto-fit hatası:", err);
       }
-      const padding = 60;
-      const W = maxX - minX + padding * 2;
-      const H = maxY - minY + padding * 2;
-      const scaleX = rect.width / Math.max(1, W);
-      const scaleY = rect.height / Math.max(1, H);
-      const scale = Math.max(0.18, Math.min(1.0, Math.min(scaleX, scaleY)));
-      const vx = -(minX - padding) * scale;
-      const vy = -(minY - padding) * scale;
-      setViewport({ vx, vy, scale });
     }, 60);
     return () => clearTimeout(t);
   }, [expandedDeviceIds, expandedSubassemblies, setViewport, wrapperRef]);
