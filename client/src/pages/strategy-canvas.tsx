@@ -152,6 +152,7 @@ type ShapeKind = "rect" | "rounded" | "circle" | "triangle";
 const SHAPE_OVERRIDES_KEY = "griseus_scene_shapes_v1";
 const CUSTOM_EDGES_KEY = "griseus_scene_custom_edges_v1";
 const ATOM_META_KEY = "griseus_scene_atom_meta_v1";
+const CUSTOM_ATOMS_KEY = "griseus_scene_custom_atoms_v1";
 
 interface CustomEdge {
   id: string;
@@ -164,6 +165,7 @@ interface AtomMeta {
   orderNumber?: string;
   deadline?: string;
   quantity?: string;
+  deadlinePillId?: string;
 }
 
 function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
@@ -2760,11 +2762,12 @@ interface CommandDef {
   maxSelected?: number;
   steps: CommandStep[];
   apply: (
-    args: { collected: Record<string, string>; ids: string[] },
+    args: { collected: Record<string, string>; ids: string[]; atomById: Record<string, SceneAtom>; metaById: Record<string, AtomMeta> },
     helpers: {
-      applyMeta: (ids: string[], patch: AtomMeta) => void;
+      applyMeta: (id: string, patch: AtomMeta) => void;
       clearMeta: (ids: string[]) => void;
       addEdge: (from: string, to: string, label?: string) => void;
+      ensureDeadlinePill: (parentId: string, deadline: string) => string;
     },
   ) => string;
 }
@@ -3349,6 +3352,7 @@ function CustomersSceneRenderer({
   shapeOverrides, setShape, clearShape,
   customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
   atomMeta, setAtomMetaField, clearAtomMeta,
+  customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -3367,6 +3371,10 @@ function CustomersSceneRenderer({
   atomMeta: Record<string, AtomMeta>;
   setAtomMetaField: (id: string, patch: AtomMeta) => void;
   clearAtomMeta: (id: string) => void;
+  customAtoms: SceneAtom[];
+  addCustomAtom: (atom: SceneAtom) => void;
+  updateCustomAtom: (id: string, patch: Partial<SceneAtom>) => void;
+  removeCustomAtom: (id: string) => void;
 }) {
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -3425,14 +3433,16 @@ function CustomersSceneRenderer({
     });
   }, [expandedDeviceIds]);
 
-  // Statik atomlar (sahnenin temel yapısı, scenePositions override'ı uygulanır)
+  // Statik atomlar (sahnenin temel yapısı + komut bar'dan eklenen pill atomlar);
+  // scenePositions override'ı her ikisine de uygulanır
   const baseAtoms = useMemo(() => {
     const defaults = makeDefaultSceneAtoms();
-    return defaults.map(a => {
+    const merged = [...defaults, ...customAtoms];
+    return merged.map(a => {
       const p = positions[a.id];
       return p ? { ...a, x: p.x, y: p.y } : a;
     });
-  }, [positions]);
+  }, [positions, customAtoms]);
 
   // Yarı-mamül expand state — birden fazla yarı-mamül aynı anda açık olabilir
   // (kategori grup pattern'inin aynısı: Set<string> içinde subassembly atom id'leri)
@@ -5220,6 +5230,24 @@ export default function StrategyCanvasPage() {
     setSceneCustomEdges([]);
   }, []);
 
+  // Sahne custom atomları — komut bar'dan oluşturulan pill atomlar (deadline pill vs)
+  const [sceneCustomAtoms, setSceneCustomAtoms] = useState<SceneAtom[]>(
+    () => safeParse<SceneAtom[]>(localStorage.getItem(CUSTOM_ATOMS_KEY), []),
+  );
+  useEffect(() => { localStorage.setItem(CUSTOM_ATOMS_KEY, JSON.stringify(sceneCustomAtoms)); }, [sceneCustomAtoms]);
+  const addSceneCustomAtom = useCallback((atom: SceneAtom) => {
+    setSceneCustomAtoms(prev => {
+      if (prev.some(a => a.id === atom.id)) return prev;
+      return [...prev, atom];
+    });
+  }, []);
+  const updateSceneCustomAtom = useCallback((id: string, patch: Partial<SceneAtom>) => {
+    setSceneCustomAtoms(prev => prev.map(a => a.id === id ? { ...a, ...patch } : a));
+  }, []);
+  const removeSceneCustomAtom = useCallback((id: string) => {
+    setSceneCustomAtoms(prev => prev.filter(a => a.id !== id));
+  }, []);
+
   // Atom metadata — komut bar'dan set edilir (sipariş no, teslim tarihi)
   const [sceneAtomMeta, setSceneAtomMeta] = useState<Record<string, AtomMeta>>(
     () => safeParse<Record<string, AtomMeta>>(localStorage.getItem(ATOM_META_KEY), {}),
@@ -5230,7 +5258,7 @@ export default function StrategyCanvasPage() {
       const cur = prev[id] ?? {};
       const merged: AtomMeta = { ...cur, ...patch };
       // Tüm alanlar boşsa kaydı sil
-      const isEmpty = !merged.orderNumber && !merged.deadline;
+      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity && !merged.deadlinePillId;
       if (isEmpty) {
         if (!(id in prev)) return prev;
         const next = { ...prev };
@@ -6270,6 +6298,10 @@ export default function StrategyCanvasPage() {
             atomMeta={sceneAtomMeta}
             setAtomMetaField={setSceneAtomMetaField}
             clearAtomMeta={clearSceneAtomMeta}
+            customAtoms={sceneCustomAtoms}
+            addCustomAtom={addSceneCustomAtom}
+            updateCustomAtom={updateSceneCustomAtom}
+            removeCustomAtom={removeSceneCustomAtom}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
