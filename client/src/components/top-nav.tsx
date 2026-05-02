@@ -177,7 +177,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
             transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
           }}
         >
-          <span style={{ fontSize: 14 }}>{"\u{1F916}"}</span>
+          <span style={{ fontSize: 16, lineHeight: 1, fontFamily: "'STIX Two Math', 'Cambria Math', 'Latin Modern Math', serif" }}>∴</span>
           <span className="nav-label">gix</span>
         </button>
       </div>
