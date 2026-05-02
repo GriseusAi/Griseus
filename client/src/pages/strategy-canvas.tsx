@@ -1012,6 +1012,9 @@ function DragNode({
   const handleDown = (e: React.PointerEvent) => {
     const isShift = e.shiftKey || e.metaKey || e.ctrlKey;
     e.stopPropagation();
+    // Shift+click sırasında tarayıcının text-range select default'unu engelle
+    // (yoksa seçilen kartların içindeki yazılar mavi hilight olur)
+    if (isShift) e.preventDefault();
     movedRef.current = false;
     if (!isShift) {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
@@ -1037,6 +1040,8 @@ function DragNode({
     if (movedRef.current) { movedRef.current = false; return; }
     e.stopPropagation();
     if ((e.shiftKey || e.metaKey || e.ctrlKey) && onMultiSelect) {
+      // shift+click ile oluşmuş tarayıcı text-range'ini sıfırla (mavi hilight)
+      try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
       onMultiSelect();
     } else if (onTap) {
       onTap();
@@ -2953,12 +2958,14 @@ function CustomersSceneRenderer({
     return edges;
   }, [selectedIds, atomById, hiddenIds, edgePalette]);
 
-  // Custom edges → SceneEdge formatına dönüştür (palette'in select rengini kullan)
+  // Custom edges → SceneEdge formatına dönüştür (palette select rengi, dashed
+  // çünkü kalıcı bağlantı diğer sahne ok'ları gibi görünmeli — sadece geçici
+  // shift+click live preview turuncu solid kalın)
   const customSceneEdges = useMemo<SceneEdge[]>(() => customEdges.map(ce => ({
     fromId: ce.fromId,
     toId: ce.toId,
     color: edgePalette.colors.select,
-    dashed: false,
+    dashed: true,
     curveK: 0.4,
   })), [customEdges, edgePalette]);
 
