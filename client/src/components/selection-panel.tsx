@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useLocation } from "wouter";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
 import { useAgentPanel } from "../App";
 import ChartPromptModal from "./chart-prompt-modal";
@@ -16,7 +17,7 @@ const C = {
 };
 const mono = "'Outfit', sans-serif";
 
-function buildAgentContext(items: SelectedItem[]): string {
+export function buildAgentContext(items: SelectedItem[]): string {
   const lines = items.map((i, idx) => {
     const parts = [
       `[${idx + 1}] ${i.code}`,
@@ -43,6 +44,11 @@ export default function SelectionPanel() {
   const { selected, remove, clear, max } = useSelection();
   const { toggleAgent, setPrefillInput } = useAgentPanel();
   const [compareOpen, setCompareOpen] = useState(false);
+  const [location] = useLocation();
+
+  // Strategy canvas (/ontology): panel gizli — fonksiyonalite /gix ve /diyagram
+  // komutları ile komut bar'dan tetiklenir.
+  if (location === "/ontology" || location.startsWith("/ontology/")) return null;
 
   if (selected.length === 0 && !compareOpen) return null;
 

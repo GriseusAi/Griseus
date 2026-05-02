@@ -6,6 +6,8 @@ import { useStockWebSocket } from "@/lib/useStockWebSocket";
 import TopNav from "@/components/top-nav";
 import { useAgentPanel } from "@/App";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
+import { buildAgentContext } from "@/components/selection-panel";
+import ChartPromptModal from "@/components/chart-prompt-modal";
 import BhOntologyPage from "@/pages/bh-ontology";
 import bomTreeRaw from "@shared/strategy-bom-tree.json";
 import {
@@ -2784,69 +2786,13 @@ interface CommandDef {
       ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
       setManualFocus: (ids: string[]) => void;
+      askAgent: () => boolean;
+      openDiagram: () => boolean;
     },
   ) => string;
 }
 
 const COMMAND_DEFS: CommandDef[] = [
-  {
-    name: "siparis",
-    aliases: ["sipariş", "order"],
-    description: "Seçili kategori veya müşteri için sipariş — adet ve teslim tarihi sorulur",
-    minSelected: 1,
-    steps: [
-      {
-        field: "quantity", prompt: "Kaç adet?", hint: "Sayı (örn: 500)",
-        validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 500)",
-      },
-      { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
-    ],
-    apply: ({ collected, ids, atomById }, h) => {
-      const label = `x${collected.quantity}`;
-      // Müşteri = siparişi VEREN. Kural (G2/G3 pattern): müşteri kutusundan
-      // İKİ ok çıkar — (1) adet ok'u → kategori, (2) teslim ok'u → pill.
-      const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
-      const selectedCategoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
-      let categoryId: string | null = selectedCategoryId;
-      if (!categoryId && customerId) {
-        if (customerId.startsWith("c-E")) categoryId = "cat-elektrikli";
-        else if (customerId.startsWith("c-G")) categoryId = "cat-gazli";
-      }
-      // Kategori-uyumlu renk: Gazlı=mavi, Elektrikli=yeşil (default seed
-      // edge'leri ile aynı görsel dil).
-      const orderColor = categoryId === "cat-elektrikli"
-        ? "rgba(16,185,129,0.85)"
-        : "rgba(56,189,248,0.85)";
-      let edgesAdded = 0;
-      // (1) ADET ok'u: müşteri → kategori (label = x{adet}). Kural: müşteri
-      // varsa daima müşteri kaynaklı, kategori hedefli ek edge çiz.
-      if (customerId && categoryId && customerId !== categoryId) {
-        h.addEdge(customerId, categoryId, label, orderColor);
-        edgesAdded++;
-      }
-      // Müşteri seçili değilse pairwise (mamul-mamul vs) eski davranış.
-      if (!customerId && ids.length >= 2) {
-        for (let i = 0; i < ids.length; i++) {
-          for (let j = i + 1; j < ids.length; j++) {
-            h.addEdge(ids[i], ids[j], label);
-            edgesAdded++;
-          }
-        }
-      } else if (!customerId && ids.length === 1 && categoryId && ids[0] !== categoryId) {
-        h.addEdge(ids[0], categoryId, label, orderColor);
-        edgesAdded++;
-      }
-      // (2) TESLİM ok'u: pill kategori altında konumlanır, OK müşteriye bağlı.
-      let deadlineNote = "hedef bulunamadı (müşteri veya kategori seç)";
-      const positionParent = categoryId ?? customerId;
-      const edgeTarget = customerId ?? categoryId;
-      if (positionParent && edgeTarget) {
-        h.ensureDeadlinePill(positionParent, collected.deadline, edgeTarget);
-        deadlineNote = `teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
-      }
-      return `Sipariş · ${collected.quantity} adet · ${edgesAdded} ok · ${deadlineNote}`;
-    },
-  },
   {
     name: "teslim",
     aliases: ["deadline", "tarih"],
@@ -2878,13 +2824,37 @@ const COMMAND_DEFS: CommandDef[] = [
   },
   {
     name: "uretim-hatti",
-    aliases: ["üretim-hattı", "hat", "production-line", "uretim-hatti-olustur", "üretim-hattı-oluştur"],
-    description: "Seçili atomları üretim hattı olarak işaretler — sadece o set ön plana çıkar",
-    minSelected: 2,
-    steps: [],
-    apply: ({ ids }, h) => {
+    aliases: ["üretim-hattı", "hat", "production-line", "uretim-hatti-olustur", "üretim-hattı-oluştur", "siparis", "sipariş", "order"],
+    description: "Üretim hattı oluştur — cihaz tipi, adet ve teslim tarihi sorulur, seçili atomlar zincir olarak işaretlenir",
+    minSelected: 1,
+    steps: [
+      { field: "deviceType", prompt: "Hangi tip cihaz?", hint: "Örn: BH.55ST.SV · GSA15 · ELT.7-11" },
+      {
+        field: "quantity", prompt: "Kaç Adet?", hint: "Sayı (örn: 500)",
+        validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 500)",
+      },
+      { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 20 Temmuz · 2026-07-20" },
+    ],
+    apply: ({ collected, ids, atomById }, h) => {
+      // 1) Tüm seçili atomlara meta yaz (cihaz tipi + adet badge'i için)
+      ids.forEach(id => h.applyMeta(id, {
+        orderNumber: collected.deviceType,
+        quantity: collected.quantity,
+      }));
+      // 2) Müşteri / kategori bul → teslim pill onlara bağlı çıksın
+      const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
+      const categoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
+      const productId = ids.find(id => atomById[id]?.kind === "product") ?? null;
+      const positionParent = categoryId ?? customerId ?? productId ?? ids[0];
+      const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
+      let deadlineNote = "";
+      if (positionParent && edgeTarget) {
+        h.ensureDeadlinePill(positionParent, collected.deadline, edgeTarget);
+        deadlineNote = ` · teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
+      }
+      // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
       h.setManualFocus(ids);
-      return `${ids.length} atom · üretim hattı odaklandı (ESC ile temizle)`;
+      return `Üretim hattı: ${collected.deviceType} · ${collected.quantity} adet · ${ids.length} atom${deadlineNote} (ESC ile temizle)`;
     },
   },
   {
@@ -2896,6 +2866,32 @@ const COMMAND_DEFS: CommandDef[] = [
     apply: ({ ids }, h) => {
       h.clearMeta(ids);
       return `${ids.length} atom · meta + pill silindi`;
+    },
+  },
+  {
+    name: "gix",
+    aliases: ["ai", "ai-sor", "agent"],
+    description: "Seçili atomları AI agent'a context olarak yollar (panel açılır)",
+    minSelected: 1,
+    steps: [],
+    apply: ({ ids }, h) => {
+      const ok = h.askAgent();
+      return ok
+        ? `${ids.length} atom AI agent'a yollandı — panel açıldı`
+        : "AI agent açılamadı (selection context boş)";
+    },
+  },
+  {
+    name: "diyagram-ciz",
+    aliases: ["diyagram", "chart", "compare"],
+    description: "Seçili 2+ atom için diyagram modal'ı açar",
+    minSelected: 2,
+    steps: [],
+    apply: ({ ids }, h) => {
+      const ok = h.openDiagram();
+      return ok
+        ? `${ids.length} atom · diyagram modal açıldı`
+        : "diyagram açılamadı (en az 2 atom seç)";
     },
   },
 ];
@@ -3010,7 +3006,7 @@ function EdgeCommandPopover({
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
@@ -3021,6 +3017,8 @@ function CommandBar({
   onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
   onSetManualFocus: (ids: string[]) => void;
+  onAskAgent: () => boolean;
+  onOpenDiagram: () => boolean;
   edgePalette: EdgePalette;
 }) {
   const [input, setInput] = useState("");
@@ -3099,6 +3097,8 @@ function CommandBar({
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
           setManualFocus: onSetManualFocus,
+          askAgent: onAskAgent,
+          openDiagram: onOpenDiagram,
         },
       );
       setResult({ ok: true, message: msg });
@@ -3108,7 +3108,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -3139,6 +3139,8 @@ function CommandBar({
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
           setManualFocus: onSetManualFocus,
+          askAgent: onAskAgent,
+          openDiagram: onOpenDiagram,
         },
       );
       setResult({ ok: true, message: msg });
@@ -3150,7 +3152,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3203,6 +3205,8 @@ function CommandBar({
             ensureDeadlinePill: onEnsureDeadlinePill,
             ensureProductionPill: onEnsureProductionPill,
             setManualFocus: onSetManualFocus,
+            askAgent: onAskAgent,
+            openDiagram: onOpenDiagram,
           },
         );
         setResult({ ok: true, message: msg });
@@ -3216,7 +3220,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -3565,6 +3569,22 @@ function CustomersSceneRenderer({
   edgeCommands: Record<string, string>;
   setEdgeCommand: (key: string, command: string | null) => void;
 }) {
+  // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
+  // "N adet üretilebilir" gösterilir. WS stok güncellemeleri otomatik invalidate
+  // ediyor (parent useStockWebSocket ALL_SKUS keylerini de invalidate eder).
+  const sceneCapacityQueries = useQueries({
+    queries: ALL_SKUS.map(sku => ({ queryKey: [`/api/bom/${sku}/production-capacity`] })),
+  });
+  const sceneCapacityBySku = useMemo(() => {
+    const m: Record<string, CapacityResp> = {};
+    ALL_SKUS.forEach((sku, i) => {
+      const d = sceneCapacityQueries[i]?.data as CapacityResp | undefined;
+      if (d) m[sku] = d;
+    });
+    return m;
+  }, [sceneCapacityQueries.map(q => q.data).join("|")]);
+  const sceneCapacityLoading = sceneCapacityQueries.some(q => q.isLoading);
+
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
   // Shift+click ile çoklu seçim — aralarında canlı edge çiziliyor
@@ -3584,6 +3604,11 @@ function CustomersSceneRenderer({
   // Cihaz BOM drill-down — bir cihaza tıklayınca alt bileşenleri sahnede yan tarafa açılır
   // Çoklu cihaz aynı anda açılabilir — her cihaz için ayrı BOM kolonu render edilir
   const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<string>>(() => new Set());
+  // /diyagram komutu için modal state — sağ alt SelectionPanel kaldırıldı,
+  // ChartPromptModal sadece /diyagram komutu ile açılır.
+  const [chartPromptOpen, setChartPromptOpen] = useState(false);
+  // /gix komutu için AI agent panel kontrolü.
+  const { toggleAgent: toggleAgentPanel, setPrefillInput: setAgentPrefill } = useAgentPanel();
   const toggleDevice = (id: string) => setExpandedDeviceIds(prev => {
     const n = new Set(prev);
     if (n.has(id)) n.delete(id); else n.add(id);
@@ -4517,7 +4542,24 @@ function CustomersSceneRenderer({
           return pillId;
         }}
         onSetManualFocus={(ids) => setManualFocusIds(new Set(ids))}
+        onAskAgent={() => {
+          if (globalSel.selected.length === 0) return false;
+          setAgentPrefill(buildAgentContext(globalSel.selected));
+          toggleAgentPanel();
+          return true;
+        }}
+        onOpenDiagram={() => {
+          if (globalSel.selected.length < 2) return false;
+          setChartPromptOpen(true);
+          return true;
+        }}
       />
+      {chartPromptOpen && (
+        <ChartPromptModal
+          items={globalSel.selected}
+          onClose={() => setChartPromptOpen(false)}
+        />
+      )}
     </>
   );
 }
@@ -4810,7 +4852,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, capacity, capacityLoading,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -4823,6 +4865,8 @@ function SceneAtomNode({
   shapeOverride?: ShapeKind;
   onContextMenu?: (e: React.MouseEvent) => void;
   dimmed?: boolean;
+  capacity?: CapacityResp;
+  capacityLoading?: boolean;
 }) {
   const naturalCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
   const effectiveShape: ShapeKind | null = shapeOverride
@@ -4852,12 +4896,12 @@ function SceneAtomNode({
       shapeStyle={shapeStyle}
       style={{ ...selectedStyle, ...dimStyle }}
     >
-      <SceneAtomVisual atom={atom} groupOpen={groupOpen} />
+      <SceneAtomVisual atom={atom} groupOpen={groupOpen} capacity={capacity} capacityLoading={capacityLoading} />
     </DragNode>
   );
 }
 
-function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boolean }) {
+function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading }: { atom: SceneAtom; groupOpen?: boolean; capacity?: CapacityResp; capacityLoading?: boolean }) {
   const accent =
     atom.highlight === "green" ? "#10b981" :
     atom.highlight === "blue"  ? "#38bdf8" : null;
@@ -4991,6 +5035,24 @@ function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boo
           )}
           {atom.label}
         </div>
+        {(() => {
+          const maxProd = capacity?.maxProducible;
+          const capColor =
+            maxProd === undefined ? C.cardSub :
+            maxProd === 0 ? C.shortfall :
+            maxProd < 50 ? "#f59e0b" :
+            "#10b981";
+          const capLine =
+            capacityLoading && maxProd === undefined ? "yükleniyor…" :
+            maxProd === undefined ? "kapasite ?" :
+            maxProd === 0 ? "üretilemez · darboğaz" :
+            `${fmtTR(maxProd)} adet üretilebilir`;
+          return (
+            <div style={{ fontSize: 10, color: capColor, fontWeight: 600, lineHeight: 1.1, letterSpacing: 0.2, marginTop: 1 }}>
+              {capLine}
+            </div>
+          );
+        })()}
         {atom.sub && (
           <div style={{ display: "flex", gap: 4, marginTop: 2 }}>
             {atom.sub.split(" · ").map(s => (
@@ -6198,6 +6260,44 @@ export default function StrategyCanvasPage() {
     }
     localStorage.setItem("griseus_pill_reposition_v1", "done");
   }, [sceneCustomAtoms, scenePositions]);
+
+  // Migration: kullanıcı /siparis komutunu kaldırma kararı verdi (2026-05-02).
+  // Mevcut tüm sipariş custom atom'larını (deadline-pill + lead-pill), bağlı
+  // edge'leri ve meta'daki orderNumber/quantity/deadline/productionDays/pillId
+  // referanslarını tek-seferlik temizle. Yeni /uretim-hatti komutu ile baştan
+  // başlanacak.
+  const clearAllOrdersRef = useRef(false);
+  useEffect(() => {
+    if (clearAllOrdersRef.current) return;
+    if (localStorage.getItem("griseus_clear_all_orders_v1") === "done") {
+      clearAllOrdersRef.current = true;
+      return;
+    }
+    clearAllOrdersRef.current = true;
+    const pillKinds = new Set(["deadline-pill", "lead-pill"]);
+    const pillIds = new Set(
+      sceneCustomAtoms.filter(a => pillKinds.has(a.kind)).map(a => a.id),
+    );
+    if (pillIds.size > 0) {
+      setSceneCustomAtoms(prev => prev.filter(a => !pillIds.has(a.id)));
+      setSceneCustomEdges(prev => prev.filter(e => !pillIds.has(e.fromId) && !pillIds.has(e.toId)));
+    }
+    setSceneAtomMeta(prev => {
+      const next: Record<string, AtomMeta> = {};
+      for (const [id, meta] of Object.entries(prev)) {
+        const cleaned: AtomMeta = { ...meta };
+        delete cleaned.orderNumber;
+        delete cleaned.quantity;
+        delete cleaned.deadline;
+        delete cleaned.deadlinePillId;
+        delete cleaned.productionDays;
+        delete cleaned.productionPillId;
+        if (Object.keys(cleaned).length > 0) next[id] = cleaned;
+      }
+      return next;
+    });
+    localStorage.setItem("griseus_clear_all_orders_v1", "done");
+  }, [sceneCustomAtoms]);
 
   const buildSnapshot = useCallback(
     (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
