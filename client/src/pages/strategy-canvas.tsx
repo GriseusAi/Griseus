@@ -2296,26 +2296,33 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
   atoms.push({ id: "cat-elektrikli", kind: "category", label: "Elektrikli", x: 540, y: 220, w: 150, h: 150 });
   atoms.push({ id: "cat-gazli",      kind: "category", label: "Gazlı",     x: 540, y: 540, w: 150, h: 150 });
 
-  // Products
-  atoms.push({ id: "p-Z-elek",  kind: "product", label: "Z-elektrikli", x: 760, y: 130, w: 180, h: 56 });
-  atoms.push({ id: "p-GSA15",   kind: "product", label: "GSA 15", x: 760, y: 240, w: 180, h: 70, highlight: "green", sub: "a · b" });
-  atoms.push({ id: "p-T-elek",  kind: "product", label: "T-elektrikli", x: 760, y: 360, w: 180, h: 56 });
-  atoms.push({ id: "p-X-gazli", kind: "product", label: "X-gazlı", x: 760, y: 460, w: 180, h: 56 });
-  atoms.push({ id: "p-Y-gazli", kind: "product", label: "Y-gazlı", x: 760, y: 540, w: 180, h: 56 });
-  atoms.push({ id: "p-GSS20P",  kind: "product", label: "GSS20P", x: 760, y: 640, w: 180, h: 70, highlight: "blue",  sub: "a · b" });
+  // Products — gerçek cihazlar (xls reçetelerinden, fuel BOM kanıtları)
+  // ELEKTRİKLİ kolon (Elektrikli kategori dairesinin yanı, üst yarı)
+  atoms.push({ id: "p-GSA15",      kind: "product", label: "GSA15",      x: 800, y:  70, w: 180, h: 60, highlight: "green", sub: "a · b" });
+  atoms.push({ id: "p-GSA20",      kind: "product", label: "GSA20",      x: 800, y: 140, w: 180, h: 56 });
+  atoms.push({ id: "p-GSA30",      kind: "product", label: "GSA30",      x: 800, y: 210, w: 180, h: 56 });
+  atoms.push({ id: "p-GSS20P",     kind: "product", label: "GSS20P",     x: 800, y: 280, w: 180, h: 60, sub: "a · b" });
+  atoms.push({ id: "p-GSS40P",     kind: "product", label: "GSS40P",     x: 800, y: 350, w: 180, h: 56 });
+  // GAZLI kolon (alt yarı)
+  atoms.push({ id: "p-ELT.5-7",    kind: "product", label: "ELT.5-7",    x: 800, y: 460, w: 180, h: 56 });
+  atoms.push({ id: "p-ELT.7-11",   kind: "product", label: "ELT.7-11",   x: 800, y: 530, w: 180, h: 56 });
+  atoms.push({ id: "p-BH.50ST.SV", kind: "product", label: "BH.50ST.SV", x: 800, y: 600, w: 180, h: 56 });
+  atoms.push({ id: "p-BH.50UT.SV", kind: "product", label: "BH.50UT.SV", x: 800, y: 670, w: 180, h: 56 });
+  atoms.push({ id: "p-BH.55ST.SV", kind: "product", label: "BH.55ST.SV", x: 800, y: 740, w: 180, h: 60, highlight: "blue" });
+  atoms.push({ id: "p-BH.55UT.SV", kind: "product", label: "BH.55UT.SV", x: 800, y: 810, w: 180, h: 56 });
 
   // Deadline pills
-  atoms.push({ id: "pill-d-E3", kind: "deadline-pill", label: "Teslim = 1 Haz",  x: 540, y: 130, w: 150, h: 36, highlight: "green" });
-  atoms.push({ id: "pill-d-G2", kind: "deadline-pill", label: "Teslim = 15 Mayıs", x: 540, y: 720, w: 170, h: 36, highlight: "blue" });
+  atoms.push({ id: "pill-d-E3", kind: "deadline-pill", label: "Teslim = 1 Haz",  x: 540, y:  70, w: 150, h: 36, highlight: "green" });
+  atoms.push({ id: "pill-d-G2", kind: "deadline-pill", label: "Teslim = 15 Mayıs", x: 540, y: 750, w: 170, h: 36, highlight: "blue" });
 
   // Lead pills
-  atoms.push({ id: "pill-lead-GSA15", kind: "lead-pill", label: "30 gün", x: 1080, y: 200, w: 90, h: 36, highlight: "green" });
-  atoms.push({ id: "pill-lead-GSS20P", kind: "lead-pill", label: "10 gün", x: 1080, y: 700, w: 90, h: 36, highlight: "blue" });
+  atoms.push({ id: "pill-lead-GSA15",  kind: "lead-pill", label: "30 gün", x: 1080, y:  80, w: 90, h: 36, highlight: "green" });
+  atoms.push({ id: "pill-lead-GSS20P", kind: "lead-pill", label: "10 gün", x: 1080, y: 290, w: 90, h: 36 });
 
-  // Stages
-  atoms.push({ id: "stg-uretim", kind: "stage", label: "Üretim", x: 1100, y: 280, w: 130, h: 130 });
-  atoms.push({ id: "stg-depo",   kind: "stage", label: "Depo",   x: 1100, y: 440, w: 130, h: 130 });
-  atoms.push({ id: "stg-satis",  kind: "stage", label: "Satış",  x: 1100, y: 600, w: 130, h: 130 });
+  // Stages — ana akış kolonu (mamuller 800X, stage 1100X)
+  atoms.push({ id: "stg-uretim", kind: "stage", label: "Üretim", x: 1100, y: 200, w: 130, h: 130 });
+  atoms.push({ id: "stg-depo",   kind: "stage", label: "Depo",   x: 1100, y: 380, w: 130, h: 130 });
+  atoms.push({ id: "stg-satis",  kind: "stage", label: "Satış",  x: 1100, y: 560, w: 130, h: 130 });
 
   // Factory
   atoms.push({ id: "fact",  kind: "factory", label: "Fabrika", x: 1340, y: 420, w: 150, h: 130 });
@@ -2346,38 +2353,46 @@ const SCENE_EDGES: SceneEdge[] = [
   ...["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"].map(id => ({
     fromId: "lbl-customers", toId: id, dashed: true, color: "rgba(255,255,255,0.18)",
   })),
-  // E3 (green) → Elektrikli circle
+  // E3 (yeşil) → Elektrikli daire
   { fromId: "c-E3", toId: "cat-elektrikli", color: "#10b981", dashed: true, label: "x200", curveK: 0.4 },
-  // G2 (blue) → Gazlı circle
+  // G2 (mavi) → Gazlı daire
   { fromId: "c-G2", toId: "cat-gazli", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
 
-  // Elektrikli → all electric products (faint)
-  { fromId: "cat-elektrikli", toId: "p-Z-elek", dashed: true, color: "rgba(255,255,255,0.22)" },
+  // Elektrikli → 5 elektrikli cihaz (GSA*, GSS*)
   { fromId: "cat-elektrikli", toId: "p-GSA15",  dashed: true, color: "rgba(255,255,255,0.45)" },
-  { fromId: "cat-elektrikli", toId: "p-T-elek", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-elektrikli", toId: "p-GSA20",  dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-elektrikli", toId: "p-GSA30",  dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-elektrikli", toId: "p-GSS20P", dashed: true, color: "rgba(255,255,255,0.45)" },
+  { fromId: "cat-elektrikli", toId: "p-GSS40P", dashed: true, color: "rgba(255,255,255,0.22)" },
 
-  // Gazlı → all gas products
-  { fromId: "cat-gazli", toId: "p-X-gazli", dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-Y-gazli", dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-GSS20P", dashed: true, color: "rgba(255,255,255,0.45)" },
+  // Gazlı → 6 gazlı cihaz (ELT.*, BH.*)
+  { fromId: "cat-gazli", toId: "p-ELT.5-7",    dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-ELT.7-11",   dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-BH.50ST.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-BH.50UT.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
+  { fromId: "cat-gazli", toId: "p-BH.55ST.SV", dashed: true, color: "rgba(255,255,255,0.45)" }, // G2 sipariş hattı
+  { fromId: "cat-gazli", toId: "p-BH.55UT.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
 
-  // GSA15 → Üretim, Depo, Satış (green)
+  // GSA15 → Üretim, Depo, Satış (yeşil — E3 sipariş zinciri)
   { fromId: "p-GSA15", toId: "stg-uretim", color: "#10b981", dashed: true, label: "x100", curveK: 0.35 },
   { fromId: "p-GSA15", toId: "stg-depo",   color: "#10b981", dashed: true, label: "x50",  curveK: 0.5 },
   { fromId: "p-GSA15", toId: "stg-satis",  color: "#10b981", dashed: true, label: "x50",  curveK: 0.7 },
 
-  // GSS20P → Üretim
-  { fromId: "p-GSS20P", toId: "stg-uretim", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
+  // GSS20P → Üretim (elektrikli, paylaşılan komponent zinciri için)
+  { fromId: "p-GSS20P", toId: "stg-uretim", color: "rgba(255,255,255,0.5)", dashed: true, curveK: 0.4 },
+
+  // BH.55ST.SV → Üretim (mavi — G2 sipariş zinciri, ana gazlı hat)
+  { fromId: "p-BH.55ST.SV", toId: "stg-uretim", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
 
   // Stages → Factory
   { fromId: "stg-uretim", toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
   { fromId: "stg-depo",   toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
   { fromId: "stg-satis",  toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
 
-  // Cross-product red curves (paylaşılan a/b)
+  // Cross-product red curve — GSA15 ile GSS20P paylaşılan elektrikli komponent
   { fromId: "p-GSA15",  toId: "p-GSS20P", color: "#ef4444", dashed: true, label: "x110/x120", curveK: 0.6 },
 
-  // Tedarik denklemi: GSS20P → a, b (red)
+  // Tedarik denklemi: GSS20P → a, b (kırmızı)
   { fromId: "p-GSS20P", toId: "comp-a", color: "#ef4444", dashed: true, label: "tedarik denklemi", curveK: 0.7 },
   { fromId: "p-GSS20P", toId: "comp-b", color: "#ef4444", dashed: true, curveK: 0.7 },
 
@@ -2389,19 +2404,19 @@ const SCENE_EDGES: SceneEdge[] = [
   { fromId: "sup-b-qty", toId: "sup-b-lead", color: "rgba(255,255,255,0.5)", dashed: false },
   { fromId: "sup-b-lead", toId: "sup-max", color: "rgba(255,255,255,0.5)", dashed: false },
 
-  // Lead pill → relevant flow
-  { fromId: "pill-lead-GSA15", toId: "stg-uretim", color: "rgba(16,185,129,0.4)", dashed: true },
-  { fromId: "pill-lead-GSS20P", toId: "stg-uretim", color: "rgba(56,189,248,0.4)", dashed: true },
+  // Lead pill → ilgili akış
+  { fromId: "pill-lead-GSA15",  toId: "stg-uretim", color: "rgba(16,185,129,0.4)", dashed: true },
+  { fromId: "pill-lead-GSS20P", toId: "stg-uretim", color: "rgba(255,255,255,0.4)", dashed: true },
 
-  // Deadline pill → customer chip
+  // Deadline pill → müşteri chip
   { fromId: "pill-d-E3", toId: "c-E3", color: "rgba(16,185,129,0.5)", dashed: true },
   { fromId: "pill-d-G2", toId: "c-G2", color: "rgba(56,189,248,0.5)", dashed: true },
 
-  // Flask → product cards (subtle)
+  // Flask → mamul kartları (görsel bağ)
   { fromId: "p-GSA15",  toId: "flask", color: "rgba(16,185,129,0.4)", dashed: true, curveK: 0.6 },
-  { fromId: "p-GSS20P", toId: "flask", color: "rgba(56,189,248,0.4)", dashed: true, curveK: 0.6 },
+  { fromId: "p-GSS20P", toId: "flask", color: "rgba(255,255,255,0.4)", dashed: true, curveK: 0.6 },
 
-  // Flask → S1, S2 timeline cards
+  // Flask → S1, S2 timeline kartları
   { fromId: "flask", toId: "tl-s1", color: "rgba(255,255,255,0.5)", dashed: false },
   { fromId: "flask", toId: "tl-s2", color: "rgba(255,255,255,0.5)", dashed: false },
 ];
@@ -2419,9 +2434,12 @@ function atomPort(a: SceneAtom, port?: "n"|"s"|"e"|"w"): { x: number; y: number 
   return { x: a.x, y: c.y };
 }
 
-// Hangi atom hangi gruba ait — Customers grubu kapalıysa bu id'ler gizlenir
+// Hangi atom hangi gruba ait — grup kapalıysa bu id'ler gizlenir.
+// Kategori daireye tıklayınca o kategorinin cihazları açılıp/kapanıyor.
 const SCENE_GROUP_MEMBERS: Record<string, string[]> = {
   customers: ["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"],
+  "cat-elektrikli": ["p-GSA15","p-GSA20","p-GSA30","p-GSS20P","p-GSS40P","pill-lead-GSA15","pill-lead-GSS20P"],
+  "cat-gazli":      ["p-ELT.5-7","p-ELT.7-11","p-BH.50ST.SV","p-BH.50UT.SV","p-BH.55ST.SV","p-BH.55UT.SV"],
 };
 
 /* ════════════════════════════════════════════════════════════════════
@@ -2463,8 +2481,8 @@ function CustomersSceneRenderer({
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
 }) {
-  // Açık gruplar — varsayılan olarak Customers AÇIK (chips görünür)
-  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers"]));
+  // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
   // Shift+click ile çoklu seçim — aralarında canlı edge çiziliyor
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
@@ -2654,10 +2672,13 @@ function CustomersSceneRenderer({
 
       {/* Atom layer — DragNode'lar */}
       {visibleAtoms.map(a => {
-        // Customers KÖK label = grup toggle. Diğer atomlar tıklayınca pop-up açar.
+        // Grup toggle atomları: Customers KÖK + kategori daireler.
+        // Diğer atomlar tıklayınca yan tarafa drill-down pop-up açar.
         const isCustomersLabel = a.id === "lbl-customers";
-        const onTap = isCustomersLabel
-          ? () => toggleGroup("customers")
+        const isCategory = a.kind === "category";
+        const groupKey = isCustomersLabel ? "customers" : isCategory ? a.id : null;
+        const onTap = groupKey
+          ? () => toggleGroup(groupKey)
           : () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         return (
           <SceneAtomNode
@@ -2667,7 +2688,7 @@ function CustomersSceneRenderer({
             onTap={onTap}
             onMultiSelect={() => toggleSelect(a.id)}
             selected={selectedIds.has(a.id)}
-            groupOpen={isCustomersLabel ? openGroups.has("customers") : undefined}
+            groupOpen={groupKey ? openGroups.has(groupKey) : undefined}
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
           />
@@ -3080,6 +3101,7 @@ function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boo
 
   if (atom.kind === "category") {
     const stripe = atom.label === "Elektrikli" ? "#10b981" : "#38bdf8";
+    const showChevron = typeof groupOpen === "boolean";
     return (
       <div style={{
         width: "100%", height: "100%",
@@ -3092,6 +3114,11 @@ function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boo
       }}>
         {labelLine("KATEGORİ", stripe)}
         <div style={{ fontSize: 18, fontWeight: 700, textAlign: "center" }}>{atom.label}</div>
+        {showChevron && (
+          <div style={{ fontSize: 11, color: stripe, opacity: 0.85, marginTop: 2, letterSpacing: 1 }}>
+            {groupOpen ? "▾ açık" : "▸ kapalı"}
+          </div>
+        )}
       </div>
     );
   }
