@@ -5758,6 +5758,60 @@ export default function StrategyCanvasPage() {
     localStorage.setItem("griseus_g3_pill_dedup_v1", "done");
   }, [sceneCustomAtoms]);
 
+  // Migration: "Ankara Bayisi" /siparis ile yaratılmış meta + deadline pill +
+  // pairwise edge'leri tek-seferlik temizle. orderNumber === "Ankara Bayisi"
+  // (case-insensitive) eşleşen atomMeta entry'leri etkilenir.
+  const ankaraBayisiPurgeRef = useRef(false);
+  useEffect(() => {
+    if (ankaraBayisiPurgeRef.current) return;
+    if (localStorage.getItem("griseus_ankara_bayisi_purge_v1") === "done") {
+      ankaraBayisiPurgeRef.current = true;
+      return;
+    }
+    ankaraBayisiPurgeRef.current = true;
+    const matchOrder = (v?: string) => !!v && v.trim().toLowerCase() === "ankara bayisi";
+    const taggedIds = new Set<string>();
+    const pillsToDelete = new Set<string>();
+    for (const [id, meta] of Object.entries(sceneAtomMeta)) {
+      if (matchOrder(meta.orderNumber)) {
+        taggedIds.add(id);
+        if (meta.deadlinePillId) pillsToDelete.add(meta.deadlinePillId);
+      }
+    }
+    if (taggedIds.size === 0 && pillsToDelete.size === 0) {
+      localStorage.setItem("griseus_ankara_bayisi_purge_v1", "done");
+      return;
+    }
+    setSceneAtomMeta(prev => {
+      const next: Record<string, AtomMeta> = {};
+      for (const [id, meta] of Object.entries(prev)) {
+        if (!taggedIds.has(id)) {
+          next[id] = meta;
+          continue;
+        }
+        const { orderNumber: _o, quantity: _q, deadlinePillId: _p, deadline: _d, ...rest } = meta;
+        if (Object.keys(rest).length > 0) next[id] = rest;
+      }
+      return next;
+    });
+    if (pillsToDelete.size > 0) {
+      setSceneCustomAtoms(prev => prev.filter(a => !pillsToDelete.has(a.id)));
+    }
+    setSceneCustomEdges(prev => prev.filter(e => {
+      if (pillsToDelete.has(e.fromId) || pillsToDelete.has(e.toId)) return false;
+      if (taggedIds.has(e.fromId) && taggedIds.has(e.toId)) return false;
+      return true;
+    }));
+    if (pillsToDelete.size > 0) {
+      setScenePositions(prev => {
+        const next = { ...prev };
+        pillsToDelete.forEach(id => { delete next[id]; });
+        return next;
+      });
+    }
+    localStorage.setItem("griseus_ankara_bayisi_purge_v1", "done");
+  }, [sceneAtomMeta]);
+
   // Migration: önceki ensureDeadlinePill formula'sı pill'i parent'ın 12px altına
   // koyuyordu (overlap). Yeni formula: parent'ın 60px solunda, Y merkezde. Daha
   // önce yaratılmış custom pill'leri yeni pozisyona taşı — kullanıcı manuel
