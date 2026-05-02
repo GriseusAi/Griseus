@@ -2646,38 +2646,49 @@ function CustomersSceneRenderer({
 
     const out: SceneAtom[] = [];
     // BOM kolonu fabrikanın sağına yerleşir — stage/fact ile çakışmasın
-    const T1_X = 1540;
-    const T1_W = 220, T1_H = 38, T1_GAP = 6;
-    const T2_X_OFFSET = 250;     // T1 sağına offset (T2 X = 1790)
-    const T2_W = 210, T2_H = 32, T2_GAP = 4;
+    const CARD_X = 1540;
+    const CARD_W = 220, CARD_H = 38;
+    // Yarı-mamül daire: kare; merkez kart kolonunun ortasıyla aynı hizada
+    const SUB_W = 80, SUB_H = 80;
+    const SUB_X = CARD_X + (CARD_W - SUB_W) / 2; // 1610
+    const GAP = 8;
+    // Tier 2 alt bileşenler — yarı-mamülün sağına
+    const T2_X = CARD_X + 280;   // 1820
+    const T2_W = 200, T2_H = 32, T2_GAP = 4;
 
-    // T1 dikey grid — cihaz Y merkezinden ortalan
-    const totalT1H = tree.length * T1_H + (tree.length - 1) * T1_GAP;
+    // Cumulative Y — kart ve daire farklı yükseklikte, kümülatif diziyoruz.
+    // Toplam yüksekliği önceden hesapla → cihaz Y merkezinden ortala
+    const totalH = tree.reduce((acc, t1) => {
+      const isSub = t1.children.length > 0;
+      return acc + (isSub ? SUB_H : CARD_H) + GAP;
+    }, -GAP);
     const devCenterY = dev.y + dev.h / 2;
-    let startY = devCenterY - totalT1H / 2;
-    if (startY < 30) startY = 30;
+    let cursorY = Math.max(30, devCenterY - totalH / 2);
 
-    tree.forEach((t1, i) => {
+    tree.forEach((t1) => {
       const t1Id = `bom-${expandedDeviceId}-${t1.code}`;
       const isSub = t1.children.length > 0;
-      const t1Y = startY + i * (T1_H + T1_GAP);
+      const w = isSub ? SUB_W : CARD_W;
+      const h = isSub ? SUB_H : CARD_H;
+      const defaultX = isSub ? SUB_X : CARD_X;
       const persistedT1 = positions[t1Id];
       out.push({
         id: t1Id,
         kind: isSub ? "subassembly" : "bom-item",
         label: t1.code,
         sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
-        x: persistedT1 ? persistedT1.x : T1_X,
-        y: persistedT1 ? persistedT1.y : t1Y,
-        w: T1_W, h: T1_H,
+        x: persistedT1 ? persistedT1.x : defaultX,
+        y: persistedT1 ? persistedT1.y : cursorY,
+        w, h,
         highlight: isCriticalBom(t1.name) ? "red" : null,
       });
 
-      // T2 children — sadece yarı-mamül expand ise render
+      // T2 children — yarı-mamül expand ise render
       if (isSub && expandedSubassemblies.has(t1Id)) {
         const t2Count = t1.children.length;
         const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
-        const t2StartY = t1Y + T1_H / 2 - t2TotalH / 2;
+        const subCenterY = cursorY + h / 2;
+        const t2StartY = subCenterY - t2TotalH / 2;
         t1.children.forEach((c, j) => {
           const t2Id = `bom-${expandedDeviceId}-${t1.code}-${c.code}`;
           const persistedT2 = positions[t2Id];
@@ -2686,13 +2697,15 @@ function CustomersSceneRenderer({
             kind: "bom-item",
             label: c.code,
             sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
-            x: persistedT2 ? persistedT2.x : T1_X + T2_X_OFFSET,
+            x: persistedT2 ? persistedT2.x : T2_X,
             y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
             w: T2_W, h: T2_H,
             highlight: isCriticalBom(c.name) ? "red" : null,
           });
         });
       }
+
+      cursorY += h + GAP;
     });
     return out;
   }, [expandedDeviceId, expandedSubassemblies, baseAtoms, positions]);
@@ -3250,7 +3263,7 @@ function SceneAtomNode({
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
 }) {
-  const asCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component";
+  const asCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
   return (
     <DragNode
       pos={{ x: atom.x, y: atom.y }}
@@ -3454,33 +3467,27 @@ function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boo
   }
 
   if (atom.kind === "subassembly") {
-    const stripe = "#a855f7"; // mor — yarı-mamül
-    const showChevron = typeof groupOpen === "boolean";
+    const stripe = "#a855f7"; // mor — yarı-mamül (bh-ontology daire pattern)
     return (
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
-        borderRadius: 10, padding: "5px 9px",
-        boxShadow: `0 4px 14px rgba(168,85,247,0.18)`,
-        border: `1px solid ${stripe}55`,
-        borderLeft: `3px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
-        fontFamily: mono,
+        borderRadius: "50%",
+        border: `1.5px solid ${stripe}77`,
+        boxShadow: `0 0 0 4px ${stripe}10, 0 4px 14px rgba(168,85,247,0.28)`,
+        display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 2,
+        fontFamily: mono, padding: 6,
+        textAlign: "center",
       }}>
-        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ fontSize: 8, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
-            YARI-MAMÜL
-          </div>
-          <div style={{ fontSize: 11, fontWeight: 700, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
-            {showChevron && <span style={{ color: stripe, fontSize: 9 }}>{groupOpen ? "▾" : "▸"}</span>}
-            {atom.label}
-          </div>
+        <div style={{ fontSize: 8, letterSpacing: 1.6, color: stripe, fontWeight: 700 }}>
+          YARI-MAMÜL
         </div>
-        {atom.sub && (
-          <div style={{ fontSize: 9, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-            {atom.sub}
-          </div>
-        )}
+        <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.1 }}>
+          {atom.label}
+        </div>
+        <div style={{ fontSize: 8, color: stripe, opacity: 0.85 }}>
+          {groupOpen ? "▾ açık" : "▸ tıkla"}
+        </div>
       </div>
     );
   }
