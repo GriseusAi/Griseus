@@ -151,11 +151,17 @@ type ShapeKind = "rect" | "rounded" | "circle" | "triangle";
 
 const SHAPE_OVERRIDES_KEY = "griseus_scene_shapes_v1";
 const CUSTOM_EDGES_KEY = "griseus_scene_custom_edges_v1";
+const ATOM_META_KEY = "griseus_scene_atom_meta_v1";
 
 interface CustomEdge {
   id: string;
   fromId: string;
   toId: string;
+}
+
+interface AtomMeta {
+  orderNumber?: string;
+  deadline?: string;
 }
 
 function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
@@ -2729,10 +2735,248 @@ function ShapesToolbar({
   );
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   CommandBar — sahnenin altında AutoCAD-vari komut satırı.
+   Komutlar: /siparis <no>, /teslim <tarih>
+   Seçili atomlara meta uygular; sonuç + hata pill'i input üstünde.
+   ──────────────────────────────────────────────────────────────────── */
+interface CommandSpec {
+  name: string;
+  syntax: string;
+  hint: string;
+}
+
+const COMMAND_SPECS: CommandSpec[] = [
+  { name: "siparis", syntax: "/siparis <no>", hint: "Seçili atom(lar)a sipariş numarası ata" },
+  { name: "teslim",  syntax: "/teslim <tarih>", hint: "Seçili atom(lar)a teslim tarihi ata (örn: 15 Mayıs, 2026-05-15)" },
+];
+
+type CommandResult =
+  | { ok: true; message: string }
+  | { ok: false; message: string };
+
+function CommandBar({
+  selectedIds, atomById, onApplyMeta, onClearMeta, edgePalette,
+}: {
+  selectedIds: Set<string>;
+  atomById: Record<string, SceneAtom>;
+  onApplyMeta: (ids: string[], patch: AtomMeta) => void;
+  onClearMeta: (ids: string[]) => void;
+  edgePalette: EdgePalette;
+}) {
+  const [input, setInput] = useState("");
+  const [result, setResult] = useState<CommandResult | null>(null);
+  const [historyIdx, setHistoryIdx] = useState(-1);
+  const historyRef = useRef<string[]>([]);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+
+  const validIds = useMemo(
+    () => Array.from(selectedIds).filter(id => atomById[id]),
+    [selectedIds, atomById],
+  );
+
+  const trimmed = input.trim();
+  const showSuggest = trimmed.startsWith("/") && trimmed.split(/\s+/)[0].length <= 8;
+  const suggestions = useMemo(() => {
+    if (!showSuggest) return [];
+    const q = trimmed.replace(/^\//, "").toLowerCase();
+    return COMMAND_SPECS.filter(c => c.name.startsWith(q));
+  }, [trimmed, showSuggest]);
+
+  const runCommand = useCallback((raw: string) => {
+    const text = raw.trim();
+    if (!text) return;
+    historyRef.current = [text, ...historyRef.current.filter(t => t !== text)].slice(0, 30);
+    setHistoryIdx(-1);
+
+    // /komut formatı; / olmasa da kabul
+    const stripped = text.replace(/^\//, "");
+    const space = stripped.indexOf(" ");
+    const cmd = (space === -1 ? stripped : stripped.slice(0, space)).toLowerCase();
+    const arg = (space === -1 ? "" : stripped.slice(space + 1)).trim();
+
+    if (validIds.length === 0) {
+      setResult({ ok: false, message: "Önce bir veya daha fazla atom seç (shift+click)." });
+      return;
+    }
+
+    if (cmd === "siparis" || cmd === "sipariş" || cmd === "order") {
+      if (!arg) {
+        setResult({ ok: false, message: `Sipariş numarası eksik. Örn: /siparis 12345` });
+        return;
+      }
+      onApplyMeta(validIds, { orderNumber: arg });
+      setResult({ ok: true, message: `${validIds.length} atom · sipariş = ${arg}` });
+      setInput("");
+      return;
+    }
+
+    if (cmd === "teslim" || cmd === "deadline" || cmd === "tarih") {
+      if (!arg) {
+        setResult({ ok: false, message: `Teslim tarihi eksik. Örn: /teslim 15 Mayıs` });
+        return;
+      }
+      onApplyMeta(validIds, { deadline: arg });
+      setResult({ ok: true, message: `${validIds.length} atom · teslim = ${arg}` });
+      setInput("");
+      return;
+    }
+
+    if (cmd === "sil" || cmd === "clear") {
+      onClearMeta(validIds);
+      setResult({ ok: true, message: `${validIds.length} atom · meta silindi` });
+      setInput("");
+      return;
+    }
+
+    if (cmd === "yardim" || cmd === "yardım" || cmd === "help" || cmd === "?") {
+      setResult({ ok: true, message: COMMAND_SPECS.map(c => c.syntax).join("  ·  ") });
+      setInput("");
+      return;
+    }
+
+    setResult({ ok: false, message: `Bilinmeyen komut: "${cmd}". /yardim ile listele.` });
+  }, [validIds, onApplyMeta, onClearMeta]);
+
+  const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
+    if (e.key === "Enter") {
+      e.preventDefault();
+      runCommand(input);
+      return;
+    }
+    if (e.key === "Escape") {
+      setInput("");
+      setResult(null);
+      setHistoryIdx(-1);
+      return;
+    }
+    if (e.key === "Tab" && suggestions.length > 0) {
+      e.preventDefault();
+      setInput(`/${suggestions[0].name} `);
+      return;
+    }
+    if (e.key === "ArrowUp") {
+      e.preventDefault();
+      const next = Math.min(historyRef.current.length - 1, historyIdx + 1);
+      if (next >= 0 && historyRef.current[next] !== undefined) {
+        setHistoryIdx(next);
+        setInput(historyRef.current[next]);
+      }
+      return;
+    }
+    if (e.key === "ArrowDown") {
+      e.preventDefault();
+      const next = historyIdx - 1;
+      if (next < 0) {
+        setHistoryIdx(-1);
+        setInput("");
+      } else {
+        setHistoryIdx(next);
+        setInput(historyRef.current[next] ?? "");
+      }
+      return;
+    }
+  };
+
+  return (
+    <div style={{
+      position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 25,
+      display: "flex", flexDirection: "column", gap: 6,
+      pointerEvents: "none",
+    }}>
+      {/* Suggest dropdown — input'un üstünde */}
+      {showSuggest && suggestions.length > 0 && (
+        <div style={{
+          alignSelf: "flex-start",
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 8, padding: 6, minWidth: 320, maxWidth: 520,
+          fontFamily: mono, fontSize: 11,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          pointerEvents: "auto",
+        }}>
+          <div style={{
+            fontSize: 9, color: C.cardSub, letterSpacing: 1.4,
+            padding: "2px 6px 4px", borderBottom: `1px solid ${C.panelEdge}`,
+            marginBottom: 4,
+          }}>KOMUTLAR · TAB ile tamamla</div>
+          {suggestions.map(s => (
+            <button
+              key={s.name}
+              onClick={() => { setInput(`/${s.name} `); inputRef.current?.focus(); }}
+              style={{
+                display: "block", width: "100%", textAlign: "left",
+                padding: "5px 6px", borderRadius: 4,
+                background: "transparent", border: "none", cursor: "pointer",
+                color: C.cardInk, fontFamily: mono, fontSize: 11,
+              }}
+              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
+              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
+            >
+              <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>{s.syntax}</span>
+              <span style={{ color: C.cardSub, marginLeft: 8 }}>— {s.hint}</span>
+            </button>
+          ))}
+        </div>
+      )}
+
+      {/* Sonuç pill */}
+      {result && (
+        <div style={{
+          alignSelf: "flex-start",
+          padding: "4px 10px", borderRadius: 6,
+          background: result.ok ? "rgba(16,185,129,0.16)" : "rgba(239,68,68,0.16)",
+          border: `1px solid ${result.ok ? "rgba(16,185,129,0.45)" : "rgba(239,68,68,0.45)"}`,
+          color: result.ok ? "#10b981" : "#ef4444",
+          fontFamily: mono, fontSize: 11, fontWeight: 600,
+          pointerEvents: "auto",
+          maxWidth: "calc(100% - 24px)",
+        }}>
+          {result.ok ? "✓ " : "✕ "}{result.message}
+        </div>
+      )}
+
+      {/* Komut satırı */}
+      <div style={{
+        display: "flex", alignItems: "center", gap: 8,
+        background: C.cardBg, color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderRadius: 8, padding: "8px 12px",
+        fontFamily: mono, fontSize: 12,
+        boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+        pointerEvents: "auto",
+      }}>
+        <span style={{
+          fontSize: 10, color: C.cardSub, fontFamily: mono,
+          letterSpacing: 1.4, fontWeight: 700,
+        }}>
+          KOMUT
+        </span>
+        <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>›</span>
+        <input
+          ref={inputRef}
+          value={input}
+          onChange={(e) => setInput(e.target.value)}
+          onKeyDown={onKeyDown}
+          placeholder={`Bir komut yaz (örn: /siparis 12345)  ·  /yardim için liste${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : "  ·  önce atom seç"}`}
+          spellCheck={false}
+          style={{
+            flex: 1,
+            background: "transparent", border: "none", outline: "none",
+            color: C.cardInk, fontFamily: mono, fontSize: 12,
+          }}
+        />
+        <span style={{ color: C.cardSub, fontSize: 10 }}>↵ çalıştır · Esc temizle · ↑/↓ geçmiş</span>
+      </div>
+    </div>
+  );
+}
+
 function CustomersSceneRenderer({
   positions, onMove, getMouseInWorld, viewport, setViewport, wrapperRef, edgePalette,
   shapeOverrides, setShape, clearShape,
   customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
+  atomMeta, setAtomMetaField, clearAtomMeta,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -2748,6 +2992,9 @@ function CustomersSceneRenderer({
   addCustomEdge: (fromId: string, toId: string) => void;
   removeCustomEdge: (id: string) => void;
   clearAllCustomEdges: () => void;
+  atomMeta: Record<string, AtomMeta>;
+  setAtomMetaField: (id: string, patch: AtomMeta) => void;
+  clearAtomMeta: (id: string) => void;
 }) {
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -2949,14 +3196,47 @@ function CustomersSceneRenderer({
     return m;
   }, [atoms]);
 
-  // Kapalı grubun üyelerini gizle — hem atom hem edge filter'ı
+  // Kullanıcının klavye Delete/Backspace ile sildiği atomlar — localStorage persist
+  const [deletedAtomIds, setDeletedAtomIds] = useState<Set<string>>(() => {
+    try {
+      const raw = localStorage.getItem("griseus_scene_deleted_v1");
+      return raw ? new Set(JSON.parse(raw)) : new Set();
+    } catch { return new Set(); }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("griseus_scene_deleted_v1", JSON.stringify(Array.from(deletedAtomIds)));
+    } catch { /* noop */ }
+  }, [deletedAtomIds]);
+
+  // Kapalı grubun üyelerini + silinen atomları gizle — hem atom hem edge filter'ı
   const hiddenIds = useMemo(() => {
     const h = new Set<string>();
     for (const [key, members] of Object.entries(SCENE_GROUP_MEMBERS)) {
       if (!openGroups.has(key)) members.forEach(id => h.add(id));
     }
+    deletedAtomIds.forEach(id => h.add(id));
     return h;
-  }, [openGroups]);
+  }, [openGroups, deletedAtomIds]);
+
+  // Delete/Backspace → seçili atom(lar)ı sil (input/textarea içindeyse atla)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== "Delete" && e.key !== "Backspace") return;
+      if (selectedIds.size === 0) return;
+      const tag = (e.target as HTMLElement | null)?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA") return;
+      e.preventDefault();
+      setDeletedAtomIds(prev => {
+        const n = new Set(prev);
+        selectedIds.forEach(id => n.add(id));
+        return n;
+      });
+      setSelectedIds(new Set());
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [selectedIds]);
 
   const visibleAtoms = useMemo(
     () => atoms.filter(a => !hiddenIds.has(a.id)),
@@ -3138,7 +3418,7 @@ function CustomersSceneRenderer({
           display: "flex", alignItems: "center", gap: 10,
         }}>
           <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>● {selectedIds.size}</span>
-          <span style={{ color: C.cardSub }}>seçili · shift+click ekle/çıkar</span>
+          <span style={{ color: C.cardSub }}>seçili · shift+click ekle/çıkar · Del sil</span>
           <button
             onClick={clearSelection}
             style={{
@@ -3148,6 +3428,35 @@ function CustomersSceneRenderer({
             }}
           >
             temizle
+          </button>
+        </div>
+      )}
+
+      {/* Silinen atom göstergesi — selection pill'in altında, geri getir butonu */}
+      {deletedAtomIds.size > 0 && (
+        <div style={{
+          position: "absolute",
+          top: selectedIds.size > 0 ? 60 : 12,
+          right: 12, zIndex: 20,
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 10, padding: "8px 12px",
+          fontFamily: mono, fontSize: 11,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ color: "#ef4444", fontWeight: 700 }}>🗑 {deletedAtomIds.size}</span>
+          <span style={{ color: C.cardSub }}>silinen atom</span>
+          <button
+            onClick={() => setDeletedAtomIds(new Set())}
+            style={{
+              background: "rgba(255,255,255,0.06)", color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`, borderRadius: 6,
+              padding: "4px 8px", fontFamily: mono, fontSize: 10, cursor: "pointer",
+            }}
+            title="Tüm silinen atomları geri getir"
+          >
+            geri getir
           </button>
         </div>
       )}
@@ -3169,6 +3478,61 @@ function CustomersSceneRenderer({
         {visibleSceneEdges.map((e, i) => renderEdge(e, i, false))}
         {liveEdges.map((e, i) => renderEdge(e, i, true))}
       </svg>
+
+      {/* Atom altı metadata badge overlay — sipariş no + teslim tarihi */}
+      {visibleAtoms.map(a => {
+        const meta = atomMeta[a.id];
+        if (!meta || (!meta.orderNumber && !meta.deadline)) return null;
+        const sx = a.x * viewport.scale + viewport.vx;
+        const sy = (a.y + a.h + 4) * viewport.scale + viewport.vy;
+        const sw = a.w * viewport.scale;
+        return (
+          <div
+            key={`meta-${a.id}`}
+            style={{
+              position: "absolute", left: sx, top: sy, width: sw,
+              display: "flex", flexWrap: "wrap", gap: 4,
+              pointerEvents: "auto",
+              zIndex: 5,
+            }}
+          >
+            {meta.orderNumber && (
+              <span
+                title={`Sipariş #${meta.orderNumber} — sağ tık ile sil`}
+                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { orderNumber: undefined }); }}
+                style={{
+                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
+                  background: asRgba(edgePalette.colors.select, 0.18),
+                  border: `1px solid ${asRgba(edgePalette.colors.select, 0.55)}`,
+                  borderRadius: 4 * viewport.scale,
+                  color: edgePalette.colors.select,
+                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
+                  whiteSpace: "nowrap", cursor: "context-menu",
+                }}
+              >
+                #{meta.orderNumber}
+              </span>
+            )}
+            {meta.deadline && (
+              <span
+                title={`Teslim ${meta.deadline} — sağ tık ile sil`}
+                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { deadline: undefined }); }}
+                style={{
+                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
+                  background: asRgba(edgePalette.colors.gas, 0.18),
+                  border: `1px solid ${asRgba(edgePalette.colors.gas, 0.55)}`,
+                  borderRadius: 4 * viewport.scale,
+                  color: edgePalette.colors.gas,
+                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
+                  whiteSpace: "nowrap", cursor: "context-menu",
+                }}
+              >
+                → {meta.deadline}
+              </span>
+            )}
+          </div>
+        );
+      })}
 
       {/* Atom layer — DragNode'lar */}
       {visibleAtoms.map(a => {
@@ -3228,6 +3592,15 @@ function CustomersSceneRenderer({
           viewport={viewport}
         />
       )}
+
+      {/* Komut satırı — alt sabit, AutoCAD-vari */}
+      <CommandBar
+        selectedIds={selectedIds}
+        atomById={atomById}
+        edgePalette={edgePalette}
+        onApplyMeta={(ids, patch) => ids.forEach(id => setAtomMetaField(id, patch))}
+        onClearMeta={(ids) => ids.forEach(id => clearAtomMeta(id))}
+      />
     </>
   );
 }
@@ -4416,6 +4789,35 @@ export default function StrategyCanvasPage() {
     setSceneCustomEdges([]);
   }, []);
 
+  // Atom metadata — komut bar'dan set edilir (sipariş no, teslim tarihi)
+  const [sceneAtomMeta, setSceneAtomMeta] = useState<Record<string, AtomMeta>>(
+    () => safeParse<Record<string, AtomMeta>>(localStorage.getItem(ATOM_META_KEY), {}),
+  );
+  useEffect(() => { localStorage.setItem(ATOM_META_KEY, JSON.stringify(sceneAtomMeta)); }, [sceneAtomMeta]);
+  const setSceneAtomMetaField = useCallback((id: string, patch: AtomMeta) => {
+    setSceneAtomMeta(prev => {
+      const cur = prev[id] ?? {};
+      const merged: AtomMeta = { ...cur, ...patch };
+      // Tüm alanlar boşsa kaydı sil
+      const isEmpty = !merged.orderNumber && !merged.deadline;
+      if (isEmpty) {
+        if (!(id in prev)) return prev;
+        const next = { ...prev };
+        delete next[id];
+        return next;
+      }
+      return { ...prev, [id]: merged };
+    });
+  }, []);
+  const clearSceneAtomMeta = useCallback((id: string) => {
+    setSceneAtomMeta(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
   // Edge color palette — kullanıcı seçimi, localStorage'da kalıcı
   const [edgePaletteId, setEdgePaletteId] = useState<string>(() => {
     return localStorage.getItem(EDGE_PALETTE_KEY) || "default";
@@ -5434,6 +5836,9 @@ export default function StrategyCanvasPage() {
             addCustomEdge={addSceneCustomEdge}
             removeCustomEdge={removeSceneCustomEdge}
             clearAllCustomEdges={clearAllSceneCustomEdges}
+            atomMeta={sceneAtomMeta}
+            setAtomMetaField={setSceneAtomMetaField}
+            clearAtomMeta={clearSceneAtomMeta}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
