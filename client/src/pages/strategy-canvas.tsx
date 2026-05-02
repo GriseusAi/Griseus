@@ -2454,7 +2454,7 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
     { id: "c-E1", label: "E1" },
     { id: "c-G1", label: "G1" },
     { id: "c-G2", label: "G2", hl: "blue" },
-    { id: "c-G3", label: "G3" },
+    { id: "c-G3", label: "G3", hl: "blue" },
     { id: "c-Gn", label: "Gn" },
   ];
   customerSpec.forEach((c, i) => {
@@ -2486,6 +2486,7 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
   // Deadline pills
   atoms.push({ id: "pill-d-E3", kind: "deadline-pill", label: "Teslim = 1 Haz",  x: 540, y:  70, w: 150, h: 36, highlight: "green" });
   atoms.push({ id: "pill-d-G2", kind: "deadline-pill", label: "Teslim = 15 Mayıs", x: 540, y: 750, w: 170, h: 36, highlight: "blue" });
+  atoms.push({ id: "pill-d-G3", kind: "deadline-pill", label: "Teslim = 30 Haziran", x: 540, y: 826, w: 180, h: 36, highlight: "blue" });
 
   // Lead pills
   atoms.push({ id: "pill-lead-GSA15",  kind: "lead-pill", label: "30 gün", x: 1080, y:  80, w: 90, h: 36, highlight: "green" });
@@ -2557,6 +2558,7 @@ const SCENE_EDGES: SceneEdge[] = [
   // Deadline pill → müşteri chip
   { fromId: "pill-d-E3", toId: "c-E3", color: "rgba(16,185,129,0.5)", dashed: true },
   { fromId: "pill-d-G2", toId: "c-G2", color: "rgba(56,189,248,0.5)", dashed: true },
+  { fromId: "pill-d-G3", toId: "c-G3", color: "rgba(56,189,248,0.5)", dashed: true },
 
   // Flask → mamul kartları (görsel bağ)
   { fromId: "p-GSA15",  toId: "flask", color: "rgba(16,185,129,0.4)", dashed: true, curveK: 0.6 },
