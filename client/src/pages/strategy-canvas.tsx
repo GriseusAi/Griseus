@@ -4176,13 +4176,14 @@ function CustomersSceneRenderer({
             setAtomMetaField(parentId, { deadline });
             return existing;
           }
-          // Yeni pill atom yarat — parent'ın HEMEN ALTINDA, X merkezde hizalı.
-          // (Yan yerleşimde edge kategori daireleri arkasında kalıyordu;
-          //  alt yerleşim hem dikey kısa edge hem de görsel netlik sağlar.)
+          // Yeni pill atom yarat — parent'ın SOLUNA, Y merkezde hizalı, belirgin
+          // mesafede. Default seed'deki TESLİM 15 Mayıs / 30 Haziran pattern'i ile
+          // uyumlu: pill bağımsız bir kutu olarak ok ile bağlanır, parent'ın
+          // dibine yapışmaz. Sol port → parent sol port edge ile temiz bağ.
           const pillW = 170;
           const pillH = 36;
-          const px = parent.x + parent.w / 2 - pillW / 2;
-          const py = parent.y + parent.h + 12;
+          const px = parent.x - pillW - 60;
+          const py = parent.y + parent.h / 2 - pillH / 2;
           const pillId = `pill-d-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
           addCustomAtom({
             id: pillId,
