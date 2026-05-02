@@ -2426,6 +2426,7 @@ const compactName = (s: string): string => {
 
 interface SceneEdge {
   fromId: string; toId: string;
+  customEdgeId?: string; // varsa custom edge — sağ tık veya × ile silinebilir
   color?: string;
   dashed?: boolean;
   label?: string;
@@ -3622,7 +3623,10 @@ function CustomersSceneRenderer({
             fromId: ids[i],
             toId: ids[j],
             dashed: false,
-            color: "rgba(255,255,255,0.10)",
+            // mor şeffaf — yarı-mamül accent ailesinden, hem light hem dark
+            // bg'de görünür kontrast (önceki rgba(255,255,255,0.10) light bg'de
+            // neredeyse görünmezdi)
+            color: "rgba(168,85,247,0.32)",
             curveK: 0.25,
           });
         }
@@ -3747,6 +3751,7 @@ function CustomersSceneRenderer({
     dashed: true,
     curveK: 0.4,
     label: ce.label,
+    customEdgeId: ce.id,
   })), [customEdges, edgePalette]);
 
   // Görünür edge'ler: family bağları en arkada (şeffaf), üzerine SCENE_EDGES,
@@ -3797,8 +3802,37 @@ function CustomersSceneRenderer({
     const stroke = remapEdgeColor(e.color, edgePalette) ?? fallback;
     const labelFill = remapEdgeColor(e.color, edgePalette) ?? labelFallback;
     const liveGlow = asRgba(edgePalette.colors.select, 0.55);
+    const isCustom = !!e.customEdgeId;
+    const ceId = e.customEdgeId;
+    const onContextMenuPath = (ev: React.MouseEvent) => {
+      if (!ceId) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      removeCustomEdge(ceId);
+    };
+    // Etiket genişliği için kaba tahmin (yazı uzunluğuna göre)
+    const labelText = e.label ?? "";
+    const labelW = labelText.length * 7 + 14;
+    const labelH = 18;
+    const labelX = midX - labelW / 2;
+    const labelY = midY - labelH + 4;
+    const closeX = midX + labelW / 2 + 8;
+    const closeY = midY - 4;
     return (
-      <g key={`${isLive ? "live" : "edge"}-${i}`}>
+      <g key={`${isLive ? "live" : "edge"}-${ceId ?? i}`}>
+        {/* Hit area — geniş şeffaf path, sağ tıkla silmek için */}
+        {isCustom && (
+          <path
+            d={path}
+            stroke="rgba(0,0,0,0)"
+            strokeWidth={14}
+            fill="none"
+            style={{ pointerEvents: "stroke", cursor: "context-menu" }}
+            onContextMenu={onContextMenuPath}
+          >
+            <title>Sağ tık veya × ile sil</title>
+          </path>
+        )}
         <path
           d={path}
           stroke={stroke}
@@ -3807,17 +3841,92 @@ function CustomersSceneRenderer({
           strokeDasharray={e.dashed ? "5 4" : undefined}
           style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : undefined}
         />
-        {e.label && (
-          <text
-            x={midX} y={midY}
-            fill={labelFill}
-            fontSize={13}
-            fontFamily={mono}
-            fontWeight={600}
-            textAnchor="middle"
+        {labelText && (
+          <>
+            {/* Label arka planı (custom edge'lerde × ile birlikte) */}
+            {isCustom && (
+              <rect
+                x={labelX} y={labelY}
+                width={labelW} height={labelH}
+                rx={4}
+                fill={asRgba(edgePalette.colors.select, 0.12)}
+                stroke={asRgba(edgePalette.colors.select, 0.55)}
+                strokeWidth={1}
+                style={{ pointerEvents: "none" }}
+              />
+            )}
+            <text
+              x={midX} y={midY}
+              fill={labelFill}
+              fontSize={13}
+              fontFamily={mono}
+              fontWeight={600}
+              textAnchor="middle"
+              style={{ pointerEvents: "none" }}
+            >
+              {labelText}
+            </text>
+            {/* × silme butonu — sadece custom edge'lerde */}
+            {isCustom && ceId && (
+              <g
+                style={{ cursor: "pointer", pointerEvents: "auto" }}
+                onClick={(ev) => { ev.stopPropagation(); removeCustomEdge(ceId); }}
+                onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeCustomEdge(ceId); }}
+              >
+                <title>Bağlantıyı sil</title>
+                <circle
+                  cx={closeX} cy={closeY} r={9}
+                  fill={asRgba(edgePalette.colors.shortfall, 0.18)}
+                  stroke={edgePalette.colors.shortfall}
+                  strokeWidth={1.2}
+                />
+                <line
+                  x1={closeX - 3.5} y1={closeY - 3.5}
+                  x2={closeX + 3.5} y2={closeY + 3.5}
+                  stroke={edgePalette.colors.shortfall}
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                />
+                <line
+                  x1={closeX + 3.5} y1={closeY - 3.5}
+                  x2={closeX - 3.5} y2={closeY + 3.5}
+                  stroke={edgePalette.colors.shortfall}
+                  strokeWidth={1.6}
+                  strokeLinecap="round"
+                />
+              </g>
+            )}
+          </>
+        )}
+        {/* Label'ı olmayan custom edge'lerde de × ortada görünsün */}
+        {!labelText && isCustom && ceId && (
+          <g
+            style={{ cursor: "pointer", pointerEvents: "auto" }}
+            onClick={(ev) => { ev.stopPropagation(); removeCustomEdge(ceId); }}
+            onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeCustomEdge(ceId); }}
           >
-            {e.label}
-          </text>
+            <title>Bağlantıyı sil</title>
+            <circle
+              cx={midX} cy={midY} r={9}
+              fill={asRgba(edgePalette.colors.shortfall, 0.18)}
+              stroke={edgePalette.colors.shortfall}
+              strokeWidth={1.2}
+            />
+            <line
+              x1={midX - 3.5} y1={midY - 3.5}
+              x2={midX + 3.5} y2={midY + 3.5}
+              stroke={edgePalette.colors.shortfall}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+            />
+            <line
+              x1={midX + 3.5} y1={midY - 3.5}
+              x2={midX - 3.5} y2={midY + 3.5}
+              stroke={edgePalette.colors.shortfall}
+              strokeWidth={1.6}
+              strokeLinecap="round"
+            />
+          </g>
         )}
       </g>
     );
@@ -4058,11 +4167,16 @@ function CustomersSceneRenderer({
         onEnsureDeadlinePill={(parentId, deadline) => {
           const parent = atomById[parentId];
           if (!parent) return "";
-          const existing = atomMeta[parentId]?.deadlinePillId;
           const pillLabel = `Teslim = ${deadline}`;
-          if (existing) {
+          const existing = atomMeta[parentId]?.deadlinePillId;
+          // Orphan-safe: existing ID set ama customAtoms'ta gerçekten var mı?
+          const existsInList = existing
+            ? customAtoms.some(a => a.id === existing)
+            : false;
+          if (existing && existsInList) {
             // Var olan pill'in label'ını güncelle
             updateCustomAtom(existing, { label: pillLabel });
+            setAtomMetaField(parentId, { deadline });
             return existing;
           }
           // Yeni pill atom yarat — parent'ın sağına, dikey ortalı
@@ -4375,7 +4489,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -4386,6 +4500,7 @@ function SceneAtomNode({
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
   shapeOverride?: ShapeKind;
+  onContextMenu?: (e: React.MouseEvent) => void;
 }) {
   const naturalCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
   const effectiveShape: ShapeKind | null = shapeOverride
