@@ -142,6 +142,36 @@ function remapEdgeColor(orig: string | undefined, p: EdgePalette): string | unde
   return orig;
 }
 
+/* ════════════════════════════════════════════════════════════════════
+   SHAPE OVERRIDE — kullanıcı sol palet üzerinden atom kutusunun şeklini
+   değiştirebilir (rect/rounded/circle/triangle). Default = atom.kind'in
+   doğal şekli.
+   ──────────────────────────────────────────────────────────────────── */
+type ShapeKind = "rect" | "rounded" | "circle" | "triangle";
+
+const SHAPE_OVERRIDES_KEY = "griseus_scene_shapes_v1";
+const CUSTOM_EDGES_KEY = "griseus_scene_custom_edges_v1";
+
+interface CustomEdge {
+  id: string;
+  fromId: string;
+  toId: string;
+}
+
+function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
+  switch (kind) {
+    case "circle":
+      return { borderRadius: "50%", clipPath: "circle(50%)" };
+    case "triangle":
+      return { borderRadius: 0, clipPath: "polygon(50% 0%, 0% 100%, 100% 100%)" };
+    case "rounded":
+      return { borderRadius: 24, clipPath: "none" };
+    case "rect":
+    default:
+      return { borderRadius: 4, clipPath: "none" };
+  }
+}
+
 const fmtTR = (n: number) => (isFinite(n) ? n.toLocaleString("tr-TR") : "—");
 const MONTH_LABELS = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
 const DEFAULT_LEAD_TIME_DAYS = 14;
@@ -961,7 +991,7 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
    DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
    ──────────────────────────────────────────────────────────────────── */
 function DragNode({
-  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle, viewport,
+  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle, viewport, shapeStyle,
 }: {
   pos: XY;
   width: number;
@@ -974,6 +1004,7 @@ function DragNode({
   style?: React.CSSProperties;
   asCircle?: boolean;
   viewport: { vx: number; vy: number; scale: number };
+  shapeStyle?: React.CSSProperties;
 }) {
   const offsetRef = useRef<XY>({ x: 0, y: 0 });
   const downAtRef = useRef<{ x: number; y: number; t: number; shift: boolean } | null>(null);
@@ -1036,6 +1067,8 @@ function DragNode({
         transform: `scale(${viewport.scale})`,
         transformOrigin: "0 0",
         ...(asCircle ? { borderRadius: "50%" } : {}),
+        ...(shapeStyle ?? {}),
+        overflow: shapeStyle?.clipPath ? "hidden" : undefined,
       }}>
         {children}
       </div>
@@ -2565,14 +2598,149 @@ const DEVICE_REGISTRY: DeviceMeta[] = [
 
 const devicesByFuel = (fuel: DeviceFuel) => DEVICE_REGISTRY.filter(d => d.fuel === fuel);
 
+/* ════════════════════════════════════════════════════════════════════
+   ShapesToolbar — sahnenin sol kenarında dikey ribbon (AutoCAD-vari).
+   Seçili atomlara şekil uygular; 2+ seçim varsa ok butonu pairwise edge.
+   ──────────────────────────────────────────────────────────────────── */
+function ShapesToolbar({
+  selectedIds, atomById, onApplyShape, onClearShape, onAddArrow,
+  customEdgeCount, onClearCustomEdges,
+}: {
+  selectedIds: Set<string>;
+  atomById: Record<string, SceneAtom>;
+  onApplyShape: (kind: ShapeKind) => void;
+  onClearShape: () => void;
+  onAddArrow: () => void;
+  customEdgeCount: number;
+  onClearCustomEdges: () => void;
+}) {
+  const validSelected = Array.from(selectedIds).filter(id => atomById[id]);
+  const hasShapeTarget = validSelected.length >= 1;
+  const hasArrowTarget = validSelected.length >= 2;
+  const btn = (enabled: boolean): React.CSSProperties => ({
+    width: 38, height: 38, display: "flex", alignItems: "center", justifyContent: "center",
+    background: "rgba(255,255,255,0.04)",
+    border: `1px solid ${C.panelEdge}`,
+    borderRadius: 6,
+    cursor: enabled ? "pointer" : "not-allowed",
+    opacity: enabled ? 1 : 0.35,
+    color: C.cardInk,
+    transition: "background 0.1s, border-color 0.1s",
+  });
+  const sectionLabel: React.CSSProperties = {
+    fontSize: 8, color: C.cardSub, letterSpacing: 1.5,
+    fontFamily: mono, fontWeight: 600, textTransform: "uppercase",
+    marginBottom: 4, marginTop: 6,
+  };
+  return (
+    <div style={{
+      position: "absolute", top: 12, left: 12, zIndex: 20,
+      width: 56,
+      background: C.cardBg, color: C.cardInk,
+      border: `1px solid ${C.panelEdge}`,
+      borderRadius: 10, padding: 8,
+      fontFamily: mono,
+      boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+      display: "flex", flexDirection: "column", alignItems: "center", gap: 4,
+    }}>
+      <div style={{ ...sectionLabel, marginTop: 0 }}>Şekil</div>
+      <button
+        title="Dikdörtgen — seçili atomları köşeli yap"
+        onClick={() => hasShapeTarget && onApplyShape("rect")}
+        style={btn(hasShapeTarget)}
+      >
+        <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+          <rect x="1" y="1" width="16" height="12" rx="1" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+      <button
+        title="Yuvarlak köşe — seçili atomları yuvarlak köşeli yap"
+        onClick={() => hasShapeTarget && onApplyShape("rounded")}
+        style={btn(hasShapeTarget)}
+      >
+        <svg width="18" height="14" viewBox="0 0 18 14" fill="none">
+          <rect x="1" y="1" width="16" height="12" rx="5" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+      <button
+        title="Daire — seçili atomları daireye dönüştür"
+        onClick={() => hasShapeTarget && onApplyShape("circle")}
+        style={btn(hasShapeTarget)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <circle cx="8" cy="8" r="7" stroke="currentColor" strokeWidth="1.5" />
+        </svg>
+      </button>
+      <button
+        title="Üçgen — seçili atomları üçgene dönüştür"
+        onClick={() => hasShapeTarget && onApplyShape("triangle")}
+        style={btn(hasShapeTarget)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <polygon points="8,2 14,14 2,14" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" />
+        </svg>
+      </button>
+      <button
+        title="Şekli sıfırla — seçili atomları doğal kind'ine döndür"
+        onClick={() => hasShapeTarget && onClearShape()}
+        style={btn(hasShapeTarget)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <path d="M3 8a5 5 0 1 1 1.5 3.5" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" />
+          <path d="M3 5v3h3" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        </svg>
+      </button>
+
+      <div style={sectionLabel}>Bağlantı</div>
+      <button
+        title="Ok — 2+ atom seçili iken aralarına kalıcı edge ekle"
+        onClick={() => hasArrowTarget && onAddArrow()}
+        style={btn(hasArrowTarget)}
+      >
+        <svg width="20" height="12" viewBox="0 0 20 12" fill="none">
+          <line x1="2" y1="6" x2="15" y2="6" stroke="currentColor" strokeWidth="1.5" />
+          <polyline points="12,2 17,6 12,10" stroke="currentColor" strokeWidth="1.5" fill="none" strokeLinejoin="round" strokeLinecap="round" />
+        </svg>
+      </button>
+      <button
+        title={`Tüm kullanıcı oklarını sil${customEdgeCount > 0 ? ` (${customEdgeCount})` : ""}`}
+        onClick={() => customEdgeCount > 0 && onClearCustomEdges()}
+        style={btn(customEdgeCount > 0)}
+      >
+        <svg width="16" height="16" viewBox="0 0 16 16" fill="none">
+          <line x1="3" y1="3" x2="13" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+          <line x1="13" y1="3" x2="3" y2="13" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" />
+        </svg>
+      </button>
+      {customEdgeCount > 0 && (
+        <div style={{
+          fontSize: 9, color: C.cardSub, fontFamily: mono,
+          marginTop: 2, fontWeight: 600,
+        }}>
+          {customEdgeCount}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CustomersSceneRenderer({
   positions, onMove, getMouseInWorld, viewport, edgePalette,
+  shapeOverrides, setShape, clearShape,
+  customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
   edgePalette: EdgePalette;
+  shapeOverrides: Record<string, ShapeKind>;
+  setShape: (id: string, kind: ShapeKind) => void;
+  clearShape: (id: string) => void;
+  customEdges: CustomEdge[];
+  addCustomEdge: (fromId: string, toId: string) => void;
+  removeCustomEdge: (id: string) => void;
+  clearAllCustomEdges: () => void;
 }) {
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -2785,10 +2953,19 @@ function CustomersSceneRenderer({
     return edges;
   }, [selectedIds, atomById, hiddenIds, edgePalette]);
 
-  // Görünür edge'ler: hidden atom'a değen var olanları at + dinamik BOM edge'leri
+  // Custom edges → SceneEdge formatına dönüştür (palette'in select rengini kullan)
+  const customSceneEdges = useMemo<SceneEdge[]>(() => customEdges.map(ce => ({
+    fromId: ce.fromId,
+    toId: ce.toId,
+    color: edgePalette.colors.select,
+    dashed: false,
+    curveK: 0.4,
+  })), [customEdges, edgePalette]);
+
+  // Görünür edge'ler: hidden atom'a değen var olanları at + dinamik BOM edge'leri + custom
   const visibleSceneEdges = useMemo(
-    () => [...SCENE_EDGES, ...bomEdges].filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
-    [hiddenIds, bomEdges],
+    () => [...SCENE_EDGES, ...bomEdges, ...customSceneEdges].filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
+    [hiddenIds, bomEdges, customSceneEdges],
   );
 
   // SVG bounding box: world coords so we draw in the same transformed space
@@ -2859,6 +3036,31 @@ function CustomersSceneRenderer({
 
   return (
     <>
+      {/* Sol şekil paleti — sahnenin sol üst köşesinde sabit, viewport'tan bağımsız */}
+      <ShapesToolbar
+        selectedIds={selectedIds}
+        atomById={atomById}
+        onApplyShape={(kind) => {
+          if (selectedIds.size === 0) return;
+          selectedIds.forEach(id => setShape(id, kind));
+        }}
+        onClearShape={() => {
+          if (selectedIds.size === 0) return;
+          selectedIds.forEach(id => clearShape(id));
+        }}
+        onAddArrow={() => {
+          const ids = Array.from(selectedIds).filter(id => atomById[id]);
+          if (ids.length < 2) return;
+          for (let i = 0; i < ids.length; i++) {
+            for (let j = i + 1; j < ids.length; j++) {
+              addCustomEdge(ids[i], ids[j]);
+            }
+          }
+        }}
+        customEdgeCount={customEdges.length}
+        onClearCustomEdges={clearAllCustomEdges}
+      />
+
       {/* Seçim göstergesi — sağ üstte sabit pill (DragNode dışında, viewport'tan bağımsız) */}
       {selectedIds.size > 0 && (
         <div style={{
@@ -2946,6 +3148,7 @@ function CustomersSceneRenderer({
             groupOpen={groupOpen}
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
+            shapeOverride={shapeOverrides[a.id]}
           />
         );
       })}
@@ -3252,7 +3455,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -3262,8 +3465,17 @@ function SceneAtomNode({
   groupOpen?: boolean;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
+  shapeOverride?: ShapeKind;
 }) {
-  const asCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
+  const naturalCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
+  const effectiveShape: ShapeKind | null = shapeOverride
+    ?? (naturalCircle ? "circle" : null);
+  const shapeStyle = effectiveShape ? shapeStyleFor(effectiveShape) : {};
+  const asCircle = effectiveShape === "circle";
+  const selectedStyle: React.CSSProperties = selected ? {
+    outline: "3px solid #f97316",
+    outlineOffset: 4,
+  } : {};
   return (
     <DragNode
       pos={{ x: atom.x, y: atom.y }}
@@ -3275,11 +3487,8 @@ function SceneAtomNode({
       getMouseInWorld={getMouseInWorld}
       viewport={viewport}
       asCircle={asCircle}
-      style={selected ? {
-        outline: "3px solid #f97316",
-        outlineOffset: 4,
-        borderRadius: asCircle ? "50%" : 14,
-      } : undefined}
+      shapeStyle={shapeStyle}
+      style={{ ...selectedStyle, ...shapeStyle }}
     >
       <SceneAtomVisual atom={atom} groupOpen={groupOpen} />
     </DragNode>
@@ -4102,6 +4311,46 @@ export default function StrategyCanvasPage() {
   });
   useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); }, [viewMode]);
 
+  // Sahne atom şekil override'ları — kullanıcı sol palet üzerinden değiştirir
+  const [sceneShapeOverrides, setSceneShapeOverrides] = useState<Record<string, ShapeKind>>(
+    () => safeParse<Record<string, ShapeKind>>(localStorage.getItem(SHAPE_OVERRIDES_KEY), {}),
+  );
+  useEffect(() => { localStorage.setItem(SHAPE_OVERRIDES_KEY, JSON.stringify(sceneShapeOverrides)); }, [sceneShapeOverrides]);
+  const setSceneShape = useCallback((id: string, kind: ShapeKind) => {
+    setSceneShapeOverrides(prev => ({ ...prev, [id]: kind }));
+  }, []);
+  const clearSceneShape = useCallback((id: string) => {
+    setSceneShapeOverrides(prev => {
+      if (!(id in prev)) return prev;
+      const next = { ...prev };
+      delete next[id];
+      return next;
+    });
+  }, []);
+
+  // Sahne custom edges — kullanıcı 2 atom seçip ok butonuna basınca eklenir
+  const [sceneCustomEdges, setSceneCustomEdges] = useState<CustomEdge[]>(
+    () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), []),
+  );
+  useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
+  const addSceneCustomEdge = useCallback((fromId: string, toId: string) => {
+    setSceneCustomEdges(prev => {
+      const exists = prev.some(e =>
+        (e.fromId === fromId && e.toId === toId) ||
+        (e.fromId === toId && e.toId === fromId),
+      );
+      if (exists) return prev;
+      const id = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+      return [...prev, { id, fromId, toId }];
+    });
+  }, []);
+  const removeSceneCustomEdge = useCallback((id: string) => {
+    setSceneCustomEdges(prev => prev.filter(e => e.id !== id));
+  }, []);
+  const clearAllSceneCustomEdges = useCallback(() => {
+    setSceneCustomEdges([]);
+  }, []);
+
   // Edge color palette — kullanıcı seçimi, localStorage'da kalıcı
   const [edgePaletteId, setEdgePaletteId] = useState<string>(() => {
     return localStorage.getItem(EDGE_PALETTE_KEY) || "default";
@@ -4760,9 +5009,6 @@ export default function StrategyCanvasPage() {
         <div style={{ display: "flex", gap: 8, flex: "0 0 auto", flexWrap: "wrap", justifyContent: "flex-end" }}>
           <button onClick={() => zoomBy(1.2)} style={hdrBtnGhost} title="Yakınlaştır">+</button>
           <button onClick={() => zoomBy(0.83)} style={hdrBtnGhost} title="Uzaklaştır">−</button>
-          <button onClick={fitToView} style={hdrBtnGhost} title="Sığdır">⊡</button>
-          <button onClick={resetLayout} style={hdrBtnGhost} title="Yerleşimi sıfırla">⟲</button>
-          <button onClick={newBlankScenario} style={hdrBtnGhost} title="Yeni boş senaryo">⊘ yeni</button>
           <button
             onClick={handleQuickSave}
             style={justSaved
@@ -5114,6 +5360,13 @@ export default function StrategyCanvasPage() {
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
             edgePalette={edgePalette}
+            shapeOverrides={sceneShapeOverrides}
+            setShape={setSceneShape}
+            clearShape={clearSceneShape}
+            customEdges={sceneCustomEdges}
+            addCustomEdge={addSceneCustomEdge}
+            removeCustomEdge={removeSceneCustomEdge}
+            clearAllCustomEdges={clearAllSceneCustomEdges}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
