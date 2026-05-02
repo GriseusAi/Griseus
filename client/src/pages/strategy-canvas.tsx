@@ -2424,6 +2424,37 @@ const SCENE_GROUP_MEMBERS: Record<string, string[]> = {
   customers: ["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"],
 };
 
+/* ════════════════════════════════════════════════════════════════════
+   DEVICE REGISTRY — xls reçetelerinden türetildi (BOM kanıtları)
+   GAZLI: ELT.* (Gaz Flexi Nipeli), BH.* (Yanma Borusu)
+   ELEKTRİKLİ: GSA.* (Su Geçirmez Ampul, Watt), GSS.* (Watt portatif)
+   ──────────────────────────────────────────────────────────────────── */
+type DeviceFuel = "elektrikli" | "gazli";
+interface DeviceMeta {
+  code: string; name: string; family: "BH" | "ELT" | "GSA" | "GSS";
+  fuel: DeviceFuel; power?: string; note?: string;
+}
+
+const DEVICE_REGISTRY: DeviceMeta[] = [
+  // GAZLI — ELT (Goldsun Elite Seramik Plakalı Camlı Radyant)
+  { code: "ELT.5-7",    family: "ELT", fuel: "gazli", name: "Goldsun Elite Seramik 5-7",  power: "5-7 kW",  note: "ofis seramik radyant" },
+  { code: "ELT.7-11",   family: "ELT", fuel: "gazli", name: "Goldsun Elite Seramik 7-11", power: "7-11 kW", note: "büyük proje seramik radyant" },
+  // GAZLI — BH (Blackheat Borulu Üniter Radyant)
+  { code: "BH.50ST.SV", family: "BH",  fuel: "gazli", name: "Blackheat 50 Düz Tip", power: "50 kW", note: "sanayi düz boru ST" },
+  { code: "BH.50UT.SV", family: "BH",  fuel: "gazli", name: "Blackheat 50 U Tip",   power: "50 kW", note: "sanayi U-tip" },
+  { code: "BH.55ST.SV", family: "BH",  fuel: "gazli", name: "Blackheat 55 Düz Tip", power: "55 kW", note: "sanayi düz boru ST (en yüksek hacim)" },
+  { code: "BH.55UT.SV", family: "BH",  fuel: "gazli", name: "Blackheat 55 U Tip",   power: "55 kW", note: "sanayi U-tip" },
+  // ELEKTRİKLİ — GSA (Goldsun Aqua Duvar Tipi, Su Geçirmez Ampul)
+  { code: "GSA15",      family: "GSA", fuel: "elektrikli", name: "Goldsun Aqua 1500 W Duvar", power: "1500 W", note: "duvar IR ampul" },
+  { code: "GSA20",      family: "GSA", fuel: "elektrikli", name: "Goldsun Aqua 2000 W Duvar", power: "2000 W", note: "duvar IR ampul" },
+  { code: "GSA30",      family: "GSA", fuel: "elektrikli", name: "Goldsun Aqua 3000 W",       power: "3000 W", note: "çift ampul varyant" },
+  // ELEKTRİKLİ — GSS (Goldsun Supra Plus, Portatif)
+  { code: "GSS20P",     family: "GSS", fuel: "elektrikli", name: "Goldsun Supra Plus 2000 W", power: "2000 W", note: "portatif IR" },
+  { code: "GSS40P",     family: "GSS", fuel: "elektrikli", name: "Goldsun Supra Plus 4000 W", power: "4000 W", note: "portatif büyük IR" },
+];
+
+const devicesByFuel = (fuel: DeviceFuel) => DEVICE_REGISTRY.filter(d => d.fuel === fuel);
+
 function CustomersSceneRenderer({
   positions, onMove, getMouseInWorld, viewport,
 }: {
@@ -2436,6 +2467,8 @@ function CustomersSceneRenderer({
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers"]));
   // Shift+click ile çoklu seçim — aralarında canlı edge çiziliyor
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+  // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
+  const [popupAtomId, setPopupAtomId] = useState<string | null>(null);
 
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const n = new Set(prev);
@@ -2451,10 +2484,13 @@ function CustomersSceneRenderer({
 
   const clearSelection = () => setSelectedIds(new Set());
 
-  // ESC ile seçimi temizle
+  // ESC ile seçimi + popup'ı temizle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") clearSelection();
+      if (e.key === "Escape") {
+        clearSelection();
+        setPopupAtomId(null);
+      }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
@@ -2618,9 +2654,11 @@ function CustomersSceneRenderer({
 
       {/* Atom layer — DragNode'lar */}
       {visibleAtoms.map(a => {
-        // Customers KÖK label = grup toggle. Diğer atomlar onTap'i tüketmiyor (drag aktif kalır)
+        // Customers KÖK label = grup toggle. Diğer atomlar tıklayınca pop-up açar.
         const isCustomersLabel = a.id === "lbl-customers";
-        const onTap = isCustomersLabel ? () => toggleGroup("customers") : undefined;
+        const onTap = isCustomersLabel
+          ? () => toggleGroup("customers")
+          : () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         return (
           <SceneAtomNode
             key={a.id}
@@ -2635,7 +2673,305 @@ function CustomersSceneRenderer({
           />
         );
       })}
+
+      {/* Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı */}
+      {popupAtomId && atomById[popupAtomId] && !hiddenIds.has(popupAtomId) && (
+        <ScenePopup
+          atom={atomById[popupAtomId]}
+          allAtoms={atoms}
+          onClose={() => setPopupAtomId(null)}
+          onJumpToAtom={(id) => { setPopupAtomId(id); }}
+          viewport={viewport}
+        />
+      )}
     </>
+  );
+}
+
+/* ════════════════════════════════════════════════════════════════════
+   SCENE POPUP — atom kind'ına göre drill-down içerik
+   Atom dünya konumundan ekran konumuna projeksiyon, sabit boyut.
+   ──────────────────────────────────────────────────────────────────── */
+function ScenePopup({
+  atom, allAtoms, onClose, onJumpToAtom, viewport,
+}: {
+  atom: SceneAtom;
+  allAtoms: SceneAtom[];
+  onClose: () => void;
+  onJumpToAtom: (id: string) => void;
+  viewport: { vx: number; vy: number; scale: number };
+}) {
+  const POPUP_W = 320;
+  // Atom'un sağ üst köşesinin ekran konumu
+  const atomScreenRight = (atom.x + atom.w) * viewport.scale + viewport.vx;
+  const atomScreenTop   = atom.y * viewport.scale + viewport.vy;
+  // Sağa sığmazsa sola yerleştir
+  const willOverflowRight = (typeof window !== "undefined")
+    ? atomScreenRight + POPUP_W + 24 > window.innerWidth
+    : false;
+  const left = willOverflowRight
+    ? atom.x * viewport.scale + viewport.vx - POPUP_W - 12
+    : atomScreenRight + 12;
+  const top = atomScreenTop;
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: POPUP_W,
+        background: C.cardBg,
+        color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid #f97316`,
+        borderRadius: 12,
+        boxShadow: "0 18px 40px rgba(0,0,0,0.55)",
+        fontFamily: mono,
+        zIndex: 30,
+        overflow: "hidden",
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{
+        display: "flex", alignItems: "center", justifyContent: "space-between",
+        padding: "10px 12px",
+        borderBottom: `1px solid ${C.panelEdge}`,
+        background: "rgba(255,255,255,0.03)",
+      }}>
+        <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
+          <div style={{ fontSize: 9, letterSpacing: 1.6, color: "#f97316", fontWeight: 700 }}>
+            ◇ DRILL-DOWN
+          </div>
+          <div style={{ fontSize: 13, fontWeight: 700 }}>{atom.label}</div>
+        </div>
+        <button
+          onClick={onClose}
+          style={{
+            background: "rgba(255,255,255,0.06)",
+            color: C.cardInk,
+            border: `1px solid ${C.panelEdge}`,
+            borderRadius: 6, width: 24, height: 24,
+            fontFamily: mono, fontSize: 12, cursor: "pointer",
+            display: "flex", alignItems: "center", justifyContent: "center",
+          }}
+          aria-label="Kapat"
+        >×</button>
+      </div>
+      <div style={{ padding: 12, maxHeight: 380, overflowY: "auto" }}>
+        <ScenePopupContent atom={atom} allAtoms={allAtoms} onJumpToAtom={onJumpToAtom} />
+      </div>
+    </div>
+  );
+}
+
+function ScenePopupContent({
+  atom, allAtoms, onJumpToAtom,
+}: {
+  atom: SceneAtom;
+  allAtoms: SceneAtom[];
+  onJumpToAtom: (id: string) => void;
+}) {
+  const subLabel = (text: string) => (
+    <div style={{ fontSize: 9, letterSpacing: 1.4, color: C.cardSub, fontWeight: 600, marginTop: 8, marginBottom: 4 }}>
+      {text}
+    </div>
+  );
+  const row = (k: string, v: React.ReactNode) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 8, padding: "4px 0", fontSize: 12, borderBottom: `1px solid rgba(255,255,255,0.05)` }}>
+      <span style={{ color: C.cardSub }}>{k}</span>
+      <span style={{ color: C.cardInk, textAlign: "right" }}>{v}</span>
+    </div>
+  );
+  const deviceCard = (d: DeviceMeta) => (
+    <div key={d.code} style={{
+      padding: "8px 10px", borderRadius: 8,
+      background: "rgba(255,255,255,0.04)",
+      border: `1px solid ${C.panelEdge}`,
+      marginBottom: 6,
+      display: "flex", flexDirection: "column", gap: 3,
+    }}>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ fontSize: 12, fontWeight: 700 }}>{d.code}</span>
+        <span style={{ fontSize: 10, color: C.cardSub }}>{d.power}</span>
+      </div>
+      <div style={{ fontSize: 11, color: C.cardSub }}>{d.name}</div>
+      {d.note && <div style={{ fontSize: 10, color: "rgba(255,255,255,0.45)", fontStyle: "italic" }}>{d.note}</div>}
+    </div>
+  );
+
+  // KATEGORİ → fuel'e göre cihaz listesi
+  if (atom.kind === "category") {
+    const fuel: DeviceFuel = atom.label === "Elektrikli" ? "elektrikli" : "gazli";
+    const list = devicesByFuel(fuel);
+    const total = list.length;
+    const families = Array.from(new Set(list.map(d => d.family))).join(", ");
+    return (
+      <>
+        {row("Yakıt", fuel === "elektrikli" ? "Elektrikli" : "Gazlı (doğal gaz)")}
+        {row("Aileler", families)}
+        {row("Cihaz sayısı", total)}
+        {subLabel("CİHAZLAR")}
+        <div style={{ marginTop: 4 }}>{list.map(deviceCard)}</div>
+      </>
+    );
+  }
+
+  // MAMUL → DEVICE_REGISTRY'de varsa gerçek bilgi, yoksa placeholder
+  if (atom.kind === "product") {
+    // Atom label eşleşmesi: "GSA 15" → "GSA15"
+    const norm = atom.label.replace(/\s+/g, "");
+    const dev = DEVICE_REGISTRY.find(d => d.code === norm)
+             ?? DEVICE_REGISTRY.find(d => atom.label.includes(d.code));
+    if (dev) {
+      return (
+        <>
+          {row("Kod", dev.code)}
+          {row("Ad", dev.name)}
+          {row("Aile", dev.family)}
+          {row("Yakıt", dev.fuel === "elektrikli" ? "Elektrikli" : "Gazlı")}
+          {row("Güç", dev.power ?? "-")}
+          {dev.note && (<>
+            {subLabel("NOT")}
+            <div style={{ fontSize: 11, color: C.cardSub, lineHeight: 1.45 }}>{dev.note}</div>
+          </>)}
+        </>
+      );
+    }
+    // Placeholder (Z-elek, T-elek, X-gazlı, Y-gazlı)
+    return (
+      <>
+        {row("Tip", "Mamul (placeholder)")}
+        {row("Etiket", atom.label)}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          Sahnede temsili kart. Gerçek cihaz envanteri için kategori dairesine
+          tıkla — Elektrikli/Gazlı listesi açılır.
+        </div>
+      </>
+    );
+  }
+
+  // STAGE (Üretim / Depo / Satış)
+  if (atom.kind === "stage") {
+    const desc: Record<string, string> = {
+      "Üretim": "Aktif siparişlerin üretim hattındaki adımları. Lead time burada birikir.",
+      "Depo":   "Tamamlanmış mamul + bileşen stok deposu. Tedarik denklemi giriş noktası.",
+      "Satış":  "Müşteriye sevk + fatura aşaması. Teslim tarihi commit'i burada.",
+    };
+    return (
+      <>
+        {row("Aşama", atom.label)}
+        {row("Akış yönü", "Müşteri → Üretim → Depo → Satış → Fabrika")}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          {desc[atom.label] ?? "Üretim akışı aşaması."}
+        </div>
+      </>
+    );
+  }
+
+  if (atom.kind === "factory") {
+    const total = DEVICE_REGISTRY.length;
+    const elek  = devicesByFuel("elektrikli").length;
+    const gaz   = devicesByFuel("gazli").length;
+    return (
+      <>
+        {row("Tesis", atom.label)}
+        {row("Toplam cihaz", total)}
+        {row("Elektrikli", elek)}
+        {row("Gazlı", gaz)}
+        {row("Aileler", "BH · ELT · GSA · GSS")}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          Üretim/Depo/Satış akışlarının birleştiği son nokta.
+        </div>
+      </>
+    );
+  }
+
+  // BİLEŞEN (a, b — paylaşılan komponent)
+  if (atom.kind === "component") {
+    const supplyId = atom.label === "a" ? "sup-a" : "sup-b";
+    const qtyAtom = allAtoms.find(x => x.id === `${supplyId}-qty`);
+    const leadAtom = allAtoms.find(x => x.id === `${supplyId}-lead`);
+    return (
+      <>
+        {row("Bileşen", atom.label)}
+        {row("Tip", "Paylaşılan (cross-product)")}
+        {qtyAtom && row("Tedarik adedi", qtyAtom.label)}
+        {leadAtom && row("Tedarik süresi", leadAtom.label)}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          GSA15 ve GSS20P arasında ortak — değişikliği Octopus zincirini tetikler.
+        </div>
+      </>
+    );
+  }
+
+  // MÜŞTERİ chip
+  if (atom.kind === "customer-chip") {
+    const isElectricBuyer = ["En","E1","E2","E3"].includes(atom.label);
+    const segment = isElectricBuyer ? "Elektrikli grubu" : "Gazlı grubu";
+    return (
+      <>
+        {row("Müşteri", atom.label)}
+        {row("Segment", segment)}
+        {row("Sahne durumu", atom.highlight === "green" ? "Aktif sipariş (yeşil)" : atom.highlight === "blue" ? "Aktif sipariş (mavi)" : "Pasif")}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          Senaryo placeholder — gerçek sipariş geçmişi için Customers panelini aç.
+        </div>
+      </>
+    );
+  }
+
+  // PILL (lead, deadline)
+  if (atom.kind === "lead-pill" || atom.kind === "deadline-pill") {
+    const kindLabel = atom.kind === "lead-pill" ? "Lead time pill" : "Teslim tarih pill";
+    return (
+      <>
+        {row("Tip", kindLabel)}
+        {row("Değer", atom.label)}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          {atom.kind === "lead-pill"
+            ? "Akıştaki bekleme süresi — kritik yola eklenir."
+            : "Müşteri commit'i — teslim hesabının üst sınırı."}
+        </div>
+      </>
+    );
+  }
+
+  // FLASK (tepkime)
+  if (atom.kind === "flask") {
+    return (
+      <>
+        {row("Tip", "Tepkime denklemi")}
+        {row("Etiket", atom.label)}
+        <div style={{ fontSize: 11, color: C.cardSub, marginTop: 8, lineHeight: 1.45 }}>
+          Birden fazla mamulün/bileşenin paylaşılan reaksiyonu — S1/S2 timeline'a
+          aktarılır.
+        </div>
+      </>
+    );
+  }
+
+  if (atom.kind === "supply-bracket" || atom.kind === "timeline-s1" || atom.kind === "timeline-s2") {
+    return (
+      <>
+        {row("Tip", atom.kind)}
+        {row("Etiket", atom.label)}
+      </>
+    );
+  }
+
+  if (atom.kind === "label") {
+    return (
+      <div style={{ fontSize: 11, color: C.cardSub, lineHeight: 1.45 }}>
+        Grup başlığı — tıklayınca alt müşteri kartlarını aç/kapat.
+      </div>
+    );
+  }
+
+  return (
+    <div style={{ fontSize: 11, color: C.cardSub }}>
+      Bu atom için detay tanımlı değil.
+    </div>
   );
 }
 
