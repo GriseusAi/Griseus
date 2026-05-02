@@ -2495,9 +2495,8 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
   atoms.push({ id: "p-BH.55UT.SV", kind: "product", label: "BH.55UT.SV", x: 800, y: 810, w: 180, h: 56 });
 
   // Deadline pills
-  atoms.push({ id: "pill-d-E3", kind: "deadline-pill", label: "Teslim = 1 Haz",  x: 540, y:  70, w: 150, h: 36, highlight: "green" });
-  atoms.push({ id: "pill-d-G2", kind: "deadline-pill", label: "Teslim = 15 Mayıs", x: 540, y: 750, w: 170, h: 36, highlight: "blue" });
-  atoms.push({ id: "pill-d-G3", kind: "deadline-pill", label: "Teslim = 30 Haziran", x: 540, y: 826, w: 180, h: 36, highlight: "blue" });
+  // Müşteri-bağlı default deadline pill'leri kaldırıldı (2026-05-03) — yeni
+  // üretim hatları /uretim-hatti komutu ile baştan eklenecek.
 
   // Lead pills
   atoms.push({ id: "pill-lead-GSA15",  kind: "lead-pill", label: "30 gün", x: 1080, y:  80, w: 90, h: 36, highlight: "green" });
@@ -2527,9 +2526,9 @@ const SCENE_EDGES: SceneEdge[] = [
     fromId: "lbl-customers", toId: id, dashed: true, color: "rgba(255,255,255,0.18)",
   })),
   // E3 (yeşil) → Elektrikli daire (chip sağ port → daire sol port)
-  { fromId: "c-E3", toId: "cat-elektrikli", fromPort: "e", toPort: "w", color: "#10b981", dashed: true, label: "x200", curveK: 0.4 },
+  // c-E3 → cat-elektrikli (x200) ok'u kaldırıldı (2026-05-03) — kullanıcı üretim hatlarını /uretim-hatti ile yeniden ekleyecek.
   // G2 (mavi) → Gazlı daire
-  { fromId: "c-G2", toId: "cat-gazli", fromPort: "e", toPort: "w", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
+  // c-G2 → cat-gazli (x50) ok'u kaldırıldı (2026-05-03) — kullanıcı üretim hatlarını /uretim-hatti ile yeniden ekleyecek.
 
   // Elektrikli (yeşil fan) → 5 cihaz: dairenin sağ port'undan cihazın sol port'una
   { fromId: "cat-elektrikli", toId: "p-GSA15",  fromPort: "e", toPort: "w", dashed: true, color: "#10b981",                  curveK: 0.5 },
@@ -2567,9 +2566,7 @@ const SCENE_EDGES: SceneEdge[] = [
   { fromId: "pill-lead-GSS20P", toId: "stg-uretim", color: "rgba(255,255,255,0.4)", dashed: true },
 
   // Deadline pill → müşteri chip
-  { fromId: "pill-d-E3", toId: "c-E3", color: "rgba(16,185,129,0.5)", dashed: true },
-  { fromId: "pill-d-G2", toId: "c-G2", color: "rgba(56,189,248,0.5)", dashed: true },
-  { fromId: "pill-d-G3", toId: "c-G3", color: "rgba(56,189,248,0.5)", dashed: true },
+  // Müşteri-bağlı pill ok'ları kaldırıldı (2026-05-03) — pill atom'ları da silindi.
 
   // Flask → mamul kartları (görsel bağ)
   { fromId: "p-GSA15",  toId: "flask", color: "rgba(16,185,129,0.4)", dashed: true, curveK: 0.6 },
