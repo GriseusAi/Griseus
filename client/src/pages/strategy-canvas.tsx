@@ -2787,13 +2787,16 @@ const COMMAND_DEFS: CommandDef[] = [
       { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
     ],
     apply: ({ collected, ids }, h) => {
-      const meta: AtomMeta = {
-        orderNumber: collected.orderNumber,
-        quantity: collected.quantity,
-        deadline: collected.deadline,
-      };
-      h.applyMeta(ids, meta);
       const label = `#${collected.orderNumber} · ${collected.quantity} adet`;
+      // Her atoma sipariş bilgisi yaz + her atomdan deadline pill çıkar
+      ids.forEach(id => {
+        h.applyMeta(id, {
+          orderNumber: collected.orderNumber,
+          quantity: collected.quantity,
+        });
+        h.ensureDeadlinePill(id, collected.deadline);
+      });
+      // Atomlar arası pairwise sipariş ok'u
       let edgesAdded = 0;
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
@@ -2801,31 +2804,31 @@ const COMMAND_DEFS: CommandDef[] = [
           edgesAdded++;
         }
       }
-      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı`;
+      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı · ${ids.length} teslim pill`;
     },
   },
   {
     name: "teslim",
     aliases: ["deadline", "tarih"],
-    description: "Seçili atom(lar)a teslim tarihi yazar",
+    description: "Seçili atom(lar)a teslim tarihi pill atomu çıkarır",
     minSelected: 1,
     steps: [
       { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
     ],
     apply: ({ collected, ids }, h) => {
-      h.applyMeta(ids, { deadline: collected.deadline });
-      return `${ids.length} atom · teslim = ${collected.deadline}`;
+      ids.forEach(id => h.ensureDeadlinePill(id, collected.deadline));
+      return `${ids.length} atom · teslim pill = ${collected.deadline}`;
     },
   },
   {
     name: "sil",
     aliases: ["clear", "temizle"],
-    description: "Seçili atom(lar)ın meta verisini temizler",
+    description: "Seçili atom(lar)ın meta + pill atomlarını temizler",
     minSelected: 1,
     steps: [],
     apply: ({ ids }, h) => {
       h.clearMeta(ids);
-      return `${ids.length} atom · meta silindi`;
+      return `${ids.length} atom · meta + pill silindi`;
     },
   },
 ];
@@ -2846,13 +2849,15 @@ function findCommandDef(token: string): CommandDef | null {
 }
 
 function CommandBar({
-  selectedIds, atomById, onApplyMeta, onClearMeta, onAddEdge, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
-  onApplyMeta: (ids: string[], patch: AtomMeta) => void;
+  atomMeta: Record<string, AtomMeta>;
+  onApplyMeta: (id: string, patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
   onAddEdge: (fromId: string, toId: string, label?: string) => void;
+  onEnsureDeadlinePill: (parentId: string, deadline: string) => string;
   edgePalette: EdgePalette;
 }) {
   const [input, setInput] = useState("");
@@ -2922,11 +2927,15 @@ function CommandBar({
     idsAtPendingRef.current = [...ids];
     if (def.steps.length === 0) {
       // Adımsız komut — hemen apply
-      const msg = def.apply({ collected: {}, ids }, {
-        applyMeta: onApplyMeta,
-        clearMeta: onClearMeta,
-        addEdge: onAddEdge,
-      });
+      const msg = def.apply(
+        { collected: {}, ids, atomById, metaById: atomMeta },
+        {
+          applyMeta: onApplyMeta,
+          clearMeta: onClearMeta,
+          addEdge: onAddEdge,
+          ensureDeadlinePill: onEnsureDeadlinePill,
+        },
+      );
       setResult({ ok: true, message: msg });
       setInput("");
       return;
@@ -2934,7 +2943,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, onApplyMeta, onClearMeta, onAddEdge]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -2956,11 +2965,15 @@ function CommandBar({
     if (nextIdx >= pendingDef.steps.length) {
       // Tüm adımlar bitti — apply
       const ids = idsAtPendingRef.current.length > 0 ? idsAtPendingRef.current : validIds;
-      const msg = pendingDef.apply({ collected, ids }, {
-        applyMeta: onApplyMeta,
-        clearMeta: onClearMeta,
-        addEdge: onAddEdge,
-      });
+      const msg = pendingDef.apply(
+        { collected, ids, atomById, metaById: atomMeta },
+        {
+          applyMeta: onApplyMeta,
+          clearMeta: onClearMeta,
+          addEdge: onAddEdge,
+          ensureDeadlinePill: onEnsureDeadlinePill,
+        },
+      );
       setResult({ ok: true, message: msg });
       setPending(null);
       idsAtPendingRef.current = [];
@@ -2970,7 +2983,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, onApplyMeta, onClearMeta, onAddEdge]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3014,11 +3027,15 @@ function CommandBar({
       }
       const collected: Record<string, string> = { [step0.field]: inline };
       if (def.steps.length === 1) {
-        const msg = def.apply({ collected, ids }, {
-          applyMeta: onApplyMeta,
-          clearMeta: onClearMeta,
-          addEdge: onAddEdge,
-        });
+        const msg = def.apply(
+          { collected, ids, atomById, metaById: atomMeta },
+          {
+            applyMeta: onApplyMeta,
+            clearMeta: onClearMeta,
+            addEdge: onAddEdge,
+            ensureDeadlinePill: onEnsureDeadlinePill,
+          },
+        );
         setResult({ ok: true, message: msg });
         setInput("");
         return;
@@ -3030,7 +3047,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, onApplyMeta, onClearMeta, onAddEdge]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -3896,10 +3913,10 @@ function CustomersSceneRenderer({
         {liveEdges.map((e, i) => renderEdge(e, i, true))}
       </svg>
 
-      {/* Atom altı metadata badge overlay — sipariş no + adet + teslim tarihi */}
+      {/* Atom altı metadata badge overlay — sipariş no + adet (teslim ayrı pill atom) */}
       {visibleAtoms.map(a => {
         const meta = atomMeta[a.id];
-        if (!meta || (!meta.orderNumber && !meta.deadline && !meta.quantity)) return null;
+        if (!meta || (!meta.orderNumber && !meta.quantity)) return null;
         const sx = a.x * viewport.scale + viewport.vx;
         const sy = (a.y + a.h + 4) * viewport.scale + viewport.vy;
         const sw = a.w * viewport.scale;
@@ -3945,23 +3962,6 @@ function CustomersSceneRenderer({
                 }}
               >
                 ×{meta.quantity}
-              </span>
-            )}
-            {meta.deadline && (
-              <span
-                title={`Teslim ${meta.deadline} — sağ tık ile sil`}
-                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { deadline: undefined }); }}
-                style={{
-                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
-                  background: asRgba(edgePalette.colors.gas, 0.18),
-                  border: `1px solid ${asRgba(edgePalette.colors.gas, 0.55)}`,
-                  borderRadius: 4 * viewport.scale,
-                  color: edgePalette.colors.gas,
-                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
-                  whiteSpace: "nowrap", cursor: "context-menu",
-                }}
-              >
-                → {meta.deadline}
               </span>
             )}
           </div>
@@ -4031,10 +4031,47 @@ function CustomersSceneRenderer({
       <CommandBar
         selectedIds={selectedIds}
         atomById={atomById}
+        atomMeta={atomMeta}
         edgePalette={edgePalette}
-        onApplyMeta={(ids, patch) => ids.forEach(id => setAtomMetaField(id, patch))}
-        onClearMeta={(ids) => ids.forEach(id => clearAtomMeta(id))}
+        onApplyMeta={(id, patch) => setAtomMetaField(id, patch)}
+        onClearMeta={(ids) => {
+          ids.forEach(id => {
+            // Bu atoma bağlı deadline pill varsa onu da sil
+            const m = atomMeta[id];
+            if (m?.deadlinePillId) {
+              removeCustomAtom(m.deadlinePillId);
+            }
+            clearAtomMeta(id);
+          });
+        }}
         onAddEdge={(from, to, label) => addCustomEdge(from, to, label)}
+        onEnsureDeadlinePill={(parentId, deadline) => {
+          const parent = atomById[parentId];
+          if (!parent) return "";
+          const existing = atomMeta[parentId]?.deadlinePillId;
+          const pillLabel = `Teslim = ${deadline}`;
+          if (existing) {
+            // Var olan pill'in label'ını güncelle
+            updateCustomAtom(existing, { label: pillLabel });
+            return existing;
+          }
+          // Yeni pill atom yarat — parent'ın sağına, dikey ortalı
+          const pillW = 170;
+          const pillH = 36;
+          const px = parent.x + parent.w + 60;
+          const py = parent.y + parent.h / 2 - pillH / 2;
+          const pillId = `pill-d-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+          addCustomAtom({
+            id: pillId,
+            kind: "deadline-pill",
+            label: pillLabel,
+            x: px, y: py, w: pillW, h: pillH,
+            highlight: parent.highlight ?? null,
+          });
+          addCustomEdge(parentId, pillId);
+          setAtomMetaField(parentId, { deadline, deadlinePillId: pillId });
+          return pillId;
+        }}
       />
     </>
   );
