@@ -2730,7 +2730,7 @@ function ShapesToolbar({
 }
 
 function CustomersSceneRenderer({
-  positions, onMove, getMouseInWorld, viewport, edgePalette,
+  positions, onMove, getMouseInWorld, viewport, setViewport, wrapperRef, edgePalette,
   shapeOverrides, setShape, clearShape,
   customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
 }: {
@@ -2738,6 +2738,8 @@ function CustomersSceneRenderer({
   onMove: (id: string, xy: XY) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
+  setViewport: React.Dispatch<React.SetStateAction<{ vx: number; vy: number; scale: number }>>;
+  wrapperRef: React.RefObject<HTMLDivElement>;
   edgePalette: EdgePalette;
   shapeOverrides: Record<string, ShapeKind>;
   setShape: (id: string, kind: ShapeKind) => void;
@@ -2754,7 +2756,13 @@ function CustomersSceneRenderer({
   // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
   const [popupAtomId, setPopupAtomId] = useState<string | null>(null);
   // Cihaz BOM drill-down — bir cihaza tıklayınca alt bileşenleri sahnede yan tarafa açılır
-  const [expandedDeviceId, setExpandedDeviceId] = useState<string | null>(null);
+  // Çoklu cihaz aynı anda açılabilir — her cihaz için ayrı BOM kolonu render edilir
+  const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<string>>(() => new Set());
+  const toggleDevice = (id: string) => setExpandedDeviceIds(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
 
   const toggleGroup = (key: string) => setOpenGroups(prev => {
     const n = new Set(prev);
@@ -2776,7 +2784,7 @@ function CustomersSceneRenderer({
       if (e.key === "Escape") {
         clearSelection();
         setPopupAtomId(null);
-        setExpandedDeviceId(null);
+        setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
       }
     };
@@ -2784,10 +2792,19 @@ function CustomersSceneRenderer({
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // Cihaz değiştiğinde aktif subassembly'leri temizle (eski cihaza ait)
+  // Bir cihaz kapatıldığında, o cihaza ait subassembly açılışlarını da temizle
   useEffect(() => {
-    setExpandedSubassemblies(new Set());
-  }, [expandedDeviceId]);
+    setExpandedSubassemblies(prev => {
+      const n = new Set<string>();
+      prev.forEach(subId => {
+        // subId formatı: bom-{deviceId}-{t1code}
+        const m = subId.match(/^bom-(p-[^-]+(?:\.[^-]+)*)-/);
+        const devId = m?.[1];
+        if (devId && expandedDeviceIds.has(devId)) n.add(subId);
+      });
+      return n;
+    });
+  }, [expandedDeviceIds]);
 
   // Statik atomlar (sahnenin temel yapısı, scenePositions override'ı uygulanır)
   const baseAtoms = useMemo(() => {
@@ -2807,110 +2824,113 @@ function CustomersSceneRenderer({
     return n;
   });
 
-  // Dinamik BOM atomları — bir cihaz expand olunca tüm Tier 1 + (yarı-mamül
-  // expand olunca onların Tier 2 children'ı) sahnede yan tarafa açılır.
+  // Dinamik BOM atomları — açık cihazların her biri için ayrı X kolonu.
+  // Çoklu cihaz açıkken kolonlar yan yana sıralanır (sahne otomatik fit'lenir).
   const bomAtoms = useMemo<SceneAtom[]>(() => {
-    if (!expandedDeviceId) return [];
-    const dev = baseAtoms.find(a => a.id === expandedDeviceId);
-    if (!dev) return [];
-    const sku = expandedDeviceId.replace(/^p-/, "");
-    const tree = DEVICE_BOM_TREE[sku];
-    if (!tree || tree.length === 0) return [];
-
+    if (expandedDeviceIds.size === 0) return [];
     const out: SceneAtom[] = [];
-    // BOM kolonu fabrikanın sağına yerleşir — stage/fact ile çakışmasın
-    const CARD_X = 1540;
+    const COL_BASE_X = 1540;
+    const COL_WIDTH = 600;       // her cihazın BOM kolonu (T1 + T2 + margin)
     const CARD_W = 220, CARD_H = 38;
-    // Yarı-mamül daire: kare; merkez kart kolonunun ortasıyla aynı hizada
     const SUB_W = 80, SUB_H = 80;
-    const SUB_X = CARD_X + (CARD_W - SUB_W) / 2; // 1610
     const GAP = 8;
-    // Tier 2 alt bileşenler — yarı-mamülün sağına
-    const T2_X = CARD_X + 280;   // 1820
     const T2_W = 200, T2_H = 32, T2_GAP = 4;
+    const T2_OFFSET = 280;       // T1 sol kenarından T2 sol kenarına
 
-    // Cumulative Y — kart ve daire farklı yükseklikte, kümülatif diziyoruz.
-    // Toplam yüksekliği önceden hesapla → cihaz Y merkezinden ortala
-    const totalH = tree.reduce((acc, t1) => {
-      const isSub = t1.children.length > 0;
-      return acc + (isSub ? SUB_H : CARD_H) + GAP;
-    }, -GAP);
-    const devCenterY = dev.y + dev.h / 2;
-    let cursorY = Math.max(30, devCenterY - totalH / 2);
+    // Açılma sırası → kolon idx (sıralı diziye çevir, deterministik olsun)
+    const ordered = Array.from(expandedDeviceIds);
 
-    tree.forEach((t1) => {
-      const t1Id = `bom-${expandedDeviceId}-${t1.code}`;
-      const isSub = t1.children.length > 0;
-      const w = isSub ? SUB_W : CARD_W;
-      const h = isSub ? SUB_H : CARD_H;
-      const defaultX = isSub ? SUB_X : CARD_X;
-      const persistedT1 = positions[t1Id];
-      out.push({
-        id: t1Id,
-        kind: isSub ? "subassembly" : "bom-item",
-        label: t1.code,
-        sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
-        x: persistedT1 ? persistedT1.x : defaultX,
-        y: persistedT1 ? persistedT1.y : cursorY,
-        w, h,
-        highlight: isCriticalBom(t1.name) ? "red" : null,
-      });
+    ordered.forEach((deviceId, deviceIdx) => {
+      const dev = baseAtoms.find(a => a.id === deviceId);
+      if (!dev) return;
+      const sku = deviceId.replace(/^p-/, "");
+      const tree = DEVICE_BOM_TREE[sku];
+      if (!tree || tree.length === 0) return;
 
-      // T2 children — yarı-mamül expand ise render
-      if (isSub && expandedSubassemblies.has(t1Id)) {
-        const t2Count = t1.children.length;
-        const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
-        const subCenterY = cursorY + h / 2;
-        const t2StartY = subCenterY - t2TotalH / 2;
-        t1.children.forEach((c, j) => {
-          const t2Id = `bom-${expandedDeviceId}-${t1.code}-${c.code}`;
-          const persistedT2 = positions[t2Id];
-          out.push({
-            id: t2Id,
-            kind: "bom-item",
-            label: c.code,
-            sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
-            x: persistedT2 ? persistedT2.x : T2_X,
-            y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
-            w: T2_W, h: T2_H,
-            highlight: isCriticalBom(c.name) ? "red" : null,
-          });
+      const CARD_X = COL_BASE_X + deviceIdx * COL_WIDTH;
+      const SUB_X = CARD_X + (CARD_W - SUB_W) / 2;
+      const T2_X = CARD_X + T2_OFFSET;
+
+      // Cumulative Y — kart ve daire farklı yükseklikte
+      const totalH = tree.reduce((acc, t1) => {
+        const isSub = t1.children.length > 0;
+        return acc + (isSub ? SUB_H : CARD_H) + GAP;
+      }, -GAP);
+      const devCenterY = dev.y + dev.h / 2;
+      let cursorY = Math.max(30, devCenterY - totalH / 2);
+
+      tree.forEach((t1) => {
+        const t1Id = `bom-${deviceId}-${t1.code}`;
+        const isSub = t1.children.length > 0;
+        const w = isSub ? SUB_W : CARD_W;
+        const h = isSub ? SUB_H : CARD_H;
+        const defaultX = isSub ? SUB_X : CARD_X;
+        const persistedT1 = positions[t1Id];
+        out.push({
+          id: t1Id,
+          kind: isSub ? "subassembly" : "bom-item",
+          label: t1.code,
+          sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
+          x: persistedT1 ? persistedT1.x : defaultX,
+          y: persistedT1 ? persistedT1.y : cursorY,
+          w, h,
+          highlight: isCriticalBom(t1.name) ? "red" : null,
         });
-      }
 
-      cursorY += h + GAP;
+        if (isSub && expandedSubassemblies.has(t1Id)) {
+          const t2Count = t1.children.length;
+          const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
+          const subCenterY = cursorY + h / 2;
+          const t2StartY = subCenterY - t2TotalH / 2;
+          t1.children.forEach((c, j) => {
+            const t2Id = `bom-${deviceId}-${t1.code}-${c.code}`;
+            const persistedT2 = positions[t2Id];
+            out.push({
+              id: t2Id,
+              kind: "bom-item",
+              label: c.code,
+              sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
+              x: persistedT2 ? persistedT2.x : T2_X,
+              y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
+              w: T2_W, h: T2_H,
+              highlight: isCriticalBom(c.name) ? "red" : null,
+            });
+          });
+        }
+
+        cursorY += h + GAP;
+      });
     });
     return out;
-  }, [expandedDeviceId, expandedSubassemblies, baseAtoms, positions]);
+  }, [expandedDeviceIds, expandedSubassemblies, baseAtoms, positions]);
 
   const atoms = useMemo(() => [...baseAtoms, ...bomAtoms], [baseAtoms, bomAtoms]);
 
-  // Dinamik BOM edge'leri — cihaz → T1, yarı-mamül → T2
+  // Dinamik BOM edge'leri — her cihaz kendi T1'lerine, yarı-mamül kendi T2'lerine
+  // bom-{deviceId}-{t1code}[-{t2code}] formatından çözümleniyor.
   const bomEdges = useMemo<SceneEdge[]>(() => {
-    if (!expandedDeviceId || bomAtoms.length === 0) return [];
+    if (bomAtoms.length === 0) return [];
     const edges: SceneEdge[] = [];
+    // Açık cihazlar setinden hızlı arama
+    const idsArr = Array.from(expandedDeviceIds);
     bomAtoms.forEach(b => {
-      // T2 atom (id "bom-DEV-T1CODE-T2CODE") → T1 atom; T1 atom → cihaz
-      const parts = b.id.split("-");
-      const isT2 = parts.length === 5; // bom-p-SKU-T1-T2 (5 parça with hyphen split)
-      // ipuçlu: "bom-p-GSA15-25.018-25.106" gibi olabilir; daha güvenilir parse:
-      const prefix = `bom-${expandedDeviceId}-`;
-      const rest = b.id.slice(prefix.length);
+      // Atom'un ait olduğu deviceId'yi bul (idsArr içinde prefix eşleşir)
+      const deviceId = idsArr.find(d => b.id.startsWith(`bom-${d}-`));
+      if (!deviceId) return;
+      const rest = b.id.slice(`bom-${deviceId}-`.length);
       const isChild = rest.includes("-");
       if (isChild) {
-        // T2 → T1
         const t1Code = rest.split("-")[0];
         edges.push({
-          fromId: `bom-${expandedDeviceId}-${t1Code}`,
+          fromId: `bom-${deviceId}-${t1Code}`,
           toId: b.id,
           fromPort: "e", toPort: "w",
           dashed: true, curveK: 0.4,
-          color: b.highlight === "red" ? "#ef4444" : "rgba(168,85,247,0.55)", // mor T2
+          color: b.highlight === "red" ? "#ef4444" : "rgba(168,85,247,0.55)",
         });
       } else {
-        // T1 → cihaz
         edges.push({
-          fromId: expandedDeviceId,
+          fromId: deviceId,
           toId: b.id,
           fromPort: "e", toPort: "w",
           dashed: true, curveK: 0.4,
@@ -2921,7 +2941,7 @@ function CustomersSceneRenderer({
       }
     });
     return edges;
-  }, [expandedDeviceId, bomAtoms]);
+  }, [expandedDeviceIds, bomAtoms]);
 
   const atomById = useMemo(() => {
     const m: Record<string, SceneAtom> = {};
@@ -2942,6 +2962,44 @@ function CustomersSceneRenderer({
     () => atoms.filter(a => !hiddenIds.has(a.id)),
     [atoms, hiddenIds],
   );
+
+  // Otomatik ekrana sığdırma — BOM drill-down açılırken/kapanırken sahne
+  // tüm görünür atomları (cihaz BOM kolonları dahil) ekrana ortalı ve sığacak
+  // şekilde zoom'lar. Kullanıcı BOM kapalıyken kendi zoom'unu kullanır.
+  const visibleAtomsRef = useRef(visibleAtoms);
+  visibleAtomsRef.current = visibleAtoms;
+  const lastFitKeyRef = useRef<string>("");
+  useEffect(() => {
+    // Sadece BOM açıkken/kapanırken fit'le. Kapalıdan kapalıya geçişlerde no-op.
+    const fitKey = `${Array.from(expandedDeviceIds).sort().join(",")}|${Array.from(expandedSubassemblies).sort().join(",")}`;
+    if (fitKey === lastFitKeyRef.current) return;
+    lastFitKeyRef.current = fitKey;
+    if (expandedDeviceIds.size === 0) return; // BOM kapanırken viewport'u zorla değiştirme
+
+    const t = setTimeout(() => {
+      const rect = wrapperRef.current?.getBoundingClientRect();
+      if (!rect) return;
+      const atomsNow = visibleAtomsRef.current;
+      if (atomsNow.length === 0) return;
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      for (const a of atomsNow) {
+        if (a.x < minX) minX = a.x;
+        if (a.y < minY) minY = a.y;
+        if (a.x + a.w > maxX) maxX = a.x + a.w;
+        if (a.y + a.h > maxY) maxY = a.y + a.h;
+      }
+      const padding = 60;
+      const W = maxX - minX + padding * 2;
+      const H = maxY - minY + padding * 2;
+      const scaleX = rect.width / Math.max(1, W);
+      const scaleY = rect.height / Math.max(1, H);
+      const scale = Math.max(0.18, Math.min(1.0, Math.min(scaleX, scaleY)));
+      const vx = -(minX - padding) * scale;
+      const vy = -(minY - padding) * scale;
+      setViewport({ vx, vy, scale });
+    }, 60);
+    return () => clearTimeout(t);
+  }, [expandedDeviceIds, expandedSubassemblies, setViewport, wrapperRef]);
 
   // Seçili atomlar arasında pairwise canlı edge — palet'in select rengi, kalın
   const liveEdges: SceneEdge[] = useMemo(() => {
@@ -3129,7 +3187,7 @@ function CustomersSceneRenderer({
         if (groupKey) {
           onTap = () => toggleGroup(groupKey);
         } else if (hasBomDrillDown) {
-          onTap = () => setExpandedDeviceId(prev => prev === a.id ? null : a.id);
+          onTap = () => toggleDevice(a.id);
         } else if (isSubassembly) {
           onTap = () => toggleSubassembly(a.id);
         } else {
@@ -3139,7 +3197,7 @@ function CustomersSceneRenderer({
         const groupOpen = groupKey
           ? openGroups.has(groupKey)
           : hasBomDrillDown
-            ? expandedDeviceId === a.id
+            ? expandedDeviceIds.has(a.id)
             : isSubassembly
               ? expandedSubassemblies.has(a.id)
               : undefined;
@@ -5366,6 +5424,8 @@ export default function StrategyCanvasPage() {
             onMove={moveSceneAtom}
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
+            setViewport={setViewport}
+            wrapperRef={wrapperRef}
             edgePalette={edgePalette}
             shapeOverrides={sceneShapeOverrides}
             setShape={setSceneShape}
