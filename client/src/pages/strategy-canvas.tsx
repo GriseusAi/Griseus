@@ -3507,6 +3507,38 @@ function CustomersSceneRenderer({
     return edges;
   }, [expandedDeviceIds, bomAtoms]);
 
+  // AİLE BAĞI — birden fazla cihazın BOM'u açık olduğunda, aynı parça kodunu
+  // (atom.label) paylaşan bom-item / subassembly atomları arasında ŞEFFAF okla
+  // bağ kuruluyor (cross-product paylaşılan komponent görsel haritası).
+  // Pairwise: aynı code'u paylaşan N atom için N*(N-1)/2 edge.
+  const familyEdges = useMemo<SceneEdge[]>(() => {
+    if (expandedDeviceIds.size < 2 || bomAtoms.length === 0) return [];
+    const codeToIds = new Map<string, string[]>();
+    bomAtoms.forEach(b => {
+      const code = b.label;
+      if (!code) return;
+      const arr = codeToIds.get(code);
+      if (arr) arr.push(b.id);
+      else codeToIds.set(code, [b.id]);
+    });
+    const edges: SceneEdge[] = [];
+    codeToIds.forEach(ids => {
+      if (ids.length < 2) return;
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          edges.push({
+            fromId: ids[i],
+            toId: ids[j],
+            dashed: false,
+            color: "rgba(255,255,255,0.10)",
+            curveK: 0.25,
+          });
+        }
+      }
+    });
+    return edges;
+  }, [expandedDeviceIds, bomAtoms]);
+
   const atomById = useMemo(() => {
     const m: Record<string, SceneAtom> = {};
     for (const a of atoms) m[a.id] = a;
@@ -3625,10 +3657,12 @@ function CustomersSceneRenderer({
     label: ce.label,
   })), [customEdges, edgePalette]);
 
-  // Görünür edge'ler: hidden atom'a değen var olanları at + dinamik BOM edge'leri + custom
+  // Görünür edge'ler: family bağları en arkada (şeffaf), üzerine SCENE_EDGES,
+  // sonra dinamik BOM, en üstte kullanıcının kalıcı custom edge'leri
   const visibleSceneEdges = useMemo(
-    () => [...SCENE_EDGES, ...bomEdges, ...customSceneEdges].filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
-    [hiddenIds, bomEdges, customSceneEdges],
+    () => [...familyEdges, ...SCENE_EDGES, ...bomEdges, ...customSceneEdges]
+      .filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
+    [hiddenIds, familyEdges, bomEdges, customSceneEdges],
   );
 
   // SVG bounding box: world coords so we draw in the same transformed space
