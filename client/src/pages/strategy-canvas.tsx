@@ -2353,25 +2353,25 @@ const SCENE_EDGES: SceneEdge[] = [
   ...["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"].map(id => ({
     fromId: "lbl-customers", toId: id, dashed: true, color: "rgba(255,255,255,0.18)",
   })),
-  // E3 (yeşil) → Elektrikli daire
-  { fromId: "c-E3", toId: "cat-elektrikli", color: "#10b981", dashed: true, label: "x200", curveK: 0.4 },
+  // E3 (yeşil) → Elektrikli daire (chip sağ port → daire sol port)
+  { fromId: "c-E3", toId: "cat-elektrikli", fromPort: "e", toPort: "w", color: "#10b981", dashed: true, label: "x200", curveK: 0.4 },
   // G2 (mavi) → Gazlı daire
-  { fromId: "c-G2", toId: "cat-gazli", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
+  { fromId: "c-G2", toId: "cat-gazli", fromPort: "e", toPort: "w", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
 
-  // Elektrikli → 5 elektrikli cihaz (GSA*, GSS*)
-  { fromId: "cat-elektrikli", toId: "p-GSA15",  dashed: true, color: "rgba(255,255,255,0.45)" },
-  { fromId: "cat-elektrikli", toId: "p-GSA20",  dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-elektrikli", toId: "p-GSA30",  dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-elektrikli", toId: "p-GSS20P", dashed: true, color: "rgba(255,255,255,0.45)" },
-  { fromId: "cat-elektrikli", toId: "p-GSS40P", dashed: true, color: "rgba(255,255,255,0.22)" },
+  // Elektrikli (yeşil fan) → 5 cihaz: dairenin sağ port'undan cihazın sol port'una
+  { fromId: "cat-elektrikli", toId: "p-GSA15",  fromPort: "e", toPort: "w", dashed: true, color: "#10b981",                  curveK: 0.5 },
+  { fromId: "cat-elektrikli", toId: "p-GSA20",  fromPort: "e", toPort: "w", dashed: true, color: "rgba(16,185,129,0.55)",    curveK: 0.5 },
+  { fromId: "cat-elektrikli", toId: "p-GSA30",  fromPort: "e", toPort: "w", dashed: true, color: "rgba(16,185,129,0.55)",    curveK: 0.5 },
+  { fromId: "cat-elektrikli", toId: "p-GSS20P", fromPort: "e", toPort: "w", dashed: true, color: "#10b981",                  curveK: 0.5 },
+  { fromId: "cat-elektrikli", toId: "p-GSS40P", fromPort: "e", toPort: "w", dashed: true, color: "rgba(16,185,129,0.55)",    curveK: 0.5 },
 
-  // Gazlı → 6 gazlı cihaz (ELT.*, BH.*)
-  { fromId: "cat-gazli", toId: "p-ELT.5-7",    dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-ELT.7-11",   dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-BH.50ST.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-BH.50UT.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
-  { fromId: "cat-gazli", toId: "p-BH.55ST.SV", dashed: true, color: "rgba(255,255,255,0.45)" }, // G2 sipariş hattı
-  { fromId: "cat-gazli", toId: "p-BH.55UT.SV", dashed: true, color: "rgba(255,255,255,0.22)" },
+  // Gazlı (mavi fan) → 6 cihaz: dairenin sağ port'undan cihazın sol port'una
+  { fromId: "cat-gazli", toId: "p-ELT.5-7",    fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
+  { fromId: "cat-gazli", toId: "p-ELT.7-11",   fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
+  { fromId: "cat-gazli", toId: "p-BH.50ST.SV", fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
+  { fromId: "cat-gazli", toId: "p-BH.50UT.SV", fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
+  { fromId: "cat-gazli", toId: "p-BH.55ST.SV", fromPort: "e", toPort: "w", dashed: true, color: "#38bdf8",               curveK: 0.5 }, // G2 sipariş hattı
+  { fromId: "cat-gazli", toId: "p-BH.55UT.SV", fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
 
   // GSA15 → Üretim, Depo, Satış (yeşil — E3 sipariş zinciri)
   { fromId: "p-GSA15", toId: "stg-uretim", color: "#10b981", dashed: true, label: "x100", curveK: 0.35 },
