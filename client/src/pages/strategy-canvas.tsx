@@ -6185,13 +6185,6 @@ export default function StrategyCanvasPage() {
               </div>
             )}
           </div>
-          <button
-            onClick={toggleFlaskOpen}
-            style={flaskOpen ? hdrBtnFlaskActive : hdrBtnFlask}
-            title="Tepkime denklemi (siparişleri sürükle veya tek tıkla doldur, AI iki senaryo üretir)"
-          >
-            Tepkime{flaskItems.length > 0 ? ` (${flaskItems.length})` : ""}
-          </button>
           <button onClick={() => { setEditing(null); setModalOpen(true); }} style={hdrBtnAccent}>+ Sipariş</button>
         </div>
       </div>
