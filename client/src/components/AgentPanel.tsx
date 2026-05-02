@@ -43,12 +43,12 @@ const C = {
   textDim: "rgba(240,240,245,0.35)",
 };
 
-const SUGGESTIONS = [
-  { emoji: "🏭", text: "Kaç adet ELT.7-11 üretebiliriz?" },
-  { emoji: "📦", text: "100 adet sipariş gelse karşılayabilir miyiz?" },
-  { emoji: "⚠️", text: "Hangi bileşenlerin stoku kritik?" },
-  { emoji: "📊", text: "Genel stok durumu nedir?" },
-  { emoji: "🛒", text: "Satın alma önerisi oluştur" },
+const SUGGESTIONS: { text: string }[] = [
+  { text: "Kaç adet ELT.7-11 üretebiliriz?" },
+  { text: "100 adet sipariş gelse karşılayabilir miyiz?" },
+  { text: "Hangi bileşenlerin stoku kritik?" },
+  { text: "Genel stok durumu nedir?" },
+  { text: "Satın alma önerisi oluştur" },
 ];
 
 type AgentMode = "fast" | "normal" | "research" | "visual";
@@ -65,9 +65,9 @@ interface ModeOption {
 
 const MODES: ModeOption[] = [
   { key: "fast", icon: "▸", label: "Hızlı", sublabel: "~10s", color: "#fbbf24", glow: "rgba(251,191,36,0.12)", border: "rgba(251,191,36,0.25)" },
-  { key: "normal", icon: "💬", label: "Normal", sublabel: "~25s", color: "#818cf8", glow: "rgba(129,140,248,0.12)", border: "rgba(129,140,248,0.25)" },
-  { key: "research", icon: "🧠", label: "Araştırma", sublabel: "~2dk", color: "#f472b6", glow: "rgba(244,114,182,0.12)", border: "rgba(244,114,182,0.25)" },
-  { key: "visual", icon: "📊", label: "Görsel", sublabel: "~25s", color: "#34d399", glow: "rgba(52,211,153,0.12)", border: "rgba(52,211,153,0.25)" },
+  { key: "normal", icon: "◇", label: "Normal", sublabel: "~25s", color: "#818cf8", glow: "rgba(129,140,248,0.12)", border: "rgba(129,140,248,0.25)" },
+  { key: "research", icon: "∴", label: "Araştırma", sublabel: "~2dk", color: "#f472b6", glow: "rgba(244,114,182,0.12)", border: "rgba(244,114,182,0.25)" },
+  { key: "visual", icon: "▦", label: "Görsel", sublabel: "~25s", color: "#34d399", glow: "rgba(52,211,153,0.12)", border: "rgba(52,211,153,0.25)" },
 ];
 
 interface Message {
@@ -80,9 +80,9 @@ interface Message {
 
 // Ontology v2 sub-agent display names (Türkçe)
 const AGENT_LABELS: Record<string, string> = {
-  tukenme: "🔺 Tükenme",
-  yapi: "🔺 Yapı",
-  risk: "🔺 Risk",
+  tukenme: "Tükenme",
+  yapi: "Yapı",
+  risk: "Risk",
   aksiyon: "Aksiyon",
 };
 
@@ -169,7 +169,6 @@ function MermaidBlock({ code, onExpand }: { code: string; onExpand: (svg: string
         color: C.textSecondary, fontSize: 12,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 8 }}>
-          <span style={{ fontSize: 14 }}>📊</span>
           <span style={{ color: C.textDim, fontSize: 11 }}>Diyagram render edilemedi — ham veri:</span>
         </div>
         <pre style={{
@@ -767,7 +766,7 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                 fontSize: 16, fontWeight: 600, color: C.white,
                 marginBottom: 2, letterSpacing: -0.2,
               }}>
-                Merhaba 👋
+                Merhaba
               </div>
               <div style={{ fontSize: 12, color: C.textSecondary, marginBottom: 12 }}>
                 Size nasıl yardımcı olabilirim?
@@ -792,7 +791,6 @@ export default function AgentPanel({ open, onClose }: { open: boolean; onClose: 
                       e.currentTarget.style.background = C.glass;
                     }}
                   >
-                    <span style={{ fontSize: 14 }}>{s.emoji}</span>
                     <span>{s.text}</span>
                   </button>
                 ))}
