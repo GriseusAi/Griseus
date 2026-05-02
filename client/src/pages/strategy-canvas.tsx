@@ -5371,18 +5371,6 @@ export default function StrategyCanvasPage() {
   });
   useEffect(() => { localStorage.setItem(EDGE_PALETTE_KEY, edgePaletteId); }, [edgePaletteId]);
   const edgePalette = useMemo(() => getEdgePalette(edgePaletteId), [edgePaletteId]);
-  const [paletteMenuOpen, setPaletteMenuOpen] = useState(false);
-  const paletteMenuRef = useRef<HTMLDivElement | null>(null);
-  useEffect(() => {
-    if (!paletteMenuOpen) return;
-    const onClick = (e: MouseEvent) => {
-      if (paletteMenuRef.current && !paletteMenuRef.current.contains(e.target as Node)) {
-        setPaletteMenuOpen(false);
-      }
-    };
-    window.addEventListener("mousedown", onClick);
-    return () => window.removeEventListener("mousedown", onClick);
-  }, [paletteMenuOpen]);
 
   const [orders, setOrders] = useState<Order[]>(() => safeParse<Order[]>(localStorage.getItem(ORDERS_KEY), []));
   useEffect(() => { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); }, [orders]);
@@ -6086,77 +6074,6 @@ export default function StrategyCanvasPage() {
                     <span style={{ flex: 1 }}>{w.l}</span>
                   </button>
                 ))}
-              </div>
-            )}
-          </div>
-          <div ref={paletteMenuRef} style={{ position: "relative" }}>
-            <button
-              onClick={() => setPaletteMenuOpen(o => !o)}
-              style={paletteMenuOpen ? hdrBtnAccent : hdrBtnGhost}
-              title="Ok renk paleti — sahnedeki edge'lerin rengini değiştir"
-            >
-              <span style={{
-                display: "inline-block", width: 8, height: 8, borderRadius: 2,
-                background: edgePalette.colors.electric, marginRight: 4, verticalAlign: "middle",
-              }} />
-              <span style={{
-                display: "inline-block", width: 8, height: 8, borderRadius: 2,
-                background: edgePalette.colors.gas, marginRight: 6, verticalAlign: "middle",
-              }} />
-              Palet
-            </button>
-            {paletteMenuOpen && (
-              <div style={{
-                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70,
-                width: 240, background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
-                borderRadius: 10, boxShadow: "0 12px 32px rgba(15,23,42,0.18)", padding: 6,
-              }}>
-                <div style={{
-                  padding: "6px 10px", fontSize: 9, color: C.mid, letterSpacing: 1.5,
-                  fontFamily: mono, borderBottom: `1px solid ${C.edgeFaint}`, marginBottom: 4,
-                }}>OK RENK PALETİ</div>
-                {EDGE_PALETTES.map(p => {
-                  const active = p.id === edgePaletteId;
-                  const swatchOrder: EdgeRole[] = ["electric", "gas", "shortfall", "select", "warn"];
-                  return (
-                    <button
-                      key={p.id}
-                      onClick={() => { setEdgePaletteId(p.id); setPaletteMenuOpen(false); }}
-                      style={{
-                        width: "100%", display: "flex", alignItems: "center", gap: 8,
-                        padding: "7px 10px", borderRadius: 6,
-                        background: active ? C.accentSoft : "transparent",
-                        border: "none", cursor: "pointer",
-                        fontSize: 12, color: C.ink, fontFamily: mono, textAlign: "left",
-                      }}
-                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#f5f3ec"; }}
-                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
-                    >
-                      <span style={{
-                        width: 16, height: 16, display: "inline-flex",
-                        alignItems: "center", justifyContent: "center",
-                        border: `1.5px solid ${active ? C.accent : C.mid}`,
-                        borderRadius: 3, fontSize: 10, color: C.accent, fontWeight: 700,
-                      }}>{active ? "✓" : ""}</span>
-                      <span style={{ flex: 1 }}>{p.name}</span>
-                      <span style={{ display: "inline-flex", gap: 2 }}>
-                        {swatchOrder.map(r => (
-                          <span key={r} style={{
-                            width: 10, height: 10, borderRadius: 2,
-                            background: p.colors[r],
-                            border: "1px solid rgba(15,23,42,0.12)",
-                          }} />
-                        ))}
-                      </span>
-                    </button>
-                  );
-                })}
-                <div style={{
-                  padding: "8px 10px", fontSize: 10, color: C.mid, fontFamily: mono,
-                  borderTop: `1px solid ${C.edgeFaint}`, marginTop: 4, lineHeight: 1.5,
-                }}>
-                  Tercih localStorage'a kaydedilir, tüm sahne ve sipariş okları yeniden renklenir.
-                </div>
               </div>
             )}
           </div>
