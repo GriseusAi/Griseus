@@ -3971,30 +3971,50 @@ function CustomersSceneRenderer({
     [hiddenIds, familyEdges, bomEdges, customSceneEdges],
   );
 
-  // Müşteri odağı aktif ise: focusedCustomerId'den edge-graph BFS ile reachable
-  // atom ID'lerini topla. Render katmanı bu set'i kullanarak focus dışındaki
-  // atom ve edge'leri dim eder. familyEdges (faint dashed lbl-customers → tüm
-  // chip'ler) BFS dışı tutulur — yoksa tüm müşteriler reachable olur.
+  // Müşteri odağı aktif ise: focusedCustomerId'den SADECE primary edge'lerle BFS
+  // (full hex renk veya rgba alpha ≥ 0.7). Faint edge'ler (kategori → ikincil
+  // mamul, rgba 0.55) takip edilmez — yani sadece o müşterinin SPESİFİK üretim
+  // hattı (ana sipariş zinciri rengi) belirginleşir, kategori altındaki diğer
+  // mamuller dim kalır. Pill'ler (deadline/lead) primary node'a bağlıysa bonus
+  // reachable olur. familyEdges (lbl-customers fan) hariç.
   const focusedReachable = useMemo<Set<string> | null>(() => {
     if (!focusedCustomerId) return null;
-    const focusEdges = [...SCENE_EDGES, ...bomEdges, ...customSceneEdges].filter(
+    const isPrimaryColor = (c?: string): boolean => {
+      if (!c) return false;
+      if (c.startsWith("#")) return true;
+      const m = c.match(/rgba?\([^)]+,\s*([0-9.]+)\s*\)/);
+      if (m) return parseFloat(m[1]) >= 0.7;
+      return true;
+    };
+    const allFocusEdges = [...SCENE_EDGES, ...bomEdges, ...customSceneEdges].filter(
       e => e.fromId !== "lbl-customers" && e.toId !== "lbl-customers",
     );
-    const adj: Record<string, string[]> = {};
-    for (const e of focusEdges) {
-      (adj[e.fromId] ??= []).push(e.toId);
-      (adj[e.toId] ??= []).push(e.fromId);
+    const primaryAdj: Record<string, string[]> = {};
+    for (const e of allFocusEdges) {
+      if (!isPrimaryColor(e.color)) continue;
+      (primaryAdj[e.fromId] ??= []).push(e.toId);
+      (primaryAdj[e.toId] ??= []).push(e.fromId);
     }
     const seen = new Set<string>([focusedCustomerId]);
     const stack = [focusedCustomerId];
     while (stack.length > 0) {
       const cur = stack.pop()!;
-      for (const n of adj[cur] ?? []) {
+      for (const n of primaryAdj[cur] ?? []) {
         if (!seen.has(n)) { seen.add(n); stack.push(n); }
       }
     }
+    // Pill bonus pass: pill atomları primary node'a bağlıysa reachable Set'e ekle
+    const pillKinds = new Set(["deadline-pill", "lead-pill"]);
+    for (const e of allFocusEdges) {
+      const aKind = atomById[e.fromId]?.kind;
+      const bKind = atomById[e.toId]?.kind;
+      const aIsPill = aKind ? pillKinds.has(aKind) : false;
+      const bIsPill = bKind ? pillKinds.has(bKind) : false;
+      if (aIsPill && seen.has(e.toId)) seen.add(e.fromId);
+      if (bIsPill && seen.has(e.fromId)) seen.add(e.toId);
+    }
     return seen;
-  }, [focusedCustomerId, bomEdges, customSceneEdges]);
+  }, [focusedCustomerId, bomEdges, customSceneEdges, atomById]);
 
   // SVG bounding box: world coords so we draw in the same transformed space
   const bbox = useMemo(() => {
