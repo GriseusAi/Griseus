@@ -1001,7 +1001,7 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
    DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
    ──────────────────────────────────────────────────────────────────── */
 function DragNode({
-  pos, width, height, onDrag, onTap, onMultiSelect, getMouseInWorld, children, style, asCircle, viewport, shapeStyle,
+  pos, width, height, onDrag, onTap, onMultiSelect, onContextMenu, getMouseInWorld, children, style, asCircle, viewport, shapeStyle,
 }: {
   pos: XY;
   width: number;
@@ -1009,6 +1009,7 @@ function DragNode({
   onDrag: (xy: XY) => void;
   onTap?: () => void;
   onMultiSelect?: () => void;
+  onContextMenu?: (e: React.MouseEvent) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   children: React.ReactNode;
   style?: React.CSSProperties;
@@ -1070,6 +1071,7 @@ function DragNode({
       onPointerMove={handleMove}
       onPointerUp={handleUp}
       onClick={handleClick}
+      onContextMenu={onContextMenu}
       style={{
         position: "absolute",
         left: sx, top: sy,
@@ -4119,6 +4121,7 @@ function CustomersSceneRenderer({
               ? expandedSubassemblies.has(a.id)
               : undefined;
 
+        const isCustomAtom = customAtoms.some(ca => ca.id === a.id);
         return (
           <SceneAtomNode
             key={a.id}
@@ -4131,6 +4134,22 @@ function CustomersSceneRenderer({
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
             shapeOverride={shapeOverrides[a.id]}
+            onContextMenu={isCustomAtom ? (e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              // Pill atomu silerken parent atom'un meta'sındaki referansı da temizle
+              const parentEntries = Object.entries(atomMeta).filter(
+                ([, m]) => m.deadlinePillId === a.id,
+              );
+              parentEntries.forEach(([pid]) => {
+                setAtomMetaField(pid, { deadlinePillId: undefined, deadline: undefined });
+              });
+              // Bu atoma değen custom edge'leri de temizle
+              customEdges
+                .filter(ce => ce.fromId === a.id || ce.toId === a.id)
+                .forEach(ce => removeCustomEdge(ce.id));
+              removeCustomAtom(a.id);
+            } : undefined}
           />
         );
       })}
@@ -4519,6 +4538,7 @@ function SceneAtomNode({
       onDrag={onMove}
       onTap={onTap}
       onMultiSelect={onMultiSelect}
+      onContextMenu={onContextMenu}
       getMouseInWorld={getMouseInWorld}
       viewport={viewport}
       asCircle={asCircle}
