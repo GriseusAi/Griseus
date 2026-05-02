@@ -5710,6 +5710,54 @@ export default function StrategyCanvasPage() {
     localStorage.setItem("griseus_g3_pill_dedup_v1", "done");
   }, [sceneCustomAtoms]);
 
+  // Migration: önceki ensureDeadlinePill formula'sı pill'i parent'ın 12px altına
+  // koyuyordu (overlap). Yeni formula: parent'ın 60px solunda, Y merkezde. Daha
+  // önce yaratılmış custom pill'leri yeni pozisyona taşı — kullanıcı manuel
+  // sürüklemediyse (scenePositions[pillId] yoksa) güvenle update.
+  const pillRepositionRef = useRef(false);
+  useEffect(() => {
+    if (pillRepositionRef.current) return;
+    if (localStorage.getItem("griseus_pill_reposition_v1") === "done") {
+      pillRepositionRef.current = true;
+      return;
+    }
+    pillRepositionRef.current = true;
+    const defaultAtomMap: Record<string, SceneAtom> = {};
+    makeDefaultSceneAtoms().forEach(a => { defaultAtomMap[a.id] = a; });
+    const customAtomMap: Record<string, SceneAtom> = {};
+    sceneCustomAtoms.forEach(a => { customAtomMap[a.id] = a; });
+    const updates: { id: string; x: number; y: number }[] = [];
+    const overrideKillIds: string[] = [];
+    sceneCustomAtoms.forEach(pill => {
+      if (pill.kind !== "deadline-pill") return;
+      const m = pill.id.match(/^pill-d-(.+)-[a-z0-9]+$/i);
+      if (!m) return;
+      const parentId = m[1];
+      const parentBase = defaultAtomMap[parentId] ?? customAtomMap[parentId];
+      if (!parentBase) return;
+      const parentPos = scenePositions[parentId];
+      const parent = parentPos ? { ...parentBase, x: parentPos.x, y: parentPos.y } : parentBase;
+      const newX = parent.x - pill.w - 60;
+      const newY = parent.y + parent.h / 2 - pill.h / 2;
+      updates.push({ id: pill.id, x: newX, y: newY });
+      if (scenePositions[pill.id]) overrideKillIds.push(pill.id);
+    });
+    if (updates.length > 0) {
+      setSceneCustomAtoms(prev => prev.map(a => {
+        const u = updates.find(x => x.id === a.id);
+        return u ? { ...a, x: u.x, y: u.y } : a;
+      }));
+    }
+    if (overrideKillIds.length > 0) {
+      setScenePositions(prev => {
+        const next = { ...prev };
+        overrideKillIds.forEach(id => { delete next[id]; });
+        return next;
+      });
+    }
+    localStorage.setItem("griseus_pill_reposition_v1", "done");
+  }, [sceneCustomAtoms, scenePositions]);
+
   const buildSnapshot = useCallback(
     (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
       id,
