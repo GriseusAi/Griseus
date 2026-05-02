@@ -7,6 +7,7 @@ import TopNav from "@/components/top-nav";
 import { useAgentPanel } from "@/App";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
 import BhOntologyPage from "@/pages/bh-ontology";
+import bomTreeRaw from "@shared/strategy-bom-tree.json";
 import {
   ReactionFlask,
   type FlaskItem,
@@ -46,6 +47,101 @@ const C = {
 } as const;
 const mono = "'Inter', system-ui, -apple-system, sans-serif";
 const INTER_FEATS = "'cv11', 'ss01', 'cv02'";
+
+/* ════════════════════════════════════════════════════════════════════
+   EDGE COLOR PALETTE — kullanıcı seçtiği palet ok renklerini override eder
+   Default = mevcut hardcoded renklerle birebir aynı (identity).
+   Diğer paletler 7 rolü farklı hex'lere eşler, alpha korunur.
+   ──────────────────────────────────────────────────────────────────── */
+type EdgeRole = "electric" | "gas" | "neutral" | "shortfall" | "warn" | "select" | "dark";
+
+interface EdgePalette {
+  id: string;
+  name: string;
+  colors: Record<EdgeRole, string>;
+}
+
+const EDGE_PALETTES: EdgePalette[] = [
+  {
+    id: "default", name: "Varsayılan",
+    colors: { electric: "#10b981", gas: "#38bdf8", neutral: "#ffffff", shortfall: "#ef4444", warn: "#f59e0b", select: "#f97316", dark: "#0f172a" },
+  },
+  {
+    id: "vivid", name: "Canlı",
+    colors: { electric: "#a855f7", gas: "#ec4899", neutral: "#f5f5f5", shortfall: "#dc2626", warn: "#f59e0b", select: "#06b6d4", dark: "#1e293b" },
+  },
+  {
+    id: "mono", name: "Tek Ton",
+    colors: { electric: "#52525b", gas: "#a1a1aa", neutral: "#e4e4e7", shortfall: "#18181b", warn: "#71717a", select: "#0ea5e9", dark: "#09090b" },
+  },
+  {
+    id: "solar", name: "Güneş",
+    colors: { electric: "#fbbf24", gas: "#fb923c", neutral: "#fef3c7", shortfall: "#dc2626", warn: "#f97316", select: "#1d4ed8", dark: "#78350f" },
+  },
+  {
+    id: "ink", name: "Mürekkep",
+    colors: { electric: "#1e3a8a", gas: "#5b21b6", neutral: "#94a3b8", shortfall: "#991b1b", warn: "#a16207", select: "#0891b2", dark: "#020617" },
+  },
+  {
+    id: "forest", name: "Orman",
+    colors: { electric: "#14532d", gas: "#0e7490", neutral: "#d6d3d1", shortfall: "#7c2d12", warn: "#854d0e", select: "#65a30d", dark: "#1c1917" },
+  },
+];
+
+const EDGE_PALETTE_KEY = "griseus_edge_palette_v1";
+
+function hexToRgb(hex: string): { r: number; g: number; b: number } | null {
+  const h = hex.replace(/^#/, "");
+  if (h.length !== 6) return null;
+  const n = parseInt(h, 16);
+  if (isNaN(n)) return null;
+  return { r: (n >> 16) & 255, g: (n >> 8) & 255, b: n & 255 };
+}
+
+function asRgba(hex: string, alpha: number): string {
+  const rgb = hexToRgb(hex);
+  if (!rgb) return hex;
+  return `rgba(${rgb.r},${rgb.g},${rgb.b},${alpha})`;
+}
+
+function getEdgePalette(id: string | null | undefined): EdgePalette {
+  return EDGE_PALETTES.find(p => p.id === id) ?? EDGE_PALETTES[0];
+}
+
+// Hardcoded sahne renklerini palet rollerine eşle. Default palette identity döner.
+function remapEdgeColor(orig: string | undefined, p: EdgePalette): string | undefined {
+  if (!orig) return orig;
+  if (p.id === "default") return orig;
+  const s = orig.replace(/\s/g, "").toLowerCase();
+
+  // Hex eşleşmeleri (default palette anchor'ları)
+  if (s === "#10b981") return p.colors.electric;
+  if (s === "#38bdf8") return p.colors.gas;
+  if (s === "#f97316") return p.colors.select;
+  if (s === "#ef4444") return p.colors.shortfall;
+  if (s === "#f59e0b") return p.colors.warn;
+  if (s === "#ffffff" || s === "#fff") return p.colors.neutral;
+  if (s === "#0f172a") return p.colors.dark;
+
+  // RGBA — rgb tripletinden role çıkar, alpha'yı koru
+  const m = s.match(/^rgba?\((\d+),(\d+),(\d+)(?:,([\d.]+))?\)$/);
+  if (m) {
+    const r = m[1], g = m[2], b = m[3];
+    const alpha = m[4] !== undefined ? parseFloat(m[4]) : 1;
+    const rgb = `${r},${g},${b}`;
+    let role: EdgeRole | null = null;
+    if (rgb === "16,185,129") role = "electric";
+    else if (rgb === "56,189,248") role = "gas";
+    else if (rgb === "249,115,22") role = "select";
+    else if (rgb === "239,68,68") role = "shortfall";
+    else if (rgb === "245,158,11") role = "warn";
+    else if (rgb === "255,255,255") role = "neutral";
+    else if (rgb === "15,23,42") role = "dark";
+    if (role) return asRgba(p.colors[role], alpha);
+  }
+  return orig;
+}
+
 const fmtTR = (n: number) => (isFinite(n) ? n.toLocaleString("tr-TR") : "—");
 const MONTH_LABELS = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
 const DEFAULT_LEAD_TIME_DAYS = 14;
@@ -1217,13 +1313,14 @@ const btnFlask: React.CSSProperties = {
 /* ════════════════════════════════════════════════════════════════════
    EDGES — tek SVG overlay, world koordinatlarında, transform parent'ı içinde
    ──────────────────────────────────────────────────────────────────── */
-function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByOrder, viewport }: {
+function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByOrder, viewport, edgePalette }: {
   orders: Order[];
   allDefaults: Record<string, Record<string, XY>>;
   posOverrides: PositionOverrides;
   stockBySku: Record<string, StockResp>;
   expandedByOrder: Record<string, string[]>;
   viewport: { vx: number; vy: number; scale: number };
+  edgePalette: EdgePalette;
 }) {
   type EdgeSeg = { d: string; short: boolean; key: string };
   const edges: EdgeSeg[] = [];
@@ -1309,7 +1406,9 @@ function EdgesLayer({ orders, allDefaults, posOverrides, stockBySku, expandedByO
     }}>
       {edges.map(e => (
         <path key={e.key} d={e.d}
-          stroke={e.short ? C.shortfall : C.edge}
+          stroke={e.short
+            ? (remapEdgeColor(C.shortfall, edgePalette) ?? C.shortfall)
+            : (remapEdgeColor(C.edge, edgePalette) ?? C.edge)}
           strokeWidth={e.short ? 1.6 : 1.2}
           strokeDasharray={e.short ? "5 5" : "3 5"}
           fill="none" />
@@ -2243,7 +2342,7 @@ function SupplyEquationPanel({
 
 type SceneAtomKind =
   | "label" | "customer-chip" | "category" | "product" | "stage"
-  | "factory" | "component" | "bom-item" | "lead-pill" | "deadline-pill" | "flask"
+  | "factory" | "component" | "bom-item" | "subassembly" | "lead-pill" | "deadline-pill" | "flask"
   | "supply-bracket" | "timeline-s1" | "timeline-s2";
 
 interface SceneAtom {
@@ -2255,94 +2354,24 @@ interface SceneAtom {
   sub?: string;
 }
 
-/* BOM drill-down — her cihazın xls reçetesinden top 5 alt bileşeni.
-   "critical" işareti = darboğaz/kritik (Ampul, Radyant Boru, U Borusu vb).
-   stock = xls "Stok Sevi." kolonu (sahne için referans, gerçek DB'den
-   bağımsız — drill-down görselleştirme amacıyla). */
-interface BomChild { code: string; name: string; stock?: number; critical?: boolean }
+/* BOM tree drill-down — xls'lerden tam Tier 1/Tier 2 hiyerarşisi
+   (shared/strategy-bom-tree.json'dan). children.length>0 olan T1 = yarı-mamül. */
+interface BomLeaf { code: string; name: string; stock: number | null }
+interface BomT1 { code: string; name: string; stock: number | null; children: BomLeaf[] }
+const DEVICE_BOM_TREE = bomTreeRaw as Record<string, BomT1[]>;
 
-const DEVICE_BOM_TOP: Record<string, BomChild[]> = {
-  // ELEKTRİKLİ — GSA (Goldsun Aqua, IR ampul)
-  "GSA15": [
-    { code: "25.018", name: "PG-9 Kablo Rakoru", stock: 4142 },
-    { code: "25.069", name: "Reflektör Kabini", stock: 7846 },
-    { code: "25.075", name: "Plus Ambalaj", stock: 2396 },
-    { code: "25.081", name: "Aqua Izgara", stock: 2133 },
-    { code: "25.103", name: "Ampul 1500W Dr.Fischer", stock: 672, critical: true },
-  ],
-  "GSA20": [
-    { code: "25.018", name: "PG-9 Kablo Rakoru", stock: 4142 },
-    { code: "25.069", name: "Reflektör Kabini", stock: 7846 },
-    { code: "25.075", name: "Plus Ambalaj", stock: 2396 },
-    { code: "25.081", name: "Aqua Izgara", stock: 2133 },
-    { code: "25.104", name: "Ampul 2000W Dr.Fischer", stock: 3128, critical: true },
-  ],
-  "GSA30": [
-    { code: "25.017", name: "PG-11 Kablo Rakoru", stock: 2777 },
-    { code: "25.075", name: "Plus Ambalaj", stock: 2396 },
-    { code: "25.081", name: "Aqua Izgara x2", stock: 2133 },
-    { code: "25.103", name: "Ampul 1500W x2", stock: 672, critical: true },
-    { code: "25.123", name: "Aqua Reflektör x2", stock: 4603 },
-  ],
-  "GSS20P": [
-    { code: "25.018", name: "PG-9 Kablo Rakoru", stock: 4610 },
-    { code: "25.054", name: "Supra Plus EPDM Conta", stock: 3758 },
-    { code: "25.069", name: "Reflektör Kabini", stock: 8314 },
-    { code: "25.075", name: "Plus Ambalaj", stock: 3646 },
-    { code: "25.104", name: "Ampul 2000W Dr.Fischer", stock: 3735, critical: true },
-  ],
-  "GSS40P": [
-    { code: "25.017", name: "PG-11 Kablo Rakoru", stock: 2777 },
-    { code: "25.050", name: "Cam Elyaf Kablo 1.5mm² 2m", stock: 659 },
-    { code: "25.054", name: "Supra Plus EPDM Conta", stock: 3267 },
-    { code: "25.075", name: "Plus Ambalaj", stock: 2396 },
-    { code: "25.104", name: "Ampul 2000W x2", stock: 3128, critical: true },
-  ],
-  // GAZLI — ELT (Goldsun Elite seramik)
-  "ELT.5-7": [
-    { code: "27.003", name: "CC 5/7 Isı Kalkanı", stock: 198 },
-    { code: "27.009", name: "Elite Buji Kablosu", stock: 801 },
-    { code: "27.012", name: "CC 5/7 Izgara", stock: 104, critical: true },
-    { code: "27.013", name: "CC 3'lü Klemens", stock: 1833 },
-    { code: "27.021", name: "Gaz Flexi Nipeli", stock: 863 },
-  ],
-  "ELT.7-11": [
-    { code: "27.004", name: "CC 7/11 Isı Kalkanı", stock: 809 },
-    { code: "27.009", name: "Elite Buji Kablosu", stock: 857 },
-    { code: "27.013", name: "CC 3'lü Klemens", stock: 1889 },
-    { code: "27.018", name: "CC Askı Konsolu", stock: 3148 },
-    { code: "27.021", name: "Gaz Flexi Nipeli", stock: 919 },
-  ],
-  // GAZLI — BH (Blackheat boru radyant)
-  "BH.50ST.SV": [
-    { code: "01318901", name: "Boru Kelepçe Tk.", stock: 6236 },
-    { code: "01329600", name: "Kaplin 100mm x4", stock: 3706 },
-    { code: "02750800", name: "Reflektör Son Kapak", stock: 1387 },
-    { code: "03051102", name: "Aluminize Yanma Borusu", stock: 258 },
-    { code: "91409408", name: "Aluminize Radyant Boru 3.05m", stock: 1052, critical: true },
-  ],
-  "BH.50UT.SV": [
-    { code: "01318901", name: "Boru Kelepçe Tk.", stock: 6236 },
-    { code: "01329600", name: "Kaplin 100mm x6", stock: 3706 },
-    { code: "02750800", name: "Reflektör Son Kapak x4", stock: 1387 },
-    { code: "03090100", name: "Boru Reflektör Askısı x8", stock: 4527 },
-    { code: "20.054",   name: "Aluminize U Borusu", stock: 180, critical: true },
-  ],
-  "BH.55ST.SV": [
-    { code: "01318901", name: "Boru Kelepçe Tk.", stock: 6236 },
-    { code: "01329600", name: "Kaplin 100mm x5", stock: 3706 },
-    { code: "02750800", name: "Reflektör Son Kapak", stock: 1387 },
-    { code: "03051102", name: "Aluminize Yanma Borusu", stock: 258 },
-    { code: "91409408", name: "Aluminize Radyant Boru 3.05m", stock: 1052, critical: true },
-  ],
-  "BH.55UT.SV": [
-    { code: "01318901", name: "Boru Kelepçe Tk.", stock: 6236 },
-    { code: "01329600", name: "Kaplin 100mm x6", stock: 3706 },
-    { code: "02750800", name: "Reflektör Son Kapak x4", stock: 1387 },
-    { code: "03090100", name: "Boru Reflektör Askısı x8", stock: 4527 },
-    { code: "20.054",   name: "Aluminize U Borusu", stock: 180, critical: true },
-  ],
+const CRITICAL_PATTERNS = [
+  /\bAmpul\b/i, /Radyant Boru/i, /U Borusu/i, /Yanma Borusu/i, /CC.*Izgara/i,
+  /Brülör Ateşleme/i,
+];
+const isCriticalBom = (name: string): boolean =>
+  CRITICAL_PATTERNS.some(rx => rx.test(name));
+
+const compactName = (s: string): string => {
+  const cleaned = s.replace(/\s+/g, " ").trim();
+  return cleaned.length > 32 ? cleaned.slice(0, 30) + "…" : cleaned;
 };
+
 
 interface SceneEdge {
   fromId: string; toId: string;
@@ -2537,12 +2566,13 @@ const DEVICE_REGISTRY: DeviceMeta[] = [
 const devicesByFuel = (fuel: DeviceFuel) => DEVICE_REGISTRY.filter(d => d.fuel === fuel);
 
 function CustomersSceneRenderer({
-  positions, onMove, getMouseInWorld, viewport,
+  positions, onMove, getMouseInWorld, viewport, edgePalette,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
+  edgePalette: EdgePalette;
 }) {
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -2574,11 +2604,17 @@ function CustomersSceneRenderer({
         clearSelection();
         setPopupAtomId(null);
         setExpandedDeviceId(null);
+        setExpandedSubassemblies(new Set());
       }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
   }, []);
+
+  // Cihaz değiştiğinde aktif subassembly'leri temizle (eski cihaza ait)
+  useEffect(() => {
+    setExpandedSubassemblies(new Set());
+  }, [expandedDeviceId]);
 
   // Statik atomlar (sahnenin temel yapısı, scenePositions override'ı uygulanır)
   const baseAtoms = useMemo(() => {
@@ -2589,55 +2625,116 @@ function CustomersSceneRenderer({
     });
   }, [positions]);
 
-  // Dinamik BOM atomları — sadece bir cihaz expand olunca render edilir
+  // Yarı-mamül expand state — birden fazla yarı-mamül aynı anda açık olabilir
+  // (kategori grup pattern'inin aynısı: Set<string> içinde subassembly atom id'leri)
+  const [expandedSubassemblies, setExpandedSubassemblies] = useState<Set<string>>(() => new Set());
+  const toggleSubassembly = (id: string) => setExpandedSubassemblies(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  // Dinamik BOM atomları — bir cihaz expand olunca tüm Tier 1 + (yarı-mamül
+  // expand olunca onların Tier 2 children'ı) sahnede yan tarafa açılır.
   const bomAtoms = useMemo<SceneAtom[]>(() => {
     if (!expandedDeviceId) return [];
     const dev = baseAtoms.find(a => a.id === expandedDeviceId);
     if (!dev) return [];
     const sku = expandedDeviceId.replace(/^p-/, "");
-    const bom = DEVICE_BOM_TOP[sku];
-    if (!bom) return [];
-    // BOM kartlarını sahnenin sağına dikey kolon halinde diziyoruz
-    const colX = 1560;
-    const cardW = 200;
-    const cardH = 50;
-    const gap = 10;
-    const totalH = bom.length * cardH + (bom.length - 1) * gap;
-    // Cihaz Y merkezini takip et — BOM bandı ortalanır
+    const tree = DEVICE_BOM_TREE[sku];
+    if (!tree || tree.length === 0) return [];
+
+    const out: SceneAtom[] = [];
+    // BOM kolonu fabrikanın sağına yerleşir — stage/fact ile çakışmasın
+    const T1_X = 1540;
+    const T1_W = 220, T1_H = 38, T1_GAP = 6;
+    const T2_X_OFFSET = 250;     // T1 sağına offset (T2 X = 1790)
+    const T2_W = 210, T2_H = 32, T2_GAP = 4;
+
+    // T1 dikey grid — cihaz Y merkezinden ortalan
+    const totalT1H = tree.length * T1_H + (tree.length - 1) * T1_GAP;
     const devCenterY = dev.y + dev.h / 2;
-    let startY = devCenterY - totalH / 2;
-    // Sahne sınırları içinde tut
+    let startY = devCenterY - totalT1H / 2;
     if (startY < 30) startY = 30;
-    return bom.map<SceneAtom>((c, i) => {
-      const id = `bom-${expandedDeviceId}-${c.code}`;
-      const persisted = positions[id];
-      return {
-        id,
-        kind: "bom-item",
-        label: c.code,
-        sub: c.name + (c.stock !== undefined ? ` · stok ${c.stock}` : ""),
-        x: persisted ? persisted.x : colX,
-        y: persisted ? persisted.y : startY + i * (cardH + gap),
-        w: cardW, h: cardH,
-        highlight: c.critical ? "red" : null,
-      };
+
+    tree.forEach((t1, i) => {
+      const t1Id = `bom-${expandedDeviceId}-${t1.code}`;
+      const isSub = t1.children.length > 0;
+      const t1Y = startY + i * (T1_H + T1_GAP);
+      const persistedT1 = positions[t1Id];
+      out.push({
+        id: t1Id,
+        kind: isSub ? "subassembly" : "bom-item",
+        label: t1.code,
+        sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
+        x: persistedT1 ? persistedT1.x : T1_X,
+        y: persistedT1 ? persistedT1.y : t1Y,
+        w: T1_W, h: T1_H,
+        highlight: isCriticalBom(t1.name) ? "red" : null,
+      });
+
+      // T2 children — sadece yarı-mamül expand ise render
+      if (isSub && expandedSubassemblies.has(t1Id)) {
+        const t2Count = t1.children.length;
+        const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
+        const t2StartY = t1Y + T1_H / 2 - t2TotalH / 2;
+        t1.children.forEach((c, j) => {
+          const t2Id = `bom-${expandedDeviceId}-${t1.code}-${c.code}`;
+          const persistedT2 = positions[t2Id];
+          out.push({
+            id: t2Id,
+            kind: "bom-item",
+            label: c.code,
+            sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
+            x: persistedT2 ? persistedT2.x : T1_X + T2_X_OFFSET,
+            y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
+            w: T2_W, h: T2_H,
+            highlight: isCriticalBom(c.name) ? "red" : null,
+          });
+        });
+      }
     });
-  }, [expandedDeviceId, baseAtoms, positions]);
+    return out;
+  }, [expandedDeviceId, expandedSubassemblies, baseAtoms, positions]);
 
   const atoms = useMemo(() => [...baseAtoms, ...bomAtoms], [baseAtoms, bomAtoms]);
 
-  // Dinamik BOM edge'leri — cihazdan her bileşene fan
+  // Dinamik BOM edge'leri — cihaz → T1, yarı-mamül → T2
   const bomEdges = useMemo<SceneEdge[]>(() => {
     if (!expandedDeviceId || bomAtoms.length === 0) return [];
-    return bomAtoms.map(b => ({
-      fromId: expandedDeviceId,
-      toId: b.id,
-      fromPort: "e",
-      toPort: "w",
-      dashed: true,
-      curveK: 0.45,
-      color: b.highlight === "red" ? "#ef4444" : "rgba(16,185,129,0.55)",
-    }));
+    const edges: SceneEdge[] = [];
+    bomAtoms.forEach(b => {
+      // T2 atom (id "bom-DEV-T1CODE-T2CODE") → T1 atom; T1 atom → cihaz
+      const parts = b.id.split("-");
+      const isT2 = parts.length === 5; // bom-p-SKU-T1-T2 (5 parça with hyphen split)
+      // ipuçlu: "bom-p-GSA15-25.018-25.106" gibi olabilir; daha güvenilir parse:
+      const prefix = `bom-${expandedDeviceId}-`;
+      const rest = b.id.slice(prefix.length);
+      const isChild = rest.includes("-");
+      if (isChild) {
+        // T2 → T1
+        const t1Code = rest.split("-")[0];
+        edges.push({
+          fromId: `bom-${expandedDeviceId}-${t1Code}`,
+          toId: b.id,
+          fromPort: "e", toPort: "w",
+          dashed: true, curveK: 0.4,
+          color: b.highlight === "red" ? "#ef4444" : "rgba(168,85,247,0.55)", // mor T2
+        });
+      } else {
+        // T1 → cihaz
+        edges.push({
+          fromId: expandedDeviceId,
+          toId: b.id,
+          fromPort: "e", toPort: "w",
+          dashed: true, curveK: 0.4,
+          color: b.highlight === "red"
+            ? "#ef4444"
+            : (b.kind === "subassembly" ? "rgba(168,85,247,0.7)" : "rgba(16,185,129,0.55)"),
+        });
+      }
+    });
+    return edges;
   }, [expandedDeviceId, bomAtoms]);
 
   const atomById = useMemo(() => {
@@ -2660,7 +2757,7 @@ function CustomersSceneRenderer({
     [atoms, hiddenIds],
   );
 
-  // Seçili atomlar arasında pairwise canlı edge — turuncu, kalın, label "ilişki"
+  // Seçili atomlar arasında pairwise canlı edge — palet'in select rengi, kalın
   const liveEdges: SceneEdge[] = useMemo(() => {
     const ids = Array.from(selectedIds).filter(id => atomById[id] && !hiddenIds.has(id));
     const edges: SceneEdge[] = [];
@@ -2668,12 +2765,12 @@ function CustomersSceneRenderer({
       for (let j = i + 1; j < ids.length; j++) {
         edges.push({
           fromId: ids[i], toId: ids[j],
-          color: "#f97316", dashed: false, curveK: 0.45,
+          color: edgePalette.colors.select, dashed: false, curveK: 0.45,
         });
       }
     }
     return edges;
-  }, [selectedIds, atomById, hiddenIds]);
+  }, [selectedIds, atomById, hiddenIds, edgePalette]);
 
   // Görünür edge'ler: hidden atom'a değen var olanları at + dinamik BOM edge'leri
   const visibleSceneEdges = useMemo(
@@ -2716,20 +2813,25 @@ function CustomersSceneRenderer({
     const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
     const midX = (x1 + x2) / 2;
     const midY = (y1 + y2) / 2 - 6;
+    const fallback = asRgba(edgePalette.colors.neutral, 0.4);
+    const labelFallback = asRgba(edgePalette.colors.neutral, 0.85);
+    const stroke = remapEdgeColor(e.color, edgePalette) ?? fallback;
+    const labelFill = remapEdgeColor(e.color, edgePalette) ?? labelFallback;
+    const liveGlow = asRgba(edgePalette.colors.select, 0.55);
     return (
       <g key={`${isLive ? "live" : "edge"}-${i}`}>
         <path
           d={path}
-          stroke={e.color ?? "rgba(255,255,255,0.4)"}
+          stroke={stroke}
           strokeWidth={isLive ? 2.5 : 1.5}
           fill="none"
           strokeDasharray={e.dashed ? "5 4" : undefined}
-          style={isLive ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" } : undefined}
+          style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : undefined}
         />
         {e.label && (
           <text
             x={midX} y={midY}
-            fill={e.color ?? "rgba(255,255,255,0.85)"}
+            fill={labelFill}
             fontSize={13}
             fontFamily={mono}
             fontWeight={600}
@@ -2755,7 +2857,7 @@ function CustomersSceneRenderer({
           boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
           display: "flex", alignItems: "center", gap: 10,
         }}>
-          <span style={{ color: "#f97316", fontWeight: 700 }}>● {selectedIds.size}</span>
+          <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>● {selectedIds.size}</span>
           <span style={{ color: C.cardSub }}>seçili · shift+click ekle/çıkar</span>
           <button
             onClick={clearSelection}
@@ -2791,12 +2893,14 @@ function CustomersSceneRenderer({
       {/* Atom layer — DragNode'lar */}
       {visibleAtoms.map(a => {
         // 1) Customers KÖK + kategori daireler → grup toggle
-        // 2) Cihaz kartı (product, BOM tanımlı) → alt bileşen drill-down toggle
-        // 3) Diğerleri → yan drill-down pop-up
+        // 2) Cihaz kartı (product, BOM tree var) → BOM tree drill-down toggle
+        // 3) Yarı-mamül (subassembly) → Tier 2 alt bileşen drill-down toggle
+        // 4) Diğerleri → yan drill-down pop-up
         const isCustomersLabel = a.id === "lbl-customers";
         const isCategory = a.kind === "category";
         const sku = a.id.replace(/^p-/, "");
-        const hasBomDrillDown = a.kind === "product" && !!DEVICE_BOM_TOP[sku];
+        const hasBomDrillDown = a.kind === "product" && !!DEVICE_BOM_TREE[sku];
+        const isSubassembly = a.kind === "subassembly";
         const groupKey = isCustomersLabel ? "customers" : isCategory ? a.id : null;
 
         let onTap: () => void;
@@ -2804,6 +2908,8 @@ function CustomersSceneRenderer({
           onTap = () => toggleGroup(groupKey);
         } else if (hasBomDrillDown) {
           onTap = () => setExpandedDeviceId(prev => prev === a.id ? null : a.id);
+        } else if (isSubassembly) {
+          onTap = () => toggleSubassembly(a.id);
         } else {
           onTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
@@ -2812,7 +2918,9 @@ function CustomersSceneRenderer({
           ? openGroups.has(groupKey)
           : hasBomDrillDown
             ? expandedDeviceId === a.id
-            : undefined;
+            : isSubassembly
+              ? expandedSubassemblies.has(a.id)
+              : undefined;
 
         return (
           <SceneAtomNode
@@ -3323,21 +3431,53 @@ function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boo
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
-        borderRadius: 10, padding: "6px 10px",
+        borderRadius: 10, padding: "5px 9px",
         boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
         border: `1px solid ${C.panelEdge}`,
         borderLeft: `3px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
         fontFamily: mono,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ fontSize: 9, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
+          <div style={{ fontSize: 8, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
             {isCritical ? "KRİTİK" : "BİLEŞEN"}
           </div>
-          <div style={{ fontSize: 12, fontWeight: 700, marginLeft: "auto" }}>{atom.label}</div>
+          <div style={{ fontSize: 11, fontWeight: 700, marginLeft: "auto" }}>{atom.label}</div>
         </div>
         {atom.sub && (
-          <div style={{ fontSize: 10, color: C.cardSub, lineHeight: 1.3, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 9, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+            {atom.sub}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (atom.kind === "subassembly") {
+    const stripe = "#a855f7"; // mor — yarı-mamül
+    const showChevron = typeof groupOpen === "boolean";
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 10, padding: "5px 9px",
+        boxShadow: `0 4px 14px rgba(168,85,247,0.18)`,
+        border: `1px solid ${stripe}55`,
+        borderLeft: `3px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
+        fontFamily: mono,
+      }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
+          <div style={{ fontSize: 8, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
+            YARI-MAMÜL
+          </div>
+          <div style={{ fontSize: 11, fontWeight: 700, marginLeft: "auto", display: "flex", alignItems: "center", gap: 4 }}>
+            {showChevron && <span style={{ color: stripe, fontSize: 9 }}>{groupOpen ? "▾" : "▸"}</span>}
+            {atom.label}
+          </div>
+        </div>
+        {atom.sub && (
+          <div style={{ fontSize: 9, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {atom.sub}
           </div>
         )}
@@ -3954,6 +4094,25 @@ export default function StrategyCanvasPage() {
     return saved === "bh" ? "bh" : "strategy";
   });
   useEffect(() => { localStorage.setItem(VIEW_MODE_KEY, viewMode); }, [viewMode]);
+
+  // Edge color palette — kullanıcı seçimi, localStorage'da kalıcı
+  const [edgePaletteId, setEdgePaletteId] = useState<string>(() => {
+    return localStorage.getItem(EDGE_PALETTE_KEY) || "default";
+  });
+  useEffect(() => { localStorage.setItem(EDGE_PALETTE_KEY, edgePaletteId); }, [edgePaletteId]);
+  const edgePalette = useMemo(() => getEdgePalette(edgePaletteId), [edgePaletteId]);
+  const [paletteMenuOpen, setPaletteMenuOpen] = useState(false);
+  const paletteMenuRef = useRef<HTMLDivElement | null>(null);
+  useEffect(() => {
+    if (!paletteMenuOpen) return;
+    const onClick = (e: MouseEvent) => {
+      if (paletteMenuRef.current && !paletteMenuRef.current.contains(e.target as Node)) {
+        setPaletteMenuOpen(false);
+      }
+    };
+    window.addEventListener("mousedown", onClick);
+    return () => window.removeEventListener("mousedown", onClick);
+  }, [paletteMenuOpen]);
 
   const [orders, setOrders] = useState<Order[]>(() => safeParse<Order[]>(localStorage.getItem(ORDERS_KEY), []));
   useEffect(() => { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); }, [orders]);
@@ -4663,6 +4822,77 @@ export default function StrategyCanvasPage() {
               </div>
             )}
           </div>
+          <div ref={paletteMenuRef} style={{ position: "relative" }}>
+            <button
+              onClick={() => setPaletteMenuOpen(o => !o)}
+              style={paletteMenuOpen ? hdrBtnAccent : hdrBtnGhost}
+              title="Ok renk paleti — sahnedeki edge'lerin rengini değiştir"
+            >
+              <span style={{
+                display: "inline-block", width: 8, height: 8, borderRadius: 2,
+                background: edgePalette.colors.electric, marginRight: 4, verticalAlign: "middle",
+              }} />
+              <span style={{
+                display: "inline-block", width: 8, height: 8, borderRadius: 2,
+                background: edgePalette.colors.gas, marginRight: 6, verticalAlign: "middle",
+              }} />
+              Palet
+            </button>
+            {paletteMenuOpen && (
+              <div style={{
+                position: "absolute", top: "calc(100% + 6px)", right: 0, zIndex: 70,
+                width: 240, background: "#ffffff", border: `1px solid ${C.edgeFaint}`,
+                borderRadius: 10, boxShadow: "0 12px 32px rgba(15,23,42,0.18)", padding: 6,
+              }}>
+                <div style={{
+                  padding: "6px 10px", fontSize: 9, color: C.mid, letterSpacing: 1.5,
+                  fontFamily: mono, borderBottom: `1px solid ${C.edgeFaint}`, marginBottom: 4,
+                }}>OK RENK PALETİ</div>
+                {EDGE_PALETTES.map(p => {
+                  const active = p.id === edgePaletteId;
+                  const swatchOrder: EdgeRole[] = ["electric", "gas", "shortfall", "select", "warn"];
+                  return (
+                    <button
+                      key={p.id}
+                      onClick={() => { setEdgePaletteId(p.id); setPaletteMenuOpen(false); }}
+                      style={{
+                        width: "100%", display: "flex", alignItems: "center", gap: 8,
+                        padding: "7px 10px", borderRadius: 6,
+                        background: active ? C.accentSoft : "transparent",
+                        border: "none", cursor: "pointer",
+                        fontSize: 12, color: C.ink, fontFamily: mono, textAlign: "left",
+                      }}
+                      onMouseEnter={(e) => { if (!active) e.currentTarget.style.background = "#f5f3ec"; }}
+                      onMouseLeave={(e) => { if (!active) e.currentTarget.style.background = "transparent"; }}
+                    >
+                      <span style={{
+                        width: 16, height: 16, display: "inline-flex",
+                        alignItems: "center", justifyContent: "center",
+                        border: `1.5px solid ${active ? C.accent : C.mid}`,
+                        borderRadius: 3, fontSize: 10, color: C.accent, fontWeight: 700,
+                      }}>{active ? "✓" : ""}</span>
+                      <span style={{ flex: 1 }}>{p.name}</span>
+                      <span style={{ display: "inline-flex", gap: 2 }}>
+                        {swatchOrder.map(r => (
+                          <span key={r} style={{
+                            width: 10, height: 10, borderRadius: 2,
+                            background: p.colors[r],
+                            border: "1px solid rgba(15,23,42,0.12)",
+                          }} />
+                        ))}
+                      </span>
+                    </button>
+                  );
+                })}
+                <div style={{
+                  padding: "8px 10px", fontSize: 10, color: C.mid, fontFamily: mono,
+                  borderTop: `1px solid ${C.edgeFaint}`, marginTop: 4, lineHeight: 1.5,
+                }}>
+                  Tercih localStorage'a kaydedilir, tüm sahne ve sipariş okları yeniden renklenir.
+                </div>
+              </div>
+            )}
+          </div>
           <div ref={scenariosRef} style={{ position: "relative" }}>
             <button
               onClick={() => setScenariosOpen(o => !o)}
@@ -4876,6 +5106,7 @@ export default function StrategyCanvasPage() {
             onMove={moveSceneAtom}
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
+            edgePalette={edgePalette}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
@@ -4907,6 +5138,7 @@ export default function StrategyCanvasPage() {
               stockBySku={stockBySku}
               expandedByOrder={expandedSubs}
               viewport={viewport}
+              edgePalette={edgePalette}
             />
             {orders.map(o => (
               <OrderBlock

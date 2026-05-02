@@ -1,0 +1,2490 @@
+{
+  "BH.50ST.SV": [
+    {
+      "code": "01318901",
+      "name": "BH-SS Boru Kelepçe Takımı",
+      "stock": 6236.0,
+      "children": []
+    },
+    {
+      "code": "01329600",
+      "name": "Kaplin 100 mm. - Orjinal",
+      "stock": 3706.0,
+      "children": []
+    },
+    {
+      "code": "02750800",
+      "name": "BH-SS Alüminyum Reflektör Son Kapak (End-Cap)",
+      "stock": 1387.0,
+      "children": []
+    },
+    {
+      "code": "03051102",
+      "name": "BH Alüminize Yanma Borusu",
+      "stock": 258.0,
+      "children": [
+        {
+          "code": "26.098",
+          "name": "BH 4\" yanma borusu flanş ve kaynak işciliği",
+          "stock": 0.0
+        },
+        {
+          "code": "91409408",
+          "name": "Alüminize Radyant Boru 3.05 mt.",
+          "stock": 1052.0
+        }
+      ]
+    },
+    {
+      "code": "03090100",
+      "name": "BH- SS Boru ve Reflektör Askısı (Hanger)",
+      "stock": 4527.0,
+      "children": []
+    },
+    {
+      "code": "20.066",
+      "name": "Reflektör BH-SS",
+      "stock": 1035.0,
+      "children": [
+        {
+          "code": "20.067",
+          "name": "Alüminyum levha  0.60x550x2500 - Yerli BH -SSP Reflektör için",
+          "stock": 1545.0
+        },
+        {
+          "code": "20.068",
+          "name": "BH  Borulu Radyant Reflektör Büküm İşçiliği",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "20.098",
+      "name": "Paslanmaz Türbülatör 2.50 mt",
+      "stock": 184.0,
+      "children": []
+    },
+    {
+      "code": "20.155",
+      "name": "Fan Egzos Flanşı Giriş  No:4-5",
+      "stock": 64.0,
+      "children": []
+    },
+    {
+      "code": "20.156",
+      "name": "Fan Egzos Flanşı Çıkış  No:4-5",
+      "stock": 195.4,
+      "children": []
+    },
+    {
+      "code": "91409408",
+      "name": "Alüminize Radyant Boru 3.05 mt.",
+      "stock": 1052.0,
+      "children": []
+    },
+    {
+      "code": "BH 50",
+      "name": "Blackheat Brülör-  50 kW",
+      "stock": 58.0,
+      "children": [
+        {
+          "code": "07250004",
+          "name": "BH Kablo İç Tk. Wirinng Harnes BH main power - Pektron",
+          "stock": 0.0
+        },
+        {
+          "code": "20.019",
+          "name": "BH Jet",
+          "stock": 8299.0
+        },
+        {
+          "code": "20.027",
+          "name": "BH Hava Plakası",
+          "stock": 2137.0
+        },
+        {
+          "code": "22.689",
+          "name": "BH Brülör Ateşleme ve Kontrol Modülü - E tipi (ECB 3790001)",
+          "stock": 75.0
+        },
+        {
+          "code": "26.004",
+          "name": "Silikon Profil- SS ve BH için",
+          "stock": 232.19
+        },
+        {
+          "code": "26.009",
+          "name": "Silikon Hortum 5*8 mm-SS ve BH için",
+          "stock": 970.89
+        },
+        {
+          "code": "26.010",
+          "name": "Hava hortumu  plastik T klips  -SILVERSUN için",
+          "stock": 14592.0
+        },
+        {
+          "code": "26.014",
+          "name": "1/8''-06 oto döner dirsek- SS ve BH için",
+          "stock": 1186.0
+        },
+        {
+          "code": "26.021",
+          "name": "Rakor sarı 1/8*6 mm-SILVERSUN için Hava hortumu bağlantısı",
+          "stock": 1073.0
+        },
+        {
+          "code": "26.030",
+          "name": "Elektrot BUJİ(cast futura)- SILVERSUN için",
+          "stock": 1981.0
+        },
+        {
+          "code": "26.083",
+          "name": "SS pro için power şase dişi kulaksız - soket",
+          "stock": 548.0
+        },
+        {
+          "code": "28.001",
+          "name": "Brulör Kutusu-BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.002",
+          "name": "Brulör Kolisi-BH için",
+          "stock": 614.0
+        },
+        {
+          "code": "28.003",
+          "name": "BH Selenoid Sabitleme Parçası-BH için",
+          "stock": 475.0
+        },
+        {
+          "code": "28.004",
+          "name": "Amper Filtre -BH için",
+          "stock": 482.0
+        },
+        {
+          "code": "28.006",
+          "name": "14 mm Sinyal Lambası Neon -BH için",
+          "stock": 894.0
+        },
+        {
+          "code": "28.007",
+          "name": "Power Kablo 3x1 2mt. Dişi -BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.008",
+          "name": "Gaz Bağlantı Nipel -BH için (AA27X1/2''Rakor)",
+          "stock": 972.0
+        },
+        {
+          "code": "28.009",
+          "name": "Selenoid Flex Bağlantı Nipeli -BH için (AA24X1/2''Rakor)",
+          "stock": 1004.0
+        },
+        {
+          "code": "28.010",
+          "name": "Nipel Özel -BH için (AA24X5/8''Rakor)",
+          "stock": 1054.0
+        },
+        {
+          "code": "28.012",
+          "name": "Contalı Flex Mamul-BH için",
+          "stock": 988.0
+        },
+        {
+          "code": "28.013",
+          "name": "BH Enerji Besleme Kablo Takımı",
+          "stock": 459.0
+        },
+        {
+          "code": "28.014",
+          "name": "BH Pressure Swıtch Kablo Takımı",
+          "stock": 511.0
+        },
+        {
+          "code": "28.015",
+          "name": "BH Gaz Valfı Kablo Takımı",
+          "stock": 389.0
+        },
+        {
+          "code": "28.017",
+          "name": "BH Hava Giriş Plakası Montaj Klipsi",
+          "stock": 6348.0
+        },
+        {
+          "code": "28.019",
+          "name": "Gözetleme Camı (BH ve SS için)",
+          "stock": 8209.0
+        },
+        {
+          "code": "28.020",
+          "name": "Iyonizasyon kablosu-BH için",
+          "stock": 531.0
+        },
+        {
+          "code": "28.021",
+          "name": "BH Buji Kablosu",
+          "stock": 405.0
+        },
+        {
+          "code": "28.022",
+          "name": "Yanma Kafası(Şaluma) - BH için",
+          "stock": 1268.0
+        },
+        {
+          "code": "28.023",
+          "name": "BH Montaj Contası(Brülör - boru arası)",
+          "stock": 784.0
+        },
+        {
+          "code": "28.024",
+          "name": "Silikon buji kablo borusu",
+          "stock": 1227.0
+        },
+        {
+          "code": "90033101",
+          "name": "BH - CRT Gaz Valfi Sit Sigma 840 Yeni Tip",
+          "stock": 615.0
+        },
+        {
+          "code": "90439801",
+          "name": "Vakum Anahtarı, Pressure Switch  BH 25-55 - Silversun Pro",
+          "stock": 2476.0
+        }
+      ]
+    },
+    {
+      "code": "S7333K",
+      "name": "BH-SS Reflektör Tutucusu (Support)",
+      "stock": 1743.0,
+      "children": []
+    },
+    {
+      "code": "VA4H50R",
+      "name": "Aaco Fan No:4",
+      "stock": 10.0,
+      "children": []
+    }
+  ],
+  "BH.50UT.SV": [
+    {
+      "code": "01318901",
+      "name": "BH-SS Boru Kelepçe Takımı",
+      "stock": 6236.0,
+      "children": []
+    },
+    {
+      "code": "01329600",
+      "name": "Kaplin 100 mm. - Orjinal",
+      "stock": 3706.0,
+      "children": []
+    },
+    {
+      "code": "02750800",
+      "name": "BH-SS Alüminyum Reflektör Son Kapak (End-Cap)",
+      "stock": 1387.0,
+      "children": []
+    },
+    {
+      "code": "03051101",
+      "name": "BH Alüminize Yanma Borusu (Transition Tube)",
+      "stock": 0.0,
+      "children": []
+    },
+    {
+      "code": "03090100",
+      "name": "BH- SS Boru ve Reflektör Askısı (Hanger)",
+      "stock": 4527.0,
+      "children": []
+    },
+    {
+      "code": "20.054",
+      "name": "Alüminize U Borusu",
+      "stock": 180.0,
+      "children": []
+    },
+    {
+      "code": "20.066",
+      "name": "Reflektör BH-SS",
+      "stock": 1035.0,
+      "children": [
+        {
+          "code": "20.067",
+          "name": "Alüminyum levha  0.60x550x2500 - Yerli BH -SSP Reflektör için",
+          "stock": 1545.0
+        },
+        {
+          "code": "20.068",
+          "name": "BH  Borulu Radyant Reflektör Büküm İşçiliği",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "20.098",
+      "name": "Paslanmaz Türbülatör 2.50 mt",
+      "stock": 184.0,
+      "children": []
+    },
+    {
+      "code": "20.107",
+      "name": "U Destek Kiti",
+      "stock": 446.0,
+      "children": []
+    },
+    {
+      "code": "20.155",
+      "name": "Fan Egzos Flanşı Giriş  No:4-5",
+      "stock": 64.0,
+      "children": []
+    },
+    {
+      "code": "20.156",
+      "name": "Fan Egzos Flanşı Çıkış  No:4-5",
+      "stock": 195.4,
+      "children": []
+    },
+    {
+      "code": "23.647",
+      "name": "U Bolt",
+      "stock": 3934.0,
+      "children": []
+    },
+    {
+      "code": "91409408",
+      "name": "Alüminize Radyant Boru 3.05 mt.",
+      "stock": 1052.0,
+      "children": []
+    },
+    {
+      "code": "BH 50",
+      "name": "Blackheat Brülör-  50 kW",
+      "stock": 58.0,
+      "children": [
+        {
+          "code": "07250004",
+          "name": "BH Kablo İç Tk. Wirinng Harnes BH main power - Pektron",
+          "stock": 0.0
+        },
+        {
+          "code": "20.019",
+          "name": "BH Jet",
+          "stock": 8299.0
+        },
+        {
+          "code": "20.027",
+          "name": "BH Hava Plakası",
+          "stock": 2137.0
+        },
+        {
+          "code": "22.689",
+          "name": "BH Brülör Ateşleme ve Kontrol Modülü - E tipi (ECB 3790001)",
+          "stock": 75.0
+        },
+        {
+          "code": "26.004",
+          "name": "Silikon Profil- SS ve BH için",
+          "stock": 232.19
+        },
+        {
+          "code": "26.009",
+          "name": "Silikon Hortum 5*8 mm-SS ve BH için",
+          "stock": 970.89
+        },
+        {
+          "code": "26.010",
+          "name": "Hava hortumu  plastik T klips  -SILVERSUN için",
+          "stock": 14592.0
+        },
+        {
+          "code": "26.014",
+          "name": "1/8''-06 oto döner dirsek- SS ve BH için",
+          "stock": 1186.0
+        },
+        {
+          "code": "26.021",
+          "name": "Rakor sarı 1/8*6 mm-SILVERSUN için Hava hortumu bağlantısı",
+          "stock": 1073.0
+        },
+        {
+          "code": "26.030",
+          "name": "Elektrot BUJİ(cast futura)- SILVERSUN için",
+          "stock": 1981.0
+        },
+        {
+          "code": "26.083",
+          "name": "SS pro için power şase dişi kulaksız - soket",
+          "stock": 548.0
+        },
+        {
+          "code": "28.001",
+          "name": "Brulör Kutusu-BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.002",
+          "name": "Brulör Kolisi-BH için",
+          "stock": 614.0
+        },
+        {
+          "code": "28.003",
+          "name": "BH Selenoid Sabitleme Parçası-BH için",
+          "stock": 475.0
+        },
+        {
+          "code": "28.004",
+          "name": "Amper Filtre -BH için",
+          "stock": 482.0
+        },
+        {
+          "code": "28.006",
+          "name": "14 mm Sinyal Lambası Neon -BH için",
+          "stock": 894.0
+        },
+        {
+          "code": "28.007",
+          "name": "Power Kablo 3x1 2mt. Dişi -BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.008",
+          "name": "Gaz Bağlantı Nipel -BH için (AA27X1/2''Rakor)",
+          "stock": 972.0
+        },
+        {
+          "code": "28.009",
+          "name": "Selenoid Flex Bağlantı Nipeli -BH için (AA24X1/2''Rakor)",
+          "stock": 1004.0
+        },
+        {
+          "code": "28.010",
+          "name": "Nipel Özel -BH için (AA24X5/8''Rakor)",
+          "stock": 1054.0
+        },
+        {
+          "code": "28.012",
+          "name": "Contalı Flex Mamul-BH için",
+          "stock": 988.0
+        },
+        {
+          "code": "28.013",
+          "name": "BH Enerji Besleme Kablo Takımı",
+          "stock": 459.0
+        },
+        {
+          "code": "28.014",
+          "name": "BH Pressure Swıtch Kablo Takımı",
+          "stock": 511.0
+        },
+        {
+          "code": "28.015",
+          "name": "BH Gaz Valfı Kablo Takımı",
+          "stock": 389.0
+        },
+        {
+          "code": "28.017",
+          "name": "BH Hava Giriş Plakası Montaj Klipsi",
+          "stock": 6348.0
+        },
+        {
+          "code": "28.019",
+          "name": "Gözetleme Camı (BH ve SS için)",
+          "stock": 8209.0
+        },
+        {
+          "code": "28.020",
+          "name": "Iyonizasyon kablosu-BH için",
+          "stock": 531.0
+        },
+        {
+          "code": "28.021",
+          "name": "BH Buji Kablosu",
+          "stock": 405.0
+        },
+        {
+          "code": "28.022",
+          "name": "Yanma Kafası(Şaluma) - BH için",
+          "stock": 1268.0
+        },
+        {
+          "code": "28.023",
+          "name": "BH Montaj Contası(Brülör - boru arası)",
+          "stock": 784.0
+        },
+        {
+          "code": "28.024",
+          "name": "Silikon buji kablo borusu",
+          "stock": 1227.0
+        },
+        {
+          "code": "90033101",
+          "name": "BH - CRT Gaz Valfi Sit Sigma 840 Yeni Tip",
+          "stock": 615.0
+        },
+        {
+          "code": "90439801",
+          "name": "Vakum Anahtarı, Pressure Switch  BH 25-55 - Silversun Pro",
+          "stock": 2476.0
+        }
+      ]
+    },
+    {
+      "code": "S7333K",
+      "name": "BH-SS Reflektör Tutucusu (Support)",
+      "stock": 1743.0,
+      "children": []
+    },
+    {
+      "code": "VA4H50R",
+      "name": "Aaco Fan No:4",
+      "stock": 10.0,
+      "children": []
+    }
+  ],
+  "BH.55ST.SV": [
+    {
+      "code": "01318901",
+      "name": "BH-SS Boru Kelepçe Takımı",
+      "stock": 6236.0,
+      "children": []
+    },
+    {
+      "code": "01329600",
+      "name": "Kaplin 100 mm. - Orjinal",
+      "stock": 3706.0,
+      "children": []
+    },
+    {
+      "code": "02750800",
+      "name": "BH-SS Alüminyum Reflektör Son Kapak (End-Cap)",
+      "stock": 1387.0,
+      "children": []
+    },
+    {
+      "code": "03051102",
+      "name": "BH Alüminize Yanma Borusu",
+      "stock": 258.0,
+      "children": [
+        {
+          "code": "26.098",
+          "name": "BH 4\" yanma borusu flanş ve kaynak işciliği",
+          "stock": 0.0
+        },
+        {
+          "code": "91409408",
+          "name": "Alüminize Radyant Boru 3.05 mt.",
+          "stock": 1052.0
+        }
+      ]
+    },
+    {
+      "code": "03090100",
+      "name": "BH- SS Boru ve Reflektör Askısı (Hanger)",
+      "stock": 4527.0,
+      "children": []
+    },
+    {
+      "code": "20.066",
+      "name": "Reflektör BH-SS",
+      "stock": 1035.0,
+      "children": [
+        {
+          "code": "20.067",
+          "name": "Alüminyum levha  0.60x550x2500 - Yerli BH -SSP Reflektör için",
+          "stock": 1545.0
+        },
+        {
+          "code": "20.068",
+          "name": "BH  Borulu Radyant Reflektör Büküm İşçiliği",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "20.098",
+      "name": "Paslanmaz Türbülatör 2.50 mt",
+      "stock": 184.0,
+      "children": []
+    },
+    {
+      "code": "20.155",
+      "name": "Fan Egzos Flanşı Giriş  No:4-5",
+      "stock": 64.0,
+      "children": []
+    },
+    {
+      "code": "20.156",
+      "name": "Fan Egzos Flanşı Çıkış  No:4-5",
+      "stock": 195.4,
+      "children": []
+    },
+    {
+      "code": "91409408",
+      "name": "Alüminize Radyant Boru 3.05 mt.",
+      "stock": 1052.0,
+      "children": []
+    },
+    {
+      "code": "BH 55",
+      "name": "Blackheat Brülör-  55 kW",
+      "stock": 108.0,
+      "children": [
+        {
+          "code": "07250004",
+          "name": "BH Kablo İç Tk. Wirinng Harnes BH main power - Pektron",
+          "stock": 0.0
+        },
+        {
+          "code": "20.019",
+          "name": "BH Jet",
+          "stock": 8299.0
+        },
+        {
+          "code": "20.027",
+          "name": "BH Hava Plakası",
+          "stock": 2137.0
+        },
+        {
+          "code": "22.689",
+          "name": "BH Brülör Ateşleme ve Kontrol Modülü - E tipi (ECB 3790001)",
+          "stock": 75.0
+        },
+        {
+          "code": "26.004",
+          "name": "Silikon Profil- SS ve BH için",
+          "stock": 232.19
+        },
+        {
+          "code": "26.009",
+          "name": "Silikon Hortum 5*8 mm-SS ve BH için",
+          "stock": 970.89
+        },
+        {
+          "code": "26.010",
+          "name": "Hava hortumu  plastik T klips  -SILVERSUN için",
+          "stock": 14592.0
+        },
+        {
+          "code": "26.014",
+          "name": "1/8''-06 oto döner dirsek- SS ve BH için",
+          "stock": 1186.0
+        },
+        {
+          "code": "26.021",
+          "name": "Rakor sarı 1/8*6 mm-SILVERSUN için Hava hortumu bağlantısı",
+          "stock": 1073.0
+        },
+        {
+          "code": "26.030",
+          "name": "Elektrot BUJİ(cast futura)- SILVERSUN için",
+          "stock": 1981.0
+        },
+        {
+          "code": "26.083",
+          "name": "SS pro için power şase dişi kulaksız - soket",
+          "stock": 548.0
+        },
+        {
+          "code": "28.001",
+          "name": "Brulör Kutusu-BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.002",
+          "name": "Brulör Kolisi-BH için",
+          "stock": 614.0
+        },
+        {
+          "code": "28.003",
+          "name": "BH Selenoid Sabitleme Parçası-BH için",
+          "stock": 475.0
+        },
+        {
+          "code": "28.004",
+          "name": "Amper Filtre -BH için",
+          "stock": 482.0
+        },
+        {
+          "code": "28.006",
+          "name": "14 mm Sinyal Lambası Neon -BH için",
+          "stock": 894.0
+        },
+        {
+          "code": "28.007",
+          "name": "Power Kablo 3x1 2mt. Dişi -BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.008",
+          "name": "Gaz Bağlantı Nipel -BH için (AA27X1/2''Rakor)",
+          "stock": 972.0
+        },
+        {
+          "code": "28.009",
+          "name": "Selenoid Flex Bağlantı Nipeli -BH için (AA24X1/2''Rakor)",
+          "stock": 1004.0
+        },
+        {
+          "code": "28.010",
+          "name": "Nipel Özel -BH için (AA24X5/8''Rakor)",
+          "stock": 1054.0
+        },
+        {
+          "code": "28.012",
+          "name": "Contalı Flex Mamul-BH için",
+          "stock": 988.0
+        },
+        {
+          "code": "28.013",
+          "name": "BH Enerji Besleme Kablo Takımı",
+          "stock": 459.0
+        },
+        {
+          "code": "28.014",
+          "name": "BH Pressure Swıtch Kablo Takımı",
+          "stock": 511.0
+        },
+        {
+          "code": "28.015",
+          "name": "BH Gaz Valfı Kablo Takımı",
+          "stock": 389.0
+        },
+        {
+          "code": "28.017",
+          "name": "BH Hava Giriş Plakası Montaj Klipsi",
+          "stock": 6348.0
+        },
+        {
+          "code": "28.019",
+          "name": "Gözetleme Camı (BH ve SS için)",
+          "stock": 8209.0
+        },
+        {
+          "code": "28.020",
+          "name": "Iyonizasyon kablosu-BH için",
+          "stock": 531.0
+        },
+        {
+          "code": "28.021",
+          "name": "BH Buji Kablosu",
+          "stock": 405.0
+        },
+        {
+          "code": "28.022",
+          "name": "Yanma Kafası(Şaluma) - BH için",
+          "stock": 1268.0
+        },
+        {
+          "code": "28.023",
+          "name": "BH Montaj Contası(Brülör - boru arası)",
+          "stock": 784.0
+        },
+        {
+          "code": "28.024",
+          "name": "Silikon buji kablo borusu",
+          "stock": 1227.0
+        },
+        {
+          "code": "90033101",
+          "name": "BH - CRT Gaz Valfi Sit Sigma 840 Yeni Tip",
+          "stock": 615.0
+        },
+        {
+          "code": "90439801",
+          "name": "Vakum Anahtarı, Pressure Switch  BH 25-55 - Silversun Pro",
+          "stock": 2476.0
+        }
+      ]
+    },
+    {
+      "code": "S7333K",
+      "name": "BH-SS Reflektör Tutucusu (Support)",
+      "stock": 1743.0,
+      "children": []
+    },
+    {
+      "code": "VA5H70R",
+      "name": "Aaco Fan No:5",
+      "stock": 386.0,
+      "children": []
+    }
+  ],
+  "BH.55UT.SV": [
+    {
+      "code": "01318901",
+      "name": "BH-SS Boru Kelepçe Takımı",
+      "stock": 6236.0,
+      "children": []
+    },
+    {
+      "code": "01329600",
+      "name": "Kaplin 100 mm. - Orjinal",
+      "stock": 3706.0,
+      "children": []
+    },
+    {
+      "code": "02750800",
+      "name": "BH-SS Alüminyum Reflektör Son Kapak (End-Cap)",
+      "stock": 1387.0,
+      "children": []
+    },
+    {
+      "code": "03051101",
+      "name": "BH Alüminize Yanma Borusu (Transition Tube)",
+      "stock": 0.0,
+      "children": []
+    },
+    {
+      "code": "03090100",
+      "name": "BH- SS Boru ve Reflektör Askısı (Hanger)",
+      "stock": 4527.0,
+      "children": []
+    },
+    {
+      "code": "20.054",
+      "name": "Alüminize U Borusu",
+      "stock": 180.0,
+      "children": []
+    },
+    {
+      "code": "20.066",
+      "name": "Reflektör BH-SS",
+      "stock": 1035.0,
+      "children": [
+        {
+          "code": "20.067",
+          "name": "Alüminyum levha  0.60x550x2500 - Yerli BH -SSP Reflektör için",
+          "stock": 1545.0
+        },
+        {
+          "code": "20.068",
+          "name": "BH  Borulu Radyant Reflektör Büküm İşçiliği",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "20.098",
+      "name": "Paslanmaz Türbülatör 2.50 mt",
+      "stock": 184.0,
+      "children": []
+    },
+    {
+      "code": "20.107",
+      "name": "U Destek Kiti",
+      "stock": 446.0,
+      "children": []
+    },
+    {
+      "code": "20.155",
+      "name": "Fan Egzos Flanşı Giriş  No:4-5",
+      "stock": 64.0,
+      "children": []
+    },
+    {
+      "code": "20.156",
+      "name": "Fan Egzos Flanşı Çıkış  No:4-5",
+      "stock": 195.4,
+      "children": []
+    },
+    {
+      "code": "23.647",
+      "name": "U Bolt",
+      "stock": 3934.0,
+      "children": []
+    },
+    {
+      "code": "91409408",
+      "name": "Alüminize Radyant Boru 3.05 mt.",
+      "stock": 1052.0,
+      "children": []
+    },
+    {
+      "code": "BH 55",
+      "name": "Blackheat Brülör-  55 kW",
+      "stock": 108.0,
+      "children": [
+        {
+          "code": "07250004",
+          "name": "BH Kablo İç Tk. Wirinng Harnes BH main power - Pektron",
+          "stock": 0.0
+        },
+        {
+          "code": "20.019",
+          "name": "BH Jet",
+          "stock": 8299.0
+        },
+        {
+          "code": "20.027",
+          "name": "BH Hava Plakası",
+          "stock": 2137.0
+        },
+        {
+          "code": "22.689",
+          "name": "BH Brülör Ateşleme ve Kontrol Modülü - E tipi (ECB 3790001)",
+          "stock": 75.0
+        },
+        {
+          "code": "26.004",
+          "name": "Silikon Profil- SS ve BH için",
+          "stock": 232.19
+        },
+        {
+          "code": "26.009",
+          "name": "Silikon Hortum 5*8 mm-SS ve BH için",
+          "stock": 970.89
+        },
+        {
+          "code": "26.010",
+          "name": "Hava hortumu  plastik T klips  -SILVERSUN için",
+          "stock": 14592.0
+        },
+        {
+          "code": "26.014",
+          "name": "1/8''-06 oto döner dirsek- SS ve BH için",
+          "stock": 1186.0
+        },
+        {
+          "code": "26.021",
+          "name": "Rakor sarı 1/8*6 mm-SILVERSUN için Hava hortumu bağlantısı",
+          "stock": 1073.0
+        },
+        {
+          "code": "26.030",
+          "name": "Elektrot BUJİ(cast futura)- SILVERSUN için",
+          "stock": 1981.0
+        },
+        {
+          "code": "26.083",
+          "name": "SS pro için power şase dişi kulaksız - soket",
+          "stock": 548.0
+        },
+        {
+          "code": "28.001",
+          "name": "Brulör Kutusu-BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.002",
+          "name": "Brulör Kolisi-BH için",
+          "stock": 614.0
+        },
+        {
+          "code": "28.003",
+          "name": "BH Selenoid Sabitleme Parçası-BH için",
+          "stock": 475.0
+        },
+        {
+          "code": "28.004",
+          "name": "Amper Filtre -BH için",
+          "stock": 482.0
+        },
+        {
+          "code": "28.006",
+          "name": "14 mm Sinyal Lambası Neon -BH için",
+          "stock": 894.0
+        },
+        {
+          "code": "28.007",
+          "name": "Power Kablo 3x1 2mt. Dişi -BH için",
+          "stock": 607.0
+        },
+        {
+          "code": "28.008",
+          "name": "Gaz Bağlantı Nipel -BH için (AA27X1/2''Rakor)",
+          "stock": 972.0
+        },
+        {
+          "code": "28.009",
+          "name": "Selenoid Flex Bağlantı Nipeli -BH için (AA24X1/2''Rakor)",
+          "stock": 1004.0
+        },
+        {
+          "code": "28.010",
+          "name": "Nipel Özel -BH için (AA24X5/8''Rakor)",
+          "stock": 1054.0
+        },
+        {
+          "code": "28.012",
+          "name": "Contalı Flex Mamul-BH için",
+          "stock": 988.0
+        },
+        {
+          "code": "28.013",
+          "name": "BH Enerji Besleme Kablo Takımı",
+          "stock": 459.0
+        },
+        {
+          "code": "28.014",
+          "name": "BH Pressure Swıtch Kablo Takımı",
+          "stock": 511.0
+        },
+        {
+          "code": "28.015",
+          "name": "BH Gaz Valfı Kablo Takımı",
+          "stock": 389.0
+        },
+        {
+          "code": "28.017",
+          "name": "BH Hava Giriş Plakası Montaj Klipsi",
+          "stock": 6348.0
+        },
+        {
+          "code": "28.019",
+          "name": "Gözetleme Camı (BH ve SS için)",
+          "stock": 8209.0
+        },
+        {
+          "code": "28.020",
+          "name": "Iyonizasyon kablosu-BH için",
+          "stock": 531.0
+        },
+        {
+          "code": "28.021",
+          "name": "BH Buji Kablosu",
+          "stock": 405.0
+        },
+        {
+          "code": "28.022",
+          "name": "Yanma Kafası(Şaluma) - BH için",
+          "stock": 1268.0
+        },
+        {
+          "code": "28.023",
+          "name": "BH Montaj Contası(Brülör - boru arası)",
+          "stock": 784.0
+        },
+        {
+          "code": "28.024",
+          "name": "Silikon buji kablo borusu",
+          "stock": 1227.0
+        },
+        {
+          "code": "90033101",
+          "name": "BH - CRT Gaz Valfi Sit Sigma 840 Yeni Tip",
+          "stock": 615.0
+        },
+        {
+          "code": "90439801",
+          "name": "Vakum Anahtarı, Pressure Switch  BH 25-55 - Silversun Pro",
+          "stock": 2476.0
+        }
+      ]
+    },
+    {
+      "code": "S7333K",
+      "name": "BH-SS Reflektör Tutucusu (Support)",
+      "stock": 1743.0,
+      "children": []
+    },
+    {
+      "code": "VA5H70R",
+      "name": "Aaco Fan No:5",
+      "stock": 386.0,
+      "children": []
+    }
+  ],
+  "ELT.5-7": [
+    {
+      "code": "27.003",
+      "name": "Goldsun Elite- Prforma - CC 5/7 Isı Kalkanı - Şapka",
+      "stock": 198.0,
+      "children": []
+    },
+    {
+      "code": "27.009",
+      "name": "Elite Performa CC Buji Kablosu",
+      "stock": 801.0,
+      "children": []
+    },
+    {
+      "code": "27.012",
+      "name": "Goldsun CC 5/7 Izgara",
+      "stock": 104.0,
+      "children": []
+    },
+    {
+      "code": "27.013",
+      "name": "Goldsun CC 3 li klemens ( 12 klemensin 1/4 ü)",
+      "stock": 1833.0,
+      "children": []
+    },
+    {
+      "code": "27.018",
+      "name": "Goldsun CC Askı Konsolu",
+      "stock": 3092.0,
+      "children": []
+    },
+    {
+      "code": "27.021",
+      "name": "Gaz Flexi Bağlantı Nipeli 24*32  1/2-1/2- Goldsun CC için",
+      "stock": 863.0,
+      "children": []
+    },
+    {
+      "code": "27.024",
+      "name": "Goldsun CC küçük koli",
+      "stock": 246.0,
+      "children": []
+    },
+    {
+      "code": "27.025",
+      "name": "Goldsun CC iç koli seperatörü",
+      "stock": 4249.0,
+      "children": []
+    },
+    {
+      "code": "27.026",
+      "name": "Goldsun CC iç koli boru seperatör",
+      "stock": 252.0,
+      "children": []
+    },
+    {
+      "code": "27.029",
+      "name": "Goldsun CC Siyah Alüminyum Buat Metesan",
+      "stock": 2331.0,
+      "children": []
+    },
+    {
+      "code": "27.030",
+      "name": "Goldsun Elite-CC H Tipi iyonizasyon kablosu",
+      "stock": 857.0,
+      "children": []
+    },
+    {
+      "code": "27.060",
+      "name": "Elektrot BUJİ(cast futura)-  GOLDSUN CC için",
+      "stock": 718.0,
+      "children": []
+    },
+    {
+      "code": "27.061",
+      "name": "Goldsun CC Elektrot tutucu",
+      "stock": 194.0,
+      "children": []
+    },
+    {
+      "code": "27.062",
+      "name": "Goldsun CC PG 9 rakor siyah",
+      "stock": 2110.0,
+      "children": []
+    },
+    {
+      "code": "27.063",
+      "name": "Goldsun CC Izgara tutucu 5/7",
+      "stock": 633.0,
+      "children": []
+    },
+    {
+      "code": "27.067",
+      "name": "3x1mm² TTR kablo Elite Performa CC",
+      "stock": 940.0,
+      "children": []
+    },
+    {
+      "code": "27.072",
+      "name": "Goldsun CC - Alümize sac 0.90 mm.",
+      "stock": 1881.82,
+      "children": []
+    },
+    {
+      "code": "27.080",
+      "name": "Goldsun CC Konsol U bağlantı parçası",
+      "stock": 2386.0,
+      "children": []
+    },
+    {
+      "code": "27.082",
+      "name": "Goldsun CC 1/2\"  100 mm doğal gaz bağlantı borusu",
+      "stock": 1794.0,
+      "children": []
+    },
+    {
+      "code": "27.089",
+      "name": "Brülör bağlantı elemanı AA27 ( Manşon redüksiyon 3/8-1/2)",
+      "stock": 1868.0,
+      "children": []
+    },
+    {
+      "code": "27.090",
+      "name": "Brülör bağlantı elemanı AA22 ( gaz memesi bağlantı nipeli )",
+      "stock": 1869.0,
+      "children": []
+    },
+    {
+      "code": "27.093",
+      "name": "Goldsun Elite - Performa  5/7 Kasası",
+      "stock": 248.0,
+      "children": []
+    },
+    {
+      "code": "27.095",
+      "name": "Goldsun Elite Cam - 5/7",
+      "stock": 177.0,
+      "children": []
+    },
+    {
+      "code": "27.097",
+      "name": "Goldsun Elite Cam Tutucu Çıta- 5/7",
+      "stock": 0.0,
+      "children": []
+    },
+    {
+      "code": "27.102",
+      "name": "Goldsun Elite - Performa iç konsol  - 5/7",
+      "stock": 467.0,
+      "children": []
+    },
+    {
+      "code": "27.104",
+      "name": "Goldsun Elite - Performa reflektör  - 5/7",
+      "stock": 133.0,
+      "children": []
+    },
+    {
+      "code": "27.106",
+      "name": "Goldsun Elite - Performa selenoid koruyucu kalkanı",
+      "stock": 2727.0,
+      "children": []
+    },
+    {
+      "code": "27.111",
+      "name": "Fark laması",
+      "stock": 3628.0,
+      "children": []
+    },
+    {
+      "code": "27.114",
+      "name": "Brülör Ateşleme ve Kontrol Modülü - H tipi",
+      "stock": 406.0,
+      "children": []
+    },
+    {
+      "code": "27.116",
+      "name": "Seramik Plakalı Isıtıcılar için Kablo Takımı - H tipi",
+      "stock": 712.0,
+      "children": []
+    },
+    {
+      "code": "27.119",
+      "name": "Gazflex 1/2''- CC Seramik ısıtıcı için",
+      "stock": 829.0,
+      "children": []
+    },
+    {
+      "code": "27.120",
+      "name": "Goldsun Elite - Performa - CC7/11 Ekran Tututcu",
+      "stock": 1119.0,
+      "children": []
+    },
+    {
+      "code": "27.126",
+      "name": "Cc - Elt - Prf   5/7  Brülör  (Yerli Malzeme)",
+      "stock": 0.0,
+      "children": [
+        {
+          "code": "27.123",
+          "name": "Cc - Elt - Prf Seramik Taş",
+          "stock": 5365.0
+        },
+        {
+          "code": "27.158",
+          "name": "5/7 Brülör yanma odası-Paslanmaz çıta",
+          "stock": 574.0
+        },
+        {
+          "code": "27.159",
+          "name": "5/7 Brülör yanma odası-Galvaniz Tel",
+          "stock": 26.0
+        },
+        {
+          "code": "27.163",
+          "name": "5/7  Brülör yanma odası-gövde",
+          "stock": 159.0
+        },
+        {
+          "code": "27.164",
+          "name": "Brülör yanma odası-enjektör yıldız tutucu",
+          "stock": 317.0
+        }
+      ]
+    },
+    {
+      "code": "27.127",
+      "name": "CC ELITE PERFORMA Gaz Enjektörü",
+      "stock": 5499.0,
+      "children": []
+    },
+    {
+      "code": "27.130",
+      "name": "Goldsun Elite - Performa selenoid  tutucu",
+      "stock": 2026.0,
+      "children": []
+    },
+    {
+      "code": "27.131",
+      "name": "Goldsun Elite - Performa Butonu",
+      "stock": 731.0,
+      "children": []
+    },
+    {
+      "code": "27.152",
+      "name": "Boru sabitleme parçası Elite - CC için",
+      "stock": 367.0,
+      "children": []
+    },
+    {
+      "code": "27.157",
+      "name": "Dirsek Grup 3/4 - 1/2 Segmanlı",
+      "stock": 1667.0,
+      "children": []
+    },
+    {
+      "code": "27.167",
+      "name": "SIT Sigma 845 Modülasyonlu Selenoid Valf ELT-CC İçin",
+      "stock": 1907.0,
+      "children": []
+    }
+  ],
+  "ELT.7-11": [
+    {
+      "code": "27.004",
+      "name": "Goldsun Elite -  Performa  - CC 7/11 Isı Kalkanı - Alüminize Şapka (Kaplamasız)",
+      "stock": 809.0,
+      "children": []
+    },
+    {
+      "code": "27.009",
+      "name": "Elite Performa CC Buji Kablosu",
+      "stock": 857.0,
+      "children": []
+    },
+    {
+      "code": "27.013",
+      "name": "Goldsun CC 3 li klemens ( 12 klemensin 1/4 ü)",
+      "stock": 1889.0,
+      "children": []
+    },
+    {
+      "code": "27.018",
+      "name": "Goldsun CC Askı Konsolu",
+      "stock": 3148.0,
+      "children": []
+    },
+    {
+      "code": "27.021",
+      "name": "Gaz Flexi Bağlantı Nipeli 24*32  1/2-1/2- Goldsun CC için",
+      "stock": 919.0,
+      "children": []
+    },
+    {
+      "code": "27.023",
+      "name": "Goldsun CC büyük koli",
+      "stock": 749.0,
+      "children": []
+    },
+    {
+      "code": "27.025",
+      "name": "Goldsun CC iç koli seperatörü",
+      "stock": 3384.0,
+      "children": []
+    },
+    {
+      "code": "27.026",
+      "name": "Goldsun CC iç koli boru seperatör",
+      "stock": 308.0,
+      "children": []
+    },
+    {
+      "code": "27.029",
+      "name": "Goldsun CC Siyah Alüminyum Buat Metesan",
+      "stock": 1387.0,
+      "children": []
+    },
+    {
+      "code": "27.030",
+      "name": "Goldsun Elite-CC H Tipi iyonizasyon kablosu",
+      "stock": 981.0,
+      "children": []
+    },
+    {
+      "code": "27.031",
+      "name": "Goldsun Elite Paslanmaz reflektör tutucu",
+      "stock": 482.0,
+      "children": []
+    },
+    {
+      "code": "27.060",
+      "name": "Elektrot BUJİ(cast futura)-  GOLDSUN CC için",
+      "stock": 774.0,
+      "children": []
+    },
+    {
+      "code": "27.061",
+      "name": "Goldsun CC Elektrot tutucu",
+      "stock": 260.0,
+      "children": []
+    },
+    {
+      "code": "27.062",
+      "name": "Goldsun CC PG 9 rakor siyah",
+      "stock": 2230.0,
+      "children": []
+    },
+    {
+      "code": "27.067",
+      "name": "3x1mm² TTR kablo Elite Performa CC",
+      "stock": 996.0,
+      "children": []
+    },
+    {
+      "code": "27.072",
+      "name": "Goldsun CC - Alümize sac 0.90 mm.",
+      "stock": 2211.66,
+      "children": []
+    },
+    {
+      "code": "27.080",
+      "name": "Goldsun CC Konsol U bağlantı parçası",
+      "stock": 2442.0,
+      "children": []
+    },
+    {
+      "code": "27.082",
+      "name": "Goldsun CC 1/2\"  100 mm doğal gaz bağlantı borusu",
+      "stock": 1850.0,
+      "children": []
+    },
+    {
+      "code": "27.089",
+      "name": "Brülör bağlantı elemanı AA27 ( Manşon redüksiyon 3/8-1/2)",
+      "stock": 1924.0,
+      "children": []
+    },
+    {
+      "code": "27.090",
+      "name": "Brülör bağlantı elemanı AA22 ( gaz memesi bağlantı nipeli )",
+      "stock": 1925.0,
+      "children": []
+    },
+    {
+      "code": "27.092",
+      "name": "Goldsun Elite - Performa 7/11 Kasası",
+      "stock": 353.0,
+      "children": []
+    },
+    {
+      "code": "27.094",
+      "name": "Goldsun Elite Cam - 7/11",
+      "stock": 1342.0,
+      "children": []
+    },
+    {
+      "code": "27.096",
+      "name": "Goldsun Elite Cam Tutucu Çıta- 7/11",
+      "stock": 388.0,
+      "children": []
+    },
+    {
+      "code": "27.101",
+      "name": "Goldsun Elite - Performa iç konsol  - 7/11",
+      "stock": 631.0,
+      "children": []
+    },
+    {
+      "code": "27.103",
+      "name": "Goldsun Elite - Performa reflektör - 7/11",
+      "stock": 631.0,
+      "children": []
+    },
+    {
+      "code": "27.106",
+      "name": "Goldsun Elite - Performa selenoid koruyucu kalkanı",
+      "stock": 2783.0,
+      "children": []
+    },
+    {
+      "code": "27.111",
+      "name": "Fark laması",
+      "stock": 3740.0,
+      "children": []
+    },
+    {
+      "code": "27.114",
+      "name": "Brülör Ateşleme ve Kontrol Modülü - H tipi",
+      "stock": 464.0,
+      "children": []
+    },
+    {
+      "code": "27.116",
+      "name": "Seramik Plakalı Isıtıcılar için Kablo Takımı - H tipi",
+      "stock": 768.0,
+      "children": []
+    },
+    {
+      "code": "27.119",
+      "name": "Gazflex 1/2''- CC Seramik ısıtıcı için",
+      "stock": 885.0,
+      "children": []
+    },
+    {
+      "code": "27.120",
+      "name": "Goldsun Elite - Performa - CC7/11 Ekran Tututcu",
+      "stock": 1175.0,
+      "children": []
+    },
+    {
+      "code": "27.125",
+      "name": "Cc - Elt - Prf   7/ 11 Brülör  (Yerli Malzeme)",
+      "stock": 0.0,
+      "children": [
+        {
+          "code": "27.123",
+          "name": "Cc - Elt - Prf Seramik Taş",
+          "stock": 5594.0
+        },
+        {
+          "code": "27.160",
+          "name": "7/11  Brülör yanma odası-Paslanmaz çıta",
+          "stock": 1692.0
+        },
+        {
+          "code": "27.161",
+          "name": "7/11  Brülör yanma odası-Galvaniz Tel",
+          "stock": 390.0
+        },
+        {
+          "code": "27.162",
+          "name": "7/11  Brülör yanma odası-gövde",
+          "stock": 526.0
+        },
+        {
+          "code": "27.164",
+          "name": "Brülör yanma odası-enjektör yıldız tutucu",
+          "stock": 373.0
+        }
+      ]
+    },
+    {
+      "code": "27.127",
+      "name": "CC ELITE PERFORMA Gaz Enjektörü",
+      "stock": 5605.0,
+      "children": []
+    },
+    {
+      "code": "27.130",
+      "name": "Goldsun Elite - Performa selenoid  tutucu",
+      "stock": 2082.0,
+      "children": []
+    },
+    {
+      "code": "27.131",
+      "name": "Goldsun Elite - Performa Butonu",
+      "stock": 813.0,
+      "children": []
+    },
+    {
+      "code": "27.152",
+      "name": "Boru sabitleme parçası Elite - CC için",
+      "stock": 423.0,
+      "children": []
+    },
+    {
+      "code": "27.157",
+      "name": "Dirsek Grup 3/4 - 1/2 Segmanlı",
+      "stock": 1727.0,
+      "children": []
+    },
+    {
+      "code": "27.167",
+      "name": "SIT Sigma 845 Modülasyonlu Selenoid Valf ELT-CC İçin",
+      "stock": 1963.0,
+      "children": []
+    }
+  ],
+  "GSA15": [
+    {
+      "code": "25.018",
+      "name": "Goldsun Nova - Aqua - Supra - Nova PG-9 Kablo Rakoru",
+      "stock": 4142.0,
+      "children": []
+    },
+    {
+      "code": "25.069",
+      "name": "Goldsun  TERRA - AQUA - SUPRA - NOVA Kablo 3 X 1.5 mm² X 2,5 m Topraklı Fiş - Gri",
+      "stock": 7846.0,
+      "children": []
+    },
+    {
+      "code": "25.075",
+      "name": "Goldsun Nova - Aqua - Supra - Plus Ambalaj Seperatör Köpük Süngeri ( 20mm X 155mm X 165mm )",
+      "stock": 2396.0,
+      "children": []
+    },
+    {
+      "code": "25.081",
+      "name": "Goldsun Aqua Izgara",
+      "stock": 2133.0,
+      "children": []
+    },
+    {
+      "code": "25.082",
+      "name": "Goldsun Aqua Tekli Ambalaj Kutusu TÜRKÇE",
+      "stock": 487.0,
+      "children": []
+    },
+    {
+      "code": "25.103",
+      "name": "Ampul - Su Geçirmez 1500 W  Dr. Fischer",
+      "stock": 672.0,
+      "children": []
+    },
+    {
+      "code": "25.114",
+      "name": "Goldsun AQUA-SUPRA-NOVA   15 - 20  Askı Kolu",
+      "stock": 1009.0,
+      "children": []
+    },
+    {
+      "code": "25.123",
+      "name": "Goldsun Aqua Reflektör",
+      "stock": 4603.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.132",
+      "name": "Golsun Aqua - Supra - Nova  Porselen Klemens 2 Numara  (İkili)",
+      "stock": 3710.0,
+      "children": []
+    },
+    {
+      "code": "25.156",
+      "name": "Goldsun Aqua GSA - GSU Yan Reflektör (Bombeli)",
+      "stock": 5546.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.160",
+      "name": "Goldsun Aqua -Supra -Nova için askı  ayağı",
+      "stock": 1526.0,
+      "children": []
+    },
+    {
+      "code": "25.163",
+      "name": "Goldsun AQUA Ampül Kafası Soğutma TABANI",
+      "stock": 4690.0,
+      "children": [
+        {
+          "code": "25.146",
+          "name": "Goldsun AQUA Soğutma Profili (Taban) Galmak No:1584",
+          "stock": 0.01
+        }
+      ]
+    },
+    {
+      "code": "25.164",
+      "name": "Goldsun AQUA - SUPRA - NOVA Ampül Kafası Soğutma kapağı",
+      "stock": 81649.0,
+      "children": [
+        {
+          "code": "25.147",
+          "name": "Goldsun Nova - Aqua - Supra Soğutma Profili (Kapak) Galmak No:1585",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "25.170",
+      "name": "Goldsun Aqua - Supra - Nova Buat Takımı",
+      "stock": 484.0,
+      "children": [
+        {
+          "code": "25.167",
+          "name": "PLS Elektrik Bağlantı Kutusu Buat GS için",
+          "stock": 6255.0
+        },
+        {
+          "code": "25.168",
+          "name": "Goldsun Plastik Buat Çerçeve Contası",
+          "stock": 6009.0
+        },
+        {
+          "code": "25.169",
+          "name": "Goldsun Plastik Buat Geçiş Contası",
+          "stock": 5652.0
+        }
+      ]
+    },
+    {
+      "code": "25.186",
+      "name": "Goldsun Aqua - Aqua Plus Seperatör",
+      "stock": 3228.0,
+      "children": []
+    },
+    {
+      "code": "25.239",
+      "name": "Goldsun Aqua GSA (Logolu) Yan Kapak - Siyah",
+      "stock": 339.0,
+      "children": [
+        {
+          "code": "25.148",
+          "name": "Goldsun Aqua GSA (Logolu) Yan Kapak -Bej (alüminyum + zımpara )",
+          "stock": 5913.0
+        }
+      ]
+    },
+    {
+      "code": "25.240",
+      "name": "Goldsun Aqua GSA Bombeli Ön Kapak - Siyah",
+      "stock": 366.0,
+      "children": [
+        {
+          "code": "25.149",
+          "name": "Goldsun Aqua (Bombeli) Ön Kapak Galmak No:1813  Eloksal kodu : Eco 31  (107mm Kesimli)",
+          "stock": 6.0
+        }
+      ]
+    },
+    {
+      "code": "25.241",
+      "name": "Goldsun Aqua Tekli Kasa (50 cm) Galmak - Siyah",
+      "stock": 201.0,
+      "children": [
+        {
+          "code": "25.105",
+          "name": "Goldsun Aqua Tekli Kasa (50 cm) Galmak No:4136 Eloksal kodu : ECO31",
+          "stock": 685.0
+        }
+      ]
+    }
+  ],
+  "GSA20": [
+    {
+      "code": "25.018",
+      "name": "Goldsun Nova - Aqua - Supra - Nova PG-9 Kablo Rakoru",
+      "stock": 4142.0,
+      "children": []
+    },
+    {
+      "code": "25.069",
+      "name": "Goldsun  TERRA - AQUA - SUPRA - NOVA Kablo 3 X 1.5 mm² X 2,5 m Topraklı Fiş - Gri",
+      "stock": 7846.0,
+      "children": []
+    },
+    {
+      "code": "25.075",
+      "name": "Goldsun Nova - Aqua - Supra - Plus Ambalaj Seperatör Köpük Süngeri ( 20mm X 155mm X 165mm )",
+      "stock": 2396.0,
+      "children": []
+    },
+    {
+      "code": "25.081",
+      "name": "Goldsun Aqua Izgara",
+      "stock": 2133.0,
+      "children": []
+    },
+    {
+      "code": "25.082",
+      "name": "Goldsun Aqua Tekli Ambalaj Kutusu TÜRKÇE",
+      "stock": 487.0,
+      "children": []
+    },
+    {
+      "code": "25.104",
+      "name": "Ampul - Su geçirmez 2000 W    Dr. Fischer",
+      "stock": 3128.0,
+      "children": []
+    },
+    {
+      "code": "25.105",
+      "name": "Goldsun Aqua Tekli Kasa (50 cm) Galmak No:4136 Eloksal kodu : ECO31",
+      "stock": 685.0,
+      "children": []
+    },
+    {
+      "code": "25.114",
+      "name": "Goldsun AQUA-SUPRA-NOVA   15 - 20  Askı Kolu",
+      "stock": 1009.0,
+      "children": []
+    },
+    {
+      "code": "25.123",
+      "name": "Goldsun Aqua Reflektör",
+      "stock": 4603.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.132",
+      "name": "Golsun Aqua - Supra - Nova  Porselen Klemens 2 Numara  (İkili)",
+      "stock": 3710.0,
+      "children": []
+    },
+    {
+      "code": "25.148",
+      "name": "Goldsun Aqua GSA (Logolu) Yan Kapak -Bej (alüminyum + zımpara )",
+      "stock": 5913.0,
+      "children": []
+    },
+    {
+      "code": "25.149",
+      "name": "Goldsun Aqua (Bombeli) Ön Kapak Galmak No:1813  Eloksal kodu : Eco 31  (107mm Kesimli)",
+      "stock": 6.0,
+      "children": [
+        {
+          "code": "25.270",
+          "name": "Goldsun Aqua (Bombeli) Ön Kapak (ADET) Galmak No:1813  Eloksal kodu : ECO 31 (120 cm Kesimli)",
+          "stock": 625.1
+        }
+      ]
+    },
+    {
+      "code": "25.156",
+      "name": "Goldsun Aqua GSA - GSU Yan Reflektör (Bombeli)",
+      "stock": 5546.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.160",
+      "name": "Goldsun Aqua -Supra -Nova için askı  ayağı",
+      "stock": 1526.0,
+      "children": []
+    },
+    {
+      "code": "25.163",
+      "name": "Goldsun AQUA Ampül Kafası Soğutma TABANI",
+      "stock": 4690.0,
+      "children": [
+        {
+          "code": "25.146",
+          "name": "Goldsun AQUA Soğutma Profili (Taban) Galmak No:1584",
+          "stock": 0.01
+        }
+      ]
+    },
+    {
+      "code": "25.164",
+      "name": "Goldsun AQUA - SUPRA - NOVA Ampül Kafası Soğutma kapağı",
+      "stock": 81649.0,
+      "children": [
+        {
+          "code": "25.147",
+          "name": "Goldsun Nova - Aqua - Supra Soğutma Profili (Kapak) Galmak No:1585",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "25.170",
+      "name": "Goldsun Aqua - Supra - Nova Buat Takımı",
+      "stock": 484.0,
+      "children": [
+        {
+          "code": "25.167",
+          "name": "PLS Elektrik Bağlantı Kutusu Buat GS için",
+          "stock": 6255.0
+        },
+        {
+          "code": "25.168",
+          "name": "Goldsun Plastik Buat Çerçeve Contası",
+          "stock": 6009.0
+        },
+        {
+          "code": "25.169",
+          "name": "Goldsun Plastik Buat Geçiş Contası",
+          "stock": 5652.0
+        }
+      ]
+    },
+    {
+      "code": "25.186",
+      "name": "Goldsun Aqua - Aqua Plus Seperatör",
+      "stock": 3228.0,
+      "children": []
+    }
+  ],
+  "GSA30": [
+    {
+      "code": "25.017",
+      "name": "Goldsun Nova - Aqua - Supra PG11 Kablo Rakoru",
+      "stock": 2777.0,
+      "children": []
+    },
+    {
+      "code": "25.075",
+      "name": "Goldsun Nova - Aqua - Supra - Plus Ambalaj Seperatör Köpük Süngeri ( 20mm X 155mm X 165mm )",
+      "stock": 2396.0,
+      "children": []
+    },
+    {
+      "code": "25.081",
+      "name": "Goldsun Aqua Izgara",
+      "stock": 2133.0,
+      "children": []
+    },
+    {
+      "code": "25.103",
+      "name": "Ampul - Su Geçirmez 1500 W  Dr. Fischer",
+      "stock": 672.0,
+      "children": []
+    },
+    {
+      "code": "25.123",
+      "name": "Goldsun Aqua Reflektör",
+      "stock": 4603.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.132",
+      "name": "Golsun Aqua - Supra - Nova  Porselen Klemens 2 Numara  (İkili)",
+      "stock": 3710.0,
+      "children": []
+    },
+    {
+      "code": "25.134",
+      "name": "Goldsun AQUA - SUPRA - NOVA 3000-4000 W  Askı Kolu",
+      "stock": 739.0,
+      "children": []
+    },
+    {
+      "code": "25.141",
+      "name": "Goldsun Aqua Çiftli Ambalaj Kutusu TÜRKÇE",
+      "stock": 859.0,
+      "children": []
+    },
+    {
+      "code": "25.156",
+      "name": "Goldsun Aqua GSA - GSU Yan Reflektör (Bombeli)",
+      "stock": 5546.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.160",
+      "name": "Goldsun Aqua -Supra -Nova için askı  ayağı",
+      "stock": 1526.0,
+      "children": []
+    },
+    {
+      "code": "25.163",
+      "name": "Goldsun AQUA Ampül Kafası Soğutma TABANI",
+      "stock": 4690.0,
+      "children": [
+        {
+          "code": "25.146",
+          "name": "Goldsun AQUA Soğutma Profili (Taban) Galmak No:1584",
+          "stock": 0.01
+        }
+      ]
+    },
+    {
+      "code": "25.164",
+      "name": "Goldsun AQUA - SUPRA - NOVA Ampül Kafası Soğutma kapağı",
+      "stock": 81649.0,
+      "children": [
+        {
+          "code": "25.147",
+          "name": "Goldsun Nova - Aqua - Supra Soğutma Profili (Kapak) Galmak No:1585",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "25.170",
+      "name": "Goldsun Aqua - Supra - Nova Buat Takımı",
+      "stock": 484.0,
+      "children": [
+        {
+          "code": "25.167",
+          "name": "PLS Elektrik Bağlantı Kutusu Buat GS için",
+          "stock": 6255.0
+        },
+        {
+          "code": "25.168",
+          "name": "Goldsun Plastik Buat Çerçeve Contası",
+          "stock": 6009.0
+        },
+        {
+          "code": "25.169",
+          "name": "Goldsun Plastik Buat Geçiş Contası",
+          "stock": 5652.0
+        }
+      ]
+    },
+    {
+      "code": "25.186",
+      "name": "Goldsun Aqua - Aqua Plus Seperatör",
+      "stock": 3228.0,
+      "children": []
+    },
+    {
+      "code": "25.239",
+      "name": "Goldsun Aqua GSA (Logolu) Yan Kapak - Siyah",
+      "stock": 339.0,
+      "children": [
+        {
+          "code": "25.148",
+          "name": "Goldsun Aqua GSA (Logolu) Yan Kapak -Bej (alüminyum + zımpara )",
+          "stock": 5913.0
+        }
+      ]
+    },
+    {
+      "code": "25.240",
+      "name": "Goldsun Aqua GSA Bombeli Ön Kapak - Siyah",
+      "stock": 366.0,
+      "children": [
+        {
+          "code": "25.149",
+          "name": "Goldsun Aqua (Bombeli) Ön Kapak Galmak No:1813  Eloksal kodu : Eco 31  (107mm Kesimli)",
+          "stock": 6.0
+        }
+      ]
+    },
+    {
+      "code": "25.242",
+      "name": "Goldsun Aqua  Kasa (90 cm.) Galmak - Siyah",
+      "stock": 59.0,
+      "children": [
+        {
+          "code": "25.119",
+          "name": "Goldsun Aqua  Kasa (90 cm.) Galmak No:4136 Eloksal kodu : ECO31",
+          "stock": 397.0
+        }
+      ]
+    }
+  ],
+  "GSS20P": [
+    {
+      "code": "25.018",
+      "name": "Goldsun Nova - Aqua - Supra - Nova PG-9 Kablo Rakoru",
+      "stock": 4610.0,
+      "children": []
+    },
+    {
+      "code": "25.054",
+      "name": "Goldsun Supra Plus EPDM Sızdırmazlık Contası",
+      "stock": 3758.0,
+      "children": []
+    },
+    {
+      "code": "25.069",
+      "name": "Goldsun  TERRA - AQUA - SUPRA - NOVA Kablo 3 X 1.5 mm² X 2,5 m Topraklı Fiş - Gri",
+      "stock": 8314.0,
+      "children": []
+    },
+    {
+      "code": "25.075",
+      "name": "Goldsun Nova - Aqua - Supra - Plus Ambalaj Seperatör Köpük Süngeri ( 20mm X 155mm X 165mm )",
+      "stock": 3646.0,
+      "children": []
+    },
+    {
+      "code": "25.104",
+      "name": "Ampul - Su geçirmez 2000 W    Dr. Fischer",
+      "stock": 3735.0,
+      "children": []
+    },
+    {
+      "code": "25.114",
+      "name": "Goldsun AQUA-SUPRA-NOVA   15 - 20  Askı Kolu",
+      "stock": 1452.0,
+      "children": []
+    },
+    {
+      "code": "25.117",
+      "name": "Supra Plus Ön Panel Etiketi",
+      "stock": 5476.0,
+      "children": []
+    },
+    {
+      "code": "25.160",
+      "name": "Goldsun Aqua -Supra -Nova için askı  ayağı",
+      "stock": 2412.0,
+      "children": []
+    },
+    {
+      "code": "25.164",
+      "name": "Goldsun AQUA - SUPRA - NOVA Ampül Kafası Soğutma kapağı",
+      "stock": 83039.0,
+      "children": []
+    },
+    {
+      "code": "25.172",
+      "name": "Goldsun Supra Yan Reflektör",
+      "stock": 10747.0,
+      "children": []
+    },
+    {
+      "code": "25.173",
+      "name": "Goldsun Supra Izgara",
+      "stock": 997.0,
+      "children": []
+    },
+    {
+      "code": "25.178",
+      "name": "Goldsun Supra Reflektör",
+      "stock": 5483.0,
+      "children": []
+    },
+    {
+      "code": "25.192",
+      "name": "Goldsun SUPRA - NOVA  Ampül  kafası soğutma tabanı",
+      "stock": 7775.0,
+      "children": []
+    },
+    {
+      "code": "25.226",
+      "name": "Goldsun Supra Plus ön plastik panel",
+      "stock": 2233.0,
+      "children": []
+    },
+    {
+      "code": "25.227",
+      "name": "Goldsun Supra Plus iç plastik buat",
+      "stock": 6046.0,
+      "children": []
+    },
+    {
+      "code": "25.228",
+      "name": "Goldsun Supra Plus plastik conta ve buton",
+      "stock": 7592.0,
+      "children": []
+    },
+    {
+      "code": "25.229",
+      "name": "Goldsun Supra düz yan kapak (0-1-2-4 Delikli-Siyah&Beyaz)",
+      "stock": 931.0,
+      "children": []
+    },
+    {
+      "code": "25.230",
+      "name": "Plus Kablo geçiş profili (9mm kesimli)",
+      "stock": 232.66,
+      "children": []
+    },
+    {
+      "code": "25.231",
+      "name": "Goldsun Supra Plus Kumanda Kasası  (115 mm) Galmak No: 6432",
+      "stock": 6234.0,
+      "children": []
+    },
+    {
+      "code": "25.232",
+      "name": "Goldsun Supra Plus  Tekli Ambalaj Kutusu TÜRKÇE",
+      "stock": 2728.0,
+      "children": []
+    },
+    {
+      "code": "25.234",
+      "name": "Goldsun Supra - Supra Plus Seperatör",
+      "stock": 11074.0,
+      "children": []
+    },
+    {
+      "code": "25.247",
+      "name": "Goldsun Supra  Yan Kapak - Siyah",
+      "stock": 3736.0,
+      "children": []
+    },
+    {
+      "code": "25.248",
+      "name": "Goldsun Supra Ön Kapak 50 mm - Siyah",
+      "stock": 6333.0,
+      "children": []
+    },
+    {
+      "code": "25.249",
+      "name": "Goldsun Supra Tekli Kasa (40 cm) Galmak - Siyah",
+      "stock": 1872.0,
+      "children": []
+    },
+    {
+      "code": "25.397",
+      "name": "IR Dimmer Uzaktan Kumanda ( SUPRA AQUA ve NOVA PLUS ) -H tipi 3 tuşlu",
+      "stock": 800.0,
+      "children": []
+    },
+    {
+      "code": "25.430",
+      "name": "IR Dımmer Modülü 4000W ( NOVA- SUPRA  PLUS ) - H tipi IRHCR3",
+      "stock": 733.0,
+      "children": []
+    }
+  ],
+  "GSS40P": [
+    {
+      "code": "25.017",
+      "name": "Goldsun Nova - Aqua - Supra PG11 Kablo Rakoru",
+      "stock": 2777.0,
+      "children": []
+    },
+    {
+      "code": "25.050",
+      "name": "Cam elyaf kablo 1,5mm² (metre)",
+      "stock": 659.0,
+      "children": []
+    },
+    {
+      "code": "25.054",
+      "name": "Goldsun Supra Plus EPDM Sızdırmazlık Contası",
+      "stock": 3267.0,
+      "children": []
+    },
+    {
+      "code": "25.075",
+      "name": "Goldsun Nova - Aqua - Supra - Plus Ambalaj Seperatör Köpük Süngeri ( 20mm X 155mm X 165mm )",
+      "stock": 2396.0,
+      "children": []
+    },
+    {
+      "code": "25.104",
+      "name": "Ampul - Su geçirmez 2000 W    Dr. Fischer",
+      "stock": 3128.0,
+      "children": []
+    },
+    {
+      "code": "25.117",
+      "name": "Supra Plus Ön Panel Etiketi",
+      "stock": 4985.0,
+      "children": []
+    },
+    {
+      "code": "25.132",
+      "name": "Golsun Aqua - Supra - Nova  Porselen Klemens 2 Numara  (İkili)",
+      "stock": 3710.0,
+      "children": []
+    },
+    {
+      "code": "25.134",
+      "name": "Goldsun AQUA - SUPRA - NOVA 3000-4000 W  Askı Kolu",
+      "stock": 739.0,
+      "children": []
+    },
+    {
+      "code": "25.160",
+      "name": "Goldsun Aqua -Supra -Nova için askı  ayağı",
+      "stock": 1526.0,
+      "children": []
+    },
+    {
+      "code": "25.164",
+      "name": "Goldsun AQUA - SUPRA - NOVA Ampül Kafası Soğutma kapağı",
+      "stock": 81649.0,
+      "children": [
+        {
+          "code": "25.147",
+          "name": "Goldsun Nova - Aqua - Supra Soğutma Profili (Kapak) Galmak No:1585",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "25.170",
+      "name": "Goldsun Aqua - Supra - Nova Buat Takımı",
+      "stock": 484.0,
+      "children": [
+        {
+          "code": "25.167",
+          "name": "PLS Elektrik Bağlantı Kutusu Buat GS için",
+          "stock": 6255.0
+        },
+        {
+          "code": "25.168",
+          "name": "Goldsun Plastik Buat Çerçeve Contası",
+          "stock": 6009.0
+        },
+        {
+          "code": "25.169",
+          "name": "Goldsun Plastik Buat Geçiş Contası",
+          "stock": 5652.0
+        }
+      ]
+    },
+    {
+      "code": "25.172",
+      "name": "Goldsun Supra Yan Reflektör",
+      "stock": 10269.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.173",
+      "name": "Goldsun Supra Izgara",
+      "stock": 2108.0,
+      "children": []
+    },
+    {
+      "code": "25.178",
+      "name": "Goldsun Supra Reflektör",
+      "stock": 5244.0,
+      "children": [
+        {
+          "code": "25.106",
+          "name": "Goldsun Reflektör Sacı 0,40mm adonize    ART-190",
+          "stock": 158.87
+        }
+      ]
+    },
+    {
+      "code": "25.192",
+      "name": "Goldsun SUPRA - NOVA  Ampül  kafası soğutma tabanı",
+      "stock": 6697.0,
+      "children": [
+        {
+          "code": "25.191",
+          "name": "Goldsun Supra - Nova  Soğutma Profili (Taban) Galmak No:7836",
+          "stock": 0.0
+        }
+      ]
+    },
+    {
+      "code": "25.226",
+      "name": "Goldsun Supra Plus ön plastik panel",
+      "stock": 6093.0,
+      "children": []
+    },
+    {
+      "code": "25.227",
+      "name": "Goldsun Supra Plus iç plastik buat",
+      "stock": 5549.0,
+      "children": []
+    },
+    {
+      "code": "25.228",
+      "name": "Goldsun Supra Plus plastik conta ve buton",
+      "stock": 7101.0,
+      "children": []
+    },
+    {
+      "code": "25.229",
+      "name": "Goldsun Supra düz yan kapak (0-1-2-4 Delikli-Siyah&Beyaz)",
+      "stock": 7619.0,
+      "children": []
+    },
+    {
+      "code": "25.230",
+      "name": "Plus Kablo geçiş profili (9mm kesimli)",
+      "stock": 225.76,
+      "children": []
+    },
+    {
+      "code": "25.231",
+      "name": "Goldsun Supra Plus Kumanda Kasası  (115 mm) Galmak No: 6432",
+      "stock": 6043.0,
+      "children": []
+    },
+    {
+      "code": "25.233",
+      "name": "Goldsun Supra Plus Çiftli Ambalaj Kutusu TÜRKÇE",
+      "stock": 1010.0,
+      "children": []
+    },
+    {
+      "code": "25.234",
+      "name": "Goldsun Supra - Supra Plus Seperatör",
+      "stock": 14592.0,
+      "children": []
+    },
+    {
+      "code": "25.247",
+      "name": "Goldsun Supra  Yan Kapak - Siyah",
+      "stock": 3354.0,
+      "children": [
+        {
+          "code": "25.171",
+          "name": "Goldsun Supra  Yan Kapak (alüminyum + zımpara )",
+          "stock": 664.0
+        }
+      ]
+    },
+    {
+      "code": "25.248",
+      "name": "Goldsun Supra Ön Kapak 50 mm - Siyah",
+      "stock": 5351.0,
+      "children": [
+        {
+          "code": "25.179",
+          "name": "Goldsun Supra Nova Ön Kapak AL Profil (KG) ELOKSALLI Galmak P.No: 6433  120cm kesimli (0,69kg/ad)",
+          "stock": 670.74
+        }
+      ]
+    },
+    {
+      "code": "25.250",
+      "name": "Goldsun Supra Çiftli Kasa (80 cm) - Siyah",
+      "stock": 48.0,
+      "children": [
+        {
+          "code": "25.175",
+          "name": "Goldsun Supra Çiftli Kasa (80 cm) Galmak No: 6432",
+          "stock": 1054.0
+        }
+      ]
+    },
+    {
+      "code": "25.258",
+      "name": "Goldsun Supra Ön Kapak 86mm - Siyah",
+      "stock": 114.0,
+      "children": [
+        {
+          "code": "25.179",
+          "name": "Goldsun Supra Nova Ön Kapak AL Profil (KG) ELOKSALLI Galmak P.No: 6433  120cm kesimli (0,69kg/ad)",
+          "stock": 670.74
+        }
+      ]
+    },
+    {
+      "code": "25.397",
+      "name": "IR Dimmer Uzaktan Kumanda ( SUPRA AQUA ve NOVA PLUS ) -H tipi 3 tuşlu",
+      "stock": 711.0,
+      "children": []
+    },
+    {
+      "code": "25.430",
+      "name": "IR Dımmer Modülü 4000W ( NOVA- SUPRA  PLUS ) - H tipi IRHCR3",
+      "stock": 950.0,
+      "children": []
+    }
+  ]
+}
