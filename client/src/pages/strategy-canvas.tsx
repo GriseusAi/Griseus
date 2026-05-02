@@ -2789,16 +2789,33 @@ const COMMAND_DEFS: CommandDef[] = [
       },
       { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
     ],
-    apply: ({ collected, ids }, h) => {
+    apply: ({ collected, ids, atomById }, h) => {
       // Sahne ok'larıyla aynı görsel: label sadece "x{qty}"
       const label = `x${collected.quantity}`;
+      // Sipariş veren MÜŞTERİ kutusunu bul:
+      //   1) Seçili atomlar arasında customer-chip varsa onu kullan
+      //   2) Yoksa orderNumber'dan tahmin et (örn "g3" → c-G3 / "G3" → c-G3)
+      const selectedCustomers = ids.filter(id => atomById[id]?.kind === "customer-chip");
+      let customerIds: string[];
+      if (selectedCustomers.length > 0) {
+        customerIds = selectedCustomers;
+      } else {
+        const guess = `c-${collected.orderNumber.toUpperCase()}`;
+        customerIds = atomById[guess] ? [guess] : [];
+      }
+      // Tüm seçili atomlara meta yaz (sipariş no + adet badge'i için)
       ids.forEach(id => {
         h.applyMeta(id, {
           orderNumber: collected.orderNumber,
           quantity: collected.quantity,
         });
-        h.ensureDeadlinePill(id, collected.deadline);
       });
+      // Pill SADECE müşteri kutusu altına — her sipariş açıldığında teslim
+      // tarihi pill'i o siparişi veren MÜŞTERİ atom'una bağlanır (zorunlu).
+      customerIds.forEach(cid => {
+        h.ensureDeadlinePill(cid, collected.deadline);
+      });
+      // Pairwise edge'ler — seçili atomlar (müşteri + mamul) arası ilişki
       let edgesAdded = 0;
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
@@ -2806,7 +2823,10 @@ const COMMAND_DEFS: CommandDef[] = [
           edgesAdded++;
         }
       }
-      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı · ${ids.length} teslim pill`;
+      const cust = customerIds.length > 0
+        ? `1 teslim pill → ${customerIds.map(c => c.replace(/^c-/, "")).join(", ")}`
+        : "müşteri kutusu bulunamadı (orderNumber'ı 'g3', 'e2' vb. yaz veya seçime ekle)";
+      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı · ${cust}`;
     },
   },
   {
@@ -3416,13 +3436,45 @@ function CustomersSceneRenderer({
     return n;
   });
 
-  const toggleSelect = (id: string) => setSelectedIds(prev => {
-    const n = new Set(prev);
-    if (n.has(id)) n.delete(id); else n.add(id);
-    return n;
-  });
+  // Global selection context — sağ alttaki SelectionPanel buradan beslenir
+  const globalSel = useSelection();
 
-  const clearSelection = () => setSelectedIds(new Set());
+  // Sahne atomunu SelectedItem'a map et — sadece anlamlı kind'lar (cihaz, bileşen,
+  // yarı-mamül, müşteri) global selection'a geçer. Müşteri chip'leri için
+  // kind="component" map'liyoruz çünkü context tipi sadece 5 değer kabul ediyor;
+  // ama kullanıcı maksat itibarıyla cihaz seçince diyagram butonu aktif olsun.
+  const atomToSelectedItem = useCallback((a: SceneAtom): SelectedItem | null => {
+    if (a.kind === "product") {
+      const code = a.id.replace(/^p-/, "");
+      return { code, label: code, kind: "device", usedBy: [code] };
+    }
+    if (a.kind === "subassembly") {
+      return { code: a.label, label: a.sub ?? a.label, kind: "subassembly", usedBy: [] };
+    }
+    if (a.kind === "bom-item" || a.kind === "component") {
+      return { code: a.label, label: a.sub ?? a.label, kind: "component", usedBy: [] };
+    }
+    return null;
+  }, []);
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds(prev => {
+      const n = new Set(prev);
+      if (n.has(id)) n.delete(id); else n.add(id);
+      return n;
+    });
+    // Global selection'a da yansıt — sadece map edilebilir atomlar için
+    const a = atomById[id];
+    if (a) {
+      const item = atomToSelectedItem(a);
+      if (item) globalSel.toggle(item);
+    }
+  };
+
+  const clearSelection = () => {
+    setSelectedIds(new Set());
+    globalSel.clear();
+  };
 
   // ESC ile seçimi + popup + drill-down'ı temizle
   useEffect(() => {
