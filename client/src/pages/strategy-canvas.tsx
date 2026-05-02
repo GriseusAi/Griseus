@@ -2883,6 +2883,8 @@ function CommandBar({
       position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 25,
       display: "flex", flexDirection: "column", gap: 6,
       pointerEvents: "none",
+      userSelect: "text",
+      WebkitUserSelect: "text",
     }}>
       {/* Suggest dropdown — input'un üstünde */}
       {showSuggest && suggestions.length > 0 && (
@@ -2937,15 +2939,24 @@ function CommandBar({
       )}
 
       {/* Komut satırı */}
-      <div style={{
-        display: "flex", alignItems: "center", gap: 8,
-        background: C.cardBg, color: C.cardInk,
-        border: `1px solid ${C.panelEdge}`,
-        borderRadius: 8, padding: "8px 12px",
-        fontFamily: mono, fontSize: 12,
-        boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
-        pointerEvents: "auto",
-      }}>
+      <div
+        onPointerDown={(e) => e.stopPropagation()}
+        onPointerUp={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); inputRef.current?.focus(); }}
+        style={{
+          display: "flex", alignItems: "center", gap: 8,
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 8, padding: "8px 12px",
+          fontFamily: mono, fontSize: 12,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          pointerEvents: "auto",
+          userSelect: "text",
+          WebkitUserSelect: "text",
+          touchAction: "auto",
+          cursor: "text",
+        }}
+      >
         <span style={{
           fontSize: 10, color: C.cardSub, fontFamily: mono,
           letterSpacing: 1.4, fontWeight: 700,
@@ -2957,13 +2968,22 @@ function CommandBar({
           ref={inputRef}
           value={input}
           onChange={(e) => setInput(e.target.value)}
-          onKeyDown={onKeyDown}
+          onKeyDown={(e) => { e.stopPropagation(); onKeyDown(e); }}
+          onKeyUp={(e) => e.stopPropagation()}
+          onPointerDown={(e) => e.stopPropagation()}
+          onPointerUp={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
           placeholder={`Bir komut yaz (örn: /siparis 12345)  ·  /yardim için liste${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : "  ·  önce atom seç"}`}
           spellCheck={false}
+          autoComplete="off"
           style={{
             flex: 1,
             background: "transparent", border: "none", outline: "none",
             color: C.cardInk, fontFamily: mono, fontSize: 12,
+            pointerEvents: "auto",
+            userSelect: "text",
+            WebkitUserSelect: "text",
+            touchAction: "auto",
           }}
         />
         <span style={{ color: C.cardSub, fontSize: 10 }}>↵ çalıştır · Esc temizle · ↑/↓ geçmiş</span>
