@@ -153,6 +153,12 @@ const SHAPE_OVERRIDES_KEY = "griseus_scene_shapes_v1";
 const CUSTOM_EDGES_KEY = "griseus_scene_custom_edges_v1";
 const ATOM_META_KEY = "griseus_scene_atom_meta_v1";
 const CUSTOM_ATOMS_KEY = "griseus_scene_custom_atoms_v1";
+const EDGE_COMMANDS_KEY = "griseus_scene_edge_commands_v1";
+
+function makeEdgeKey(e: { fromId: string; toId: string; label?: string; customEdgeId?: string }): string {
+  if (e.customEdgeId) return `c:${e.customEdgeId}`;
+  return `p:${e.fromId}__${e.toId}__${e.label ?? ""}`;
+}
 
 interface CustomEdge {
   id: string;
@@ -2891,6 +2897,100 @@ function findCommandDef(token: string): CommandDef | null {
   return COMMAND_DEFS.find(d => d.name === t || d.aliases?.includes(t)) ?? null;
 }
 
+function EdgeCommandPopover({
+  initial, edgeLabel, onSave, onClear, onCancel,
+}: {
+  initial: string;
+  edgeLabel?: string;
+  onSave: (cmd: string) => void;
+  onClear: () => void;
+  onCancel: () => void;
+}) {
+  const [value, setValue] = useState(initial);
+  const inputRef = useRef<HTMLInputElement | null>(null);
+  useEffect(() => {
+    inputRef.current?.focus();
+    inputRef.current?.select();
+  }, []);
+  const trimmed = value.trim();
+  const def = trimmed.length > 0 ? findCommandDef(trimmed.split(/\s+/)[0]!) : null;
+  const isValid = !!def;
+  return (
+    <div
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      style={{
+        background: "#ffffff",
+        border: `1px solid ${C.edge}`,
+        borderRadius: 8,
+        padding: 8,
+        boxShadow: "0 8px 24px rgba(15,23,42,0.18)",
+        fontFamily: mono,
+        color: C.ink,
+      }}
+    >
+      <div style={{ fontSize: 10, color: C.mid, marginBottom: 6, display: "flex", justifyContent: "space-between" }}>
+        <span>{edgeLabel ? `EDGE "${edgeLabel}"` : "EDGE"} — KOMUT</span>
+        <span style={{ color: isValid ? C.ok : (trimmed.length === 0 ? C.dim : C.warn) }}>
+          {trimmed.length === 0 ? "boş" : (isValid ? `/${def!.name}` : "tanınmadı")}
+        </span>
+      </div>
+      <input
+        ref={inputRef}
+        value={value}
+        onChange={(e) => setValue(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); onSave(value); }
+          else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
+        }}
+        placeholder="/siparis A123"
+        style={{
+          width: "100%",
+          fontFamily: mono,
+          fontSize: 12,
+          padding: "6px 8px",
+          border: `1px solid ${C.edge}`,
+          borderRadius: 4,
+          background: "#fafafa",
+          color: C.ink,
+          outline: "none",
+        }}
+      />
+      <div style={{ display: "flex", gap: 6, marginTop: 8, justifyContent: "flex-end" }}>
+        {initial.length > 0 && (
+          <button
+            type="button"
+            onClick={onClear}
+            style={{
+              fontFamily: mono, fontSize: 11, padding: "4px 8px",
+              background: "transparent", color: C.shortfall,
+              border: `1px solid ${C.edge}`, borderRadius: 4, cursor: "pointer",
+            }}
+          >sil</button>
+        )}
+        <button
+          type="button"
+          onClick={onCancel}
+          style={{
+            fontFamily: mono, fontSize: 11, padding: "4px 8px",
+            background: "transparent", color: C.mid,
+            border: `1px solid ${C.edge}`, borderRadius: 4, cursor: "pointer",
+          }}
+        >iptal</button>
+        <button
+          type="button"
+          onClick={() => onSave(value)}
+          style={{
+            fontFamily: mono, fontSize: 11, padding: "4px 8px",
+            background: C.ink, color: "#fff",
+            border: `1px solid ${C.ink}`, borderRadius: 4, cursor: "pointer",
+          }}
+        >kaydet</button>
+      </div>
+    </div>
+  );
+}
+
 function CommandBar({
   selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, edgePalette,
 }: {
@@ -3417,6 +3517,7 @@ function CustomersSceneRenderer({
   customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
   atomMeta, setAtomMetaField, clearAtomMeta,
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
+  edgeCommands, setEdgeCommand,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -3439,6 +3540,8 @@ function CustomersSceneRenderer({
   addCustomAtom: (atom: SceneAtom) => void;
   updateCustomAtom: (id: string, patch: Partial<SceneAtom>) => void;
   removeCustomAtom: (id: string) => void;
+  edgeCommands: Record<string, string>;
+  setEdgeCommand: (key: string, command: string | null) => void;
 }) {
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -3446,6 +3549,8 @@ function CustomersSceneRenderer({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
   const [popupAtomId, setPopupAtomId] = useState<string | null>(null);
+  // Edge label tıklanınca o edge için komut atama popover'ı açılır.
+  const [editingEdgeKey, setEditingEdgeKey] = useState<string | null>(null);
   // Müşteri sipariş hattı odağı — müşteri-chip'e tıklayınca o müşterinin
   // reachable subgraph'ı (kategori → mamul → akış → fabrika + pill) belirginleşir,
   // diğer tüm atom/edge dim olur. ESC veya boş alana tıklama ile temizlenir.
@@ -3514,6 +3619,7 @@ function CustomersSceneRenderer({
         setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
         setFocusedCustomerId(null);
+        setEditingEdgeKey(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -3931,6 +4037,16 @@ function CustomersSceneRenderer({
       ev.stopPropagation();
       removeCustomEdge(ceId);
     };
+    const eKey = isLive ? null : makeEdgeKey(e);
+    const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
+    const hasLabelText = !!e.label;
+    const labelDisplay = hasLabelText ? e.label! : (assignedCommand ? "▸" : "");
+    const showLabelGroup = !isLive && (hasLabelText || !!assignedCommand);
+    const isEditing = !!eKey && editingEdgeKey === eKey;
+    // Label hit area boyutu — kısa labellar için minimum genişlik garantisi
+    const charW = 7.5;
+    const labelW = Math.max(28, (labelDisplay.length || 1) * charW + (assignedCommand ? 10 : 0));
+    const labelH = 18;
     return (
       <g key={`${isLive ? "live" : "edge"}-${ceId ?? i}`}>
         {/* Hit area — sadece custom edge'ler için, sağ tık ile sil */}
@@ -3955,19 +4071,76 @@ function CustomersSceneRenderer({
           opacity={edgeDimmed ? 0.12 : 1}
           style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : (edgeFocused ? { filter: `drop-shadow(0 0 5px ${stroke})` } : undefined)}
         />
-        {e.label && (
-          <text
-            x={midX} y={midY}
-            fill={labelFill}
-            fontSize={13}
-            fontFamily={mono}
-            fontWeight={600}
-            textAnchor="middle"
+        {showLabelGroup && eKey && (
+          <g
+            transform={`translate(${midX}, ${midY})`}
             opacity={edgeDimmed ? 0.18 : 1}
-            style={{ pointerEvents: "none" }}
+            style={{ cursor: "pointer" }}
+            onClick={(ev) => {
+              ev.preventDefault();
+              ev.stopPropagation();
+              setEditingEdgeKey(prev => prev === eKey ? null : eKey);
+            }}
           >
-            {e.label}
-          </text>
+            <title>{assignedCommand ? `Komut: ${assignedCommand} — düzenlemek için tıkla` : "Komut atamak için tıkla"}</title>
+            {/* Tıklama hit area — şeffaf rounded rect */}
+            <rect
+              x={-labelW / 2}
+              y={-labelH / 2 - 2}
+              width={labelW}
+              height={labelH}
+              rx={4}
+              ry={4}
+              fill={assignedCommand ? asRgba(edgePalette.colors.select, 0.18) : "rgba(0,0,0,0)"}
+              stroke={assignedCommand ? asRgba(edgePalette.colors.select, 0.55) : "rgba(0,0,0,0)"}
+              strokeWidth={1}
+            />
+            {hasLabelText && (
+              <text
+                x={assignedCommand ? -5 : 0}
+                y={3}
+                fill={labelFill}
+                fontSize={13}
+                fontFamily={mono}
+                fontWeight={600}
+                textAnchor="middle"
+                style={{ pointerEvents: "none" }}
+              >
+                {e.label}
+              </text>
+            )}
+            {assignedCommand && (
+              <text
+                x={hasLabelText ? labelW / 2 - 8 : 0}
+                y={3}
+                fill={edgePalette.colors.select}
+                fontSize={12}
+                fontFamily={mono}
+                fontWeight={700}
+                textAnchor="middle"
+                style={{ pointerEvents: "none" }}
+              >
+                ▸
+              </text>
+            )}
+          </g>
+        )}
+        {isEditing && eKey && (
+          <foreignObject
+            x={midX - 130}
+            y={midY + 10}
+            width={260}
+            height={120}
+            style={{ overflow: "visible" }}
+          >
+            <EdgeCommandPopover
+              initial={assignedCommand ?? ""}
+              edgeLabel={e.label}
+              onSave={(cmd) => { setEdgeCommand(eKey, cmd); setEditingEdgeKey(null); }}
+              onClear={() => { setEdgeCommand(eKey, null); setEditingEdgeKey(null); }}
+              onCancel={() => setEditingEdgeKey(null)}
+            />
+          </foreignObject>
         )}
       </g>
     );
@@ -5499,9 +5672,38 @@ export default function StrategyCanvasPage() {
   }, []);
   const removeSceneCustomEdge = useCallback((id: string) => {
     setSceneCustomEdges(prev => prev.filter(e => e.id !== id));
+    setSceneEdgeCommands(prev => {
+      const k = `c:${id}`;
+      if (!(k in prev)) return prev;
+      const next = { ...prev };
+      delete next[k];
+      return next;
+    });
   }, []);
   const clearAllSceneCustomEdges = useCallback(() => {
     setSceneCustomEdges([]);
+    setSceneEdgeCommands(prev => {
+      const next: Record<string, string> = {};
+      for (const [k, v] of Object.entries(prev)) {
+        if (!k.startsWith("c:")) next[k] = v;
+      }
+      return next;
+    });
+  }, []);
+
+  // Edge label'larına atanan komutlar — anahtar makeEdgeKey ile üretilir.
+  // Custom edge silinince kendi command'ı da temizlenir.
+  const [sceneEdgeCommands, setSceneEdgeCommands] = useState<Record<string, string>>(
+    () => safeParse<Record<string, string>>(localStorage.getItem(EDGE_COMMANDS_KEY), {}),
+  );
+  useEffect(() => { localStorage.setItem(EDGE_COMMANDS_KEY, JSON.stringify(sceneEdgeCommands)); }, [sceneEdgeCommands]);
+  const setSceneEdgeCommand = useCallback((key: string, command: string | null) => {
+    setSceneEdgeCommands(prev => {
+      const next = { ...prev };
+      if (command && command.trim().length > 0) next[key] = command.trim();
+      else delete next[key];
+      return next;
+    });
   }, []);
 
   // Sahne custom atomları — komut bar'dan oluşturulan pill atomlar (deadline pill vs)
@@ -6624,6 +6826,8 @@ export default function StrategyCanvasPage() {
             addCustomAtom={addSceneCustomAtom}
             updateCustomAtom={updateSceneCustomAtom}
             removeCustomAtom={removeSceneCustomAtom}
+            edgeCommands={sceneEdgeCommands}
+            setEdgeCommand={setSceneEdgeCommand}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
