@@ -4304,19 +4304,29 @@ function CustomersSceneRenderer({
         const isSubassembly = a.kind === "subassembly";
         const groupKey = isCustomersLabel ? "customers" : isCategory ? a.id : null;
 
-        let onTap: () => void;
+        let baseTap: () => void;
         if (groupKey) {
-          onTap = () => toggleGroup(groupKey);
+          baseTap = () => toggleGroup(groupKey);
         } else if (hasBomDrillDown) {
-          onTap = () => toggleDevice(a.id);
+          baseTap = () => toggleDevice(a.id);
         } else if (isSubassembly) {
-          onTap = () => toggleSubassembly(a.id);
+          baseTap = () => toggleSubassembly(a.id);
         } else if (a.kind === "customer-chip") {
           // Müşteri chip → o müşterinin sipariş hattını odakla (toggle)
-          onTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
+          baseTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
         } else {
-          onTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
+          baseTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
+        // Sol click PRIMARY action: turuncu seçim (replace mode) + mevcut tap
+        // davranışı (drill-down/focus/group/popup) birlikte tetiklenir.
+        // Shift+click → onMultiSelect (additive multi-select).
+        const onTap = () => {
+          setSelectedIds(new Set([a.id]));
+          globalSel.clear();
+          const item = atomToSelectedItem(a);
+          if (item) globalSel.toggle(item);
+          baseTap();
+        };
 
         const groupOpen = groupKey
           ? openGroups.has(groupKey)
