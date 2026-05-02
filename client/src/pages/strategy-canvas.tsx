@@ -1018,14 +1018,17 @@ function DragNode({
   const handleDown = (e: React.PointerEvent) => {
     const isShift = e.shiftKey || e.metaKey || e.ctrlKey;
     e.stopPropagation();
-    // Shift+click sırasında tarayıcının text-range select default'unu engelle
-    // (yoksa seçilen kartların içindeki yazılar mavi hilight olur)
-    if (isShift) e.preventDefault();
     movedRef.current = false;
     if (!isShift) {
       (e.currentTarget as HTMLElement).setPointerCapture?.(e.pointerId);
       const w = getMouseInWorld(e);
       offsetRef.current = { x: w.x - pos.x, y: w.y - pos.y };
+    }
+    // Shift+click sırasında tarayıcı text-range'ini hemen temizle
+    // (preventDefault onClick delivery'sini engelliyordu — kaldırıldı,
+    //  yerine getSelection().removeAllRanges() ile mavi hilight'ı sıfırlıyoruz)
+    if (isShift) {
+      try { window.getSelection()?.removeAllRanges(); } catch { /* noop */ }
     }
     downAtRef.current = { x: e.clientX, y: e.clientY, t: Date.now(), shift: isShift };
   };
@@ -3946,7 +3949,7 @@ function SceneAtomNode({
       viewport={viewport}
       asCircle={asCircle}
       shapeStyle={shapeStyle}
-      style={{ ...selectedStyle, ...shapeStyle }}
+      style={selectedStyle}
     >
       <SceneAtomVisual atom={atom} groupOpen={groupOpen} />
     </DragNode>
