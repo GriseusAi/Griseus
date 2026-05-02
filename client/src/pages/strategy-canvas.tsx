@@ -3423,6 +3423,10 @@ function CustomersSceneRenderer({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
   const [popupAtomId, setPopupAtomId] = useState<string | null>(null);
+  // Müşteri sipariş hattı odağı — müşteri-chip'e tıklayınca o müşterinin
+  // reachable subgraph'ı (kategori → mamul → akış → fabrika + pill) belirginleşir,
+  // diğer tüm atom/edge dim olur. ESC veya boş alana tıklama ile temizlenir.
+  const [focusedCustomerId, setFocusedCustomerId] = useState<string | null>(null);
   // Cihaz BOM drill-down — bir cihaza tıklayınca alt bileşenleri sahnede yan tarafa açılır
   // Çoklu cihaz aynı anda açılabilir — her cihaz için ayrı BOM kolonu render edilir
   const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<string>>(() => new Set());
@@ -3478,7 +3482,7 @@ function CustomersSceneRenderer({
     globalSel.clear();
   };
 
-  // ESC ile seçimi + popup + drill-down'ı temizle
+  // ESC ile seçimi + popup + drill-down + müşteri odağı temizle
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -3486,6 +3490,7 @@ function CustomersSceneRenderer({
         setPopupAtomId(null);
         setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
+        setFocusedCustomerId(null);
       }
     };
     window.addEventListener("keydown", onKey);
@@ -3824,6 +3829,31 @@ function CustomersSceneRenderer({
     [hiddenIds, familyEdges, bomEdges, customSceneEdges],
   );
 
+  // Müşteri odağı aktif ise: focusedCustomerId'den edge-graph BFS ile reachable
+  // atom ID'lerini topla. Render katmanı bu set'i kullanarak focus dışındaki
+  // atom ve edge'leri dim eder. familyEdges (faint dashed lbl-customers → tüm
+  // chip'ler) BFS dışı tutulur — yoksa tüm müşteriler reachable olur.
+  const focusedReachable = useMemo<Set<string> | null>(() => {
+    if (!focusedCustomerId) return null;
+    const focusEdges = [...SCENE_EDGES, ...bomEdges, ...customSceneEdges].filter(
+      e => e.fromId !== "lbl-customers" && e.toId !== "lbl-customers",
+    );
+    const adj: Record<string, string[]> = {};
+    for (const e of focusEdges) {
+      (adj[e.fromId] ??= []).push(e.toId);
+      (adj[e.toId] ??= []).push(e.fromId);
+    }
+    const seen = new Set<string>([focusedCustomerId]);
+    const stack = [focusedCustomerId];
+    while (stack.length > 0) {
+      const cur = stack.pop()!;
+      for (const n of adj[cur] ?? []) {
+        if (!seen.has(n)) { seen.add(n); stack.push(n); }
+      }
+    }
+    return seen;
+  }, [focusedCustomerId, bomEdges, customSceneEdges]);
+
   // SVG bounding box: world coords so we draw in the same transformed space
   const bbox = useMemo(() => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -3866,6 +3896,12 @@ function CustomersSceneRenderer({
     const liveGlow = asRgba(edgePalette.colors.select, 0.55);
     const isCustom = !!e.customEdgeId;
     const ceId = e.customEdgeId;
+    // Müşteri odağı aktif ise: edge'in HER İKİ ucu da reachable subgraph'ta ise
+    // belirginleşir (kalın, glow); değilse dim olur (zayıf alpha + ince).
+    const edgeFocused = focusedReachable !== null
+      && focusedReachable.has(e.fromId)
+      && focusedReachable.has(e.toId);
+    const edgeDimmed = focusedReachable !== null && !edgeFocused;
     const onContextMenuPath = (ev: React.MouseEvent) => {
       if (!ceId) return;
       ev.preventDefault();
@@ -3890,10 +3926,11 @@ function CustomersSceneRenderer({
         <path
           d={path}
           stroke={stroke}
-          strokeWidth={isLive ? 2.5 : 1.5}
+          strokeWidth={isLive ? 2.5 : (edgeDimmed ? 1.2 : (edgeFocused ? 2.4 : 1.5))}
           fill="none"
           strokeDasharray={e.dashed ? "5 4" : undefined}
-          style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : undefined}
+          opacity={edgeDimmed ? 0.12 : 1}
+          style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : (edgeFocused ? { filter: `drop-shadow(0 0 5px ${stroke})` } : undefined)}
         />
         {e.label && (
           <text
@@ -3903,6 +3940,7 @@ function CustomersSceneRenderer({
             fontFamily={mono}
             fontWeight={600}
             textAnchor="middle"
+            opacity={edgeDimmed ? 0.18 : 1}
             style={{ pointerEvents: "none" }}
           >
             {e.label}
@@ -4087,6 +4125,9 @@ function CustomersSceneRenderer({
           onTap = () => toggleDevice(a.id);
         } else if (isSubassembly) {
           onTap = () => toggleSubassembly(a.id);
+        } else if (a.kind === "customer-chip") {
+          // Müşteri chip → o müşterinin sipariş hattını odakla (toggle)
+          onTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
         } else {
           onTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
@@ -4100,6 +4141,7 @@ function CustomersSceneRenderer({
               : undefined;
 
         const isCustomAtom = customAtoms.some(ca => ca.id === a.id);
+        const dimmed = focusedReachable !== null && !focusedReachable.has(a.id);
         return (
           <SceneAtomNode
             key={a.id}
@@ -4112,6 +4154,7 @@ function CustomersSceneRenderer({
             getMouseInWorld={getMouseInWorld}
             viewport={viewport}
             shapeOverride={shapeOverrides[a.id]}
+            dimmed={dimmed}
             onContextMenu={isCustomAtom ? (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -4489,7 +4532,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -4501,6 +4544,7 @@ function SceneAtomNode({
   viewport: { vx: number; vy: number; scale: number };
   shapeOverride?: ShapeKind;
   onContextMenu?: (e: React.MouseEvent) => void;
+  dimmed?: boolean;
 }) {
   const naturalCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
   const effectiveShape: ShapeKind | null = shapeOverride
@@ -4511,6 +4555,10 @@ function SceneAtomNode({
     outline: "3px solid #f97316",
     outlineOffset: 4,
   } : {};
+  const dimStyle: React.CSSProperties = dimmed ? {
+    opacity: 0.22,
+    transition: "opacity 180ms ease",
+  } : { opacity: 1, transition: "opacity 180ms ease" };
   return (
     <DragNode
       pos={{ x: atom.x, y: atom.y }}
@@ -4524,7 +4572,7 @@ function SceneAtomNode({
       viewport={viewport}
       asCircle={asCircle}
       shapeStyle={shapeStyle}
-      style={selectedStyle}
+      style={{ ...selectedStyle, ...dimStyle }}
     >
       <SceneAtomVisual atom={atom} groupOpen={groupOpen} />
     </DragNode>
