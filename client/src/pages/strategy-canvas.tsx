@@ -2780,7 +2780,7 @@ interface CommandDef {
     helpers: {
       applyMeta: (id: string, patch: AtomMeta) => void;
       clearMeta: (ids: string[]) => void;
-      addEdge: (from: string, to: string, label?: string) => void;
+      addEdge: (from: string, to: string, label?: string, color?: string) => void;
       ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
     },
@@ -2802,8 +2802,8 @@ const COMMAND_DEFS: CommandDef[] = [
     ],
     apply: ({ collected, ids, atomById }, h) => {
       const label = `x${collected.quantity}`;
-      // Müşteri = siparişi VEREN (teslim ok'u her zaman müşteriye gider).
-      // Kategori = teslim pill'inin görsel olarak konumlanacağı yer (alt).
+      // Müşteri = siparişi VEREN. Kural (G2/G3 pattern): müşteri kutusundan
+      // İKİ ok çıkar — (1) adet ok'u → kategori, (2) teslim ok'u → pill.
       const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
       const selectedCategoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
       let categoryId: string | null = selectedCategoryId;
@@ -2811,29 +2811,39 @@ const COMMAND_DEFS: CommandDef[] = [
         if (customerId.startsWith("c-E")) categoryId = "cat-elektrikli";
         else if (customerId.startsWith("c-G")) categoryId = "cat-gazli";
       }
-      // Adet edge'i: tek atom → kategori; 2+ atom → pairwise (mevcut davranış).
+      // Kategori-uyumlu renk: Gazlı=mavi, Elektrikli=yeşil (default seed
+      // edge'leri ile aynı görsel dil).
+      const orderColor = categoryId === "cat-elektrikli"
+        ? "rgba(16,185,129,0.85)"
+        : "rgba(56,189,248,0.85)";
       let edgesAdded = 0;
-      if (ids.length >= 2) {
+      // (1) ADET ok'u: müşteri → kategori (label = x{adet}). Kural: müşteri
+      // varsa daima müşteri kaynaklı, kategori hedefli ek edge çiz.
+      if (customerId && categoryId && customerId !== categoryId) {
+        h.addEdge(customerId, categoryId, label, orderColor);
+        edgesAdded++;
+      }
+      // Müşteri seçili değilse pairwise (mamul-mamul vs) eski davranış.
+      if (!customerId && ids.length >= 2) {
         for (let i = 0; i < ids.length; i++) {
           for (let j = i + 1; j < ids.length; j++) {
             h.addEdge(ids[i], ids[j], label);
             edgesAdded++;
           }
         }
-      } else if (ids.length === 1 && categoryId && ids[0] !== categoryId) {
-        h.addEdge(ids[0], categoryId, label);
+      } else if (!customerId && ids.length === 1 && categoryId && ids[0] !== categoryId) {
+        h.addEdge(ids[0], categoryId, label, orderColor);
         edgesAdded++;
       }
-      // Teslim pill: konum kategori altında, OK her zaman MÜŞTERİYE bağlı
-      // (müşteri yoksa kategoriye fallback).
+      // (2) TESLİM ok'u: pill kategori altında konumlanır, OK müşteriye bağlı.
       let deadlineNote = "hedef bulunamadı (müşteri veya kategori seç)";
       const positionParent = categoryId ?? customerId;
       const edgeTarget = customerId ?? categoryId;
       if (positionParent && edgeTarget) {
         h.ensureDeadlinePill(positionParent, collected.deadline, edgeTarget);
-        deadlineNote = `1 teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
+        deadlineNote = `teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
       }
-      return `Sipariş · ${collected.quantity} adet · ${edgesAdded} bağlantı · ${deadlineNote}`;
+      return `Sipariş · ${collected.quantity} adet · ${edgesAdded} ok · ${deadlineNote}`;
     },
   },
   {
@@ -2995,7 +3005,7 @@ function CommandBar({
   atomMeta: Record<string, AtomMeta>;
   onApplyMeta: (id: string, patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
-  onAddEdge: (fromId: string, toId: string, label?: string) => void;
+  onAddEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
   onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
   edgePalette: EdgePalette;
@@ -3931,7 +3941,8 @@ function CustomersSceneRenderer({
     const t = atomById[ce.toId];
     const hl = f?.highlight ?? t?.highlight ?? null;
     let color: string;
-    if (hl === "blue") color = edgePalette.colors.gas;
+    if (ce.color) color = ce.color;
+    else if (hl === "blue") color = edgePalette.colors.gas;
     else if (hl === "green") color = edgePalette.colors.electric;
     else color = asRgba(edgePalette.colors.neutral, 0.55);
     // Dinamik port — atom merkezleri arası baskın yöne göre kenar seçilir,
@@ -4387,7 +4398,7 @@ function CustomersSceneRenderer({
             clearAtomMeta(id);
           });
         }}
-        onAddEdge={(from, to, label) => addCustomEdge(from, to, label)}
+        onAddEdge={(from, to, label, color) => addCustomEdge(from, to, label, color)}
         onEnsureDeadlinePill={(positionParentId, deadline, edgeTargetId) => {
           const positionParent = atomById[positionParentId];
           if (!positionParent) return "";
