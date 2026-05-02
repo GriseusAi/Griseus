@@ -2868,16 +2868,25 @@ function CommandBar({
   const pendingDef = pending ? findCommandDef(pending.defName) : null;
   const currentStep = pendingDef && pending ? pendingDef.steps[pending.stepIdx] : null;
 
-  // İdle durumda autosuggest; pending'te dropdown kapalı
+  // Google-vari autosuggest: pending değilken, input'ta hala ilk komut adı
+  // yazılıyorsa (boşluk yoksa) dropdown açılır. / zorunlu değil — kullanıcı
+  // direkt "sip" yazsa da öneri görünür.
   const trimmed = input.trim();
-  const showSuggest = !pending && trimmed.startsWith("/") && trimmed.split(/\s+/)[0].length <= 12;
+  const firstToken = trimmed.split(/\s+/)[0] ?? "";
+  const showSuggest = !pending && !trimmed.includes(" ");
+  const queryRaw = firstToken.replace(/^\//, "").toLowerCase();
   const suggestions = useMemo(() => {
     if (!showSuggest) return [];
-    const q = trimmed.replace(/^\//, "").toLowerCase();
-    return COMMAND_DEFS.filter(d =>
-      d.name.startsWith(q) || (d.aliases ?? []).some(a => a.startsWith(q)),
+    if (queryRaw.length === 0) return COMMAND_DEFS;
+    // Prefix match önce; yoksa includes fallback
+    const prefix = COMMAND_DEFS.filter(d =>
+      d.name.startsWith(queryRaw) || (d.aliases ?? []).some(a => a.startsWith(queryRaw)),
     );
-  }, [trimmed, showSuggest]);
+    if (prefix.length > 0) return prefix;
+    return COMMAND_DEFS.filter(d =>
+      d.name.includes(queryRaw) || (d.aliases ?? []).some(a => a.includes(queryRaw)),
+    );
+  }, [showSuggest, queryRaw]);
 
   const cancelPending = useCallback(() => {
     setPending(null);
@@ -3136,30 +3145,76 @@ function CommandBar({
           <div style={{
             fontSize: 9, color: C.cardSub, letterSpacing: 1.4,
             padding: "2px 6px 4px", borderBottom: `1px solid ${C.panelEdge}`,
-            marginBottom: 4,
-          }}>KOMUTLAR · TAB ile tamamla</div>
-          {suggestions.map(s => (
-            <button
-              key={s.name}
-              onClick={() => { setInput(`/${s.name} `); inputRef.current?.focus(); }}
-              style={{
-                display: "block", width: "100%", textAlign: "left",
-                padding: "5px 6px", borderRadius: 4,
-                background: "transparent", border: "none", cursor: "pointer",
-                color: C.cardInk, fontFamily: mono, fontSize: 11,
-              }}
-              onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
-              onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
-            >
-              <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>/{s.name}</span>
-              {s.minSelected && (
-                <span style={{ color: C.cardSub, marginLeft: 6, fontSize: 9 }}>
-                  ≥{s.minSelected} atom
+            marginBottom: 4, display: "flex", justifyContent: "space-between",
+          }}>
+            <span>KOMUTLAR{queryRaw ? ` · "${queryRaw}"` : ""}</span>
+            <span>↵ veya TAB ile tamamla</span>
+          </div>
+          {suggestions.map((s, idx) => {
+            const isFirst = idx === 0;
+            const matchIdx = queryRaw ? s.name.toLowerCase().indexOf(queryRaw) : -1;
+            const renderName = () => {
+              if (matchIdx < 0 || !queryRaw) {
+                return <span>/{s.name}</span>;
+              }
+              const before = s.name.slice(0, matchIdx);
+              const match = s.name.slice(matchIdx, matchIdx + queryRaw.length);
+              const after = s.name.slice(matchIdx + queryRaw.length);
+              return (
+                <span>
+                  /<span style={{ opacity: 0.55 }}>{before}</span>
+                  <span style={{ fontWeight: 800, textDecoration: "underline", textUnderlineOffset: 3 }}>{match}</span>
+                  <span style={{ opacity: 0.55 }}>{after}</span>
                 </span>
-              )}
-              <span style={{ color: C.cardSub, marginLeft: 8 }}>— {s.description}</span>
-            </button>
-          ))}
+              );
+            };
+            const aliasMatch = queryRaw && (s.aliases ?? []).find(a => a.toLowerCase().startsWith(queryRaw));
+            return (
+              <button
+                key={s.name}
+                onClick={() => { setInput(`/${s.name} `); inputRef.current?.focus(); }}
+                style={{
+                  display: "flex", alignItems: "center", gap: 8,
+                  width: "100%", textAlign: "left",
+                  padding: "6px 8px", borderRadius: 4,
+                  background: isFirst ? "rgba(255,255,255,0.06)" : "transparent",
+                  border: "none", cursor: "pointer",
+                  color: C.cardInk, fontFamily: mono, fontSize: 11,
+                }}
+                onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.10)"; }}
+                onMouseLeave={(e) => { e.currentTarget.style.background = isFirst ? "rgba(255,255,255,0.06)" : "transparent"; }}
+              >
+                <span style={{ color: edgePalette.colors.select, fontWeight: 700, fontSize: 12 }}>
+                  {renderName()}
+                </span>
+                {aliasMatch && (
+                  <span style={{ color: C.cardSub, fontSize: 9, fontStyle: "italic" }}>
+                    /{aliasMatch}
+                  </span>
+                )}
+                {s.minSelected && (
+                  <span style={{
+                    color: C.cardSub, fontSize: 9,
+                    padding: "1px 5px", borderRadius: 3,
+                    background: "rgba(255,255,255,0.05)",
+                    border: `1px solid ${C.panelEdge}`,
+                  }}>
+                    ≥{s.minSelected} atom
+                  </span>
+                )}
+                <span style={{ color: C.cardSub, flex: 1 }}>{s.description}</span>
+                {isFirst && (
+                  <span style={{
+                    color: edgePalette.colors.select, fontSize: 9,
+                    padding: "1px 5px", borderRadius: 3,
+                    border: `1px solid ${edgePalette.colors.select}`,
+                  }}>
+                    ↵ TAB
+                  </span>
+                )}
+              </button>
+            );
+          })}
         </div>
       )}
 
