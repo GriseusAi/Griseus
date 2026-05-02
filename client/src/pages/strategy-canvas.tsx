@@ -2781,7 +2781,7 @@ interface CommandDef {
       applyMeta: (id: string, patch: AtomMeta) => void;
       clearMeta: (ids: string[]) => void;
       addEdge: (from: string, to: string, label?: string) => void;
-      ensureDeadlinePill: (parentId: string, deadline: string) => string;
+      ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
     },
   ) => string;
@@ -2802,16 +2802,14 @@ const COMMAND_DEFS: CommandDef[] = [
     ],
     apply: ({ collected, ids, atomById }, h) => {
       const label = `x${collected.quantity}`;
-      // Hedef kategori: seçili kategori atom; yoksa müşteri-chip'in bağlı olduğu
-      // kategori (prefix kuralı: c-E* → cat-elektrikli, c-G* → cat-gazli).
+      // Müşteri = siparişi VEREN (teslim ok'u her zaman müşteriye gider).
+      // Kategori = teslim pill'inin görsel olarak konumlanacağı yer (alt).
+      const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
       const selectedCategoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
       let categoryId: string | null = selectedCategoryId;
-      if (!categoryId) {
-        for (const id of ids) {
-          if (atomById[id]?.kind !== "customer-chip") continue;
-          if (id.startsWith("c-E")) { categoryId = "cat-elektrikli"; break; }
-          if (id.startsWith("c-G")) { categoryId = "cat-gazli"; break; }
-        }
+      if (!categoryId && customerId) {
+        if (customerId.startsWith("c-E")) categoryId = "cat-elektrikli";
+        else if (customerId.startsWith("c-G")) categoryId = "cat-gazli";
       }
       // Adet edge'i: tek atom → kategori; 2+ atom → pairwise (mevcut davranış).
       let edgesAdded = 0;
@@ -2826,11 +2824,14 @@ const COMMAND_DEFS: CommandDef[] = [
         h.addEdge(ids[0], categoryId, label);
         edgesAdded++;
       }
-      // Teslim pill kategorinin ALTINA, mavi ok ile bağlı.
-      let deadlineNote = "kategori bulunamadı (kategori daire seç veya müşteri seç)";
-      if (categoryId) {
-        h.ensureDeadlinePill(categoryId, collected.deadline);
-        deadlineNote = `1 teslim pill → ${atomById[categoryId]?.label ?? categoryId}`;
+      // Teslim pill: konum kategori altında, OK her zaman MÜŞTERİYE bağlı
+      // (müşteri yoksa kategoriye fallback).
+      let deadlineNote = "hedef bulunamadı (müşteri veya kategori seç)";
+      const positionParent = categoryId ?? customerId;
+      const edgeTarget = customerId ?? categoryId;
+      if (positionParent && edgeTarget) {
+        h.ensureDeadlinePill(positionParent, collected.deadline, edgeTarget);
+        deadlineNote = `1 teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
       }
       return `Sipariş · ${collected.quantity} adet · ${edgesAdded} bağlantı · ${deadlineNote}`;
     },
@@ -2995,7 +2996,7 @@ function CommandBar({
   onApplyMeta: (id: string, patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
   onAddEdge: (fromId: string, toId: string, label?: string) => void;
-  onEnsureDeadlinePill: (parentId: string, deadline: string) => string;
+  onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
   edgePalette: EdgePalette;
 }) {
@@ -4367,52 +4368,56 @@ function CustomersSceneRenderer({
           });
         }}
         onAddEdge={(from, to, label) => addCustomEdge(from, to, label)}
-        onEnsureDeadlinePill={(parentId, deadline) => {
-          const parent = atomById[parentId];
-          if (!parent) return "";
+        onEnsureDeadlinePill={(positionParentId, deadline, edgeTargetId) => {
+          const positionParent = atomById[positionParentId];
+          if (!positionParent) return "";
+          const edgeTarget = edgeTargetId ?? positionParentId;
           const pillLabel = `Teslim = ${deadline}`;
-          const isCategoryParent = parent.kind === "category";
-          // Kategori parent: birden fazla sipariş için ayrı pill'ler (overwrite YOK).
-          // Diğer parent: tek pill, label güncellenir (eski davranış).
-          const existing = isCategoryParent ? null : atomMeta[parentId]?.deadlinePillId;
+          const isCategoryAnchor = positionParent.kind === "category";
+          // Kategori altına konumlanan pill'ler multi-delivery destekler:
+          // her sipariş için yeni pill, atomMeta'ya yazma (overwrite olmasın).
+          // Diğer durum: tek pill (eski davranış), label güncellenir.
+          const existing = isCategoryAnchor ? null : atomMeta[edgeTarget]?.deadlinePillId;
           const existsInList = existing
             ? customAtoms.some(a => a.id === existing)
             : false;
           if (existing && existsInList) {
             updateCustomAtom(existing, { label: pillLabel });
-            setAtomMetaField(parentId, { deadline });
+            setAtomMetaField(edgeTarget, { deadline });
             return existing;
           }
           const pillW = 170;
           const pillH = 36;
           let px: number, py: number;
-          if (isCategoryParent) {
-            // Kategorinin ALTINA, merkezde. Stacking: o kategoriye bağlı mevcut
-            // deadline-pill custom atom'ların sayısı kadar dikey offset.
-            const stackCount = customEdges.reduce((acc, e) => {
-              if (e.fromId !== parentId && e.toId !== parentId) return acc;
-              const otherId = e.fromId === parentId ? e.toId : e.fromId;
-              const other = customAtoms.find(a => a.id === otherId);
-              return other?.kind === "deadline-pill" ? acc + 1 : acc;
-            }, 0);
-            px = parent.x + parent.w / 2 - pillW / 2;
-            py = parent.y + parent.h + 24 + stackCount * (pillH + 12);
+          if (isCategoryAnchor) {
+            // Kategori altında merkezde. Stacking: aynı kategori altındaki
+            // mevcut deadline-pill atomlarını konum-bazlı say.
+            const baseX = positionParent.x + positionParent.w / 2 - pillW / 2;
+            const stackCount = customAtoms.filter(a =>
+              a.kind === "deadline-pill"
+              && Math.abs((a.x + a.w / 2) - (positionParent.x + positionParent.w / 2)) < pillW
+              && a.y >= positionParent.y + positionParent.h
+              && a.y < positionParent.y + positionParent.h + 600,
+            ).length;
+            px = baseX;
+            py = positionParent.y + positionParent.h + 24 + stackCount * (pillH + 12);
           } else {
-            // Eski davranış (uretim/teslim komutuyla mamul/müşteriye bağlanan pill):
-            // parent'ın SOLUNA, Y merkezde.
-            px = parent.x - pillW - 60;
-            py = parent.y + parent.h / 2 - pillH / 2;
+            // Mamul/müşteri parent için pill solunda (uretim/teslim komutu pattern'i).
+            px = positionParent.x - pillW - 60;
+            py = positionParent.y + positionParent.h / 2 - pillH / 2;
           }
-          const pillId = `pill-d-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+          const pillId = `pill-d-${edgeTarget}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
           addCustomAtom({
             id: pillId,
             kind: "deadline-pill",
             label: pillLabel,
             x: px, y: py, w: pillW, h: pillH,
-            highlight: isCategoryParent ? "blue" : (parent.highlight ?? null),
+            highlight: isCategoryAnchor ? "blue" : (positionParent.highlight ?? null),
           });
-          addCustomEdge(parentId, pillId, undefined, isCategoryParent ? "rgba(56,189,248,0.5)" : undefined);
-          setAtomMetaField(parentId, { deadline, deadlinePillId: pillId });
+          addCustomEdge(edgeTarget, pillId, undefined, isCategoryAnchor ? "rgba(56,189,248,0.5)" : undefined);
+          if (!isCategoryAnchor) {
+            setAtomMetaField(edgeTarget, { deadline, deadlinePillId: pillId });
+          }
           return pillId;
         }}
         onEnsureProductionPill={(parentId, days) => {
