@@ -3484,10 +3484,12 @@ function CustomersSceneRenderer({
     const GAP = 8;                             // dikey kart arası
     const T2_W = 200, T2_H = 32, T2_GAP = 4;
     const T2_COL_GAP = 24;                     // T1 sağ kolonu sonrası T2 boşluğu
-    // Cihaz block'u toplam genişlik = 2 T1 kolonu + T1_COL_GAP + T2_COL_GAP + T2 kolonu
-    const DEVICE_BLOCK_W = CARD_W + T1_COL_GAP + CARD_W + T2_COL_GAP + T2_W; // 200+16+200+24+200 = 640
+    const T2_INNER_GAP = 12;                   // 2 T2 kolonu arası
+    const T2_COL_THRESHOLD = 6;                // bu sayıdan az T2 ise tek kolon
+    // Cihaz block'u toplam genişlik = 2 T1 kolonu + T1_COL_GAP + T2_COL_GAP + 2 T2 kolonu
+    const DEVICE_BLOCK_W = CARD_W + T1_COL_GAP + CARD_W + T2_COL_GAP + (T2_W * 2 + T2_INNER_GAP); // 200+16+200+24+412 = 852
     const COL_BASE_X = 1540;
-    const COL_WIDTH = DEVICE_BLOCK_W + 40;     // cihaz başına ayrılan toplam X (~680)
+    const COL_WIDTH = DEVICE_BLOCK_W + 40;     // cihaz başına ayrılan toplam X (~892)
 
     const ordered = Array.from(expandedDeviceIds);
 
@@ -3536,19 +3538,26 @@ function CustomersSceneRenderer({
 
           if (isSub && expandedSubassemblies.has(t1Id)) {
             const t2Count = t1.children.length;
-            const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
+            const t2UseTwoCols = t2Count >= T2_COL_THRESHOLD;
+            const t2HalfCount = t2UseTwoCols ? Math.ceil(t2Count / 2) : t2Count;
+            const t2RowsPerCol = t2HalfCount;
+            const t2TotalH = t2RowsPerCol * T2_H + Math.max(0, t2RowsPerCol - 1) * T2_GAP;
             const subCenterY = cursorY + h / 2;
             const t2StartY = subCenterY - t2TotalH / 2;
             t1.children.forEach((c, j) => {
+              const t2Col = t2UseTwoCols && j >= t2HalfCount ? 1 : 0;
+              const t2Row = t2UseTwoCols && j >= t2HalfCount ? j - t2HalfCount : j;
               const t2Id = `bom-${deviceId}-${t1.code}-${c.code}`;
               const persistedT2 = positions[t2Id];
+              const defaultX2 = T2_X + t2Col * (T2_W + T2_INNER_GAP);
+              const defaultY2 = t2StartY + t2Row * (T2_H + T2_GAP);
               out.push({
                 id: t2Id,
                 kind: "bom-item",
                 label: c.code,
                 sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
-                x: persistedT2 ? persistedT2.x : T2_X,
-                y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
+                x: persistedT2 ? persistedT2.x : defaultX2,
+                y: persistedT2 ? persistedT2.y : defaultY2,
                 w: T2_W, h: T2_H,
                 highlight: isCriticalBom(c.name) ? "red" : null,
               });
