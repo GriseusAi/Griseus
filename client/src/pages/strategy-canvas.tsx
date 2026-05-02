@@ -3470,20 +3470,23 @@ function CustomersSceneRenderer({
     return n;
   });
 
-  // Dinamik BOM atomları — açık cihazların her biri için ayrı X kolonu.
-  // Çoklu cihaz açıkken kolonlar yan yana sıralanır (sahne otomatik fit'lenir).
+  // Dinamik BOM atomları — açık cihazların her biri için ayrı 2-kolon ızgara.
+  // Tier 1 parçaları sol/sağ T1 kolonlarına bölünür (uzun listeleri sığdırır);
+  // tier 2 (yarı-mamül children) cihaz block'unun sağında ayrı T2 kolonu.
   const bomAtoms = useMemo<SceneAtom[]>(() => {
     if (expandedDeviceIds.size === 0) return [];
     const out: SceneAtom[] = [];
-    const COL_BASE_X = 1540;
-    const COL_WIDTH = 600;       // her cihazın BOM kolonu (T1 + T2 + margin)
-    const CARD_W = 220, CARD_H = 38;
-    const SUB_W = 80, SUB_H = 80;
-    const GAP = 8;
+    const CARD_W = 200, CARD_H = 38;          // T1 kart
+    const T1_COL_GAP = 16;                     // 2 T1 kolonu arası
+    const SUB_W = 80, SUB_H = 80;              // yarı-mamül daire
+    const GAP = 8;                             // dikey kart arası
     const T2_W = 200, T2_H = 32, T2_GAP = 4;
-    const T2_OFFSET = 280;       // T1 sol kenarından T2 sol kenarına
+    const T2_COL_GAP = 24;                     // T1 sağ kolonu sonrası T2 boşluğu
+    // Cihaz block'u toplam genişlik = 2 T1 kolonu + T1_COL_GAP + T2_COL_GAP + T2 kolonu
+    const DEVICE_BLOCK_W = CARD_W + T1_COL_GAP + CARD_W + T2_COL_GAP + T2_W; // 200+16+200+24+200 = 640
+    const COL_BASE_X = 1540;
+    const COL_WIDTH = DEVICE_BLOCK_W + 40;     // cihaz başına ayrılan toplam X (~680)
 
-    // Açılma sırası → kolon idx (sıralı diziye çevir, deterministik olsun)
     const ordered = Array.from(expandedDeviceIds);
 
     ordered.forEach((deviceId, deviceIdx) => {
@@ -3493,58 +3496,65 @@ function CustomersSceneRenderer({
       const tree = DEVICE_BOM_TREE[sku];
       if (!tree || tree.length === 0) return;
 
-      const CARD_X = COL_BASE_X + deviceIdx * COL_WIDTH;
-      const SUB_X = CARD_X + (CARD_W - SUB_W) / 2;
-      const T2_X = CARD_X + T2_OFFSET;
+      const blockX = COL_BASE_X + deviceIdx * COL_WIDTH;
+      const colXs = [blockX, blockX + CARD_W + T1_COL_GAP];   // T1 sol/sağ kolon X'leri
+      const subXs = colXs.map(x => x + (CARD_W - SUB_W) / 2);  // daire merkezi kolon merkezinde
+      const T2_X = blockX + CARD_W + T1_COL_GAP + CARD_W + T2_COL_GAP;
 
-      // Cumulative Y — kart ve daire farklı yükseklikte
-      const totalH = tree.reduce((acc, t1) => {
+      // T1'leri 2 kolona böl: sıralı, ilk yarı sol, ikinci yarı sağ
+      const half = Math.ceil(tree.length / 2);
+      const cols = [tree.slice(0, half), tree.slice(half)];
+      const colHeights = cols.map(items => items.reduce((acc, t1) => {
         const isSub = t1.children.length > 0;
         return acc + (isSub ? SUB_H : CARD_H) + GAP;
-      }, -GAP);
+      }, -GAP));
+      const totalH = Math.max(0, ...colHeights);
       const devCenterY = dev.y + dev.h / 2;
-      let cursorY = Math.max(30, devCenterY - totalH / 2);
+      const startY = Math.max(30, devCenterY - totalH / 2);
 
-      tree.forEach((t1) => {
-        const t1Id = `bom-${deviceId}-${t1.code}`;
-        const isSub = t1.children.length > 0;
-        const w = isSub ? SUB_W : CARD_W;
-        const h = isSub ? SUB_H : CARD_H;
-        const defaultX = isSub ? SUB_X : CARD_X;
-        const persistedT1 = positions[t1Id];
-        out.push({
-          id: t1Id,
-          kind: isSub ? "subassembly" : "bom-item",
-          label: t1.code,
-          sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
-          x: persistedT1 ? persistedT1.x : defaultX,
-          y: persistedT1 ? persistedT1.y : cursorY,
-          w, h,
-          highlight: isCriticalBom(t1.name) ? "red" : null,
-        });
-
-        if (isSub && expandedSubassemblies.has(t1Id)) {
-          const t2Count = t1.children.length;
-          const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
-          const subCenterY = cursorY + h / 2;
-          const t2StartY = subCenterY - t2TotalH / 2;
-          t1.children.forEach((c, j) => {
-            const t2Id = `bom-${deviceId}-${t1.code}-${c.code}`;
-            const persistedT2 = positions[t2Id];
-            out.push({
-              id: t2Id,
-              kind: "bom-item",
-              label: c.code,
-              sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
-              x: persistedT2 ? persistedT2.x : T2_X,
-              y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
-              w: T2_W, h: T2_H,
-              highlight: isCriticalBom(c.name) ? "red" : null,
-            });
+      cols.forEach((items, ci) => {
+        let cursorY = startY;
+        items.forEach((t1) => {
+          const t1Id = `bom-${deviceId}-${t1.code}`;
+          const isSub = t1.children.length > 0;
+          const w = isSub ? SUB_W : CARD_W;
+          const h = isSub ? SUB_H : CARD_H;
+          const defaultX = isSub ? subXs[ci] : colXs[ci];
+          const persistedT1 = positions[t1Id];
+          out.push({
+            id: t1Id,
+            kind: isSub ? "subassembly" : "bom-item",
+            label: t1.code,
+            sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
+            x: persistedT1 ? persistedT1.x : defaultX,
+            y: persistedT1 ? persistedT1.y : cursorY,
+            w, h,
+            highlight: isCriticalBom(t1.name) ? "red" : null,
           });
-        }
 
-        cursorY += h + GAP;
+          if (isSub && expandedSubassemblies.has(t1Id)) {
+            const t2Count = t1.children.length;
+            const t2TotalH = t2Count * T2_H + (t2Count - 1) * T2_GAP;
+            const subCenterY = cursorY + h / 2;
+            const t2StartY = subCenterY - t2TotalH / 2;
+            t1.children.forEach((c, j) => {
+              const t2Id = `bom-${deviceId}-${t1.code}-${c.code}`;
+              const persistedT2 = positions[t2Id];
+              out.push({
+                id: t2Id,
+                kind: "bom-item",
+                label: c.code,
+                sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
+                x: persistedT2 ? persistedT2.x : T2_X,
+                y: persistedT2 ? persistedT2.y : t2StartY + j * (T2_H + T2_GAP),
+                w: T2_W, h: T2_H,
+                highlight: isCriticalBom(c.name) ? "red" : null,
+              });
+            });
+          }
+
+          cursorY += h + GAP;
+        });
       });
     });
     return out;
