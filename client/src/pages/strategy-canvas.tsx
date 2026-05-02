@@ -3733,9 +3733,27 @@ function CustomersSceneRenderer({
     if (hl === "blue") color = edgePalette.colors.gas;
     else if (hl === "green") color = edgePalette.colors.electric;
     else color = asRgba(edgePalette.colors.neutral, 0.55);
+    // Dinamik port — atom merkezleri arası baskın yöne göre kenar seçilir,
+    // edge başka atomların (kategori daireleri vb) içinden geçmek yerine
+    // kenarlardan dolaşır.
+    let fromPort: SceneEdge["fromPort"];
+    let toPort: SceneEdge["toPort"];
+    if (f && t) {
+      const fcx = f.x + f.w / 2, fcy = f.y + f.h / 2;
+      const tcx = t.x + t.w / 2, tcy = t.y + t.h / 2;
+      const dx = tcx - fcx, dy = tcy - fcy;
+      if (Math.abs(dx) >= Math.abs(dy)) {
+        fromPort = dx >= 0 ? "e" : "w";
+        toPort = dx >= 0 ? "w" : "e";
+      } else {
+        fromPort = dy >= 0 ? "s" : "n";
+        toPort = dy >= 0 ? "n" : "s";
+      }
+    }
     return {
       fromId: ce.fromId,
       toId: ce.toId,
+      fromPort, toPort,
       color,
       dashed: true,
       curveK: 0.4,
@@ -4104,11 +4122,13 @@ function CustomersSceneRenderer({
             setAtomMetaField(parentId, { deadline });
             return existing;
           }
-          // Yeni pill atom yarat — parent'ın sağına, dikey ortalı
+          // Yeni pill atom yarat — parent'ın HEMEN ALTINDA, X merkezde hizalı.
+          // (Yan yerleşimde edge kategori daireleri arkasında kalıyordu;
+          //  alt yerleşim hem dikey kısa edge hem de görsel netlik sağlar.)
           const pillW = 170;
           const pillH = 36;
-          const px = parent.x + parent.w + 60;
-          const py = parent.y + parent.h / 2 - pillH / 2;
+          const px = parent.x + parent.w / 2 - pillW / 2;
+          const py = parent.y + parent.h + 12;
           const pillId = `pill-d-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
           addCustomAtom({
             id: pillId,
