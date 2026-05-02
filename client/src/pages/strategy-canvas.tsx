@@ -165,6 +165,7 @@ interface CustomEdge {
   fromId: string;
   toId: string;
   label?: string;
+  color?: string;
 }
 
 interface AtomMeta {
@@ -2790,54 +2791,48 @@ const COMMAND_DEFS: CommandDef[] = [
   {
     name: "siparis",
     aliases: ["sipariş", "order"],
-    description: "Seçili 2+ atomu birbirine bağlar — sipariş no, adet ve teslim tarihi sorulur",
-    minSelected: 2,
+    description: "Seçili kategori veya müşteri için sipariş — adet ve teslim tarihi sorulur",
+    minSelected: 1,
     steps: [
-      { field: "orderNumber", prompt: "Sipariş numarası?", hint: "Örn: 12345" },
       {
-        field: "quantity", prompt: "Adet?", hint: "Sayı (örn: 500)",
+        field: "quantity", prompt: "Kaç adet?", hint: "Sayı (örn: 500)",
         validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 500)",
       },
       { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
     ],
     apply: ({ collected, ids, atomById }, h) => {
-      // Sahne ok'larıyla aynı görsel: label sadece "x{qty}"
       const label = `x${collected.quantity}`;
-      // Sipariş veren MÜŞTERİ kutusunu bul:
-      //   1) Seçili atomlar arasında customer-chip varsa onu kullan
-      //   2) Yoksa orderNumber'dan tahmin et (örn "g3" → c-G3 / "G3" → c-G3)
-      const selectedCustomers = ids.filter(id => atomById[id]?.kind === "customer-chip");
-      let customerIds: string[];
-      if (selectedCustomers.length > 0) {
-        customerIds = selectedCustomers;
-      } else {
-        const guess = `c-${collected.orderNumber.toUpperCase()}`;
-        customerIds = atomById[guess] ? [guess] : [];
-      }
-      // Tüm seçili atomlara meta yaz (sipariş no + adet badge'i için)
-      ids.forEach(id => {
-        h.applyMeta(id, {
-          orderNumber: collected.orderNumber,
-          quantity: collected.quantity,
-        });
-      });
-      // Pill SADECE müşteri kutusu altına — her sipariş açıldığında teslim
-      // tarihi pill'i o siparişi veren MÜŞTERİ atom'una bağlanır (zorunlu).
-      customerIds.forEach(cid => {
-        h.ensureDeadlinePill(cid, collected.deadline);
-      });
-      // Pairwise edge'ler — seçili atomlar (müşteri + mamul) arası ilişki
-      let edgesAdded = 0;
-      for (let i = 0; i < ids.length; i++) {
-        for (let j = i + 1; j < ids.length; j++) {
-          h.addEdge(ids[i], ids[j], label);
-          edgesAdded++;
+      // Hedef kategori: seçili kategori atom; yoksa müşteri-chip'in bağlı olduğu
+      // kategori (prefix kuralı: c-E* → cat-elektrikli, c-G* → cat-gazli).
+      const selectedCategoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
+      let categoryId: string | null = selectedCategoryId;
+      if (!categoryId) {
+        for (const id of ids) {
+          if (atomById[id]?.kind !== "customer-chip") continue;
+          if (id.startsWith("c-E")) { categoryId = "cat-elektrikli"; break; }
+          if (id.startsWith("c-G")) { categoryId = "cat-gazli"; break; }
         }
       }
-      const cust = customerIds.length > 0
-        ? `1 teslim pill → ${customerIds.map(c => c.replace(/^c-/, "")).join(", ")}`
-        : "müşteri kutusu bulunamadı (orderNumber'ı 'g3', 'e2' vb. yaz veya seçime ekle)";
-      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı · ${cust}`;
+      // Adet edge'i: tek atom → kategori; 2+ atom → pairwise (mevcut davranış).
+      let edgesAdded = 0;
+      if (ids.length >= 2) {
+        for (let i = 0; i < ids.length; i++) {
+          for (let j = i + 1; j < ids.length; j++) {
+            h.addEdge(ids[i], ids[j], label);
+            edgesAdded++;
+          }
+        }
+      } else if (ids.length === 1 && categoryId && ids[0] !== categoryId) {
+        h.addEdge(ids[0], categoryId, label);
+        edgesAdded++;
+      }
+      // Teslim pill kategorinin ALTINA, mavi ok ile bağlı.
+      let deadlineNote = "kategori bulunamadı (kategori daire seç veya müşteri seç)";
+      if (categoryId) {
+        h.ensureDeadlinePill(categoryId, collected.deadline);
+        deadlineNote = `1 teslim pill → ${atomById[categoryId]?.label ?? categoryId}`;
+      }
+      return `Sipariş · ${collected.quantity} adet · ${edgesAdded} bağlantı · ${deadlineNote}`;
     },
   },
   {
@@ -3530,7 +3525,7 @@ function CustomersSceneRenderer({
   setShape: (id: string, kind: ShapeKind) => void;
   clearShape: (id: string) => void;
   customEdges: CustomEdge[];
-  addCustomEdge: (fromId: string, toId: string, label?: string) => void;
+  addCustomEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
   removeCustomEdge: (id: string) => void;
   clearAllCustomEdges: () => void;
   atomMeta: Record<string, AtomMeta>;
@@ -3573,10 +3568,12 @@ function CustomersSceneRenderer({
   // Global selection context — sağ alttaki SelectionPanel buradan beslenir
   const globalSel = useSelection();
 
-  // Sahne atomunu SelectedItem'a map et — sadece anlamlı kind'lar (cihaz, bileşen,
-  // yarı-mamül, müşteri) global selection'a geçer. Müşteri chip'leri için
-  // kind="component" map'liyoruz çünkü context tipi sadece 5 değer kabul ediyor;
-  // ama kullanıcı maksat itibarıyla cihaz seçince diyagram butonu aktif olsun.
+  // Sahne atomunu SelectedItem'a map et — Customers Senaryosundaki tüm anlamlı
+  // atom kind'ları (cihaz, bileşen, yarı-mamül, müşteri, kategori, akış, fabrika,
+  // pill) global SelectionPanel'e geçer ki kullanıcı 2+ seçince sağ-altta AI'ya
+  // Sor + Diyagram paneli çıksın. SelectedItem.kind sınırlı — kategori/müşteri
+  // gibi kind'lar "device" olarak map'liyoruz ki diyagram butonu aktif olsun;
+  // agent context buildAgentContext içinde label/code ile çalışır.
   const atomToSelectedItem = useCallback((a: SceneAtom): SelectedItem | null => {
     if (a.kind === "product") {
       const code = a.id.replace(/^p-/, "");
@@ -3587,6 +3584,21 @@ function CustomersSceneRenderer({
     }
     if (a.kind === "bom-item" || a.kind === "component") {
       return { code: a.label, label: a.sub ?? a.label, kind: "component", usedBy: [] };
+    }
+    if (a.kind === "customer-chip") {
+      return { code: `Müşteri ${a.label}`, label: a.label, kind: "device", usedBy: [] };
+    }
+    if (a.kind === "category") {
+      return { code: `Kategori ${a.label}`, label: a.label, kind: "device", usedBy: [] };
+    }
+    if (a.kind === "stage") {
+      return { code: `Akış ${a.label}`, label: a.label, kind: "device", usedBy: [] };
+    }
+    if (a.kind === "factory") {
+      return { code: `Fabrika ${a.label}`, label: a.label, kind: "device", usedBy: [] };
+    }
+    if (a.kind === "deadline-pill" || a.kind === "lead-pill") {
+      return { code: a.label, label: a.label, kind: "component", usedBy: [] };
     }
     return null;
   }, []);
@@ -4246,61 +4258,6 @@ function CustomersSceneRenderer({
         {liveEdges.map((e, i) => renderEdge(e, i, true))}
       </svg>
 
-      {/* Atom altı metadata badge overlay — sipariş no + adet (teslim ayrı pill atom) */}
-      {visibleAtoms.map(a => {
-        const meta = atomMeta[a.id];
-        if (!meta || (!meta.orderNumber && !meta.quantity)) return null;
-        const sx = a.x * viewport.scale + viewport.vx;
-        const sy = (a.y + a.h + 4) * viewport.scale + viewport.vy;
-        const sw = a.w * viewport.scale;
-        return (
-          <div
-            key={`meta-${a.id}`}
-            style={{
-              position: "absolute", left: sx, top: sy, width: sw,
-              display: "flex", flexWrap: "wrap", gap: 4,
-              pointerEvents: "auto",
-              zIndex: 5,
-            }}
-          >
-            {meta.orderNumber && (
-              <span
-                title={`Sipariş #${meta.orderNumber} — sağ tık ile sil`}
-                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { orderNumber: undefined }); }}
-                style={{
-                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
-                  background: asRgba(edgePalette.colors.select, 0.18),
-                  border: `1px solid ${asRgba(edgePalette.colors.select, 0.55)}`,
-                  borderRadius: 4 * viewport.scale,
-                  color: edgePalette.colors.select,
-                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
-                  whiteSpace: "nowrap", cursor: "context-menu",
-                }}
-              >
-                #{meta.orderNumber}
-              </span>
-            )}
-            {meta.quantity && (
-              <span
-                title={`Adet ${meta.quantity} — sağ tık ile sil`}
-                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { quantity: undefined }); }}
-                style={{
-                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
-                  background: asRgba(edgePalette.colors.electric, 0.18),
-                  border: `1px solid ${asRgba(edgePalette.colors.electric, 0.55)}`,
-                  borderRadius: 4 * viewport.scale,
-                  color: edgePalette.colors.electric,
-                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
-                  whiteSpace: "nowrap", cursor: "context-menu",
-                }}
-              >
-                ×{meta.quantity}
-              </span>
-            )}
-          </div>
-        );
-      })}
-
       {/* Atom layer — DragNode'lar */}
       {visibleAtoms.map(a => {
         // 1) Customers KÖK + kategori daireler → grup toggle
@@ -4413,34 +4370,47 @@ function CustomersSceneRenderer({
           const parent = atomById[parentId];
           if (!parent) return "";
           const pillLabel = `Teslim = ${deadline}`;
-          const existing = atomMeta[parentId]?.deadlinePillId;
-          // Orphan-safe: existing ID set ama customAtoms'ta gerçekten var mı?
+          const isCategoryParent = parent.kind === "category";
+          // Kategori parent: birden fazla sipariş için ayrı pill'ler (overwrite YOK).
+          // Diğer parent: tek pill, label güncellenir (eski davranış).
+          const existing = isCategoryParent ? null : atomMeta[parentId]?.deadlinePillId;
           const existsInList = existing
             ? customAtoms.some(a => a.id === existing)
             : false;
           if (existing && existsInList) {
-            // Var olan pill'in label'ını güncelle
             updateCustomAtom(existing, { label: pillLabel });
             setAtomMetaField(parentId, { deadline });
             return existing;
           }
-          // Yeni pill atom yarat — parent'ın SOLUNA, Y merkezde hizalı, belirgin
-          // mesafede. Default seed'deki TESLİM 15 Mayıs / 30 Haziran pattern'i ile
-          // uyumlu: pill bağımsız bir kutu olarak ok ile bağlanır, parent'ın
-          // dibine yapışmaz. Sol port → parent sol port edge ile temiz bağ.
           const pillW = 170;
           const pillH = 36;
-          const px = parent.x - pillW - 60;
-          const py = parent.y + parent.h / 2 - pillH / 2;
+          let px: number, py: number;
+          if (isCategoryParent) {
+            // Kategorinin ALTINA, merkezde. Stacking: o kategoriye bağlı mevcut
+            // deadline-pill custom atom'ların sayısı kadar dikey offset.
+            const stackCount = customEdges.reduce((acc, e) => {
+              if (e.fromId !== parentId && e.toId !== parentId) return acc;
+              const otherId = e.fromId === parentId ? e.toId : e.fromId;
+              const other = customAtoms.find(a => a.id === otherId);
+              return other?.kind === "deadline-pill" ? acc + 1 : acc;
+            }, 0);
+            px = parent.x + parent.w / 2 - pillW / 2;
+            py = parent.y + parent.h + 24 + stackCount * (pillH + 12);
+          } else {
+            // Eski davranış (uretim/teslim komutuyla mamul/müşteriye bağlanan pill):
+            // parent'ın SOLUNA, Y merkezde.
+            px = parent.x - pillW - 60;
+            py = parent.y + parent.h / 2 - pillH / 2;
+          }
           const pillId = `pill-d-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
           addCustomAtom({
             id: pillId,
             kind: "deadline-pill",
             label: pillLabel,
             x: px, y: py, w: pillW, h: pillH,
-            highlight: parent.highlight ?? null,
+            highlight: isCategoryParent ? "blue" : (parent.highlight ?? null),
           });
-          addCustomEdge(parentId, pillId);
+          addCustomEdge(parentId, pillId, undefined, isCategoryParent ? "rgba(56,189,248,0.5)" : undefined);
           setAtomMetaField(parentId, { deadline, deadlinePillId: pillId });
           return pillId;
         }}
@@ -5653,21 +5623,25 @@ export default function StrategyCanvasPage() {
     () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), []),
   );
   useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
-  const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string) => {
+  const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string, color?: string) => {
     setSceneCustomEdges(prev => {
       const idx = prev.findIndex(e =>
         (e.fromId === fromId && e.toId === toId) ||
         (e.fromId === toId && e.toId === fromId),
       );
       if (idx >= 0) {
-        // Var olan edge'in label'ını güncelle (yeni label geldiyse)
-        if (label === undefined) return prev;
+        // Var olan edge'in label/color'ını güncelle (yeni değer geldiyse)
+        if (label === undefined && color === undefined) return prev;
         const next = [...prev];
-        next[idx] = { ...next[idx], label };
+        next[idx] = {
+          ...next[idx],
+          ...(label !== undefined ? { label } : {}),
+          ...(color !== undefined ? { color } : {}),
+        };
         return next;
       }
       const id = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      return [...prev, { id, fromId, toId, label }];
+      return [...prev, { id, fromId, toId, label, color }];
     });
   }, []);
   const removeSceneCustomEdge = useCallback((id: string) => {
