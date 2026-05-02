@@ -3692,50 +3692,9 @@ function CustomersSceneRenderer({
   // Otomatik ekrana sığdırma — BOM drill-down açılırken/kapanırken sahne
   // tüm görünür atomları (cihaz BOM kolonları dahil) ekrana ortalı ve sığacak
   // şekilde zoom'lar. Kullanıcı BOM kapalıyken kendi zoom'unu kullanır.
-  const visibleAtomsRef = useRef(visibleAtoms);
-  visibleAtomsRef.current = visibleAtoms;
-  const lastFitKeyRef = useRef<string>("");
-  useEffect(() => {
-    // Sadece BOM açıkken/kapanırken fit'le. Kapalıdan kapalıya geçişlerde no-op.
-    const fitKey = `${Array.from(expandedDeviceIds).sort().join(",")}|${Array.from(expandedSubassemblies).sort().join(",")}`;
-    if (fitKey === lastFitKeyRef.current) return;
-    lastFitKeyRef.current = fitKey;
-    if (expandedDeviceIds.size === 0) return; // BOM kapanırken viewport'u zorla değiştirme
-
-    const t = setTimeout(() => {
-      try {
-        const rect = wrapperRef.current?.getBoundingClientRect();
-        if (!rect || rect.width < 50 || rect.height < 50) return; // wrapper henüz mount edilmedi/gizli
-        const atomsNow = visibleAtomsRef.current;
-        if (atomsNow.length === 0) return;
-        let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-        for (const a of atomsNow) {
-          if (!isFinite(a.x) || !isFinite(a.y) || !isFinite(a.w) || !isFinite(a.h)) continue;
-          if (a.x < minX) minX = a.x;
-          if (a.y < minY) minY = a.y;
-          if (a.x + a.w > maxX) maxX = a.x + a.w;
-          if (a.y + a.h > maxY) maxY = a.y + a.h;
-        }
-        if (!isFinite(minX) || !isFinite(maxX)) return; // hiç geçerli atom yok
-        const padding = 60;
-        const W = maxX - minX + padding * 2;
-        const H = maxY - minY + padding * 2;
-        if (W <= 0 || H <= 0) return;
-        const scaleX = rect.width / Math.max(1, W);
-        const scaleY = rect.height / Math.max(1, H);
-        let scale = Math.min(scaleX, scaleY);
-        if (!isFinite(scale) || scale <= 0) return;
-        scale = Math.max(0.18, Math.min(1.0, scale));
-        const vx = -(minX - padding) * scale;
-        const vy = -(minY - padding) * scale;
-        if (!isFinite(vx) || !isFinite(vy)) return;
-        setViewport({ vx, vy, scale });
-      } catch (err) {
-        console.error("[strategy-canvas] auto-fit hatası:", err);
-      }
-    }, 60);
-    return () => clearTimeout(t);
-  }, [expandedDeviceIds, expandedSubassemblies, setViewport, wrapperRef]);
+  // Auto-fit kaldırıldı (kullanıcı talebi 2026-05-02): cihaz BOM ya da
+  // yarı-mamül drill-down açılırken viewport zorla değiştirilmiyor.
+  // Manuel fit için header'daki "⊡ Sığdır" butonu var.
 
   // Seçili atomlar arasında pairwise canlı edge — palet'in select rengi, kalın
   const liveEdges: SceneEdge[] = useMemo(() => {
