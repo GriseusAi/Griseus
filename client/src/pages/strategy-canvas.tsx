@@ -157,11 +157,13 @@ interface CustomEdge {
   id: string;
   fromId: string;
   toId: string;
+  label?: string;
 }
 
 interface AtomMeta {
   orderNumber?: string;
   deadline?: string;
+  quantity?: string;
 }
 
 function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
@@ -2743,122 +2745,302 @@ function ShapesToolbar({
    Komutlar: /siparis <no>, /teslim <tarih>
    Seçili atomlara meta uygular; sonuç + hata pill'i input üstünde.
    ──────────────────────────────────────────────────────────────────── */
-interface CommandSpec {
-  name: string;
-  syntax: string;
-  hint: string;
+interface CommandStep {
+  field: string;
+  prompt: string;
+  hint?: string;
+  validator?: (v: string) => string | null; // null=ok, string=error
 }
 
-const COMMAND_SPECS: CommandSpec[] = [
-  { name: "siparis", syntax: "/siparis <no>", hint: "Seçili atom(lar)a sipariş numarası ata" },
-  { name: "teslim",  syntax: "/teslim <tarih>", hint: "Seçili atom(lar)a teslim tarihi ata (örn: 15 Mayıs, 2026-05-15)" },
+interface CommandDef {
+  name: string;
+  aliases?: string[];
+  description: string;
+  minSelected?: number;
+  maxSelected?: number;
+  steps: CommandStep[];
+  apply: (
+    args: { collected: Record<string, string>; ids: string[] },
+    helpers: {
+      applyMeta: (ids: string[], patch: AtomMeta) => void;
+      clearMeta: (ids: string[]) => void;
+      addEdge: (from: string, to: string, label?: string) => void;
+    },
+  ) => string;
+}
+
+const COMMAND_DEFS: CommandDef[] = [
+  {
+    name: "siparis",
+    aliases: ["sipariş", "order"],
+    description: "Seçili 2+ atomu birbirine bağlar — sipariş no, adet ve teslim tarihi sorulur",
+    minSelected: 2,
+    steps: [
+      { field: "orderNumber", prompt: "Sipariş numarası?", hint: "Örn: 12345" },
+      {
+        field: "quantity", prompt: "Adet?", hint: "Sayı (örn: 500)",
+        validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 500)",
+      },
+      { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
+    ],
+    apply: ({ collected, ids }, h) => {
+      const meta: AtomMeta = {
+        orderNumber: collected.orderNumber,
+        quantity: collected.quantity,
+        deadline: collected.deadline,
+      };
+      h.applyMeta(ids, meta);
+      const label = `#${collected.orderNumber} · ${collected.quantity} adet`;
+      let edgesAdded = 0;
+      for (let i = 0; i < ids.length; i++) {
+        for (let j = i + 1; j < ids.length; j++) {
+          h.addEdge(ids[i], ids[j], label);
+          edgesAdded++;
+        }
+      }
+      return `Sipariş #${collected.orderNumber} · ${ids.length} atom · ${edgesAdded} bağlantı`;
+    },
+  },
+  {
+    name: "teslim",
+    aliases: ["deadline", "tarih"],
+    description: "Seçili atom(lar)a teslim tarihi yazar",
+    minSelected: 1,
+    steps: [
+      { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
+    ],
+    apply: ({ collected, ids }, h) => {
+      h.applyMeta(ids, { deadline: collected.deadline });
+      return `${ids.length} atom · teslim = ${collected.deadline}`;
+    },
+  },
+  {
+    name: "sil",
+    aliases: ["clear", "temizle"],
+    description: "Seçili atom(lar)ın meta verisini temizler",
+    minSelected: 1,
+    steps: [],
+    apply: ({ ids }, h) => {
+      h.clearMeta(ids);
+      return `${ids.length} atom · meta silindi`;
+    },
+  },
 ];
 
 type CommandResult =
   | { ok: true; message: string }
   | { ok: false; message: string };
 
+interface PendingCommand {
+  defName: string;
+  collected: Record<string, string>;
+  stepIdx: number;
+}
+
+function findCommandDef(token: string): CommandDef | null {
+  const t = token.toLowerCase().replace(/^\//, "");
+  return COMMAND_DEFS.find(d => d.name === t || d.aliases?.includes(t)) ?? null;
+}
+
 function CommandBar({
-  selectedIds, atomById, onApplyMeta, onClearMeta, edgePalette,
+  selectedIds, atomById, onApplyMeta, onClearMeta, onAddEdge, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
   onApplyMeta: (ids: string[], patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
+  onAddEdge: (fromId: string, toId: string, label?: string) => void;
   edgePalette: EdgePalette;
 }) {
   const [input, setInput] = useState("");
   const [result, setResult] = useState<CommandResult | null>(null);
+  const [pending, setPending] = useState<PendingCommand | null>(null);
   const [historyIdx, setHistoryIdx] = useState(-1);
   const historyRef = useRef<string[]>([]);
   const inputRef = useRef<HTMLInputElement | null>(null);
+  const idsAtPendingRef = useRef<string[]>([]);
 
   const validIds = useMemo(
     () => Array.from(selectedIds).filter(id => atomById[id]),
     [selectedIds, atomById],
   );
 
+  const pendingDef = pending ? findCommandDef(pending.defName) : null;
+  const currentStep = pendingDef && pending ? pendingDef.steps[pending.stepIdx] : null;
+
+  // İdle durumda autosuggest; pending'te dropdown kapalı
   const trimmed = input.trim();
-  const showSuggest = trimmed.startsWith("/") && trimmed.split(/\s+/)[0].length <= 8;
+  const showSuggest = !pending && trimmed.startsWith("/") && trimmed.split(/\s+/)[0].length <= 12;
   const suggestions = useMemo(() => {
     if (!showSuggest) return [];
     const q = trimmed.replace(/^\//, "").toLowerCase();
-    return COMMAND_SPECS.filter(c => c.name.startsWith(q));
+    return COMMAND_DEFS.filter(d =>
+      d.name.startsWith(q) || (d.aliases ?? []).some(a => a.startsWith(q)),
+    );
   }, [trimmed, showSuggest]);
 
-  const runCommand = useCallback((raw: string) => {
+  const cancelPending = useCallback(() => {
+    setPending(null);
+    idsAtPendingRef.current = [];
+    setInput("");
+  }, []);
+
+  // Komut başlatma
+  const startCommand = useCallback((rawCmd: string) => {
+    const def = findCommandDef(rawCmd);
+    if (!def) {
+      setResult({ ok: false, message: `Bilinmeyen komut: "${rawCmd}". /yardim ile listele.` });
+      return;
+    }
+    const ids = validIds;
+    if (def.minSelected && ids.length < def.minSelected) {
+      setResult({
+        ok: false,
+        message: `/${def.name} için en az ${def.minSelected} atom seçili olmalı (şu an ${ids.length}).`,
+      });
+      return;
+    }
+    if (def.maxSelected && ids.length > def.maxSelected) {
+      setResult({
+        ok: false,
+        message: `/${def.name} en fazla ${def.maxSelected} atom kabul eder (şu an ${ids.length}).`,
+      });
+      return;
+    }
+    idsAtPendingRef.current = [...ids];
+    if (def.steps.length === 0) {
+      // Adımsız komut — hemen apply
+      const msg = def.apply({ collected: {}, ids }, {
+        applyMeta: onApplyMeta,
+        clearMeta: onClearMeta,
+        addEdge: onAddEdge,
+      });
+      setResult({ ok: true, message: msg });
+      setInput("");
+      return;
+    }
+    setPending({ defName: def.name, collected: {}, stepIdx: 0 });
+    setInput("");
+    setResult(null);
+  }, [validIds, onApplyMeta, onClearMeta, onAddEdge]);
+
+  // Pending durumda step submit
+  const submitStep = useCallback((value: string) => {
+    if (!pending || !pendingDef) return;
+    const step = pendingDef.steps[pending.stepIdx];
+    if (!step) return;
+    const v = value.trim();
+    if (!v) {
+      setResult({ ok: false, message: `${step.prompt} — boş bırakma. ${step.hint ?? ""}`.trim() });
+      return;
+    }
+    const err = step.validator?.(v);
+    if (err) {
+      setResult({ ok: false, message: err });
+      return;
+    }
+    const collected = { ...pending.collected, [step.field]: v };
+    const nextIdx = pending.stepIdx + 1;
+    if (nextIdx >= pendingDef.steps.length) {
+      // Tüm adımlar bitti — apply
+      const ids = idsAtPendingRef.current.length > 0 ? idsAtPendingRef.current : validIds;
+      const msg = pendingDef.apply({ collected, ids }, {
+        applyMeta: onApplyMeta,
+        clearMeta: onClearMeta,
+        addEdge: onAddEdge,
+      });
+      setResult({ ok: true, message: msg });
+      setPending(null);
+      idsAtPendingRef.current = [];
+      setInput("");
+      return;
+    }
+    setPending({ ...pending, collected, stepIdx: nextIdx });
+    setInput("");
+    setResult(null);
+  }, [pending, pendingDef, validIds, onApplyMeta, onClearMeta, onAddEdge]);
+
+  const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
     if (!text) return;
     historyRef.current = [text, ...historyRef.current.filter(t => t !== text)].slice(0, 30);
     setHistoryIdx(-1);
 
-    // /komut formatı; / olmasa da kabul
     const stripped = text.replace(/^\//, "");
     const space = stripped.indexOf(" ");
     const cmd = (space === -1 ? stripped : stripped.slice(0, space)).toLowerCase();
-    const arg = (space === -1 ? "" : stripped.slice(space + 1)).trim();
-
-    if (validIds.length === 0) {
-      setResult({ ok: false, message: "Önce bir veya daha fazla atom seç (shift+click)." });
-      return;
-    }
-
-    if (cmd === "siparis" || cmd === "sipariş" || cmd === "order") {
-      if (!arg) {
-        setResult({ ok: false, message: `Sipariş numarası eksik. Örn: /siparis 12345` });
-        return;
-      }
-      onApplyMeta(validIds, { orderNumber: arg });
-      setResult({ ok: true, message: `${validIds.length} atom · sipariş = ${arg}` });
-      setInput("");
-      return;
-    }
-
-    if (cmd === "teslim" || cmd === "deadline" || cmd === "tarih") {
-      if (!arg) {
-        setResult({ ok: false, message: `Teslim tarihi eksik. Örn: /teslim 15 Mayıs` });
-        return;
-      }
-      onApplyMeta(validIds, { deadline: arg });
-      setResult({ ok: true, message: `${validIds.length} atom · teslim = ${arg}` });
-      setInput("");
-      return;
-    }
-
-    if (cmd === "sil" || cmd === "clear") {
-      onClearMeta(validIds);
-      setResult({ ok: true, message: `${validIds.length} atom · meta silindi` });
-      setInput("");
-      return;
-    }
+    const inline = (space === -1 ? "" : stripped.slice(space + 1)).trim();
 
     if (cmd === "yardim" || cmd === "yardım" || cmd === "help" || cmd === "?") {
-      setResult({ ok: true, message: COMMAND_SPECS.map(c => c.syntax).join("  ·  ") });
+      setResult({
+        ok: true,
+        message: COMMAND_DEFS.map(d => `/${d.name}`).join("  ·  "),
+      });
       setInput("");
       return;
     }
 
-    setResult({ ok: false, message: `Bilinmeyen komut: "${cmd}". /yardim ile listele.` });
-  }, [validIds, onApplyMeta, onClearMeta]);
+    const def = findCommandDef(cmd);
+    if (!def) {
+      setResult({ ok: false, message: `Bilinmeyen komut: "${cmd}". /yardim ile listele.` });
+      return;
+    }
+
+    // Inline argüman varsa: tek-adımlı komutlarda direkt apply, çok-adımlılar için ilk step'e ata
+    if (inline && def.steps.length > 0) {
+      const ids = validIds;
+      if (def.minSelected && ids.length < def.minSelected) {
+        setResult({ ok: false, message: `/${def.name} için en az ${def.minSelected} atom seçili olmalı (şu an ${ids.length}).` });
+        return;
+      }
+      idsAtPendingRef.current = [...ids];
+      const step0 = def.steps[0];
+      const err0 = step0.validator?.(inline);
+      if (err0) {
+        setResult({ ok: false, message: err0 });
+        return;
+      }
+      const collected: Record<string, string> = { [step0.field]: inline };
+      if (def.steps.length === 1) {
+        const msg = def.apply({ collected, ids }, {
+          applyMeta: onApplyMeta,
+          clearMeta: onClearMeta,
+          addEdge: onAddEdge,
+        });
+        setResult({ ok: true, message: msg });
+        setInput("");
+        return;
+      }
+      setPending({ defName: def.name, collected, stepIdx: 1 });
+      setInput("");
+      setResult(null);
+      return;
+    }
+
+    startCommand(cmd);
+  }, [validIds, startCommand, onApplyMeta, onClearMeta, onAddEdge]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
       e.preventDefault();
-      runCommand(input);
+      if (pending) submitStep(input);
+      else runIdleCommand(input);
       return;
     }
     if (e.key === "Escape") {
+      e.preventDefault();
+      if (pending) cancelPending();
       setInput("");
       setResult(null);
       setHistoryIdx(-1);
       return;
     }
-    if (e.key === "Tab" && suggestions.length > 0) {
+    if (e.key === "Tab" && !pending && suggestions.length > 0) {
       e.preventDefault();
       setInput(`/${suggestions[0].name} `);
       return;
     }
-    if (e.key === "ArrowUp") {
+    if (e.key === "ArrowUp" && !pending) {
       e.preventDefault();
       const next = Math.min(historyRef.current.length - 1, historyIdx + 1);
       if (next >= 0 && historyRef.current[next] !== undefined) {
@@ -2867,7 +3049,7 @@ function CommandBar({
       }
       return;
     }
-    if (e.key === "ArrowDown") {
+    if (e.key === "ArrowDown" && !pending) {
       e.preventDefault();
       const next = historyIdx - 1;
       if (next < 0) {
@@ -2881,6 +3063,57 @@ function CommandBar({
     }
   };
 
+  // Global klavye yakalama — AutoCAD-vari: ekranda herhangi bir tuşa basınca
+  // input'a focus al ve karakteri ekle. Input/textarea/contentEditable içindeyken atla.
+  useEffect(() => {
+    const onWindowKey = (e: KeyboardEvent) => {
+      if (e.metaKey || e.ctrlKey || e.altKey) return;
+      const t = e.target as HTMLElement | null;
+      const tag = t?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || (t as any)?.isContentEditable) return;
+
+      const key = e.key;
+      if (key.length === 1) {
+        // Yazılabilir karakter — input'a yönlendir
+        e.preventDefault();
+        setInput(prev => prev + key);
+        inputRef.current?.focus();
+        return;
+      }
+      if (key === "Backspace") {
+        e.preventDefault();
+        setInput(prev => prev.slice(0, -1));
+        inputRef.current?.focus();
+        return;
+      }
+      if (key === "Enter") {
+        e.preventDefault();
+        inputRef.current?.focus();
+        if (pending) submitStep(input);
+        else runIdleCommand(input);
+        return;
+      }
+      if (key === "Escape") {
+        if (pending) {
+          e.preventDefault();
+          cancelPending();
+          setResult(null);
+          inputRef.current?.focus();
+        }
+        return;
+      }
+    };
+    window.addEventListener("keydown", onWindowKey);
+    return () => window.removeEventListener("keydown", onWindowKey);
+  }, [pending, input, submitStep, runIdleCommand, cancelPending]);
+
+  const promptLabel = pending && currentStep
+    ? `${pending.defName.toUpperCase()} · ${currentStep.prompt}`
+    : "KOMUT";
+  const placeholder = pending && currentStep
+    ? `${currentStep.prompt}${currentStep.hint ? `  ·  ${currentStep.hint}` : ""}`
+    : `Bir komut yaz (örn: /siparis)  ·  /yardim · klavyeye basınca direkt buraya düşer${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : ""}`;
+
   return (
     <div style={{
       position: "absolute", left: 12, right: 12, bottom: 12, zIndex: 25,
@@ -2889,13 +3122,13 @@ function CommandBar({
       userSelect: "text",
       WebkitUserSelect: "text",
     }}>
-      {/* Suggest dropdown — input'un üstünde */}
+      {/* Suggest dropdown — input'un üstünde, sadece idle modda */}
       {showSuggest && suggestions.length > 0 && (
         <div style={{
           alignSelf: "flex-start",
           background: C.cardBg, color: C.cardInk,
           border: `1px solid ${C.panelEdge}`,
-          borderRadius: 8, padding: 6, minWidth: 320, maxWidth: 520,
+          borderRadius: 8, padding: 6, minWidth: 320, maxWidth: 560,
           fontFamily: mono, fontSize: 11,
           boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
           pointerEvents: "auto",
@@ -2918,15 +3151,58 @@ function CommandBar({
               onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(255,255,255,0.06)"; }}
               onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; }}
             >
-              <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>{s.syntax}</span>
-              <span style={{ color: C.cardSub, marginLeft: 8 }}>— {s.hint}</span>
+              <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>/{s.name}</span>
+              {s.minSelected && (
+                <span style={{ color: C.cardSub, marginLeft: 6, fontSize: 9 }}>
+                  ≥{s.minSelected} atom
+                </span>
+              )}
+              <span style={{ color: C.cardSub, marginLeft: 8 }}>— {s.description}</span>
             </button>
           ))}
         </div>
       )}
 
+      {/* Pending komutta toplanan değerler */}
+      {pending && pendingDef && (
+        <div style={{
+          alignSelf: "flex-start",
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${edgePalette.colors.select}`,
+          borderRadius: 8, padding: "6px 10px",
+          fontFamily: mono, fontSize: 11,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          pointerEvents: "auto",
+          display: "flex", alignItems: "center", gap: 10, flexWrap: "wrap",
+        }}>
+          <span style={{ color: edgePalette.colors.select, fontWeight: 700, letterSpacing: 1.2 }}>
+            ▸ /{pendingDef.name}
+          </span>
+          <span style={{ color: C.cardSub }}>
+            {idsAtPendingRef.current.length} atom · adım {pending.stepIdx + 1}/{pendingDef.steps.length}
+          </span>
+          {pendingDef.steps.slice(0, pending.stepIdx).map(s => (
+            <span key={s.field} style={{
+              padding: "1px 6px", borderRadius: 3,
+              background: "rgba(255,255,255,0.06)",
+              color: C.cardInk, fontWeight: 600,
+            }}>
+              {s.field}={pending.collected[s.field]}
+            </span>
+          ))}
+          <button
+            onClick={() => { cancelPending(); setResult(null); inputRef.current?.focus(); }}
+            style={{
+              background: "transparent", border: `1px solid ${C.panelEdge}`,
+              borderRadius: 4, color: C.cardSub, fontFamily: mono, fontSize: 10,
+              padding: "1px 6px", cursor: "pointer", marginLeft: "auto",
+            }}
+          >iptal · Esc</button>
+        </div>
+      )}
+
       {/* Sonuç pill */}
-      {result && (
+      {result && !pending && (
         <div style={{
           alignSelf: "flex-start",
           padding: "4px 10px", borderRadius: 6,
@@ -2940,6 +3216,20 @@ function CommandBar({
           {result.ok ? "✓ " : "✕ "}{result.message}
         </div>
       )}
+      {/* Pending sırasında validation hatası */}
+      {result && pending && !result.ok && (
+        <div style={{
+          alignSelf: "flex-start",
+          padding: "4px 10px", borderRadius: 6,
+          background: "rgba(239,68,68,0.16)",
+          border: "1px solid rgba(239,68,68,0.45)",
+          color: "#ef4444",
+          fontFamily: mono, fontSize: 11, fontWeight: 600,
+          pointerEvents: "auto",
+        }}>
+          ✕ {result.message}
+        </div>
+      )}
 
       {/* Komut satırı */}
       <div
@@ -2949,7 +3239,7 @@ function CommandBar({
         style={{
           display: "flex", alignItems: "center", gap: 8,
           background: C.cardBg, color: C.cardInk,
-          border: `1px solid ${C.panelEdge}`,
+          border: `1px solid ${pending ? edgePalette.colors.select : C.panelEdge}`,
           borderRadius: 8, padding: "8px 12px",
           fontFamily: mono, fontSize: 12,
           boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
@@ -2961,10 +3251,11 @@ function CommandBar({
         }}
       >
         <span style={{
-          fontSize: 10, color: C.cardSub, fontFamily: mono,
-          letterSpacing: 1.4, fontWeight: 700,
+          fontSize: 10, color: pending ? edgePalette.colors.select : C.cardSub,
+          fontFamily: mono, letterSpacing: 1.4, fontWeight: 700,
+          whiteSpace: "nowrap", maxWidth: "40%", overflow: "hidden", textOverflow: "ellipsis",
         }}>
-          KOMUT
+          {promptLabel}
         </span>
         <span style={{ color: edgePalette.colors.select, fontWeight: 700 }}>›</span>
         <input
@@ -2976,9 +3267,10 @@ function CommandBar({
           onPointerDown={(e) => e.stopPropagation()}
           onPointerUp={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
-          placeholder={`Bir komut yaz (örn: /siparis 12345)  ·  /yardim için liste${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : "  ·  önce atom seç"}`}
+          placeholder={placeholder}
           spellCheck={false}
           autoComplete="off"
+          autoFocus
           style={{
             flex: 1,
             background: "transparent", border: "none", outline: "none",
@@ -2989,7 +3281,9 @@ function CommandBar({
             touchAction: "auto",
           }}
         />
-        <span style={{ color: C.cardSub, fontSize: 10 }}>↵ çalıştır · Esc temizle · ↑/↓ geçmiş</span>
+        <span style={{ color: C.cardSub, fontSize: 10, whiteSpace: "nowrap" }}>
+          {pending ? "↵ devam · Esc iptal" : "↵ çalıştır · Esc temizle · ↑/↓ geçmiş"}
+        </span>
       </div>
     </div>
   );
@@ -3012,7 +3306,7 @@ function CustomersSceneRenderer({
   setShape: (id: string, kind: ShapeKind) => void;
   clearShape: (id: string) => void;
   customEdges: CustomEdge[];
-  addCustomEdge: (fromId: string, toId: string) => void;
+  addCustomEdge: (fromId: string, toId: string, label?: string) => void;
   removeCustomEdge: (id: string) => void;
   clearAllCustomEdges: () => void;
   atomMeta: Record<string, AtomMeta>;
@@ -3328,6 +3622,7 @@ function CustomersSceneRenderer({
     color: edgePalette.colors.select,
     dashed: true,
     curveK: 0.4,
+    label: ce.label,
   })), [customEdges, edgePalette]);
 
   // Görünür edge'ler: hidden atom'a değen var olanları at + dinamik BOM edge'leri + custom
@@ -3502,10 +3797,10 @@ function CustomersSceneRenderer({
         {liveEdges.map((e, i) => renderEdge(e, i, true))}
       </svg>
 
-      {/* Atom altı metadata badge overlay — sipariş no + teslim tarihi */}
+      {/* Atom altı metadata badge overlay — sipariş no + adet + teslim tarihi */}
       {visibleAtoms.map(a => {
         const meta = atomMeta[a.id];
-        if (!meta || (!meta.orderNumber && !meta.deadline)) return null;
+        if (!meta || (!meta.orderNumber && !meta.deadline && !meta.quantity)) return null;
         const sx = a.x * viewport.scale + viewport.vx;
         const sy = (a.y + a.h + 4) * viewport.scale + viewport.vy;
         const sw = a.w * viewport.scale;
@@ -3534,6 +3829,23 @@ function CustomersSceneRenderer({
                 }}
               >
                 #{meta.orderNumber}
+              </span>
+            )}
+            {meta.quantity && (
+              <span
+                title={`Adet ${meta.quantity} — sağ tık ile sil`}
+                onContextMenu={(e) => { e.preventDefault(); setAtomMetaField(a.id, { quantity: undefined }); }}
+                style={{
+                  fontSize: 9 * viewport.scale, padding: `${2 * viewport.scale}px ${6 * viewport.scale}px`,
+                  background: asRgba(edgePalette.colors.electric, 0.18),
+                  border: `1px solid ${asRgba(edgePalette.colors.electric, 0.55)}`,
+                  borderRadius: 4 * viewport.scale,
+                  color: edgePalette.colors.electric,
+                  fontFamily: mono, fontWeight: 700, letterSpacing: 0.4,
+                  whiteSpace: "nowrap", cursor: "context-menu",
+                }}
+              >
+                ×{meta.quantity}
               </span>
             )}
             {meta.deadline && (
@@ -3623,6 +3935,7 @@ function CustomersSceneRenderer({
         edgePalette={edgePalette}
         onApplyMeta={(ids, patch) => ids.forEach(id => setAtomMetaField(id, patch))}
         onClearMeta={(ids) => ids.forEach(id => clearAtomMeta(id))}
+        onAddEdge={(from, to, label) => addCustomEdge(from, to, label)}
       />
     </>
   );
@@ -4794,15 +5107,21 @@ export default function StrategyCanvasPage() {
     () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), []),
   );
   useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
-  const addSceneCustomEdge = useCallback((fromId: string, toId: string) => {
+  const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string) => {
     setSceneCustomEdges(prev => {
-      const exists = prev.some(e =>
+      const idx = prev.findIndex(e =>
         (e.fromId === fromId && e.toId === toId) ||
         (e.fromId === toId && e.toId === fromId),
       );
-      if (exists) return prev;
+      if (idx >= 0) {
+        // Var olan edge'in label'ını güncelle (yeni label geldiyse)
+        if (label === undefined) return prev;
+        const next = [...prev];
+        next[idx] = { ...next[idx], label };
+        return next;
+      }
       const id = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      return [...prev, { id, fromId, toId }];
+      return [...prev, { id, fromId, toId, label }];
     });
   }, []);
   const removeSceneCustomEdge = useCallback((id: string) => {
