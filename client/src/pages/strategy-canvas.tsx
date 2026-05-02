@@ -2790,8 +2790,8 @@ const COMMAND_DEFS: CommandDef[] = [
       { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 15 Mayıs · 2026-05-15" },
     ],
     apply: ({ collected, ids }, h) => {
-      const label = `#${collected.orderNumber} · ${collected.quantity} adet`;
-      // Her atoma sipariş bilgisi yaz + her atomdan deadline pill çıkar
+      // Sahne ok'larıyla aynı görsel: label sadece "x{qty}"
+      const label = `x${collected.quantity}`;
       ids.forEach(id => {
         h.applyMeta(id, {
           orderNumber: collected.orderNumber,
@@ -2799,7 +2799,6 @@ const COMMAND_DEFS: CommandDef[] = [
         });
         h.ensureDeadlinePill(id, collected.deadline);
       });
-      // Atomlar arası pairwise sipariş ok'u
       let edgesAdded = 0;
       for (let i = 0; i < ids.length; i++) {
         for (let j = i + 1; j < ids.length; j++) {
@@ -3756,15 +3755,26 @@ function CustomersSceneRenderer({
   // Custom edges → SceneEdge formatına dönüştür (palette select rengi, dashed
   // çünkü kalıcı bağlantı diğer sahne ok'ları gibi görünmeli — sadece geçici
   // shift+click live preview turuncu solid kalın)
-  const customSceneEdges = useMemo<SceneEdge[]>(() => customEdges.map(ce => ({
-    fromId: ce.fromId,
-    toId: ce.toId,
-    color: edgePalette.colors.select,
-    dashed: true,
-    curveK: 0.4,
-    label: ce.label,
-    customEdgeId: ce.id,
-  })), [customEdges, edgePalette]);
+  // Custom edge'ler sahne ok'larıyla aynı görsel dilini kullansın:
+  // renk parent atom'un highlight'ından türetilir (mavi/yeşil/varsayılan).
+  const customSceneEdges = useMemo<SceneEdge[]>(() => customEdges.map(ce => {
+    const f = atomById[ce.fromId];
+    const t = atomById[ce.toId];
+    const hl = f?.highlight ?? t?.highlight ?? null;
+    let color: string;
+    if (hl === "blue") color = edgePalette.colors.gas;
+    else if (hl === "green") color = edgePalette.colors.electric;
+    else color = asRgba(edgePalette.colors.neutral, 0.55);
+    return {
+      fromId: ce.fromId,
+      toId: ce.toId,
+      color,
+      dashed: true,
+      curveK: 0.4,
+      label: ce.label,
+      customEdgeId: ce.id,
+    };
+  }), [customEdges, edgePalette, atomById]);
 
   // Görünür edge'ler: family bağları en arkada (şeffaf), üzerine SCENE_EDGES,
   // sonra dinamik BOM, en üstte kullanıcının kalıcı custom edge'leri
@@ -3822,17 +3832,9 @@ function CustomersSceneRenderer({
       ev.stopPropagation();
       removeCustomEdge(ceId);
     };
-    // Etiket genişliği için kaba tahmin (yazı uzunluğuna göre)
-    const labelText = e.label ?? "";
-    const labelW = labelText.length * 7 + 14;
-    const labelH = 18;
-    const labelX = midX - labelW / 2;
-    const labelY = midY - labelH + 4;
-    const closeX = midX + labelW / 2 + 8;
-    const closeY = midY - 4;
     return (
       <g key={`${isLive ? "live" : "edge"}-${ceId ?? i}`}>
-        {/* Hit area — geniş şeffaf path, sağ tıkla silmek için */}
+        {/* Hit area — sadece custom edge'ler için, sağ tık ile sil */}
         {isCustom && (
           <path
             d={path}
@@ -3842,7 +3844,7 @@ function CustomersSceneRenderer({
             style={{ pointerEvents: "stroke", cursor: "context-menu" }}
             onContextMenu={onContextMenuPath}
           >
-            <title>Sağ tık veya × ile sil</title>
+            <title>Sağ tık ile sil</title>
           </path>
         )}
         <path
@@ -3853,92 +3855,18 @@ function CustomersSceneRenderer({
           strokeDasharray={e.dashed ? "5 4" : undefined}
           style={isLive ? { filter: `drop-shadow(0 0 6px ${liveGlow})` } : undefined}
         />
-        {labelText && (
-          <>
-            {/* Label arka planı (custom edge'lerde × ile birlikte) */}
-            {isCustom && (
-              <rect
-                x={labelX} y={labelY}
-                width={labelW} height={labelH}
-                rx={4}
-                fill={asRgba(edgePalette.colors.select, 0.12)}
-                stroke={asRgba(edgePalette.colors.select, 0.55)}
-                strokeWidth={1}
-                style={{ pointerEvents: "none" }}
-              />
-            )}
-            <text
-              x={midX} y={midY}
-              fill={labelFill}
-              fontSize={13}
-              fontFamily={mono}
-              fontWeight={600}
-              textAnchor="middle"
-              style={{ pointerEvents: "none" }}
-            >
-              {labelText}
-            </text>
-            {/* × silme butonu — sadece custom edge'lerde */}
-            {isCustom && ceId && (
-              <g
-                style={{ cursor: "pointer", pointerEvents: "auto" }}
-                onClick={(ev) => { ev.stopPropagation(); removeCustomEdge(ceId); }}
-                onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeCustomEdge(ceId); }}
-              >
-                <title>Bağlantıyı sil</title>
-                <circle
-                  cx={closeX} cy={closeY} r={9}
-                  fill={asRgba(edgePalette.colors.shortfall, 0.18)}
-                  stroke={edgePalette.colors.shortfall}
-                  strokeWidth={1.2}
-                />
-                <line
-                  x1={closeX - 3.5} y1={closeY - 3.5}
-                  x2={closeX + 3.5} y2={closeY + 3.5}
-                  stroke={edgePalette.colors.shortfall}
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                />
-                <line
-                  x1={closeX + 3.5} y1={closeY - 3.5}
-                  x2={closeX - 3.5} y2={closeY + 3.5}
-                  stroke={edgePalette.colors.shortfall}
-                  strokeWidth={1.6}
-                  strokeLinecap="round"
-                />
-              </g>
-            )}
-          </>
-        )}
-        {/* Label'ı olmayan custom edge'lerde de × ortada görünsün */}
-        {!labelText && isCustom && ceId && (
-          <g
-            style={{ cursor: "pointer", pointerEvents: "auto" }}
-            onClick={(ev) => { ev.stopPropagation(); removeCustomEdge(ceId); }}
-            onContextMenu={(ev) => { ev.preventDefault(); ev.stopPropagation(); removeCustomEdge(ceId); }}
+        {e.label && (
+          <text
+            x={midX} y={midY}
+            fill={labelFill}
+            fontSize={13}
+            fontFamily={mono}
+            fontWeight={600}
+            textAnchor="middle"
+            style={{ pointerEvents: "none" }}
           >
-            <title>Bağlantıyı sil</title>
-            <circle
-              cx={midX} cy={midY} r={9}
-              fill={asRgba(edgePalette.colors.shortfall, 0.18)}
-              stroke={edgePalette.colors.shortfall}
-              strokeWidth={1.2}
-            />
-            <line
-              x1={midX - 3.5} y1={midY - 3.5}
-              x2={midX + 3.5} y2={midY + 3.5}
-              stroke={edgePalette.colors.shortfall}
-              strokeWidth={1.6}
-              strokeLinecap="round"
-            />
-            <line
-              x1={midX + 3.5} y1={midY - 3.5}
-              x2={midX - 3.5} y2={midY + 3.5}
-              stroke={edgePalette.colors.shortfall}
-              strokeWidth={1.6}
-              strokeLinecap="round"
-            />
-          </g>
+            {e.label}
+          </text>
         )}
       </g>
     );
