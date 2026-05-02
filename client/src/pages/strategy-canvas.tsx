@@ -2545,25 +2545,9 @@ const SCENE_EDGES: SceneEdge[] = [
   { fromId: "cat-gazli", toId: "p-BH.55ST.SV", fromPort: "e", toPort: "w", dashed: true, color: "#38bdf8",               curveK: 0.5 }, // G2 sipariş hattı
   { fromId: "cat-gazli", toId: "p-BH.55UT.SV", fromPort: "e", toPort: "w", dashed: true, color: "rgba(56,189,248,0.55)", curveK: 0.5 },
 
-  // GSA15 → Üretim, Depo, Satış (yeşil — E3 sipariş zinciri)
-  { fromId: "p-GSA15", toId: "stg-uretim", color: "#10b981", dashed: true, label: "x100", curveK: 0.35 },
-  { fromId: "p-GSA15", toId: "stg-depo",   color: "#10b981", dashed: true, label: "x50",  curveK: 0.5 },
-  { fromId: "p-GSA15", toId: "stg-satis",  color: "#10b981", dashed: true, label: "x50",  curveK: 0.7 },
-
-  // GSS20P → Üretim (elektrikli, paylaşılan komponent zinciri için)
-  { fromId: "p-GSS20P", toId: "stg-uretim", color: "rgba(255,255,255,0.5)", dashed: true, curveK: 0.4 },
-
-  // BH.55ST.SV → Üretim (mavi — G2 sipariş zinciri, ana gazlı hat)
-  { fromId: "p-BH.55ST.SV", toId: "stg-uretim", color: "#38bdf8", dashed: true, label: "x50", curveK: 0.4 },
-
-  // Stages → Factory
-  { fromId: "stg-uretim", toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
-  { fromId: "stg-depo",   toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
-  { fromId: "stg-satis",  toId: "fact", color: "rgba(255,255,255,0.6)", dashed: true },
-
-  // Lead pill → ilgili akış
-  { fromId: "pill-lead-GSA15",  toId: "stg-uretim", color: "rgba(16,185,129,0.4)", dashed: true },
-  { fromId: "pill-lead-GSS20P", toId: "stg-uretim", color: "rgba(255,255,255,0.4)", dashed: true },
+  // Mamul → Üretim/Depo/Satış, stage → Fabrika ve lead-pill → stage ok'ları
+  // kaldırıldı (2026-05-03) — kullanıcı üretim zincirini /uretim-hatti komutu
+  // ile baştan kuracak.
 
   // Deadline pill → müşteri chip
   // Müşteri-bağlı pill ok'ları kaldırıldı (2026-05-03) — pill atom'ları da silindi.
