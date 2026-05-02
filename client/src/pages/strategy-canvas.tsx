@@ -5673,6 +5673,42 @@ export default function StrategyCanvasPage() {
     }
   }, [scenarios]);
 
+  // Migration: G3 için /siparis ile yaratılmış eski custom "Teslim = 30 haziran"
+  // pill'i (lowercase h) yeni default seed'deki "Teslim = 30 Haziran" (capital H,
+  // mavi) ile duplicate çıkıyordu. Eski custom pill'i + edge'lerini + meta'sını
+  // tek-seferlik temizle.
+  const g3PillDedupRef = useRef(false);
+  useEffect(() => {
+    if (g3PillDedupRef.current) return;
+    if (localStorage.getItem("griseus_g3_pill_dedup_v1") === "done") {
+      g3PillDedupRef.current = true;
+      return;
+    }
+    g3PillDedupRef.current = true;
+    const stalePillIds = new Set(
+      sceneCustomAtoms
+        .filter(a => a.kind === "deadline-pill" && /haziran/i.test(a.label) && !/Haziran/.test(a.label))
+        .map(a => a.id),
+    );
+    if (stalePillIds.size > 0) {
+      setSceneCustomAtoms(prev => prev.filter(a => !stalePillIds.has(a.id)));
+      setSceneCustomEdges(prev => prev.filter(e => !stalePillIds.has(e.fromId) && !stalePillIds.has(e.toId)));
+      setSceneAtomMeta(prev => {
+        const next: Record<string, AtomMeta> = {};
+        for (const [id, meta] of Object.entries(prev)) {
+          if (meta.deadlinePillId && stalePillIds.has(meta.deadlinePillId)) {
+            const { deadlinePillId: _, deadline: __, ...rest } = meta;
+            if (Object.keys(rest).length > 0) next[id] = rest;
+          } else {
+            next[id] = meta;
+          }
+        }
+        return next;
+      });
+    }
+    localStorage.setItem("griseus_g3_pill_dedup_v1", "done");
+  }, [sceneCustomAtoms]);
+
   const buildSnapshot = useCallback(
     (id: string, name: string, prev?: ScenarioSnapshot): ScenarioSnapshot => ({
       id,
