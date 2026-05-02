@@ -4087,15 +4087,15 @@ function CustomersSceneRenderer({
           <g
             transform={`translate(${midX}, ${midY})`}
             opacity={edgeDimmed ? 0.18 : 1}
-            style={{ cursor: "pointer" }}
-            onClick={(ev) => {
+            style={{ cursor: "pointer", pointerEvents: "all" }}
+            onPointerDown={(ev) => {
               ev.preventDefault();
               ev.stopPropagation();
               setEditingEdgeKey(prev => prev === eKey ? null : eKey);
             }}
           >
             <title>{assignedCommand ? `Komut: ${assignedCommand} — düzenlemek için tıkla` : "Komut atamak için tıkla"}</title>
-            {/* Tıklama hit area — şeffaf rounded rect */}
+            {/* Tıklama hit area — neredeyse şeffaf ama pointerEvents:all ile click yakalar */}
             <rect
               x={-labelW / 2}
               y={-labelH / 2 - 2}
@@ -4103,9 +4103,10 @@ function CustomersSceneRenderer({
               height={labelH}
               rx={4}
               ry={4}
-              fill={assignedCommand ? asRgba(edgePalette.colors.select, 0.18) : "rgba(0,0,0,0)"}
+              fill={assignedCommand ? asRgba(edgePalette.colors.select, 0.18) : "rgba(255,255,255,0.001)"}
               stroke={assignedCommand ? asRgba(edgePalette.colors.select, 0.55) : "rgba(0,0,0,0)"}
               strokeWidth={1}
+              style={{ pointerEvents: "all" }}
             />
             {hasLabelText && (
               <text
@@ -4142,8 +4143,8 @@ function CustomersSceneRenderer({
             x={midX - 130}
             y={midY + 10}
             width={260}
-            height={120}
-            style={{ overflow: "visible" }}
+            height={140}
+            style={{ overflow: "visible", pointerEvents: "all" }}
           >
             <EdgeCommandPopover
               initial={assignedCommand ?? ""}
