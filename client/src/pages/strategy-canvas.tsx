@@ -166,6 +166,8 @@ interface AtomMeta {
   deadline?: string;
   quantity?: string;
   deadlinePillId?: string;
+  productionDays?: string;
+  productionPillId?: string;
 }
 
 function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
@@ -2773,6 +2775,7 @@ interface CommandDef {
       clearMeta: (ids: string[]) => void;
       addEdge: (from: string, to: string, label?: string) => void;
       ensureDeadlinePill: (parentId: string, deadline: string) => string;
+      ensureProductionPill: (parentId: string, days: string) => string;
     },
   ) => string;
 }
@@ -2845,6 +2848,22 @@ const COMMAND_DEFS: CommandDef[] = [
     },
   },
   {
+    name: "uretim",
+    aliases: ["üretim", "uretim-suresi", "üretim-süresi", "production"],
+    description: "Seçili atom(lar)a üretim süresi pill atomu çıkarır (gün)",
+    minSelected: 1,
+    steps: [
+      {
+        field: "days", prompt: "Üretim süresi (gün)?", hint: "Sayı (örn: 14)",
+        validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 14)",
+      },
+    ],
+    apply: ({ collected, ids }, h) => {
+      ids.forEach(id => h.ensureProductionPill(id, collected.days));
+      return `${ids.length} atom · üretim pill = ${collected.days} gün`;
+    },
+  },
+  {
     name: "sil",
     aliases: ["clear", "temizle"],
     description: "Seçili atom(lar)ın meta + pill atomlarını temizler",
@@ -2873,7 +2892,7 @@ function findCommandDef(token: string): CommandDef | null {
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
@@ -2882,6 +2901,7 @@ function CommandBar({
   onClearMeta: (ids: string[]) => void;
   onAddEdge: (fromId: string, toId: string, label?: string) => void;
   onEnsureDeadlinePill: (parentId: string, deadline: string) => string;
+  onEnsureProductionPill: (parentId: string, days: string) => string;
   edgePalette: EdgePalette;
 }) {
   const [input, setInput] = useState("");
@@ -2958,6 +2978,7 @@ function CommandBar({
           clearMeta: onClearMeta,
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
+          ensureProductionPill: onEnsureProductionPill,
         },
       );
       setResult({ ok: true, message: msg });
@@ -2967,7 +2988,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -2996,6 +3017,7 @@ function CommandBar({
           clearMeta: onClearMeta,
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
+          ensureProductionPill: onEnsureProductionPill,
         },
       );
       setResult({ ok: true, message: msg });
@@ -3007,7 +3029,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3058,6 +3080,7 @@ function CommandBar({
             clearMeta: onClearMeta,
             addEdge: onAddEdge,
             ensureDeadlinePill: onEnsureDeadlinePill,
+            ensureProductionPill: onEnsureProductionPill,
           },
         );
         setResult({ ok: true, message: msg });
@@ -3071,7 +3094,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -4159,11 +4182,17 @@ function CustomersSceneRenderer({
               e.preventDefault();
               e.stopPropagation();
               // Pill atomu silerken parent atom'un meta'sındaki referansı da temizle
-              const parentEntries = Object.entries(atomMeta).filter(
+              const deadlineParents = Object.entries(atomMeta).filter(
                 ([, m]) => m.deadlinePillId === a.id,
               );
-              parentEntries.forEach(([pid]) => {
+              deadlineParents.forEach(([pid]) => {
                 setAtomMetaField(pid, { deadlinePillId: undefined, deadline: undefined });
+              });
+              const productionParents = Object.entries(atomMeta).filter(
+                ([, m]) => m.productionPillId === a.id,
+              );
+              productionParents.forEach(([pid]) => {
+                setAtomMetaField(pid, { productionPillId: undefined, productionDays: undefined });
               });
               // Bu atoma değen custom edge'leri de temizle
               customEdges
@@ -4195,10 +4224,13 @@ function CustomersSceneRenderer({
         onApplyMeta={(id, patch) => setAtomMetaField(id, patch)}
         onClearMeta={(ids) => {
           ids.forEach(id => {
-            // Bu atoma bağlı deadline pill varsa onu da sil
+            // Bu atoma bağlı deadline + üretim pill'leri varsa onları da sil
             const m = atomMeta[id];
             if (m?.deadlinePillId) {
               removeCustomAtom(m.deadlinePillId);
+            }
+            if (m?.productionPillId) {
+              removeCustomAtom(m.productionPillId);
             }
             clearAtomMeta(id);
           });
@@ -4237,6 +4269,37 @@ function CustomersSceneRenderer({
           });
           addCustomEdge(parentId, pillId);
           setAtomMetaField(parentId, { deadline, deadlinePillId: pillId });
+          return pillId;
+        }}
+        onEnsureProductionPill={(parentId, days) => {
+          const parent = atomById[parentId];
+          if (!parent) return "";
+          const pillLabel = `Üretim = ${days} gün`;
+          const existing = atomMeta[parentId]?.productionPillId;
+          const existsInList = existing
+            ? customAtoms.some(a => a.id === existing)
+            : false;
+          if (existing && existsInList) {
+            updateCustomAtom(existing, { label: pillLabel });
+            setAtomMetaField(parentId, { productionDays: days });
+            return existing;
+          }
+          // Üretim pill parent'ın SAĞINA, Y merkezde — deadline pill solda,
+          // production sağda olacak şekilde simetrik konum.
+          const pillW = 170;
+          const pillH = 36;
+          const px = parent.x + parent.w + 60;
+          const py = parent.y + parent.h / 2 - pillH / 2;
+          const pillId = `pill-p-${parentId}-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 5)}`;
+          addCustomAtom({
+            id: pillId,
+            kind: "lead-pill",
+            label: pillLabel,
+            x: px, y: py, w: pillW, h: pillH,
+            highlight: parent.highlight ?? null,
+          });
+          addCustomEdge(parentId, pillId);
+          setAtomMetaField(parentId, { productionDays: days, productionPillId: pillId });
           return pillId;
         }}
       />
@@ -5469,7 +5532,7 @@ export default function StrategyCanvasPage() {
       const cur = prev[id] ?? {};
       const merged: AtomMeta = { ...cur, ...patch };
       // Tüm alanlar boşsa kaydı sil
-      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity && !merged.deadlinePillId;
+      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity && !merged.deadlinePillId && !merged.productionDays && !merged.productionPillId;
       if (isEmpty) {
         if (!(id in prev)) return prev;
         const next = { ...prev };
