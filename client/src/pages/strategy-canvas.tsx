@@ -6051,6 +6051,34 @@ export default function StrategyCanvasPage() {
     localStorage.setItem("griseus_ankara_bayisi_purge_v1", "done");
   }, [sceneAtomMeta]);
 
+  // Migration: badge sistemi kaldırıldı (sipariş no + adet artık atom altında
+  // gösterilmiyor, edge label'ı yeterli). Tüm atomMeta'dan orderNumber +
+  // quantity field'larını tek-seferlik temizle.
+  const badgePurgeRef = useRef(false);
+  useEffect(() => {
+    if (badgePurgeRef.current) return;
+    if (localStorage.getItem("griseus_badge_purge_v1") === "done") {
+      badgePurgeRef.current = true;
+      return;
+    }
+    badgePurgeRef.current = true;
+    setSceneAtomMeta(prev => {
+      let changed = false;
+      const next: Record<string, AtomMeta> = {};
+      for (const [id, meta] of Object.entries(prev)) {
+        if (meta.orderNumber === undefined && meta.quantity === undefined) {
+          next[id] = meta;
+          continue;
+        }
+        changed = true;
+        const { orderNumber: _o, quantity: _q, ...rest } = meta;
+        if (Object.keys(rest).length > 0) next[id] = rest;
+      }
+      return changed ? next : prev;
+    });
+    localStorage.setItem("griseus_badge_purge_v1", "done");
+  }, []);
+
   // Migration: önceki ensureDeadlinePill formula'sı pill'i parent'ın 12px altına
   // koyuyordu (overlap). Yeni formula: parent'ın 60px solunda, Y merkezde. Daha
   // önce yaratılmış custom pill'leri yeni pozisyona taşı — kullanıcı manuel
