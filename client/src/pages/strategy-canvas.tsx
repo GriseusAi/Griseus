@@ -2783,6 +2783,7 @@ interface CommandDef {
       addEdge: (from: string, to: string, label?: string, color?: string) => void;
       ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
+      setManualFocus: (ids: string[]) => void;
     },
   ) => string;
 }
@@ -2873,6 +2874,17 @@ const COMMAND_DEFS: CommandDef[] = [
     apply: ({ collected, ids }, h) => {
       ids.forEach(id => h.ensureProductionPill(id, collected.days));
       return `${ids.length} atom · üretim pill = ${collected.days} gün`;
+    },
+  },
+  {
+    name: "uretim-hatti",
+    aliases: ["üretim-hattı", "hat", "production-line", "uretim-hatti-olustur", "üretim-hattı-oluştur"],
+    description: "Seçili atomları üretim hattı olarak işaretler — sadece o set ön plana çıkar",
+    minSelected: 2,
+    steps: [],
+    apply: ({ ids }, h) => {
+      h.setManualFocus(ids);
+      return `${ids.length} atom · üretim hattı odaklandı (ESC ile temizle)`;
     },
   },
   {
@@ -2998,7 +3010,7 @@ function EdgeCommandPopover({
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
@@ -3008,6 +3020,7 @@ function CommandBar({
   onAddEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
   onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
+  onSetManualFocus: (ids: string[]) => void;
   edgePalette: EdgePalette;
 }) {
   const [input, setInput] = useState("");
@@ -3085,6 +3098,7 @@ function CommandBar({
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
+          setManualFocus: onSetManualFocus,
         },
       );
       setResult({ ok: true, message: msg });
@@ -3094,7 +3108,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -3124,6 +3138,7 @@ function CommandBar({
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
+          setManualFocus: onSetManualFocus,
         },
       );
       setResult({ ok: true, message: msg });
@@ -3135,7 +3150,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3187,6 +3202,7 @@ function CommandBar({
             addEdge: onAddEdge,
             ensureDeadlinePill: onEnsureDeadlinePill,
             ensureProductionPill: onEnsureProductionPill,
+            setManualFocus: onSetManualFocus,
           },
         );
         setResult({ ok: true, message: msg });
@@ -3200,7 +3216,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -3561,6 +3577,10 @@ function CustomersSceneRenderer({
   // reachable subgraph'ı (kategori → mamul → akış → fabrika + pill) belirginleşir,
   // diğer tüm atom/edge dim olur. ESC veya boş alana tıklama ile temizlenir.
   const [focusedCustomerId, setFocusedCustomerId] = useState<string | null>(null);
+  // Manuel üretim hattı odağı — /uretim-hatti komutu ile set edilir, kullanıcı
+  // shift+click ile seçtiği atomları "üretim hattı" olarak işaretler ve sadece
+  // o set ön plana çıkar. Müşteri-chip focus'undan ÖNCELİKLİDİR.
+  const [manualFocusIds, setManualFocusIds] = useState<Set<string> | null>(null);
   // Cihaz BOM drill-down — bir cihaza tıklayınca alt bileşenleri sahnede yan tarafa açılır
   // Çoklu cihaz aynı anda açılabilir — her cihaz için ayrı BOM kolonu render edilir
   const [expandedDeviceIds, setExpandedDeviceIds] = useState<Set<string>>(() => new Set());
@@ -3642,6 +3662,7 @@ function CustomersSceneRenderer({
         setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
         setFocusedCustomerId(null);
+        setManualFocusIds(null);
         setEditingEdgeKey(null);
       }
     };
@@ -3989,6 +4010,9 @@ function CustomersSceneRenderer({
   // mamuller dim kalır. Pill'ler (deadline/lead) primary node'a bağlıysa bonus
   // reachable olur. familyEdges (lbl-customers fan) hariç.
   const focusedReachable = useMemo<Set<string> | null>(() => {
+    // Manuel üretim hattı odağı varsa onu kullan — BFS yapma, kullanıcının
+    // tanımladığı set olduğu gibi belirginleşir.
+    if (manualFocusIds && manualFocusIds.size > 0) return manualFocusIds;
     if (!focusedCustomerId) return null;
     const isPrimaryColor = (c?: string): boolean => {
       if (!c) return false;
@@ -4025,7 +4049,7 @@ function CustomersSceneRenderer({
       if (bIsPill && seen.has(e.fromId)) seen.add(e.toId);
     }
     return seen;
-  }, [focusedCustomerId, bomEdges, customSceneEdges, atomById]);
+  }, [focusedCustomerId, manualFocusIds, bomEdges, customSceneEdges, atomById]);
 
   // SVG bounding box: world coords so we draw in the same transformed space
   const bbox = useMemo(() => {
@@ -4492,6 +4516,7 @@ function CustomersSceneRenderer({
           setAtomMetaField(parentId, { productionDays: days, productionPillId: pillId });
           return pillId;
         }}
+        onSetManualFocus={(ids) => setManualFocusIds(new Set(ids))}
       />
     </>
   );
