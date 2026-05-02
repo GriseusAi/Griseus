@@ -2900,12 +2900,12 @@ function CommandBar({
   const pendingDef = pending ? findCommandDef(pending.defName) : null;
   const currentStep = pendingDef && pending ? pendingDef.steps[pending.stepIdx] : null;
 
-  // Google-vari autosuggest: pending değilken, input'ta hala ilk komut adı
-  // yazılıyorsa (boşluk yoksa) dropdown açılır. / zorunlu değil — kullanıcı
-  // direkt "sip" yazsa da öneri görünür.
+  // Google-vari autosuggest: pending değilken, kullanıcı yazmaya başladığında
+  // (input boş değilken) ve hala ilk token yazılıyorsa (boşluk yoksa) dropdown
+  // açılır. Boş input'ta panel kapalı — alan görsel olarak temiz kalır.
   const trimmed = input.trim();
   const firstToken = trimmed.split(/\s+/)[0] ?? "";
-  const showSuggest = !pending && !trimmed.includes(" ");
+  const showSuggest = !pending && trimmed.length > 0 && !trimmed.includes(" ");
   const queryRaw = firstToken.replace(/^\//, "").toLowerCase();
   const suggestions = useMemo(() => {
     if (!showSuggest) return [];
