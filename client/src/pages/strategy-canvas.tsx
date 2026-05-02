@@ -2419,6 +2419,11 @@ function atomPort(a: SceneAtom, port?: "n"|"s"|"e"|"w"): { x: number; y: number 
   return { x: a.x, y: c.y };
 }
 
+// Hangi atom hangi gruba ait — Customers grubu kapalıysa bu id'ler gizlenir
+const SCENE_GROUP_MEMBERS: Record<string, string[]> = {
+  customers: ["c-En","c-E3","c-E2","c-E1","c-G1","c-G2","c-G3","c-Gn"],
+};
+
 function CustomersSceneRenderer({
   positions, onMove, getMouseInWorld, viewport,
 }: {
@@ -2427,6 +2432,34 @@ function CustomersSceneRenderer({
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
 }) {
+  // Açık gruplar — varsayılan olarak Customers AÇIK (chips görünür)
+  const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers"]));
+  // Shift+click ile çoklu seçim — aralarında canlı edge çiziliyor
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
+
+  const toggleGroup = (key: string) => setOpenGroups(prev => {
+    const n = new Set(prev);
+    if (n.has(key)) n.delete(key); else n.add(key);
+    return n;
+  });
+
+  const toggleSelect = (id: string) => setSelectedIds(prev => {
+    const n = new Set(prev);
+    if (n.has(id)) n.delete(id); else n.add(id);
+    return n;
+  });
+
+  const clearSelection = () => setSelectedIds(new Set());
+
+  // ESC ile seçimi temizle
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") clearSelection();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
   const atoms = useMemo(() => {
     const defaults = makeDefaultSceneAtoms();
     return defaults.map(a => {
@@ -2441,23 +2474,130 @@ function CustomersSceneRenderer({
     return m;
   }, [atoms]);
 
+  // Kapalı grubun üyelerini gizle — hem atom hem edge filter'ı
+  const hiddenIds = useMemo(() => {
+    const h = new Set<string>();
+    for (const [key, members] of Object.entries(SCENE_GROUP_MEMBERS)) {
+      if (!openGroups.has(key)) members.forEach(id => h.add(id));
+    }
+    return h;
+  }, [openGroups]);
+
+  const visibleAtoms = useMemo(
+    () => atoms.filter(a => !hiddenIds.has(a.id)),
+    [atoms, hiddenIds],
+  );
+
+  // Seçili atomlar arasında pairwise canlı edge — turuncu, kalın, label "ilişki"
+  const liveEdges: SceneEdge[] = useMemo(() => {
+    const ids = Array.from(selectedIds).filter(id => atomById[id] && !hiddenIds.has(id));
+    const edges: SceneEdge[] = [];
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        edges.push({
+          fromId: ids[i], toId: ids[j],
+          color: "#f97316", dashed: false, curveK: 0.45,
+        });
+      }
+    }
+    return edges;
+  }, [selectedIds, atomById, hiddenIds]);
+
+  // Görünür edge'ler: hidden atom'a değen var olanları at
+  const visibleSceneEdges = useMemo(
+    () => SCENE_EDGES.filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
+    [hiddenIds],
+  );
+
   // SVG bounding box: world coords so we draw in the same transformed space
   const bbox = useMemo(() => {
     let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-    for (const a of atoms) {
+    for (const a of visibleAtoms) {
       minX = Math.min(minX, a.x);
       minY = Math.min(minY, a.y);
       maxX = Math.max(maxX, a.x + a.w);
       maxY = Math.max(maxY, a.y + a.h);
     }
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 1; maxY = 1; }
     return { minX: minX - 200, minY: minY - 100, maxX: maxX + 200, maxY: maxY + 100 };
-  }, [atoms]);
+  }, [visibleAtoms]);
 
   const W = bbox.maxX - bbox.minX;
   const H = bbox.maxY - bbox.minY;
 
+  const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
+    const a = atomById[e.fromId];
+    const b = atomById[e.toId];
+    if (!a || !b) return null;
+    const p1 = atomPort(a, e.fromPort);
+    const p2 = atomPort(b, e.toPort);
+    const dx = p2.x - p1.x;
+    const k = e.curveK ?? 0.5;
+    const c1x = p1.x + dx * k;
+    const c1y = p1.y;
+    const c2x = p2.x - dx * k;
+    const c2y = p2.y;
+    const x1 = p1.x - bbox.minX, y1 = p1.y - bbox.minY;
+    const x2 = p2.x - bbox.minX, y2 = p2.y - bbox.minY;
+    const cx1 = c1x - bbox.minX, cy1 = c1y - bbox.minY;
+    const cx2 = c2x - bbox.minX, cy2 = c2y - bbox.minY;
+    const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
+    const midX = (x1 + x2) / 2;
+    const midY = (y1 + y2) / 2 - 6;
+    return (
+      <g key={`${isLive ? "live" : "edge"}-${i}`}>
+        <path
+          d={path}
+          stroke={e.color ?? "rgba(255,255,255,0.4)"}
+          strokeWidth={isLive ? 2.5 : 1.5}
+          fill="none"
+          strokeDasharray={e.dashed ? "5 4" : undefined}
+          style={isLive ? { filter: "drop-shadow(0 0 6px rgba(249,115,22,0.55))" } : undefined}
+        />
+        {e.label && (
+          <text
+            x={midX} y={midY}
+            fill={e.color ?? "rgba(255,255,255,0.85)"}
+            fontSize={13}
+            fontFamily={mono}
+            fontWeight={600}
+            textAnchor="middle"
+          >
+            {e.label}
+          </text>
+        )}
+      </g>
+    );
+  };
+
   return (
     <>
+      {/* Seçim göstergesi — sağ üstte sabit pill (DragNode dışında, viewport'tan bağımsız) */}
+      {selectedIds.size > 0 && (
+        <div style={{
+          position: "absolute", top: 12, right: 12, zIndex: 20,
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 10, padding: "8px 12px",
+          fontFamily: mono, fontSize: 11,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          display: "flex", alignItems: "center", gap: 10,
+        }}>
+          <span style={{ color: "#f97316", fontWeight: 700 }}>● {selectedIds.size}</span>
+          <span style={{ color: C.cardSub }}>seçili · shift+click ekle/çıkar</span>
+          <button
+            onClick={clearSelection}
+            style={{
+              background: "rgba(255,255,255,0.06)", color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`, borderRadius: 6,
+              padding: "4px 8px", fontFamily: mono, fontSize: 10, cursor: "pointer",
+            }}
+          >
+            temizle
+          </button>
+        </div>
+      )}
+
       {/* SVG edge layer — world coords, transform by viewport */}
       <svg
         width={W}
@@ -2472,92 +2612,69 @@ function CustomersSceneRenderer({
         }}
         viewBox={`0 0 ${W} ${H}`}
       >
-        {SCENE_EDGES.map((e, i) => {
-          const a = atomById[e.fromId];
-          const b = atomById[e.toId];
-          if (!a || !b) return null;
-          const p1 = atomPort(a, e.fromPort);
-          const p2 = atomPort(b, e.toPort);
-          // Bezier control points (curve)
-          const dx = p2.x - p1.x;
-          const dy = p2.y - p1.y;
-          const k = e.curveK ?? 0.5;
-          const c1x = p1.x + dx * k;
-          const c1y = p1.y;
-          const c2x = p2.x - dx * k;
-          const c2y = p2.y;
-          // Translate into svg coord space (subtract bbox.minX/Y)
-          const x1 = p1.x - bbox.minX, y1 = p1.y - bbox.minY;
-          const x2 = p2.x - bbox.minX, y2 = p2.y - bbox.minY;
-          const cx1 = c1x - bbox.minX, cy1 = c1y - bbox.minY;
-          const cx2 = c2x - bbox.minX, cy2 = c2y - bbox.minY;
-          const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
-          const midX = (x1 + x2) / 2;
-          const midY = (y1 + y2) / 2 - 6;
-          return (
-            <g key={i}>
-              <path
-                d={path}
-                stroke={e.color ?? "rgba(255,255,255,0.4)"}
-                strokeWidth={1.5}
-                fill="none"
-                strokeDasharray={e.dashed ? "5 4" : undefined}
-              />
-              {e.label && (
-                <text
-                  x={midX} y={midY}
-                  fill={e.color ?? "rgba(255,255,255,0.85)"}
-                  fontSize={13}
-                  fontFamily={mono}
-                  fontWeight={600}
-                  textAnchor="middle"
-                >
-                  {e.label}
-                </text>
-              )}
-            </g>
-          );
-        })}
+        {visibleSceneEdges.map((e, i) => renderEdge(e, i, false))}
+        {liveEdges.map((e, i) => renderEdge(e, i, true))}
       </svg>
 
       {/* Atom layer — DragNode'lar */}
-      {atoms.map(a => (
-        <SceneAtomNode
-          key={a.id}
-          atom={a}
-          onMove={(xy) => onMove(a.id, xy)}
-          getMouseInWorld={getMouseInWorld}
-          viewport={viewport}
-        />
-      ))}
+      {visibleAtoms.map(a => {
+        // Customers KÖK label = grup toggle. Diğer atomlar onTap'i tüketmiyor (drag aktif kalır)
+        const isCustomersLabel = a.id === "lbl-customers";
+        const onTap = isCustomersLabel ? () => toggleGroup("customers") : undefined;
+        return (
+          <SceneAtomNode
+            key={a.id}
+            atom={a}
+            onMove={(xy) => onMove(a.id, xy)}
+            onTap={onTap}
+            onMultiSelect={() => toggleSelect(a.id)}
+            selected={selectedIds.has(a.id)}
+            groupOpen={isCustomersLabel ? openGroups.has("customers") : undefined}
+            getMouseInWorld={getMouseInWorld}
+            viewport={viewport}
+          />
+        );
+      })}
     </>
   );
 }
 
 function SceneAtomNode({
-  atom, onMove, getMouseInWorld, viewport,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
+  onTap?: () => void;
+  onMultiSelect?: () => void;
+  selected?: boolean;
+  groupOpen?: boolean;
   getMouseInWorld: (e: React.PointerEvent) => XY;
   viewport: { vx: number; vy: number; scale: number };
 }) {
+  const asCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component";
   return (
     <DragNode
       pos={{ x: atom.x, y: atom.y }}
       width={atom.w}
       height={atom.h}
       onDrag={onMove}
+      onTap={onTap}
+      onMultiSelect={onMultiSelect}
       getMouseInWorld={getMouseInWorld}
       viewport={viewport}
-      asCircle={atom.kind === "category" || atom.kind === "stage" || atom.kind === "component"}
+      asCircle={asCircle}
+      style={selected ? {
+        outline: "3px solid #f97316",
+        outlineOffset: 4,
+        borderRadius: asCircle ? "50%" : 14,
+      } : undefined}
     >
-      <SceneAtomVisual atom={atom} />
+      <SceneAtomVisual atom={atom} groupOpen={groupOpen} />
     </DragNode>
   );
 }
 
-function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
+function SceneAtomVisual({ atom, groupOpen }: { atom: SceneAtom; groupOpen?: boolean }) {
   const accent =
     atom.highlight === "green" ? "#10b981" :
     atom.highlight === "blue"  ? "#38bdf8" : null;
@@ -2581,7 +2698,8 @@ function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
   );
 
   if (atom.kind === "label") {
-    // "Customers" master label — beyaz arka plan, vurgulu
+    // "Customers" master label — tıklanabilir grup başlığı (chevron + hover)
+    const showChevron = typeof groupOpen === "boolean";
     return (
       <div style={{
         width: "100%", height: "100%",
@@ -2593,7 +2711,14 @@ function SceneAtomVisual({ atom }: { atom: SceneAtom }) {
         fontFamily: mono,
       }}>
         {labelLine("◇ KÖK")}
-        <div style={{ fontSize: 16, fontWeight: 700 }}>{atom.label}</div>
+        <div style={{ fontSize: 16, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+          {showChevron && (
+            <span style={{ fontSize: 11, color: C.cardSub, width: 10, display: "inline-block" }}>
+              {groupOpen ? "▾" : "▸"}
+            </span>
+          )}
+          {atom.label}
+        </div>
       </div>
     );
   }
