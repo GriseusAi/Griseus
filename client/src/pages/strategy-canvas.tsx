@@ -2885,25 +2885,31 @@ const COMMAND_DEFS: CommandDef[] = [
       const productId = ids.find(id => atomById[id]?.kind === "product") ?? (atomById[inferredProductId] ? inferredProductId : null);
       const positionParent = categoryId ?? customerId ?? productId ?? ids[0];
       const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
+      const lineColor = devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8";
       let deadlineNote = "";
+      let deadlinePillId = "";
       if (positionParent && edgeTarget) {
-        h.ensureDeadlinePill(positionParent, deadline, edgeTarget);
+        deadlinePillId = h.ensureDeadlinePill(positionParent, deadline, edgeTarget);
         deadlineNote = ` · teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
       }
       const lineIds = [
         customerId,
+        deadlinePillId || null,
         categoryId,
         productId,
         "stg-uretim",
         "stg-depo",
         "stg-satis",
         "fact",
-      ].filter((id): id is string => !!id && !!atomById[id]);
-      if (customerId && categoryId) {
-        h.addEdge(customerId, categoryId, `x${qty}`, devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8");
+      ].filter((id): id is string => !!id && (id === deadlinePillId || !!atomById[id]));
+      if (customerId && deadlinePillId) {
+        h.addEdge(customerId, deadlinePillId, undefined, lineColor);
+      }
+      if (deadlinePillId && categoryId) {
+        h.addEdge(deadlinePillId, categoryId, undefined, lineColor);
       }
       if (categoryId && productId) {
-        h.addEdge(categoryId, productId, `x${qty}`, devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8");
+        h.addEdge(categoryId, productId, `x${qty}`, lineColor);
       }
       if (productId) {
         h.addEdge(productId, "stg-uretim", undefined, "#f59e0b");

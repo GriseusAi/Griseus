@@ -108,7 +108,7 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 güncel davranış:** Komut artık sadece pill/meta çizmez; seçili müşteri/kategori/ürün bağlamından gerçek `Order` kaydı üretir, aynı siparişi `flaskItems` içine ekler ve mevcut `/api/strategy/reaction-equation` read-only backend hattını tetikleyerek S1/S2 timeline atomlarını canlı reaction sonucu ile besler. Tarih girdisi `YYYY-MM-DD`, `15.05.2026` veya `15 Mayıs` formatından ISO tarihe normalize edilir. Customers scene açıkken legacy `OrderBlock`/`StrategyPanel` render edilmez; aksi halde eski workbench kartları sahne atomlarının üstüne biner.
 
-**Görsel üretim hattı:** Kullanıcı sadece müşteri atomunu seçse bile komut `deviceType` üzerinden `DEVICE_REGISTRY` içinden ürün ve kategori atomunu infer eder. Hattı sahneye şu custom edge zinciriyle çizer: müşteri → kategori (`xadet`), kategori → mamul (`xadet`), mamul → Üretim → Depo → Satış → Fabrika ve mamul → flask. Manual focus seçili atomlara ek olarak bu inferred hat atomlarını da kapsar.
+**Görsel üretim hattı:** Kullanıcı sadece müşteri atomunu seçse bile komut `deviceType` üzerinden `DEVICE_REGISTRY` içinden ürün ve kategori atomunu infer eder. Hattı sahneye şu custom edge zinciriyle çizer: müşteri → teslim pill → kategori → mamul (`xadet`) → Üretim → Depo → Satış → Fabrika ve mamul → flask. Manual focus seçili atomlara ek olarak bu inferred hat atomlarını da kapsar; müşteri chip'e tekrar tıklayınca aynı hat focus BFS ile görünür kalır.
 
 **`apply()` ne yapar (satır 2819):**
 
@@ -137,7 +137,7 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
    // Order + FlaskItem yaratır, reaction-equation sonucunu timeline atomlarına yansıtır.
 
 6) inferred visual line
-   // deviceType'tan kategori+mamul bulunur; müşteri→kategori→mamul→stage→fabrika hattı çizilir.
+   // deviceType'tan kategori+mamul bulunur; müşteri→teslim→kategori→mamul→stage→fabrika hattı çizilir.
 ```
 
 Pill ID konvansiyonu: `pill-d-{parentId}-{rand}` — multi-delivery için yeni pill, eski overwrite edilmez.
