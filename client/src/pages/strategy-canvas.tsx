@@ -6784,6 +6784,68 @@ export default function StrategyCanvasPage() {
     });
   }, []);
 
+  useEffect(() => {
+    const liveLines = sceneCustomAtoms
+      .filter(a => a.kind === "production-line")
+      .map(a => ({ id: a.id, meta: sceneAtomMeta[a.id] }))
+      .filter((x): x is { id: string; meta: AtomMeta } => !!x.meta);
+    if (liveLines.length === 0) {
+      setSceneCustomEdges(prev => prev.filter(e => {
+        if (/^x\d+$/i.test(e.label ?? "")) return false;
+        if (e.fromId.startsWith("p-") && (e.toId.startsWith("stg-") || e.toId === "flask")) return false;
+        if (e.fromId.startsWith("stg-") || e.toId === "fact") return false;
+        return true;
+      }));
+      setSceneCustomAtoms(prev => prev.filter(a => a.kind !== "deadline-pill"));
+      return;
+    }
+
+    const findLineForCategoryProduct = (e: CustomEdge) => liveLines.find(line =>
+      line.meta.categoryId === e.fromId && line.meta.productId === e.toId,
+    );
+    const findLineForProduct = (productId: string) => liveLines.find(line => line.meta.productId === productId);
+    const hasAnyStageLine = liveLines.some(line => !!line.meta.productId);
+    let changed = false;
+    setSceneCustomEdges(prev => {
+      const next: CustomEdge[] = [];
+      for (const e of prev) {
+        if (e.groupId) {
+          next.push(e);
+          continue;
+        }
+        if (/^x\d+$/i.test(e.label ?? "")) {
+          const line = findLineForCategoryProduct(e);
+          if (!line) {
+            changed = true;
+            continue;
+          }
+          const nextLabel = `x${line.meta.quantity ?? e.label?.replace(/^x/i, "") ?? ""}`;
+          next.push({ ...e, label: nextLabel, groupId: line.id });
+          changed = true;
+          continue;
+        }
+        if (e.fromId.startsWith("p-") && (e.toId.startsWith("stg-") || e.toId === "flask")) {
+          const line = findLineForProduct(e.fromId);
+          if (!line) {
+            changed = true;
+            continue;
+          }
+          next.push({ ...e, groupId: line.id });
+          changed = true;
+          continue;
+        }
+        if (e.fromId.startsWith("stg-") || e.toId === "fact") {
+          if (!hasAnyStageLine) {
+            changed = true;
+            continue;
+          }
+        }
+        next.push(e);
+      }
+      return changed ? next : prev;
+    });
+  }, [sceneCustomAtoms, sceneAtomMeta]);
+
   // Edge color palette — kullanıcı seçimi, localStorage'da kalıcı
   const [edgePaletteId, setEdgePaletteId] = useState<string>(() => {
     return localStorage.getItem(EDGE_PALETTE_KEY) || "default";

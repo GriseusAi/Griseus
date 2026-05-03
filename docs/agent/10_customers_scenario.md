@@ -119,6 +119,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 orphan guard:** Customers scene mount olduğunda canlı `production-line` atom listesi tek gerçek kaynak kabul edilir. `sceneCustomAtoms` içinde karşılığı olmayan eski `order_pline*`, `flask_pline*`, eski `pl_*` order/flask kayıtları otomatik temizlenir; bu, silinmiş GSS20P gibi eski simülasyon girdilerinin dock'ta yaşamaya devam etmesini engeller.
 
+**2026-05-03 legacy edge purge:** Eski build'lerden kalmış `groupId` taşımayan üretim okları da mount sırasında normalize edilir. `category → product` `xN` edge'i canlı `production-line` meta'sıyla eşleşirse doğru `xadet` label'ına çekilip `groupId` kazanır; eşleşmezse silinir. Product→stage/flask kalıntıları da canlı product hattı yoksa silinir. Bu, silinmiş GSS20P `x300` okunun veya 500'e güncellenmiş hatta `x450` label'ının kalmasını engeller.
+
 **`apply()` ne yapar (satır 2819):**
 
 ```
