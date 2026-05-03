@@ -2504,6 +2504,12 @@ function supplierNameForIndex(idx: number): string {
   return names[idx] ?? `Tedarikçi ${idx + 1}`;
 }
 
+function stockTextFromSub(sub?: string): string | null {
+  if (!sub) return null;
+  const part = sub.split("·").map(s => s.trim()).find(s => s.toLocaleLowerCase("tr").startsWith("stok"));
+  return part ? part.replace(/^stok\s*/i, "").trim() : null;
+}
+
 
 interface SceneEdge {
   fromId: string; toId: string;
@@ -4843,6 +4849,9 @@ function CustomersSceneRenderer({
           baseTap = () => toggleDevice(a.id);
         } else if (isSubassembly) {
           baseTap = () => toggleSubassembly(a.id);
+        } else if (a.kind === "bom-item" || a.kind === "component") {
+          // Bileşenlerde tek yüzey sağ inspector: eski drill-down popup'u açma.
+          baseTap = () => setPopupAtomId(null);
         } else if (a.kind === "customer-chip") {
           // Müşteri chip → o müşterinin sipariş hattını odakla (toggle)
           baseTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
@@ -5321,6 +5330,10 @@ function ComponentQuantityInspector({
     atom.kind === "subassembly" ? "YARI MAMÜL ADEDİ" :
     atom.kind === "component" ? "BİLEŞEN ADEDİ" :
     "ALT BİLEŞEN ADEDİ";
+  const stockText = stockTextFromSub(atom.sub);
+  const descriptionText = atom.sub
+    ? atom.sub.split("·").map(s => s.trim()).filter(s => !s.toLocaleLowerCase("tr").startsWith("stok")).join(" · ")
+    : "";
 
   const save = async () => {
     const qty = Number(quantity);
@@ -5367,6 +5380,11 @@ function ComponentQuantityInspector({
           <div style={{ fontSize: 15, fontWeight: 800, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
             {atom.label}
           </div>
+          {stockText && (
+            <div style={{ fontSize: 11, color: C.ok, fontWeight: 800, marginTop: 3 }}>
+              stok {stockText}
+            </div>
+          )}
         </div>
         <button
           type="button"
@@ -5389,9 +5407,13 @@ function ComponentQuantityInspector({
       <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <InfoCell label="Bağlı mamul" value={product?.label ?? "-"} />
-          <InfoCell label="Tip" value={atom.kind === "subassembly" ? "Yarı mamül" : "Bileşen"} />
+          <InfoCell label="Stok" value={stockText ? `${stockText} adet` : "-"} />
         </div>
-        {atom.sub && <InfoCell label="Açıklama" value={atom.sub} />}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <InfoCell label="Tip" value={atom.kind === "subassembly" ? "Yarı mamül" : "Bileşen"} />
+          <InfoCell label="Mevcut adet" value={meta.quantity ? `x${meta.quantity}` : "-"} />
+        </div>
+        {descriptionText && <InfoCell label="Açıklama" value={descriptionText} />}
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Adet</span>
           <input

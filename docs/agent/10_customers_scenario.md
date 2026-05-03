@@ -210,6 +210,8 @@ Cihaza tıkla → `expandedDeviceIds` Set'te toggle, sahnede yan tarafta o cihaz
 
 `bomEdges` parent-child dashed edge'leri runtime'da üretir, primary color BFS bunu da takip eder.
 
+**2026-05-03 bileşen inspector düzeltmesi:** `bom-item` ve `component` atomlarına sol tıklama artık eski küçük `ScenePopup` drill-down kartını açmaz. Tek kullanıcı yüzeyi sağdaki `ComponentQuantityInspector` kartıdır; bu kart bağlı mamul, stok, tip, mevcut adet ve açıklamayı gösterir. Böylece 25.018 gibi bileşenlerde aynı anda iki kart açılmaz ve stok bilgisi inspector içinde doğrudan okunur.
+
 ## Migration'lar (idempotent, localStorage flag'li)
 
 | Flag | Ne yapar |
