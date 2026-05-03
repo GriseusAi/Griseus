@@ -115,6 +115,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 analiz dock güncellemesi:** Vertex-style simülasyon dock'u artık açık/küçültülmüş/gizli mod taşır. Sağ üstte `-` küçültür, `x` gizler; gizlenince küçük `Simülasyon` butonu ile geri açılır. Dock beyaz fixed panel gibi davranmaz; koyu, kompakt operasyon konsolu olarak canvas ve komut bar'ı daha az kaplar.
 
+**2026-05-03 zincir bütünlüğü düzeltmesi:** Üretim hattı silme/güncelleme artık sadece inspector butonuna bağlı değildir. `production-line` atomu Delete/Backspace veya sol toolbar üzerinden silinirse aynı merkezi cleanup çalışır: line atom, deadline pill, `groupId === productionLineId` edge'leri, order/flask item ve reaction sonucu birlikte temizlenir. Adet/tarih güncelleme de `managedEdgeIds` boş kalmış eski hatlarda bile `groupId` edge'lerini tarar; `xadet` label'ı, pill label'ı ve S1/S2 beslemesi aynı anda değişir.
+
 **`apply()` ne yapar (satır 2819):**
 
 ```

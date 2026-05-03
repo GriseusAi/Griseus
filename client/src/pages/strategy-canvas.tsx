@@ -3735,6 +3735,7 @@ function CustomersSceneRenderer({
   onDeleteProductionLine: (args: {
     orderId?: string;
     flaskItemId?: string;
+    sku?: string;
   }) => void;
 }) {
   // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
@@ -4110,16 +4111,33 @@ function CustomersSceneRenderer({
       const tag = (e.target as HTMLElement | null)?.tagName;
       if (tag === "INPUT" || tag === "TEXTAREA") return;
       e.preventDefault();
+      const ids = Array.from(selectedIds);
+      const lineIds = ids.filter(id => atomById[id]?.kind === "production-line");
+      lineIds.forEach(cleanupProductionLine);
+      const plainIds = ids.filter(id => atomById[id]?.kind !== "production-line");
       setDeletedAtomIds(prev => {
         const n = new Set(prev);
-        selectedIds.forEach(id => n.add(id));
+        plainIds.forEach(id => n.add(id));
         return n;
       });
       setSelectedIds(new Set());
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds]);
+  }, [selectedIds, atomById, cleanupProductionLine]);
+
+  // Eski build'de Delete ile sadece gizlenmiş üretim hattı kalmışsa,
+  // mount sırasında gerçek order/flask/edge temizliğini tamamla.
+  useEffect(() => {
+    const staleLineIds = Array.from(deletedAtomIds).filter(id => atomById[id]?.kind === "production-line");
+    if (staleLineIds.length === 0) return;
+    staleLineIds.forEach(cleanupProductionLine);
+    setDeletedAtomIds(prev => {
+      const next = new Set(prev);
+      staleLineIds.forEach(id => next.delete(id));
+      return next;
+    });
+  }, [deletedAtomIds, atomById, cleanupProductionLine]);
 
   const visibleAtoms = useMemo(
     () => atoms.filter(a => !hiddenIds.has(a.id)),
@@ -4266,6 +4284,31 @@ function CustomersSceneRenderer({
     const id = Array.from(selectedIds).find(sel => atomById[sel]?.kind === "production-line");
     return id ? atomById[id] : null;
   }, [selectedIds, atomById]);
+
+  const cleanupProductionLine = useCallback((lineId: string) => {
+    const lineAtom = atomById[lineId];
+    if (!lineAtom || lineAtom.kind !== "production-line") return false;
+    const meta = atomMeta[lineId] ?? {};
+    const edgeIds = new Set([
+      ...(meta.managedEdgeIds ?? []),
+      ...customEdges.filter(e => e.groupId === lineId).map(e => e.id),
+    ]);
+    edgeIds.forEach(id => removeCustomEdge(id));
+    if (meta.deadlinePillId) {
+      customEdges
+        .filter(e => e.fromId === meta.deadlinePillId || e.toId === meta.deadlinePillId)
+        .forEach(e => removeCustomEdge(e.id));
+      removeCustomAtom(meta.deadlinePillId);
+    }
+    removeCustomAtom(lineId);
+    clearAtomMeta(lineId);
+    onDeleteProductionLine({
+      orderId: meta.orderId,
+      flaskItemId: meta.flaskItemId,
+      sku: meta.orderNumber,
+    });
+    return true;
+  }, [atomById, atomMeta, customEdges, removeCustomEdge, removeCustomAtom, clearAtomMeta, onDeleteProductionLine]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
@@ -4640,7 +4683,11 @@ function CustomersSceneRenderer({
             if (meta.deadlinePillId) {
               updateCustomAtom(meta.deadlinePillId, { label: `Teslim = ${next.deadline}` });
             }
-            (meta.managedEdgeIds ?? []).forEach(edgeId => {
+            const edgeIds = new Set([
+              ...(meta.managedEdgeIds ?? []),
+              ...customEdges.filter(e => e.groupId === selectedLineAtom.id).map(e => e.id),
+            ]);
+            edgeIds.forEach(edgeId => {
               const edge = customEdges.find(e => e.id === edgeId);
               if (edge && edge.fromId === meta.categoryId && edge.toId === meta.productId) {
                 updateCustomEdge(edgeId, { label: `x${next.quantity}` });
@@ -4655,22 +4702,8 @@ function CustomersSceneRenderer({
             });
           }}
           onDelete={() => {
-            const meta = atomMeta[selectedLineAtom.id] ?? {};
-            const edgeIds = new Set([
-              ...(meta.managedEdgeIds ?? []),
-              ...customEdges.filter(e => e.groupId === selectedLineAtom.id).map(e => e.id),
-            ]);
-            edgeIds.forEach(id => removeCustomEdge(id));
-            if (meta.deadlinePillId) {
-              customEdges
-                .filter(e => e.fromId === meta.deadlinePillId || e.toId === meta.deadlinePillId)
-                .forEach(e => removeCustomEdge(e.id));
-              removeCustomAtom(meta.deadlinePillId);
-            }
-            removeCustomAtom(selectedLineAtom.id);
-            clearAtomMeta(selectedLineAtom.id);
+            cleanupProductionLine(selectedLineAtom.id);
             setSelectedIds(new Set());
-            onDeleteProductionLine({ orderId: meta.orderId, flaskItemId: meta.flaskItemId });
           }}
         />
       )}
@@ -6640,7 +6673,8 @@ export default function StrategyCanvasPage() {
   );
   useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
   const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string, color?: string, groupId?: string) => {
-    let outId = "";
+    const newId = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    let outId = newId;
     setSceneCustomEdges(prev => {
       const idx = groupId ? -1 : prev.findIndex(e =>
         !e.groupId && (
@@ -6660,9 +6694,7 @@ export default function StrategyCanvasPage() {
         };
         return next;
       }
-      const id = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      outId = id;
-      return [...prev, { id, fromId, toId, label, color, groupId }];
+      return [...prev, { id: newId, fromId, toId, label, color, groupId }];
     });
     return outId;
   }, []);
@@ -7563,10 +7595,21 @@ export default function StrategyCanvasPage() {
   const deleteProductionLineFromScene = useCallback((args: {
     orderId?: string;
     flaskItemId?: string;
+    sku?: string;
   }) => {
-    if (args.orderId) setOrders(prev => prev.filter(order => order.id !== args.orderId));
+    if (args.orderId || args.sku) {
+      setOrders(prev => prev.filter(order => {
+        if (args.orderId && order.id === args.orderId) return false;
+        if (!args.orderId && args.sku && order.sku === args.sku) return false;
+        return true;
+      }));
+    }
     setFlaskItems(prev => {
-      const next = args.flaskItemId ? prev.filter(item => item.id !== args.flaskItemId) : prev;
+      const next = prev.filter(item => {
+        if (args.flaskItemId && item.id === args.flaskItemId) return false;
+        if (!args.flaskItemId && args.sku && item.sku === args.sku) return false;
+        return true;
+      });
       if (next.length > 0) runReactionForItems(next);
       else setReactionResult(null);
       return next;
