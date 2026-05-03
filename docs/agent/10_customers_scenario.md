@@ -113,6 +113,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 etkileşim güncellemesi:** `/üretim-hattı` artık ayrıca seçilebilir `production-line` atomu üretir. Bu hat kartı arkada gizlenen edge setinin yüzeye çıkmış kontrol objesidir. Tıklanınca canvas üstünde inspector açılır: adet ve teslim tarihi değiştirilebilir, reaction hesabı yeniden koşar, `xadet` edge label'ı ve teslim pill label'ı güncellenir. "hattı sil" aksiyonu line card + deadline pill + o hatta ait `groupId` edge'leri + order/flask item kaydını temizler. Böylece üretim senaryosu sadece çizgi değil, düzenlenebilir operasyon nesnesidir.
 
+**2026-05-03 analiz dock güncellemesi:** Vertex-style simülasyon dock'u artık açık/küçültülmüş/gizli mod taşır. Sağ üstte `-` küçültür, `x` gizler; gizlenince küçük `Simülasyon` butonu ile geri açılır. Dock beyaz fixed panel gibi davranmaz; koyu, kompakt operasyon konsolu olarak canvas ve komut bar'ı daha az kaplar.
+
 **`apply()` ne yapar (satır 2819):**
 
 ```

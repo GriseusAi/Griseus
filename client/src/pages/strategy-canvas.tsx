@@ -4995,6 +4995,11 @@ function VertexAnalysisDock({
   reactionResult: ReactionResult | null;
   flaskItems: FlaskItem[];
 }) {
+  const [dockMode, setDockMode] = useState<"open" | "minimized" | "hidden">("open");
+  useEffect(() => {
+    if (reactionResult || flaskItems.length > 0) setDockMode("open");
+  }, [reactionResult?.startDate, flaskItems.length]);
+
   const start = reactionResult ? new Date(reactionResult.startDate) : new Date();
   const fmtDay = (day: number) => {
     const d = new Date(start.getTime() + day * 86400000);
@@ -5042,6 +5047,71 @@ function VertexAnalysisDock({
     }).join(" ");
   };
 
+  if (dockMode === "hidden") {
+    return (
+      <button
+        type="button"
+        onClick={() => setDockMode("open")}
+        style={{
+          position: "absolute",
+          right: 18,
+          bottom: 62,
+          zIndex: 22,
+          background: C.cardBg,
+          color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 10,
+          padding: "10px 14px",
+          fontFamily: mono,
+          fontSize: 12,
+          fontWeight: 800,
+          boxShadow: "0 10px 28px rgba(0,0,0,0.35)",
+          cursor: "pointer",
+        }}
+      >
+        Simülasyon
+      </button>
+    );
+  }
+
+  if (dockMode === "minimized") {
+    return (
+      <div
+        style={{
+          position: "absolute",
+          left: 92,
+          right: 18,
+          bottom: 58,
+          height: 48,
+          zIndex: 22,
+          background: "rgba(10,10,14,0.94)",
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 10,
+          color: C.cardInk,
+          fontFamily: mono,
+          display: "flex",
+          alignItems: "center",
+          gap: 12,
+          padding: "0 12px",
+          boxShadow: "0 -10px 26px rgba(0,0,0,0.28)",
+          pointerEvents: "auto",
+        }}
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div style={{ fontSize: 10, letterSpacing: 1.8, color: C.accent, fontWeight: 900 }}>SİMÜLASYON</div>
+        <div style={{ fontSize: 12, fontWeight: 800, minWidth: 120 }}>{contextRows.length} seri</div>
+        <div style={{ fontSize: 11, color: C.cardSub, flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          {s1 && s2
+            ? `S1 ${Math.ceil(s1.worstLateDays)} gün · S2 ${Math.ceil(s2.worstLateDays)} gün · ${sharedText}`
+            : "Üretim hattı hesap bekliyor"}
+        </div>
+        <button type="button" onClick={() => setDockMode("open")} style={dockButtonStyle}>aç</button>
+        <button type="button" onClick={() => setDockMode("hidden")} style={dockButtonStyle}>x</button>
+      </div>
+    );
+  }
+
   return (
     <div
       style={{
@@ -5049,64 +5119,64 @@ function VertexAnalysisDock({
         left: 92,
         right: 18,
         bottom: 58,
-        height: 260,
+        height: 214,
         zIndex: 18,
-        background: "rgba(255,255,255,0.94)",
-        border: `1px solid ${C.edgeFaint}`,
+        background: "rgba(10,10,14,0.95)",
+        border: `1px solid ${C.panelEdge}`,
         borderRadius: 10,
-        boxShadow: "0 -10px 30px rgba(15,23,42,0.14)",
-        color: C.ink,
+        boxShadow: "0 -12px 32px rgba(0,0,0,0.34)",
+        color: C.cardInk,
         fontFamily: mono,
         display: "grid",
-        gridTemplateColumns: "280px minmax(360px, 1fr) 330px",
+        gridTemplateColumns: "240px minmax(320px, 1fr) 300px",
         overflow: "hidden",
         pointerEvents: "auto",
       }}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
     >
-      <div style={{ borderRight: `1px solid ${C.edgeFaint}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent, fontWeight: 700 }}>
+      <div style={{ borderRight: `1px solid ${C.panelEdge}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "10px 14px", borderBottom: `1px solid ${C.panelEdge}` }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent, fontWeight: 900 }}>
             SIMÜLASYON MOTORU
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>
             Üretim hattı serileri
           </div>
         </div>
-        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
+        <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
           {contextRows.map((row) => (
             <div key={row.sku} style={{
-              padding: "8px 10px",
-              border: `1px solid ${C.edgeFaint}`,
+              padding: "8px 9px",
+              border: `1px solid ${C.panelEdge}`,
               borderRadius: 8,
-              background: "#ffffff",
+              background: C.cardBgAlt,
               display: "grid",
               gridTemplateColumns: "1fr auto",
               gap: 4,
             }}>
-              <div style={{ fontSize: 12, fontWeight: 800 }}>{row.sku}</div>
+              <div style={{ fontSize: 12, fontWeight: 900 }}>{row.sku}</div>
               <div style={{ fontSize: 10, color: row.toProduce > 0 ? C.warn : C.ok, fontWeight: 700 }}>
                 üret {fmtTR(row.toProduce)}
               </div>
-              <div style={{ fontSize: 10, color: C.mid }}>istek {fmtTR(row.requested)}</div>
-              <div style={{ fontSize: 10, color: C.mid }}>depo {fmtTR(row.inWarehouse)}</div>
+              <div style={{ fontSize: 10, color: C.cardSub }}>istek {fmtTR(row.requested)}</div>
+              <div style={{ fontSize: 10, color: C.cardSub }}>depo {fmtTR(row.inWarehouse)}</div>
             </div>
           ))}
         </div>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div style={{ height: 46, display: "flex", alignItems: "center", gap: 10, padding: "0 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
+        <div style={{ height: 44, display: "flex", alignItems: "center", gap: 10, padding: "0 12px", borderBottom: `1px solid ${C.panelEdge}` }}>
           <span style={{ padding: "5px 12px", borderRadius: 7, background: C.infoSoft, color: C.info, fontSize: 12, fontWeight: 800 }}>
             Series
           </span>
-          <span style={{ fontSize: 11, color: C.mid }}>
+          <span style={{ fontSize: 11, color: C.cardSub, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             Başlangıç {fmtDay(0)} · ufuk {horizon} gün · paylaşılan bileşen {sharedText}
           </span>
         </div>
-        <div style={{ flex: 1, padding: "14px 18px 10px", display: "grid", gridTemplateRows: "1fr 64px", gap: 8 }}>
-          <div style={{ position: "relative", border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#f8fafc", overflow: "hidden" }}>
+        <div style={{ flex: 1, padding: 10, display: "grid", gridTemplateRows: "1fr 48px", gap: 8 }}>
+          <div style={{ position: "relative", border: `1px solid ${C.panelEdge}`, borderRadius: 8, background: "#111827", overflow: "hidden" }}>
             {[0, Math.round(horizon / 3), Math.round(horizon * 2 / 3), horizon].map((day) => (
               <div key={day} style={{
                 position: "absolute",
@@ -5114,9 +5184,9 @@ function VertexAnalysisDock({
                 top: 0,
                 bottom: 0,
                 width: 1,
-                background: "rgba(15,23,42,0.08)",
+                background: "rgba(255,255,255,0.08)",
               }}>
-                <div style={{ position: "absolute", top: 8, left: 6, fontSize: 9, color: C.dim, whiteSpace: "nowrap" }}>
+                <div style={{ position: "absolute", top: 8, left: 6, fontSize: 9, color: C.cardSub, whiteSpace: "nowrap" }}>
                   {fmtDay(day)}
                 </div>
               </div>
@@ -5144,14 +5214,14 @@ function VertexAnalysisDock({
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[s1, s2].map((scenario, idx) => (
-              <div key={scenario?.id ?? idx} style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#ffffff", padding: "9px 10px" }}>
+              <div key={scenario?.id ?? idx} style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 8, background: C.cardBgAlt, padding: "7px 9px" }}>
                 <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
-                  <span style={{ fontSize: 12, fontWeight: 800, color: scenario ? scenarioColor(scenario.id) : C.mid }}>
+                  <span style={{ fontSize: 12, fontWeight: 900, color: scenario ? scenarioColor(scenario.id) : C.cardSub }}>
                     {scenario?.id ?? (idx === 0 ? "S1" : "S2")}
                   </span>
-                  <span style={{ fontSize: 10, color: C.mid }}>{scenario?.label ?? "hesap bekliyor"}</span>
+                  <span style={{ fontSize: 10, color: C.cardSub }}>{scenario?.label ?? "hesap bekliyor"}</span>
                 </div>
-                <div style={{ fontSize: 10, color: C.mid, marginTop: 6, lineHeight: 1.35 }}>
+                <div style={{ fontSize: 10, color: C.cardSub, marginTop: 4, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                   {scenario
                     ? scenario.outcomes.map(o => `${o.sku}: ${o.ontime ? "zamanında" : `${Math.ceil(o.daysLate)} gün geç`}`).join(" · ")
                     : "Üretim hattı komutu reaction sonucunu buraya bağlar."}
@@ -5162,33 +5232,39 @@ function VertexAnalysisDock({
         </div>
       </div>
 
-      <div style={{ borderLeft: `1px solid ${C.edgeFaint}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
-        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
-          <div style={{ fontSize: 9, letterSpacing: 2, color: C.warn, fontWeight: 700 }}>
-            ÖNERİLEN AKSİYON
+      <div style={{ borderLeft: `1px solid ${C.panelEdge}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "10px 12px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+          <div>
+            <div style={{ fontSize: 9, letterSpacing: 2, color: C.warn, fontWeight: 900 }}>
+              ÖNERİLEN AKSİYON
+            </div>
+            <div style={{ fontSize: 15, fontWeight: 800, marginTop: 4 }}>
+              Karar orkestrasyonu
+            </div>
           </div>
-          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
-            Karar orkestrasyonu
+          <div style={{ display: "flex", gap: 6 }}>
+            <button type="button" onClick={() => setDockMode("minimized")} style={dockButtonStyle}>-</button>
+            <button type="button" onClick={() => setDockMode("hidden")} style={dockButtonStyle}>x</button>
           </div>
         </div>
-        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-          <div style={{ border: `1px solid ${improvement > 0 ? C.ok : C.edgeFaint}`, borderRadius: 8, padding: 12, background: improvement > 0 ? C.okSoft : "#ffffff" }}>
-            <div style={{ fontSize: 12, fontWeight: 800, color: improvement > 0 ? C.ok : C.ink }}>
+        <div style={{ padding: 10, display: "flex", flexDirection: "column", gap: 8 }}>
+          <div style={{ border: `1px solid ${improvement > 0 ? C.ok : C.panelEdge}`, borderRadius: 8, padding: 10, background: improvement > 0 ? "rgba(16,185,129,0.12)" : C.cardBgAlt }}>
+            <div style={{ fontSize: 12, fontWeight: 900, color: improvement > 0 ? C.ok : C.cardInk }}>
               {improvement > 0 ? "S2 planını öner" : "Plan hesaplanıyor"}
             </div>
-            <div style={{ fontSize: 10, color: C.mid, marginTop: 5, lineHeight: 1.45 }}>
+            <div style={{ fontSize: 10, color: C.cardSub, marginTop: 5, lineHeight: 1.45 }}>
               {improvement > 0
                 ? `Üst üste bindirme gecikmeyi yaklaşık ${improvement} gün azaltıyor.`
                 : "Sipariş girildiğinde S1/S2 farkı burada karar notuna dönüşür."}
             </div>
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-            <MetricTile label="S1 gecikme" value={s1 ? `${Math.ceil(s1.worstLateDays)} gün` : "-"} tone={s1 && s1.worstLateDays > 0 ? C.shortfall : C.mid} />
+            <MetricTile label="S1 gecikme" value={s1 ? `${Math.ceil(s1.worstLateDays)} gün` : "-"} tone={s1 && s1.worstLateDays > 0 ? C.shortfall : C.cardSub} />
             <MetricTile label="S2 gecikme" value={s2 ? `${Math.ceil(s2.worstLateDays)} gün` : "-"} tone={s2 && s2.worstLateDays > 0 ? C.warn : C.ok} />
           </div>
-          <div style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, padding: 10, background: "#ffffff" }}>
-            <div style={{ fontSize: 10, color: C.mid, fontWeight: 800, marginBottom: 4 }}>DARBOĞAZ</div>
-            <div style={{ fontSize: 11, color: warningText ? C.warn : C.mid, lineHeight: 1.4 }}>
+          <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 8, padding: 9, background: C.cardBgAlt }}>
+            <div style={{ fontSize: 10, color: C.cardSub, fontWeight: 900, marginBottom: 4 }}>DARBOĞAZ</div>
+            <div style={{ fontSize: 11, color: warningText ? C.warn : C.cardSub, lineHeight: 1.35, maxHeight: 34, overflow: "hidden" }}>
               {warningText ?? "Kritik tedarik veya kapasite uyarısı yok."}
             </div>
           </div>
@@ -5200,12 +5276,25 @@ function VertexAnalysisDock({
 
 function MetricTile({ label, value, tone }: { label: string; value: string; tone: string }) {
   return (
-    <div style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#ffffff", padding: "9px 10px" }}>
-      <div style={{ fontSize: 9, color: C.mid, fontWeight: 800 }}>{label}</div>
+    <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 8, background: C.cardBgAlt, padding: "8px 9px" }}>
+      <div style={{ fontSize: 9, color: C.cardSub, fontWeight: 900 }}>{label}</div>
       <div style={{ fontSize: 14, color: tone, fontWeight: 900, marginTop: 3 }}>{value}</div>
     </div>
   );
 }
+
+const dockButtonStyle: React.CSSProperties = {
+  width: 28,
+  height: 28,
+  borderRadius: 7,
+  border: `1px solid ${C.panelEdge}`,
+  background: "rgba(255,255,255,0.06)",
+  color: C.cardInk,
+  fontFamily: mono,
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
 
 /* ════════════════════════════════════════════════════════════════════
    SCENE POPUP — atom kind'ına göre drill-down içerik
