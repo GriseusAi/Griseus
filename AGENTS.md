@@ -38,6 +38,7 @@
 | 07 | [ui_aesthetic.md](docs/agent/07_ui_aesthetic.md) | claude.ai theme, drill-down daire, no overlay panel, no badges, strategy canvas |
 | 08 | [deploy_safety.md](docs/agent/08_deploy_safety.md) | Auto-deploy, auth-write-only, namespacing (griseus_ prefix), global state |
 | 09 | [palantir_principles.md](docs/agent/09_palantir_principles.md) | Octopus, OAG > RAG, OODA, Action Layer, Vertex blueprint |
+| 10 | [customers_scenario.md](docs/agent/10_customers_scenario.md) | AKTİF: Strategy Canvas Customers Senaryosu — atom kind'ları, slash komutlar, focus modes, son commit'ler |
 
 ## Tipik İş Akışı
 
