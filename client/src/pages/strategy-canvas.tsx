@@ -2510,6 +2510,20 @@ function stockTextFromSub(sub?: string): string | null {
   return part ? part.replace(/^stok\s*/i, "").trim() : null;
 }
 
+function parseTRNumber(text?: string | null): number | null {
+  if (!text) return null;
+  const normalized = text.replace(/\./g, "").replace(",", ".").replace(/[^\d.-]/g, "");
+  if (!normalized) return null;
+  const n = Number(normalized);
+  return Number.isFinite(n) ? n : null;
+}
+
+function addDaysISO(base: Date, days: number): string {
+  const d = new Date(base);
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
 
 interface SceneEdge {
   fromId: string; toId: string;
@@ -3094,6 +3108,26 @@ const COMMAND_DEFS: CommandDef[] = [
       const baseX = Math.max(1080, maxX + 150);
       const baseY = Math.max(64, minY - 26);
       const color = "#38bdf8";
+      const today = new Date();
+      const requestedRows = supplyTargets.map((target, idx) => {
+        const requestedQty = parseTRNumber(metaById[target.id]?.quantity);
+        const stockQty = parseTRNumber(stockTextFromSub(target.sub));
+        const shortage = requestedQty === null ? null : Math.max(0, requestedQty - (stockQty ?? 0));
+        const orderQty = shortage === null ? null : Math.max(1, Math.ceil(shortage * 1.2));
+        const leadDays = DEFAULT_LEAD_TIME_DAYS + idx * 2;
+        return {
+          target,
+          idx,
+          requestedQty,
+          stockQty,
+          shortage,
+          orderQty,
+          leadDays,
+          orderedAt: addDaysISO(today, 0),
+          eta: addDaysISO(today, leadDays),
+          lineReady: addDaysISO(today, leadDays + 1),
+        };
+      });
       const focusIds = new Set<string>([...ids]);
       const managedEdgeIds: string[] = [];
       const addSupplyEdge = (from: string, to: string, label?: string, edgeColor = color) => {
@@ -3106,11 +3140,11 @@ const COMMAND_DEFS: CommandDef[] = [
         id: hubId,
         kind: "supply-bracket",
         label: productAtom ? `${productAtom.label} tedarik` : "Canlı tedarik",
-        sub: `${supplyTargets.length} eksik bileşen · izleme açık`,
+        sub: `${requestedRows.length} kalem · PO taslak · ETA takip · üretime giriş planı`,
         x: baseX,
         y: baseY,
-        w: 230,
-        h: 64,
+        w: 280,
+        h: 76,
         highlight: "blue",
       });
       focusIds.add(hubId);
@@ -3119,49 +3153,81 @@ const COMMAND_DEFS: CommandDef[] = [
       h.addAtom({
         id: purchaseId,
         kind: "supply-bracket",
-        label: "Satınalma",
-        sub: "sipariş açıldı · canlı takip",
-        x: baseX + 300,
+        label: "Satınalma emri",
+        sub: `durum: taslak · sipariş tarihi ${addDaysISO(today, 0)} · onay bekliyor`,
+        x: baseX + 340,
         y: baseY + 86,
-        w: 180,
-        h: 58,
+        w: 260,
+        h: 72,
         highlight: "blue",
       });
       focusIds.add(purchaseId);
 
-      supplyTargets.forEach((target, idx) => {
+      const inboundId = `${lineId}-inbound`;
+      h.addAtom({
+        id: inboundId,
+        kind: "supply-bracket",
+        label: "Tedarik hattı",
+        sub: "PO onayı · tedarikçi · yolda · depo kabul · üretim serbest",
+        x: baseX + 680,
+        y: baseY + 86,
+        w: 320,
+        h: 72,
+        highlight: "blue",
+      });
+      focusIds.add(inboundId);
+
+      requestedRows.forEach(({ target, idx, requestedQty, stockQty, shortage, orderQty, leadDays, eta, lineReady }) => {
+        const materialId = `${lineId}-material-${idx}`;
         const supplierId = `${lineId}-supplier-${idx}`;
-        const leadDays = DEFAULT_LEAD_TIME_DAYS + idx * 2;
-        const requestedQty = metaById[target.id]?.quantity?.trim();
-        const qtyText = requestedQty ? ` x${requestedQty}` : "";
+        const materialStatus = shortage === null
+          ? "ihtiyaç bilinmiyor"
+          : shortage > 0
+            ? `${fmtTR(shortage)} eksik · ${fmtTR(orderQty ?? shortage)} sipariş önerisi`
+            : "stok yeterli · sipariş gerekmiyor";
+        h.addAtom({
+          id: materialId,
+          kind: "supply-bracket",
+          label: target.label,
+          sub: `stok ${stockQty === null ? "?" : fmtTR(stockQty)} · ihtiyaç ${requestedQty === null ? "?" : fmtTR(requestedQty)} · ${materialStatus}`,
+          x: baseX,
+          y: baseY + 104 + idx * 92,
+          w: 300,
+          h: 74,
+          highlight: shortage !== null && shortage > 0 ? "red" : "blue",
+        });
+        focusIds.add(materialId);
         h.addAtom({
           id: supplierId,
           kind: "supply-bracket",
           label: supplierNameForIndex(idx),
-          sub: `${target.label}${qtyText} · ${leadDays} gün`,
-          x: baseX,
-          y: baseY + 92 + idx * 76,
-          w: 230,
-          h: 58,
-          highlight: target.highlight === "red" ? "red" : "blue",
+          sub: `${target.label} · PO ${orderQty === null ? "taslak" : `x${fmtTR(orderQty)}`} · ETA ${eta} · hatta giriş ${lineReady}`,
+          x: baseX + 340,
+          y: baseY + 184 + idx * 92,
+          w: 300,
+          h: 74,
+          highlight: shortage !== null && shortage > 0 ? "red" : "blue",
         });
         focusIds.add(supplierId);
-        addSupplyEdge(target.id, supplierId, requestedQty ? `x${requestedQty}` : "eksik", target.highlight === "red" ? "#ef4444" : color);
-        addSupplyEdge(supplierId, purchaseId, `${leadDays}g`, color);
+        addSupplyEdge(target.id, materialId, requestedQty === null ? "ihtiyaç ?" : `ihtiyaç ${fmtTR(requestedQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
+        addSupplyEdge(materialId, purchaseId, orderQty === null ? "PO ?" : `PO x${fmtTR(orderQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
+        addSupplyEdge(purchaseId, supplierId, `${leadDays}g`, color);
+        addSupplyEdge(supplierId, inboundId, eta, color);
       });
 
       addSupplyEdge(hubId, purchaseId, undefined, color);
       if (productId) addSupplyEdge(productId, hubId, undefined, "rgba(56,189,248,0.7)");
-      addSupplyEdge(purchaseId, "stg-depo", undefined, "rgba(255,255,255,0.82)");
+      addSupplyEdge(inboundId, "stg-depo", "depo kabul", "rgba(255,255,255,0.82)");
       addSupplyEdge("stg-depo", "stg-uretim", undefined, "rgba(255,255,255,0.82)");
-      if (productId) addSupplyEdge("stg-uretim", productId, "hazır", "#10b981");
+      if (productId) addSupplyEdge("stg-uretim", productId, "üretime serbest", "#10b981");
 
       ["stg-depo", "stg-uretim"].forEach(id => focusIds.add(id));
       if (productId) focusIds.add(productId);
       h.applyMeta(hubId, { managedEdgeIds });
       h.setManualFocus(Array.from(focusIds));
 
-      return `Tedarik hattı: ${supplyTargets.map(a => a.label).join(", ")} · ${supplierNameForIndex(0)}-${supplierNameForIndex(supplyTargets.length - 1)} · Depo → Üretim (ESC ile temizle)`;
+      const latestReady = requestedRows.map(r => r.lineReady).sort().at(-1);
+      return `Tedarik hattı: ${requestedRows.length} kalem · PO taslak · son üretime giriş ${latestReady ?? "-"} · Depo → Üretim (ESC ile temizle)`;
     },
   },
   {
@@ -6488,6 +6554,12 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
 
   if (atom.kind === "supply-bracket") {
     const stripe = atom.highlight === "red" ? C.shortfall : (accent ?? C.info);
+    const detailLines = atom.sub ? atom.sub.split("·").map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+    const labelKind = atom.label.includes("Satınalma")
+      ? "SATINALMA"
+      : atom.label === "Tedarik hattı"
+        ? "TEDARİK HATTI"
+        : "TEDARİK";
     return (
       <div style={{
         width: "100%", height: "100%",
@@ -6498,15 +6570,26 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
         display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
         fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.36)",
       }}>
-        {labelLine(atom.label === "Satınalma" ? "SATINALMA" : "TEDARİK", stripe)}
+        {labelLine(labelKind, stripe)}
         <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {atom.label}
         </div>
-        {atom.sub && (
-          <div style={{ fontSize: 10, color: C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-            {atom.sub}
+        {detailLines.map((line, idx) => (
+          <div
+            key={`${line}-${idx}`}
+            style={{
+              fontSize: idx === 0 ? 10 : 9,
+              color: idx === 0 ? C.cardInk : C.cardSub,
+              fontWeight: idx === 0 ? 700 : 600,
+              whiteSpace: "nowrap",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              lineHeight: 1.15,
+            }}
+          >
+            {line}
           </div>
-        )}
+        ))}
       </div>
     );
   }

@@ -94,11 +94,25 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 | `/teslim` | `deadline`, `tarih` | deadline | Seçili atom(lar)a teslim pill — `ensureDeadlinePill(id, deadline)` |
 | `/üretim` | `uretim`, `production` | days (sayı) | Seçili atom(lar)a üretim süresi pill — `ensureProductionPill(id, days)` |
 | `/üretim-hattı` | `uretim-hatti`, `hat`, `production-line`, **`siparis`**, **`sipariş`**, **`order`** | deviceType, quantity, deadline | Üretim hattı oluştur — meta yaz + teslim pill (G2/G3 pattern) + manual focus |
+| `/tedarik` | `supply`, `satinalma`, `tedarik-hatti` | — | Seçili bileşenlerden PO taslak + ETA + tedarik hattı + depo/üretim giriş zinciri çizer |
 | `/sil` | `clear`, `temizle` | — | Seçili atom(lar)ın meta + pill'lerini temizle |
 | `/gix` | `ai`, `ai-sor`, `agent`, `codex`, `vibe` | request | Codex wrapper: isteği seçili canvas atomlarıyla teknik görev brief'ine çevirir |
 | `/diyagram-çiz` | `diyagram-ciz`, `diyagram`, `chart`, `compare` | — | 2+ atom için diyagram modal aç |
 
 `COMMAND_DEFS` dışına çıkma — yeni feature istiyorsan ya yeni komut ekle ya mevcut komutu genişlet. Sabit overlay panel veya buton ekleme.
+
+### `/tedarik` — Real-Time OS Supply Chain Surface
+
+Seçili `bom-item`, `component` veya `subassembly` atomlarından canlı tedarik takip zinciri kurar. Bu komut şu anda backend purchase order yazmaz; canvas içinde operasyon objesi üretir:
+
+- Mamul → tedarik özet kartı
+- Her malzeme için stok, ihtiyaç, eksik adet, önerilen sipariş adedi
+- Satınalma emri kartı: taslak durum, sipariş tarihi, onay bekliyor
+- Her tedarikçi kartı: PO adedi, lead time, ETA, üretim hattına giriş tarihi
+- Tedarik hattı kartı: PO onayı → tedarikçi → yolda → depo kabul → üretim serbest
+- Depo → Üretim → mamul edge'i `üretime serbest` label'ı ile bağlanır
+
+Bu yüzey Palantir/Vertex-style "operasyon takip objesi"dir; gerçek DB purchase order workflow'u eklenirse `purchase_suggestions`, WS broadcast, lineage ve ontology linkleriyle bağlanmalıdır.
 
 ### `/gix` (alias `/codex`, `/vibe`) — Codex Wrapper
 
