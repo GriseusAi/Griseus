@@ -168,6 +168,7 @@ interface CustomEdge {
   toId: string;
   label?: string;
   color?: string;
+  groupId?: string;
 }
 
 interface AtomMeta {
@@ -177,6 +178,13 @@ interface AtomMeta {
   deadlinePillId?: string;
   productionDays?: string;
   productionPillId?: string;
+  productionLineId?: string;
+  orderId?: string;
+  flaskItemId?: string;
+  customerId?: string;
+  categoryId?: string;
+  productId?: string;
+  managedEdgeIds?: string[];
 }
 
 function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
@@ -2445,7 +2453,7 @@ function SupplyEquationPanel({
 type SceneAtomKind =
   | "label" | "customer-chip" | "category" | "product" | "stage"
   | "factory" | "component" | "bom-item" | "subassembly" | "lead-pill" | "deadline-pill" | "flask"
-  | "supply-bracket" | "timeline-s1" | "timeline-s2";
+  | "supply-bracket" | "timeline-s1" | "timeline-s2" | "production-line";
 
 interface SceneAtom {
   id: string;
@@ -2801,17 +2809,21 @@ interface CommandDef {
     helpers: {
       applyMeta: (id: string, patch: AtomMeta) => void;
       clearMeta: (ids: string[]) => void;
-      addEdge: (from: string, to: string, label?: string, color?: string) => void;
+      addAtom: (atom: SceneAtom) => void;
+      addEdge: (from: string, to: string, label?: string, color?: string, groupId?: string) => string;
       ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
       createProductionLine: (args: {
+        productionLineId: string;
         customerId: string | null;
         categoryId: string | null;
         productId: string | null;
+        deadlinePillId: string | null;
+        managedEdgeIds: string[];
         deviceType: string;
         quantity: number;
         deadline: string;
-      }) => string;
+      }) => { orderId: string; flaskItemId: string; note: string };
       setManualFocus: (ids: string[]) => void;
       askAgent: () => boolean;
       openDiagram: () => boolean;
@@ -2886,6 +2898,12 @@ const COMMAND_DEFS: CommandDef[] = [
       const positionParent = categoryId ?? customerId ?? productId ?? ids[0];
       const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
       const lineColor = devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8";
+      const productionLineId = `pline-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const managedEdgeIds: string[] = [];
+      const addLineEdge = (from: string, to: string, label?: string, color?: string) => {
+        const edgeId = h.addEdge(from, to, label, color, productionLineId);
+        managedEdgeIds.push(edgeId);
+      };
       let deadlineNote = "";
       let deadlinePillId = "";
       if (positionParent && edgeTarget) {
@@ -2903,32 +2921,63 @@ const COMMAND_DEFS: CommandDef[] = [
         "fact",
       ].filter((id): id is string => !!id && (id === deadlinePillId || !!atomById[id]));
       if (customerId && deadlinePillId) {
-        h.addEdge(customerId, deadlinePillId, undefined, lineColor);
+        addLineEdge(customerId, deadlinePillId, undefined, lineColor);
       }
       if (deadlinePillId && categoryId) {
-        h.addEdge(deadlinePillId, categoryId, undefined, lineColor);
+        addLineEdge(deadlinePillId, categoryId, undefined, lineColor);
       }
       if (categoryId && productId) {
-        h.addEdge(categoryId, productId, `x${qty}`, lineColor);
+        addLineEdge(categoryId, productId, `x${qty}`, lineColor);
       }
       if (productId) {
-        h.addEdge(productId, "stg-uretim", undefined, "#f59e0b");
-        h.addEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.82)");
-        h.addEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.82)");
-        h.addEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.82)");
-        h.addEdge(productId, "flask", undefined, "rgba(245,158,11,0.55)");
+        addLineEdge(productId, "stg-uretim", undefined, "#f59e0b");
+        addLineEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.82)");
+        addLineEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.82)");
+        addLineEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.82)");
+        addLineEdge(productId, "flask", undefined, "rgba(245,158,11,0.55)");
       }
-      const orderNote = h.createProductionLine({
+      const production = h.createProductionLine({
+        productionLineId,
         customerId,
         categoryId,
         productId,
+        deadlinePillId: deadlinePillId || null,
+        managedEdgeIds,
         deviceType: devMeta?.code ?? sku,
         quantity: qty,
         deadline,
       });
+      const customerAtom = customerId ? atomById[customerId] : null;
+      const cardX = customerAtom ? customerAtom.x - 220 : (atomById[ids[0]]?.x ?? 240);
+      const cardY = customerAtom ? customerAtom.y - 8 : ((atomById[ids[0]]?.y ?? 100) + 62);
+      h.addAtom({
+        id: productionLineId,
+        kind: "production-line",
+        label: `${devMeta?.code ?? sku} x${qty}`,
+        sub: `${customerAtom?.label ?? "Müşteri"} · Teslim ${deadline}`,
+        x: Math.max(92, cardX),
+        y: Math.max(40, cardY),
+        w: 190,
+        h: 72,
+        highlight: devMeta?.fuel === "elektrikli" ? "green" : "blue",
+      });
+      if (customerId) addLineEdge(productionLineId, customerId, undefined, lineColor);
+      h.applyMeta(productionLineId, {
+        productionLineId,
+        orderId: production.orderId,
+        flaskItemId: production.flaskItemId,
+        orderNumber: devMeta?.code ?? sku,
+        quantity: String(qty),
+        deadline,
+        deadlinePillId: deadlinePillId || undefined,
+        customerId: customerId ?? undefined,
+        categoryId: categoryId ?? undefined,
+        productId: productId ?? undefined,
+        managedEdgeIds,
+      });
       // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
-      h.setManualFocus(Array.from(new Set([...ids, ...lineIds])));
-      return `Üretim hattı: ${devMeta?.code ?? sku} · ${qty} adet · ${lineIds.length} atom · ${orderNote}${deadlineNote} (ESC ile temizle)`;
+      h.setManualFocus(Array.from(new Set([...ids, productionLineId, ...lineIds])));
+      return `Üretim hattı: ${devMeta?.code ?? sku} · ${qty} adet · ${lineIds.length} atom · ${production.note}${deadlineNote} (ESC ile temizle)`;
     },
   },
   {
@@ -3080,24 +3129,28 @@ function EdgeCommandPopover({
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
   atomMeta: Record<string, AtomMeta>;
   onApplyMeta: (id: string, patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
-  onAddEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
+  onAddAtom: (atom: SceneAtom) => void;
+  onAddEdge: (fromId: string, toId: string, label?: string, color?: string, groupId?: string) => string;
   onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
   onCreateProductionLine: (args: {
+    productionLineId: string;
     customerId: string | null;
     categoryId: string | null;
     productId: string | null;
+    deadlinePillId: string | null;
+    managedEdgeIds: string[];
     deviceType: string;
     quantity: number;
     deadline: string;
-  }) => string;
+  }) => { orderId: string; flaskItemId: string; note: string };
   onSetManualFocus: (ids: string[]) => void;
   onAskAgent: () => boolean;
   onOpenDiagram: () => boolean;
@@ -3175,6 +3228,7 @@ function CommandBar({
         {
           applyMeta: onApplyMeta,
           clearMeta: onClearMeta,
+          addAtom: onAddAtom,
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
@@ -3191,7 +3245,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -3218,6 +3272,7 @@ function CommandBar({
         {
           applyMeta: onApplyMeta,
           clearMeta: onClearMeta,
+          addAtom: onAddAtom,
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
@@ -3236,7 +3291,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3285,6 +3340,7 @@ function CommandBar({
           {
             applyMeta: onApplyMeta,
             clearMeta: onClearMeta,
+            addAtom: onAddAtom,
             addEdge: onAddEdge,
             ensureDeadlinePill: onEnsureDeadlinePill,
             ensureProductionPill: onEnsureProductionPill,
@@ -3305,7 +3361,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -3625,11 +3681,11 @@ function CommandBar({
 function CustomersSceneRenderer({
   positions, onMove, getMouseInWorld, viewport, setViewport, wrapperRef, edgePalette,
   shapeOverrides, setShape, clearShape,
-  customEdges, addCustomEdge, removeCustomEdge, clearAllCustomEdges,
+  customEdges, addCustomEdge, updateCustomEdge, removeCustomEdge, clearAllCustomEdges,
   atomMeta, setAtomMetaField, clearAtomMeta,
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
   edgeCommands, setEdgeCommand,
-  flaskItems, reactionResult, onCreateProductionLine,
+  flaskItems, reactionResult, onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -3642,7 +3698,8 @@ function CustomersSceneRenderer({
   setShape: (id: string, kind: ShapeKind) => void;
   clearShape: (id: string) => void;
   customEdges: CustomEdge[];
-  addCustomEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
+  addCustomEdge: (fromId: string, toId: string, label?: string, color?: string, groupId?: string) => string;
+  updateCustomEdge: (id: string, patch: Partial<CustomEdge>) => void;
   removeCustomEdge: (id: string) => void;
   clearAllCustomEdges: () => void;
   atomMeta: Record<string, AtomMeta>;
@@ -3657,14 +3714,28 @@ function CustomersSceneRenderer({
   flaskItems: FlaskItem[];
   reactionResult: ReactionResult | null;
   onCreateProductionLine: (args: {
+    productionLineId: string;
     customerId: string | null;
     categoryId: string | null;
     productId: string | null;
+    deadlinePillId: string | null;
+    managedEdgeIds: string[];
     deviceType: string;
     quantity: number;
     deadline: string;
     atomById: Record<string, SceneAtom>;
-  }) => string;
+  }) => { orderId: string; flaskItemId: string; note: string };
+  onUpdateProductionLine: (args: {
+    orderId?: string;
+    flaskItemId?: string;
+    sku: string;
+    quantity: number;
+    deadline: string;
+  }) => void;
+  onDeleteProductionLine: (args: {
+    orderId?: string;
+    flaskItemId?: string;
+  }) => void;
 }) {
   // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
   // "N adet üretilebilir" gösterilir. WS stok güncellemeleri otomatik invalidate
@@ -3752,6 +3823,9 @@ function CustomersSceneRenderer({
     }
     if (a.kind === "deadline-pill" || a.kind === "lead-pill") {
       return { code: a.label, label: a.label, kind: "component", usedBy: [] };
+    }
+    if (a.kind === "production-line") {
+      return { code: a.id, label: a.label, kind: "device", usedBy: [] };
     }
     return null;
   }, []);
@@ -4188,6 +4262,10 @@ function CustomersSceneRenderer({
 
   const W = bbox.maxX - bbox.minX;
   const H = bbox.maxY - bbox.minY;
+  const selectedLineAtom = useMemo(() => {
+    const id = Array.from(selectedIds).find(sel => atomById[sel]?.kind === "production-line");
+    return id ? atomById[id] : null;
+  }, [selectedIds, atomById]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
@@ -4460,6 +4538,9 @@ function CustomersSceneRenderer({
         } else if (a.kind === "customer-chip") {
           // Müşteri chip → o müşterinin sipariş hattını odakla (toggle)
           baseTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
+        } else if (a.kind === "production-line") {
+          // Üretim hattı kendi inspector'ını açar; ayrıca drill-down popup açma.
+          baseTap = () => setPopupAtomId(null);
         } else {
           baseTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
@@ -4538,6 +4619,62 @@ function CustomersSceneRenderer({
         />
       )}
 
+      {selectedLineAtom && (
+        <ProductionLineInspector
+          atom={selectedLineAtom}
+          meta={atomMeta[selectedLineAtom.id] ?? {}}
+          atomById={atomById}
+          onClose={() => setSelectedIds(new Set())}
+          onUpdate={(next) => {
+            const meta = atomMeta[selectedLineAtom.id] ?? {};
+            const sku = meta.orderNumber ?? selectedLineAtom.label.split(" x")[0] ?? next.sku;
+            setAtomMetaField(selectedLineAtom.id, {
+              orderNumber: sku,
+              quantity: String(next.quantity),
+              deadline: next.deadline,
+            });
+            updateCustomAtom(selectedLineAtom.id, {
+              label: `${sku} x${next.quantity}`,
+              sub: `${atomById[meta.customerId ?? ""]?.label ?? "Müşteri"} · Teslim ${next.deadline}`,
+            });
+            if (meta.deadlinePillId) {
+              updateCustomAtom(meta.deadlinePillId, { label: `Teslim = ${next.deadline}` });
+            }
+            (meta.managedEdgeIds ?? []).forEach(edgeId => {
+              const edge = customEdges.find(e => e.id === edgeId);
+              if (edge && edge.fromId === meta.categoryId && edge.toId === meta.productId) {
+                updateCustomEdge(edgeId, { label: `x${next.quantity}` });
+              }
+            });
+            onUpdateProductionLine({
+              orderId: meta.orderId,
+              flaskItemId: meta.flaskItemId,
+              sku,
+              quantity: next.quantity,
+              deadline: next.deadline,
+            });
+          }}
+          onDelete={() => {
+            const meta = atomMeta[selectedLineAtom.id] ?? {};
+            const edgeIds = new Set([
+              ...(meta.managedEdgeIds ?? []),
+              ...customEdges.filter(e => e.groupId === selectedLineAtom.id).map(e => e.id),
+            ]);
+            edgeIds.forEach(id => removeCustomEdge(id));
+            if (meta.deadlinePillId) {
+              customEdges
+                .filter(e => e.fromId === meta.deadlinePillId || e.toId === meta.deadlinePillId)
+                .forEach(e => removeCustomEdge(e.id));
+              removeCustomAtom(meta.deadlinePillId);
+            }
+            removeCustomAtom(selectedLineAtom.id);
+            clearAtomMeta(selectedLineAtom.id);
+            setSelectedIds(new Set());
+            onDeleteProductionLine({ orderId: meta.orderId, flaskItemId: meta.flaskItemId });
+          }}
+        />
+      )}
+
       {(reactionResult || flaskItems.length > 0) && (
         <VertexAnalysisDock
           reactionResult={reactionResult}
@@ -4565,7 +4702,8 @@ function CustomersSceneRenderer({
             clearAtomMeta(id);
           });
         }}
-        onAddEdge={(from, to, label, color) => addCustomEdge(from, to, label, color)}
+        onAddAtom={(atom) => addCustomAtom(atom)}
+        onAddEdge={(from, to, label, color, groupId) => addCustomEdge(from, to, label, color, groupId)}
         onEnsureDeadlinePill={(positionParentId, deadline, edgeTargetId) => {
           const positionParent = atomById[positionParentId];
           if (!positionParent) return "";
@@ -4670,6 +4808,183 @@ function CustomersSceneRenderer({
         />
       )}
     </>
+  );
+}
+
+function ProductionLineInspector({
+  atom,
+  meta,
+  atomById,
+  onClose,
+  onUpdate,
+  onDelete,
+}: {
+  atom: SceneAtom;
+  meta: AtomMeta;
+  atomById: Record<string, SceneAtom>;
+  onClose: () => void;
+  onUpdate: (next: { sku: string; quantity: number; deadline: string }) => void;
+  onDelete: () => void;
+}) {
+  const sku = meta.orderNumber ?? atom.label.split(" x")[0] ?? "";
+  const [quantity, setQuantity] = useState(meta.quantity ?? "1");
+  const [deadline, setDeadline] = useState(meta.deadline ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const customer = meta.customerId ? atomById[meta.customerId]?.label : null;
+  const product = meta.productId ? atomById[meta.productId]?.label : null;
+  const stageText = ["Üretim", "Depo", "Satış"].join(" -> ");
+
+  const save = () => {
+    const qty = Number(quantity);
+    const normalizedDeadline = normalizeDeadlineInput(deadline) ?? deadline;
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError("Adet pozitif sayı olmalı.");
+      return;
+    }
+    if (!normalizeDeadlineInput(normalizedDeadline)) {
+      setError("Teslim tarihi 2026-07-20 veya 20 Temmuz formatında olmalı.");
+      return;
+    }
+    setError(null);
+    onUpdate({ sku, quantity: qty, deadline: normalizedDeadline });
+    setDeadline(normalizedDeadline);
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 112,
+        right: 18,
+        width: 340,
+        zIndex: 28,
+        background: C.cardBg,
+        color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${atom.highlight === "green" ? C.ok : C.info}`,
+        borderRadius: 12,
+        boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
+        fontFamily: mono,
+        overflow: "hidden",
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 9, letterSpacing: 1.8, color: atom.highlight === "green" ? C.ok : C.info, fontWeight: 800 }}>
+            ÜRETİM HATTI
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 3 }}>{sku}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: `1px solid ${C.panelEdge}`,
+            background: "rgba(255,255,255,0.06)",
+            color: C.cardInk,
+            cursor: "pointer",
+            fontFamily: mono,
+          }}
+          aria-label="Kapat"
+        >
+          x
+        </button>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <InfoCell label="Müşteri" value={customer ?? "-"} />
+          <InfoCell label="Mamul" value={product ?? sku} />
+        </div>
+        <InfoCell label="Akış" value={stageText} />
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Adet</span>
+          <input
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            style={{
+              background: C.cardBgAlt,
+              color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`,
+              borderRadius: 8,
+              padding: "9px 10px",
+              fontFamily: mono,
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+        </label>
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Teslim tarihi</span>
+          <input
+            value={deadline}
+            onChange={(e) => setDeadline(e.target.value)}
+            style={{
+              background: C.cardBgAlt,
+              color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`,
+              borderRadius: 8,
+              padding: "9px 10px",
+              fontFamily: mono,
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+        </label>
+        {error && (
+          <div style={{ color: C.shortfall, fontSize: 11, lineHeight: 1.35 }}>{error}</div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+          <button
+            type="button"
+            onClick={save}
+            style={{
+              border: "none",
+              borderRadius: 8,
+              background: atom.highlight === "green" ? C.ok : C.info,
+              color: "#ffffff",
+              padding: "10px 12px",
+              fontFamily: mono,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            güncelle
+          </button>
+          <button
+            type="button"
+            onClick={onDelete}
+            style={{
+              border: `1px solid rgba(239,68,68,0.55)`,
+              borderRadius: 8,
+              background: C.shortfallSoft,
+              color: C.shortfall,
+              padding: "10px 12px",
+              fontFamily: mono,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            hattı sil
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function InfoCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 8, background: C.cardBgAlt, padding: "8px 10px" }}>
+      <div style={{ fontSize: 9, color: C.cardSub, fontWeight: 800, marginBottom: 3 }}>{label}</div>
+      <div style={{ fontSize: 12, color: C.cardInk, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
   );
 }
 
@@ -5532,6 +5847,29 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
     );
   }
 
+  if (atom.kind === "production-line") {
+    const stripe = accent ?? C.warn;
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 10, padding: "9px 11px",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `4px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+        fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.38)",
+      }}>
+        {labelLine("HAT", stripe)}
+        <div style={{ fontSize: 14, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {atom.label}
+        </div>
+        <div style={{ fontSize: 10, color: C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {atom.sub ?? "seç, değiştir veya sil"}
+        </div>
+      </div>
+    );
+  }
+
   if (atom.kind === "flask") {
     const items = flaskItems ?? [];
     const shared = reactionResult?.sharedComponents ?? [];
@@ -6212,13 +6550,17 @@ export default function StrategyCanvasPage() {
     () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), []),
   );
   useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
-  const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string, color?: string) => {
+  const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string, color?: string, groupId?: string) => {
+    let outId = "";
     setSceneCustomEdges(prev => {
-      const idx = prev.findIndex(e =>
-        (e.fromId === fromId && e.toId === toId) ||
-        (e.fromId === toId && e.toId === fromId),
+      const idx = groupId ? -1 : prev.findIndex(e =>
+        !e.groupId && (
+          (e.fromId === fromId && e.toId === toId) ||
+          (e.fromId === toId && e.toId === fromId)
+        ),
       );
       if (idx >= 0) {
+        outId = prev[idx].id;
         // Var olan edge'in label/color'ını güncelle (yeni değer geldiyse)
         if (label === undefined && color === undefined) return prev;
         const next = [...prev];
@@ -6230,8 +6572,13 @@ export default function StrategyCanvasPage() {
         return next;
       }
       const id = `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
-      return [...prev, { id, fromId, toId, label, color }];
+      outId = id;
+      return [...prev, { id, fromId, toId, label, color, groupId }];
     });
+    return outId;
+  }, []);
+  const updateSceneCustomEdge = useCallback((id: string, patch: Partial<CustomEdge>) => {
+    setSceneCustomEdges(prev => prev.map(e => e.id === id ? { ...e, ...patch } : e));
   }, []);
   const removeSceneCustomEdge = useCallback((id: string) => {
     setSceneCustomEdges(prev => prev.filter(e => e.id !== id));
@@ -7053,9 +7400,12 @@ export default function StrategyCanvasPage() {
   }, [flaskSupplies]);
 
   const createProductionLineFromScene = useCallback((args: {
+    productionLineId: string;
     customerId: string | null;
     categoryId: string | null;
     productId: string | null;
+    deadlinePillId: string | null;
+    managedEdgeIds: string[];
     deviceType: string;
     quantity: number;
     deadline: string;
@@ -7065,8 +7415,9 @@ export default function StrategyCanvasPage() {
     const customer = args.customerId ? args.atomById[args.customerId]?.label : null;
     const category = args.categoryId ? args.atomById[args.categoryId]?.label : null;
     const product = args.productId ? args.atomById[args.productId]?.label : null;
+    const orderId = `order_${args.productionLineId}`;
     const order: Order = {
-      id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      id: orderId,
       customer: customer ?? "Bayi",
       sku,
       quantity: args.quantity,
@@ -7078,7 +7429,7 @@ export default function StrategyCanvasPage() {
     const nextItems: FlaskItem[] = [
       ...flaskItems,
       {
-        id: `pl_${order.id}`,
+        id: `flask_${args.productionLineId}`,
         sku: order.sku,
         qty: order.quantity,
         deadline: order.deadline,
@@ -7089,8 +7440,50 @@ export default function StrategyCanvasPage() {
     setFlaskOpen(false);
     runReactionForItems(nextItems);
     triggerOctopus.mutate();
-    return `${customer ?? "müşteri yok"} · ${category ?? "kategori yok"} · ${product ?? sku} · tepkime hazır`;
+    return {
+      orderId,
+      flaskItemId: `flask_${args.productionLineId}`,
+      note: `${customer ?? "müşteri yok"} · ${category ?? "kategori yok"} · ${product ?? sku} · tepkime hazır`,
+    };
   }, [FLASK_COLORS, flaskItems, runReactionForItems, triggerOctopus]);
+
+  const updateProductionLineFromScene = useCallback((args: {
+    orderId?: string;
+    flaskItemId?: string;
+    sku: string;
+    quantity: number;
+    deadline: string;
+  }) => {
+    setOrders(prev => prev.map(order => (
+      args.orderId && order.id === args.orderId
+        ? { ...order, sku: args.sku, quantity: args.quantity, deadline: args.deadline }
+        : order
+    )));
+    setFlaskItems(prev => {
+      const next = prev.map(item => (
+        args.flaskItemId && item.id === args.flaskItemId
+          ? { ...item, sku: args.sku, qty: args.quantity, deadline: args.deadline }
+          : item
+      ));
+      runReactionForItems(next);
+      return next;
+    });
+    triggerOctopus.mutate();
+  }, [runReactionForItems, triggerOctopus]);
+
+  const deleteProductionLineFromScene = useCallback((args: {
+    orderId?: string;
+    flaskItemId?: string;
+  }) => {
+    if (args.orderId) setOrders(prev => prev.filter(order => order.id !== args.orderId));
+    setFlaskItems(prev => {
+      const next = args.flaskItemId ? prev.filter(item => item.id !== args.flaskItemId) : prev;
+      if (next.length > 0) runReactionForItems(next);
+      else setReactionResult(null);
+      return next;
+    });
+    triggerOctopus.mutate();
+  }, [runReactionForItems, triggerOctopus]);
 
   const upsertOrder = (o: Order) => {
     setOrders(prev => {
@@ -7531,6 +7924,7 @@ export default function StrategyCanvasPage() {
             clearShape={clearSceneShape}
             customEdges={sceneCustomEdges}
             addCustomEdge={addSceneCustomEdge}
+            updateCustomEdge={updateSceneCustomEdge}
             removeCustomEdge={removeSceneCustomEdge}
             clearAllCustomEdges={clearAllSceneCustomEdges}
             atomMeta={sceneAtomMeta}
@@ -7545,6 +7939,8 @@ export default function StrategyCanvasPage() {
             flaskItems={flaskItems}
             reactionResult={reactionResult}
             onCreateProductionLine={createProductionLineFromScene}
+            onUpdateProductionLine={updateProductionLineFromScene}
+            onDeleteProductionLine={deleteProductionLineFromScene}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (

@@ -17,14 +17,15 @@ Default seed sahnesi sadeleştirildi (2026-05-03): müşteriden çıkan default 
 3. **Sabit overlay panel** — yeni feature canvas'a fixed-position panel ile gelirse kabul ETME, slash komut'a model et
 4. Pill ok'u kategoriye değil **müşteriye** gider (G2/G3 pattern, commit `02cef55` + `bce0ec6`)
 
-## Atom Kind'ları (12)
+## Atom Kind'ları (16)
 
 ```ts
 type SceneAtomKind =
   | "label" | "customer-chip" | "category" | "product" | "stage"
   | "factory" | "component" | "bom-item" | "subassembly"
   | "lead-pill" | "deadline-pill" | "flask"
-  | "supply-bracket" | "timeline-s1" | "timeline-s2";
+  | "supply-bracket" | "timeline-s1" | "timeline-s2"
+  | "production-line";
 ```
 
 Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scenePositions` state'te kullanıcı drag ettikçe persist (localStorage).
@@ -108,7 +109,9 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 güncel davranış:** Komut artık sadece pill/meta çizmez; seçili müşteri/kategori/ürün bağlamından gerçek `Order` kaydı üretir, aynı siparişi `flaskItems` içine ekler ve mevcut `/api/strategy/reaction-equation` read-only backend hattını tetikleyerek S1/S2 timeline atomlarını canlı reaction sonucu ile besler. Tarih girdisi `YYYY-MM-DD`, `15.05.2026` veya `15 Mayıs` formatından ISO tarihe normalize edilir. Customers scene açıkken legacy `OrderBlock`/`StrategyPanel` render edilmez; aksi halde eski workbench kartları sahne atomlarının üstüne biner.
 
-**Görsel üretim hattı:** Kullanıcı sadece müşteri atomunu seçse bile komut `deviceType` üzerinden `DEVICE_REGISTRY` içinden ürün ve kategori atomunu infer eder. Hattı sahneye şu custom edge zinciriyle çizer: müşteri → teslim pill → kategori → mamul (`xadet`) → Üretim → Depo → Satış → Fabrika ve mamul → flask. Manual focus seçili atomlara ek olarak bu inferred hat atomlarını da kapsar; müşteri chip'e tekrar tıklayınca aynı hat focus BFS ile görünür kalır.
+**Görsel üretim hattı:** Kullanıcı sadece müşteri atomunu seçse bile komut `deviceType` üzerinden `DEVICE_REGISTRY` içinden ürün ve kategori atomunu infer eder. Hattı sahneye şu custom edge zinciriyle çizer: hat kartı → müşteri → teslim pill → kategori → mamul (`xadet`) → Üretim → Depo → Satış → Fabrika ve mamul → flask. Manual focus seçili atomlara ek olarak bu inferred hat atomlarını da kapsar; müşteri chip'e tekrar tıklayınca aynı hat focus BFS ile görünür kalır.
+
+**2026-05-03 etkileşim güncellemesi:** `/üretim-hattı` artık ayrıca seçilebilir `production-line` atomu üretir. Bu hat kartı arkada gizlenen edge setinin yüzeye çıkmış kontrol objesidir. Tıklanınca canvas üstünde inspector açılır: adet ve teslim tarihi değiştirilebilir, reaction hesabı yeniden koşar, `xadet` edge label'ı ve teslim pill label'ı güncellenir. "hattı sil" aksiyonu line card + deadline pill + o hatta ait `groupId` edge'leri + order/flask item kaydını temizler. Böylece üretim senaryosu sadece çizgi değil, düzenlenebilir operasyon nesnesidir.
 
 **`apply()` ne yapar (satır 2819):**
 
@@ -137,7 +140,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
    // Order + FlaskItem yaratır, reaction-equation sonucunu timeline atomlarına yansıtır.
 
 6) inferred visual line
-   // deviceType'tan kategori+mamul bulunur; müşteri→teslim→kategori→mamul→stage→fabrika hattı çizilir.
+   // deviceType'tan kategori+mamul bulunur; hat→müşteri→teslim→kategori→mamul→stage→fabrika hattı çizilir.
+   // Edge'ler productionLineId groupId'si taşır; hat kartı üzerinden düzenleme/silme yapılır.
 ```
 
 Pill ID konvansiyonu: `pill-d-{parentId}-{rand}` — multi-delivery için yeni pill, eski overwrite edilmez.
