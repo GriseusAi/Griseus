@@ -4105,6 +4105,40 @@ function CustomersSceneRenderer({
     return true;
   }, [atomById, atomMeta, customEdges, removeCustomEdge, removeCustomAtom, clearAtomMeta, onDeleteProductionLine]);
 
+  const focusProductionLine = useCallback((lineId: string) => {
+    const lineAtom = atomById[lineId];
+    if (!lineAtom || lineAtom.kind !== "production-line") return false;
+    const meta = atomMeta[lineId] ?? {};
+    const focusIds = new Set<string>();
+    const addIfVisible = (id?: string) => {
+      if (!id) return;
+      if (id === lineId || atomById[id]) focusIds.add(id);
+    };
+
+    addIfVisible(lineId);
+    addIfVisible(meta.customerId);
+    addIfVisible(meta.deadlinePillId);
+    addIfVisible(meta.categoryId);
+    addIfVisible(meta.productId);
+    addIfVisible("stg-uretim");
+    addIfVisible("stg-depo");
+    addIfVisible("stg-satis");
+    addIfVisible("fact");
+    addIfVisible("flask");
+
+    const managedEdgeIds = new Set(meta.managedEdgeIds ?? []);
+    customEdges
+      .filter(e => e.groupId === lineId || managedEdgeIds.has(e.id))
+      .forEach(e => {
+        addIfVisible(e.fromId);
+        addIfVisible(e.toId);
+      });
+
+    setFocusedCustomerId(null);
+    setManualFocusIds(focusIds);
+    return true;
+  }, [atomById, atomMeta, customEdges]);
+
   // Kullanıcının klavye Delete/Backspace ile sildiği atomlar — localStorage persist
   const [deletedAtomIds, setDeletedAtomIds] = useState<Set<string>>(() => {
     try {
@@ -4582,8 +4616,11 @@ function CustomersSceneRenderer({
           // Müşteri chip → o müşterinin sipariş hattını odakla (toggle)
           baseTap = () => setFocusedCustomerId(prev => prev === a.id ? null : a.id);
         } else if (a.kind === "production-line") {
-          // Üretim hattı kendi inspector'ını açar; ayrıca drill-down popup açma.
-          baseTap = () => setPopupAtomId(null);
+          // Üretim hattı kendi inspector'ını açar ve bağlı zinciri yeniden yüzeye çıkarır.
+          baseTap = () => {
+            setPopupAtomId(null);
+            focusProductionLine(a.id);
+          };
         } else {
           baseTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
