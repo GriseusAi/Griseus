@@ -272,6 +272,18 @@ interface StockResp { product: string; components: BomComponent[]; }
 type XY = { x: number; y: number };
 type PositionOverrides = Record<string, Record<string, XY>>;
 
+function flattenStockComponents(items: BomComponent[] | undefined): Record<string, BomComponent> {
+  const out: Record<string, BomComponent> = {};
+  const walk = (list: BomComponent[] | undefined) => {
+    for (const item of list ?? []) {
+      out[item.code] = item;
+      walk(item.children);
+    }
+  };
+  walk(items);
+  return out;
+}
+
 const ORDERS_KEY = "griseus_strategy_orders_v1";
 const POS_KEY = "griseus_strategy_positions_v3";
 const VIEW_KEY = "griseus_strategy_viewport_v2";
@@ -3860,6 +3872,17 @@ function CustomersSceneRenderer({
     return m;
   }, [sceneCapacityQueries.map(q => q.data).join("|")]);
   const sceneCapacityLoading = sceneCapacityQueries.some(q => q.isLoading);
+  const sceneStockQueries = useQueries({
+    queries: ALL_SKUS.map(sku => ({ queryKey: [`/api/bom/${sku}/stock`] })),
+  });
+  const sceneStockBySku = useMemo(() => {
+    const m: Record<string, Record<string, BomComponent>> = {};
+    ALL_SKUS.forEach((sku, i) => {
+      const d = sceneStockQueries[i]?.data as StockResp | undefined;
+      if (d) m[sku] = flattenStockComponents(d.components);
+    });
+    return m;
+  }, [sceneStockQueries.map(q => q.data).join("|")]);
 
   // Açık gruplar — varsayılan: Customers + iki kategori AÇIK (chips ve cihazlar görünür)
   const [openGroups, setOpenGroups] = useState<Set<string>>(() => new Set(["customers", "cat-elektrikli", "cat-gazli"]));
@@ -4053,6 +4076,7 @@ function CustomersSceneRenderer({
       const sku = deviceId.replace(/^p-/, "");
       const tree = DEVICE_BOM_TREE[sku];
       if (!tree || tree.length === 0) return;
+      const liveByCode = sceneStockBySku[sku] ?? {};
 
       const blockX = COL_BASE_X + deviceIdx * COL_WIDTH;
       const colXs = [blockX, blockX + CARD_W + T1_COL_GAP];   // T1 sol/sağ kolon X'leri
@@ -4083,7 +4107,11 @@ function CustomersSceneRenderer({
             id: t1Id,
             kind: isSub ? "subassembly" : "bom-item",
             label: t1.code,
-            sub: compactName(t1.name) + (t1.stock != null ? ` · stok ${t1.stock}` : ""),
+            sub: compactName(t1.name) + (() => {
+              const live = liveByCode[t1.code];
+              const stock = live?.rawStock ?? live?.currentStock ?? t1.stock;
+              return stock != null ? ` · stok ${fmtTR(Number(stock))}` : "";
+            })(),
             x: persistedT1 ? persistedT1.x : defaultX,
             y: persistedT1 ? persistedT1.y : cursorY,
             w, h,
@@ -4109,7 +4137,11 @@ function CustomersSceneRenderer({
                 id: t2Id,
                 kind: "bom-item",
                 label: c.code,
-                sub: compactName(c.name) + (c.stock != null ? ` · stok ${c.stock}` : ""),
+                sub: compactName(c.name) + (() => {
+                  const live = liveByCode[c.code];
+                  const stock = live?.rawStock ?? live?.currentStock ?? c.stock;
+                  return stock != null ? ` · stok ${fmtTR(Number(stock))}` : "";
+                })(),
                 x: persistedT2 ? persistedT2.x : defaultX2,
                 y: persistedT2 ? persistedT2.y : defaultY2,
                 w: T2_W, h: T2_H,
@@ -4123,7 +4155,7 @@ function CustomersSceneRenderer({
       });
     });
     return out;
-  }, [expandedDeviceIds, expandedSubassemblies, baseAtoms, positions]);
+  }, [expandedDeviceIds, expandedSubassemblies, baseAtoms, positions, sceneStockBySku]);
 
   const atoms = useMemo(() => [...baseAtoms, ...bomAtoms], [baseAtoms, bomAtoms]);
 
