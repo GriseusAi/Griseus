@@ -91,11 +91,11 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 | Komut | Alias | Steps | Aksiyon |
 |-------|-------|-------|---------|
 | `/teslim` | `deadline`, `tarih` | deadline | Seçili atom(lar)a teslim pill — `ensureDeadlinePill(id, deadline)` |
-| `/uretim` | `üretim`, `production` | days (sayı) | Seçili atom(lar)a üretim süresi pill — `ensureProductionPill(id, days)` |
-| `/uretim-hatti` | `üretim-hattı`, `hat`, `production-line`, **`siparis`**, **`sipariş`**, **`order`** | deviceType, quantity, deadline | Üretim hattı oluştur — meta yaz + teslim pill (G2/G3 pattern) + manual focus |
+| `/üretim` | `uretim`, `production` | days (sayı) | Seçili atom(lar)a üretim süresi pill — `ensureProductionPill(id, days)` |
+| `/üretim-hattı` | `uretim-hatti`, `hat`, `production-line`, **`siparis`**, **`sipariş`**, **`order`** | deviceType, quantity, deadline | Üretim hattı oluştur — meta yaz + teslim pill (G2/G3 pattern) + manual focus |
 | `/sil` | `clear`, `temizle` | — | Seçili atom(lar)ın meta + pill'lerini temizle |
 | `/gix` | `ai`, `ai-sor`, `agent` | — | Seçili atomları AI agent'a context yolla (panel açılır) |
-| `/diyagram-ciz` | `diyagram`, `chart`, `compare` | — | 2+ atom için diyagram modal aç |
+| `/diyagram-çiz` | `diyagram-ciz`, `diyagram`, `chart`, `compare` | — | 2+ atom için diyagram modal aç |
 
 `COMMAND_DEFS` dışına çıkma — yeni feature istiyorsan ya yeni komut ekle ya mevcut komutu genişlet. Sabit overlay panel veya buton ekleme.
 
@@ -106,7 +106,7 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 2. Kaç adet (sayı)
 3. Teslim tarihi (örn `2026-07-20`)
 
-**2026-05-03 güncel davranış:** Komut artık sadece pill/meta çizmez; seçili müşteri/kategori/ürün bağlamından gerçek `Order` kaydı üretir, aynı siparişi `flaskItems` içine ekler ve mevcut `/api/strategy/reaction-equation` read-only backend hattını tetikleyerek S1/S2 timeline atomlarını canlı reaction sonucu ile besler. Tarih girdisi `YYYY-MM-DD`, `15.05.2026` veya `15 Mayıs` formatından ISO tarihe normalize edilir.
+**2026-05-03 güncel davranış:** Komut artık sadece pill/meta çizmez; seçili müşteri/kategori/ürün bağlamından gerçek `Order` kaydı üretir, aynı siparişi `flaskItems` içine ekler ve mevcut `/api/strategy/reaction-equation` read-only backend hattını tetikleyerek S1/S2 timeline atomlarını canlı reaction sonucu ile besler. Tarih girdisi `YYYY-MM-DD`, `15.05.2026` veya `15 Mayıs` formatından ISO tarihe normalize edilir. Customers scene açıkken legacy `OrderBlock`/`StrategyPanel` render edilmez; aksi halde eski workbench kartları sahne atomlarının üstüne biner.
 
 **`apply()` ne yapar (satır 2819):**
 

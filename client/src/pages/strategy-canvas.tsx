@@ -2779,7 +2779,7 @@ function ShapesToolbar({
 
 /* ════════════════════════════════════════════════════════════════════
    CommandBar — sahnenin altında AutoCAD-vari komut satırı.
-   Komutlar: /siparis <no>, /teslim <tarih>
+   Komutlar: /sipariş, /teslim <tarih>
    Seçili atomlara meta uygular; sonuç + hata pill'i input üstünde.
    ──────────────────────────────────────────────────────────────────── */
 interface CommandStep {
@@ -2834,8 +2834,8 @@ const COMMAND_DEFS: CommandDef[] = [
     },
   },
   {
-    name: "uretim",
-    aliases: ["üretim", "uretim-suresi", "üretim-süresi", "production"],
+    name: "üretim",
+    aliases: ["uretim", "uretim-suresi", "üretim-süresi", "production"],
     description: "Seçili atom(lar)a üretim süresi pill atomu çıkarır (gün)",
     minSelected: 1,
     steps: [
@@ -2850,8 +2850,8 @@ const COMMAND_DEFS: CommandDef[] = [
     },
   },
   {
-    name: "uretim-hatti",
-    aliases: ["üretim-hattı", "hat", "production-line", "uretim-hatti-olustur", "üretim-hattı-oluştur", "siparis", "sipariş", "order"],
+    name: "üretim-hattı",
+    aliases: ["uretim-hatti", "hat", "production-line", "uretim-hatti-olustur", "üretim-hattı-oluştur", "siparis", "sipariş", "order"],
     description: "Üretim hattı oluştur — cihaz tipi, adet ve teslim tarihi sorulur, seçili atomlar zincir olarak işaretlenir",
     minSelected: 1,
     steps: [
@@ -2922,8 +2922,8 @@ const COMMAND_DEFS: CommandDef[] = [
     },
   },
   {
-    name: "diyagram-ciz",
-    aliases: ["diyagram", "chart", "compare"],
+    name: "diyagram-çiz",
+    aliases: ["diyagram-ciz", "diyagram", "chart", "compare"],
     description: "Seçili 2+ atom için diyagram modal'ı açar",
     minSelected: 2,
     steps: [],
@@ -2947,8 +2947,8 @@ interface PendingCommand {
 }
 
 function findCommandDef(token: string): CommandDef | null {
-  const t = token.toLowerCase().replace(/^\//, "");
-  return COMMAND_DEFS.find(d => d.name === t || d.aliases?.includes(t)) ?? null;
+  const t = token.toLocaleLowerCase("tr").replace(/^\//, "");
+  return COMMAND_DEFS.find(d => d.name === t || d.aliases?.some(a => a.toLocaleLowerCase("tr") === t)) ?? null;
 }
 
 function EdgeCommandPopover({
@@ -2997,7 +2997,7 @@ function EdgeCommandPopover({
           if (e.key === "Enter") { e.preventDefault(); onSave(value); }
           else if (e.key === "Escape") { e.preventDefault(); onCancel(); }
         }}
-        placeholder="/siparis A123"
+        placeholder="/sipariş"
         style={{
           width: "100%",
           fontFamily: mono,
@@ -3091,7 +3091,7 @@ function CommandBar({
   const trimmed = input.trim();
   const firstToken = trimmed.split(/\s+/)[0] ?? "";
   const showSuggest = !pending && trimmed.length > 0 && !trimmed.includes(" ");
-  const queryRaw = firstToken.replace(/^\//, "").toLowerCase();
+  const queryRaw = firstToken.replace(/^\//, "").toLocaleLowerCase("tr");
   const suggestions = useMemo(() => {
     if (!showSuggest) return [];
     if (queryRaw.length === 0) return COMMAND_DEFS;
@@ -3115,7 +3115,7 @@ function CommandBar({
   const startCommand = useCallback((rawCmd: string) => {
     const def = findCommandDef(rawCmd);
     if (!def) {
-      setResult({ ok: false, message: `Bilinmeyen komut: "${rawCmd}". /yardim ile listele.` });
+      setResult({ ok: false, message: `Bilinmeyen komut: "${rawCmd}". /yardım ile listele.` });
       return;
     }
     const ids = validIds;
@@ -3212,7 +3212,7 @@ function CommandBar({
 
     const stripped = text.replace(/^\//, "");
     const space = stripped.indexOf(" ");
-    const cmd = (space === -1 ? stripped : stripped.slice(0, space)).toLowerCase();
+    const cmd = (space === -1 ? stripped : stripped.slice(0, space)).toLocaleLowerCase("tr");
     const inline = (space === -1 ? "" : stripped.slice(space + 1)).trim();
 
     if (cmd === "yardim" || cmd === "yardım" || cmd === "help" || cmd === "?") {
@@ -3226,7 +3226,7 @@ function CommandBar({
 
     const def = findCommandDef(cmd);
     if (!def) {
-      setResult({ ok: false, message: `Bilinmeyen komut: "${cmd}". /yardim ile listele.` });
+      setResult({ ok: false, message: `Bilinmeyen komut: "${cmd}". /yardım ile listele.` });
       return;
     }
 
@@ -3365,7 +3365,7 @@ function CommandBar({
     : "KOMUT";
   const placeholder = pending && currentStep
     ? `${currentStep.prompt}${currentStep.hint ? `  ·  ${currentStep.hint}` : ""}`
-    : `Bir komut yaz (örn: /siparis)  ·  /yardim · klavyeye basınca direkt buraya düşer${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : ""}`;
+    : `Bir komut yaz (örn: /sipariş)  ·  /yardım · klavyeye basınca direkt buraya düşer${validIds.length > 0 ? `  ·  ${validIds.length} atom seçili` : ""}`;
 
   return (
     <div style={{
@@ -3396,7 +3396,7 @@ function CommandBar({
           </div>
           {suggestions.map((s, idx) => {
             const isFirst = idx === 0;
-            const matchIdx = queryRaw ? s.name.toLowerCase().indexOf(queryRaw) : -1;
+            const matchIdx = queryRaw ? s.name.toLocaleLowerCase("tr").indexOf(queryRaw) : -1;
             const renderName = () => {
               if (matchIdx < 0 || !queryRaw) {
                 return <span>/{s.name}</span>;
@@ -3412,7 +3412,7 @@ function CommandBar({
                 </span>
               );
             };
-            const aliasMatch = queryRaw && (s.aliases ?? []).find(a => a.toLowerCase().startsWith(queryRaw));
+            const aliasMatch = queryRaw && (s.aliases ?? []).find(a => a.toLocaleLowerCase("tr").startsWith(queryRaw));
             return (
               <button
                 key={s.name}
@@ -6933,13 +6933,14 @@ export default function StrategyCanvasPage() {
   const fittedOnceRef = useRef(false);
   useEffect(() => {
     if (fittedOnceRef.current) return;
+    if (widgetVis.scene) return;
     if (orders.length === 0) return;
     const ready = orders.every(o => stockBySku[o.sku]);
     if (!ready) return;
     fittedOnceRef.current = true;
     setTimeout(fitToView, 50);
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [orders.length, Object.keys(stockBySku).length]);
+  }, [widgetVis.scene, orders.length, Object.keys(stockBySku).length]);
 
   return (
     <div className="native-light" style={{
@@ -7306,7 +7307,7 @@ export default function StrategyCanvasPage() {
           />
         )}
 
-        {orders.length === 0 ? null : (
+        {!widgetVis.scene && orders.length > 0 && (
           <>
             <EdgesLayer
               orders={orders}
