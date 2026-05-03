@@ -2868,15 +2868,21 @@ const COMMAND_DEFS: CommandDef[] = [
     apply: ({ collected, ids, atomById }, h) => {
       const qty = Number(collected.quantity);
       const deadline = normalizeDeadlineInput(collected.deadline) ?? collected.deadline;
+      const sku = collected.deviceType.trim();
+      const devMeta = DEVICE_REGISTRY.find(d => d.code.toLocaleLowerCase("tr") === sku.toLocaleLowerCase("tr")) ?? null;
+      const inferredProductId = devMeta ? `p-${devMeta.code}` : `p-${sku}`;
+      const inferredCategoryId = devMeta
+        ? (devMeta.fuel === "elektrikli" ? "cat-elektrikli" : "cat-gazli")
+        : null;
       // 1) Tüm seçili atomlara meta yaz (cihaz tipi + adet badge'i için)
       ids.forEach(id => h.applyMeta(id, {
-        orderNumber: collected.deviceType,
+        orderNumber: devMeta?.code ?? sku,
         quantity: String(qty),
       }));
       // 2) Müşteri / kategori bul → teslim pill onlara bağlı çıksın
       const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
-      const categoryId = ids.find(id => atomById[id]?.kind === "category") ?? null;
-      const productId = ids.find(id => atomById[id]?.kind === "product") ?? null;
+      const categoryId = ids.find(id => atomById[id]?.kind === "category") ?? inferredCategoryId;
+      const productId = ids.find(id => atomById[id]?.kind === "product") ?? (atomById[inferredProductId] ? inferredProductId : null);
       const positionParent = categoryId ?? customerId ?? productId ?? ids[0];
       const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
       let deadlineNote = "";
@@ -2884,17 +2890,39 @@ const COMMAND_DEFS: CommandDef[] = [
         h.ensureDeadlinePill(positionParent, deadline, edgeTarget);
         deadlineNote = ` · teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
       }
+      const lineIds = [
+        customerId,
+        categoryId,
+        productId,
+        "stg-uretim",
+        "stg-depo",
+        "stg-satis",
+        "fact",
+      ].filter((id): id is string => !!id && !!atomById[id]);
+      if (customerId && categoryId) {
+        h.addEdge(customerId, categoryId, `x${qty}`, devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8");
+      }
+      if (categoryId && productId) {
+        h.addEdge(categoryId, productId, `x${qty}`, devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8");
+      }
+      if (productId) {
+        h.addEdge(productId, "stg-uretim", undefined, "#f59e0b");
+        h.addEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.6)");
+        h.addEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.6)");
+        h.addEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.6)");
+        h.addEdge(productId, "flask", undefined, "rgba(245,158,11,0.55)");
+      }
       const orderNote = h.createProductionLine({
         customerId,
         categoryId,
         productId,
-        deviceType: collected.deviceType,
+        deviceType: devMeta?.code ?? sku,
         quantity: qty,
         deadline,
       });
       // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
-      h.setManualFocus(ids);
-      return `Üretim hattı: ${collected.deviceType} · ${qty} adet · ${orderNote}${deadlineNote} (ESC ile temizle)`;
+      h.setManualFocus(Array.from(new Set([...ids, ...lineIds])));
+      return `Üretim hattı: ${devMeta?.code ?? sku} · ${qty} adet · ${lineIds.length} atom · ${orderNote}${deadlineNote} (ESC ile temizle)`;
     },
   },
   {
