@@ -53,13 +53,24 @@ function computeSubAssemblyCapacity(
   subAssemblyCode: string,
   allItems: BomRow[],
   sku?: string
-): { producible: number; bottleneck: string; parts: Array<{ code: string; name: string; stock: number; required: number; maxProducts: number }> } {
+): { producible: number; bottleneck: string; parts: Array<{ code: string; name: string; stock: number; required: number; maxProducts: number | null }> } {
   const parts = allItems.filter((i) => i.parentComponentCode === subAssemblyCode);
   if (parts.length === 0) return { producible: 0, bottleneck: "alt bileşen yok", parts: [] };
 
   const isBH = sku?.startsWith("BH.") ?? false;
   // BH ailesi on-demand: alt bileşen stoku 0 ise siparişe tabi, bottleneck sayılmaz
-  const considered = isBH ? parts.filter((p) => p.currentStock > 0) : parts;
+  const measurableParts = parts.filter((p) => p.requiredQty > 0);
+  const considered = isBH ? measurableParts.filter((p) => p.currentStock > 0) : measurableParts;
+
+  if (measurableParts.length === 0) {
+    return {
+      producible: 0,
+      bottleneck: "alt bileşen reçete miktarı tanımsız",
+      parts: parts.map((p) => ({
+        code: p.code, name: p.name, stock: p.currentStock, required: p.requiredQty, maxProducts: null,
+      })),
+    };
+  }
 
   if (considered.length === 0) {
     // Tüm alt bileşenler on-demand → alt montaj sınırlanmaz (Number.MAX_SAFE_INTEGER ile Infinity simülasyonu)
