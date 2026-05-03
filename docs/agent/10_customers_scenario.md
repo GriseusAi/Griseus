@@ -199,6 +199,7 @@ Yeni migration eklerken aynı pattern: `useRef + useEffect + localStorage flag +
 - `flask` atom → `ReactionFlask` component (`client/src/components/reaction-flask.tsx`)
 - `tl-s1`, `tl-s2` → `ReactionGantt` (`reaction-gantt.tsx`)
 - Tepkime hesabı: kullanıcı flask'a cihaz "atar" → S1/S2 senaryolarına gantt çıkar
+- 2026-05-03 güncel UI: Customers scene açıkken eski fixed `ReactionGantt` paneli render edilmez. Reaction sonucu canvas içinde alttaki Vertex-style analiz dock'una akar: sol seri listesi, orta S1/S2 zaman eğrisi, sağ önerilen aksiyon/darboğaz özeti. Böylece üretim hattı `müşteri → teslim → kategori → mamul → Üretim → Depo → Satış → Fabrika` graph'ı ile simülasyon sonucu aynı çalışma yüzeyinde okunur.
 
 ## State Map (Persist)
 

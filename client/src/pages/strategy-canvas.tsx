@@ -2913,9 +2913,9 @@ const COMMAND_DEFS: CommandDef[] = [
       }
       if (productId) {
         h.addEdge(productId, "stg-uretim", undefined, "#f59e0b");
-        h.addEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.6)");
-        h.addEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.6)");
-        h.addEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.6)");
+        h.addEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.82)");
+        h.addEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.82)");
+        h.addEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.82)");
         h.addEdge(productId, "flask", undefined, "rgba(245,158,11,0.55)");
       }
       const orderNote = h.createProductionLine({
@@ -4538,6 +4538,13 @@ function CustomersSceneRenderer({
         />
       )}
 
+      {(reactionResult || flaskItems.length > 0) && (
+        <VertexAnalysisDock
+          reactionResult={reactionResult}
+          flaskItems={flaskItems}
+        />
+      )}
+
       {/* Komut satırı — alt sabit, AutoCAD-vari */}
       <CommandBar
         selectedIds={selectedIds}
@@ -4663,6 +4670,225 @@ function CustomersSceneRenderer({
         />
       )}
     </>
+  );
+}
+
+function VertexAnalysisDock({
+  reactionResult,
+  flaskItems,
+}: {
+  reactionResult: ReactionResult | null;
+  flaskItems: FlaskItem[];
+}) {
+  const start = reactionResult ? new Date(reactionResult.startDate) : new Date();
+  const fmtDay = (day: number) => {
+    const d = new Date(start.getTime() + day * 86400000);
+    return `${d.getDate()} ${MONTH_LABELS[d.getMonth()]}`;
+  };
+  const s1 = reactionResult?.scenarios[0] ?? null;
+  const s2 = reactionResult?.scenarios[1] ?? null;
+  const allSegments = reactionResult
+    ? reactionResult.scenarios.flatMap(sc => [...sc.segments, ...sc.supplySegments])
+    : [];
+  const allDeadlines = reactionResult
+    ? reactionResult.scenarios.flatMap(sc => sc.outcomes.map(o => o.deadlineDay))
+    : [];
+  const maxDay = Math.max(
+    30,
+    reactionResult?.horizonDays ?? 30,
+    ...allSegments.map(s => s.endDay),
+    ...allDeadlines,
+  );
+  const horizon = Math.max(1, Math.ceil((maxDay + 3) / 5) * 5);
+  const improvement = s1 && s2 ? Math.max(0, Math.ceil(s1.worstLateDays - s2.worstLateDays)) : 0;
+  const contextRows = reactionResult?.contextSummary.length
+    ? reactionResult.contextSummary
+    : flaskItems.map(it => ({ sku: it.sku, requested: it.qty, inWarehouse: 0, toProduce: it.qty }));
+  const warningText = reactionResult?.warnings[0] ?? null;
+  const sharedText = reactionResult?.sharedComponents.length
+    ? reactionResult.sharedComponents.slice(0, 3).join(", ")
+    : "henüz hesaplanmadı";
+
+  const scenarioColor = (id: "S1" | "S2") => id === "S1" ? C.shortfall : C.ok;
+  const pct = (day: number) => `${Math.min(100, Math.max(0, day / horizon * 100))}%`;
+  const mkLine = (scenario: ReactionResult["scenarios"][number] | null, yBase: number) => {
+    if (!scenario) {
+      return `0,${yBase} 30,${yBase - 8} 70,${yBase - 2} 100,${yBase - 14}`;
+    }
+    const ends = scenario.outcomes.length
+      ? scenario.outcomes.map(o => o.finishesDay)
+      : scenario.segments.map(s => s.endDay);
+    const sorted = ends.length ? [...ends].sort((a, b) => a - b) : [0, horizon];
+    return sorted.map((d, i) => {
+      const x = 8 + (d / horizon) * 184;
+      const latePenalty = scenario.worstLateDays > 0 ? Math.min(22, scenario.worstLateDays) : 0;
+      const y = yBase - i * 8 + (scenario.id === "S1" ? latePenalty : 0);
+      return `${Math.min(192, Math.max(8, x))},${Math.min(78, Math.max(14, y))}`;
+    }).join(" ");
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left: 92,
+        right: 18,
+        bottom: 58,
+        height: 260,
+        zIndex: 18,
+        background: "rgba(255,255,255,0.94)",
+        border: `1px solid ${C.edgeFaint}`,
+        borderRadius: 10,
+        boxShadow: "0 -10px 30px rgba(15,23,42,0.14)",
+        color: C.ink,
+        fontFamily: mono,
+        display: "grid",
+        gridTemplateColumns: "280px minmax(360px, 1fr) 330px",
+        overflow: "hidden",
+        pointerEvents: "auto",
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ borderRight: `1px solid ${C.edgeFaint}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.accent, fontWeight: 700 }}>
+            SIMÜLASYON MOTORU
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
+            Üretim hattı serileri
+          </div>
+        </div>
+        <div style={{ padding: 12, display: "flex", flexDirection: "column", gap: 8, overflowY: "auto" }}>
+          {contextRows.map((row) => (
+            <div key={row.sku} style={{
+              padding: "8px 10px",
+              border: `1px solid ${C.edgeFaint}`,
+              borderRadius: 8,
+              background: "#ffffff",
+              display: "grid",
+              gridTemplateColumns: "1fr auto",
+              gap: 4,
+            }}>
+              <div style={{ fontSize: 12, fontWeight: 800 }}>{row.sku}</div>
+              <div style={{ fontSize: 10, color: row.toProduce > 0 ? C.warn : C.ok, fontWeight: 700 }}>
+                üret {fmtTR(row.toProduce)}
+              </div>
+              <div style={{ fontSize: 10, color: C.mid }}>istek {fmtTR(row.requested)}</div>
+              <div style={{ fontSize: 10, color: C.mid }}>depo {fmtTR(row.inWarehouse)}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ height: 46, display: "flex", alignItems: "center", gap: 10, padding: "0 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
+          <span style={{ padding: "5px 12px", borderRadius: 7, background: C.infoSoft, color: C.info, fontSize: 12, fontWeight: 800 }}>
+            Series
+          </span>
+          <span style={{ fontSize: 11, color: C.mid }}>
+            Başlangıç {fmtDay(0)} · ufuk {horizon} gün · paylaşılan bileşen {sharedText}
+          </span>
+        </div>
+        <div style={{ flex: 1, padding: "14px 18px 10px", display: "grid", gridTemplateRows: "1fr 64px", gap: 8 }}>
+          <div style={{ position: "relative", border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#f8fafc", overflow: "hidden" }}>
+            {[0, Math.round(horizon / 3), Math.round(horizon * 2 / 3), horizon].map((day) => (
+              <div key={day} style={{
+                position: "absolute",
+                left: pct(day),
+                top: 0,
+                bottom: 0,
+                width: 1,
+                background: "rgba(15,23,42,0.08)",
+              }}>
+                <div style={{ position: "absolute", top: 8, left: 6, fontSize: 9, color: C.dim, whiteSpace: "nowrap" }}>
+                  {fmtDay(day)}
+                </div>
+              </div>
+            ))}
+            <svg viewBox="0 0 200 88" width="100%" height="100%" preserveAspectRatio="none" style={{ position: "absolute", inset: 0 }}>
+              <polyline points={mkLine(s1, 62)} fill="none" stroke={scenarioColor("S1")} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+              <polyline points={mkLine(s2, 48)} fill="none" stroke={scenarioColor("S2")} strokeWidth={2.8} strokeLinecap="round" strokeLinejoin="round" opacity={0.9} />
+            </svg>
+            {reactionResult?.scenarios.map((scenario) => (
+              <div key={scenario.id} style={{
+                position: "absolute",
+                left: 14,
+                top: scenario.id === "S1" ? 70 : 44,
+                display: "flex",
+                alignItems: "center",
+                gap: 6,
+                fontSize: 10,
+                color: scenarioColor(scenario.id),
+                fontWeight: 800,
+              }}>
+                <span>{scenario.id}</span>
+                <span>{scenario.ontime ? "zamanında" : `${Math.ceil(scenario.worstLateDays)} gün geç`}</span>
+              </div>
+            ))}
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
+            {[s1, s2].map((scenario, idx) => (
+              <div key={scenario?.id ?? idx} style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#ffffff", padding: "9px 10px" }}>
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 800, color: scenario ? scenarioColor(scenario.id) : C.mid }}>
+                    {scenario?.id ?? (idx === 0 ? "S1" : "S2")}
+                  </span>
+                  <span style={{ fontSize: 10, color: C.mid }}>{scenario?.label ?? "hesap bekliyor"}</span>
+                </div>
+                <div style={{ fontSize: 10, color: C.mid, marginTop: 6, lineHeight: 1.35 }}>
+                  {scenario
+                    ? scenario.outcomes.map(o => `${o.sku}: ${o.ontime ? "zamanında" : `${Math.ceil(o.daysLate)} gün geç`}`).join(" · ")
+                    : "Üretim hattı komutu reaction sonucunu buraya bağlar."}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ borderLeft: `1px solid ${C.edgeFaint}`, display: "flex", flexDirection: "column", minWidth: 0 }}>
+        <div style={{ padding: "12px 16px", borderBottom: `1px solid ${C.edgeFaint}` }}>
+          <div style={{ fontSize: 9, letterSpacing: 2, color: C.warn, fontWeight: 700 }}>
+            ÖNERİLEN AKSİYON
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 700, marginTop: 4 }}>
+            Karar orkestrasyonu
+          </div>
+        </div>
+        <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+          <div style={{ border: `1px solid ${improvement > 0 ? C.ok : C.edgeFaint}`, borderRadius: 8, padding: 12, background: improvement > 0 ? C.okSoft : "#ffffff" }}>
+            <div style={{ fontSize: 12, fontWeight: 800, color: improvement > 0 ? C.ok : C.ink }}>
+              {improvement > 0 ? "S2 planını öner" : "Plan hesaplanıyor"}
+            </div>
+            <div style={{ fontSize: 10, color: C.mid, marginTop: 5, lineHeight: 1.45 }}>
+              {improvement > 0
+                ? `Üst üste bindirme gecikmeyi yaklaşık ${improvement} gün azaltıyor.`
+                : "Sipariş girildiğinde S1/S2 farkı burada karar notuna dönüşür."}
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <MetricTile label="S1 gecikme" value={s1 ? `${Math.ceil(s1.worstLateDays)} gün` : "-"} tone={s1 && s1.worstLateDays > 0 ? C.shortfall : C.mid} />
+            <MetricTile label="S2 gecikme" value={s2 ? `${Math.ceil(s2.worstLateDays)} gün` : "-"} tone={s2 && s2.worstLateDays > 0 ? C.warn : C.ok} />
+          </div>
+          <div style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, padding: 10, background: "#ffffff" }}>
+            <div style={{ fontSize: 10, color: C.mid, fontWeight: 800, marginBottom: 4 }}>DARBOĞAZ</div>
+            <div style={{ fontSize: 11, color: warningText ? C.warn : C.mid, lineHeight: 1.4 }}>
+              {warningText ?? "Kritik tedarik veya kapasite uyarısı yok."}
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function MetricTile({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div style={{ border: `1px solid ${C.edgeFaint}`, borderRadius: 8, background: "#ffffff", padding: "9px 10px" }}>
+      <div style={{ fontSize: 9, color: C.mid, fontWeight: 800 }}>{label}</div>
+      <div style={{ fontSize: 14, color: tone, fontWeight: 900, marginTop: 3 }}>{value}</div>
+    </div>
   );
 }
 
@@ -7423,7 +7649,7 @@ export default function StrategyCanvasPage() {
         />
       )}
 
-      {reactionResult && (
+      {reactionResult && !widgetVis.scene && (
         <ReactionGantt
           result={reactionResult}
           onClose={() => setReactionResult(null)}
