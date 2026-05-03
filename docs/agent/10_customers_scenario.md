@@ -240,5 +240,3 @@ ef40409 fix(strategy): edge label tıklanabilirlik — SVG pointer-events cascad
 - Default seed sadeleştirildi ama **kullanıcı henüz yeni üretim hatlarını kurmadı** — bir sonraki adım: `/uretim-hatti` komutu ile G2 ve G3 üretim zincirleri yeniden çizilecek
 - `/diyagram-ciz` modal recharts entegrasyonu mini-bar yerine
 - Edge command sistemi şu an sadece label override; gelecekte edge'e attached "x50" hesabı tepkime gantt'ı besleyebilir
-
-## Test note: Codex push test
