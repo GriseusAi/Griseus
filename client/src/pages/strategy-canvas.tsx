@@ -195,6 +195,20 @@ function shapeStyleFor(kind: ShapeKind): React.CSSProperties {
 
 const fmtTR = (n: number) => (isFinite(n) ? n.toLocaleString("tr-TR") : "—");
 const MONTH_LABELS = ["Oca","Şub","Mar","Nis","May","Haz","Tem","Ağu","Eyl","Eki","Kas","Ara"];
+const MONTH_PARSE_TR: Record<string, number> = {
+  "oca": 0, "ocak": 0,
+  "sub": 1, "şub": 1, "subat": 1, "şubat": 1,
+  "mar": 2, "mart": 2,
+  "nis": 3, "nisan": 3,
+  "may": 4, "mayis": 4, "mayıs": 4,
+  "haz": 5, "haziran": 5,
+  "tem": 6, "temmuz": 6,
+  "agu": 7, "ağu": 7, "agustos": 7, "ağustos": 7,
+  "eyl": 8, "eylul": 8, "eylül": 8,
+  "eki": 9, "ekim": 9,
+  "kas": 10, "kasim": 10, "kasım": 10,
+  "ara": 11, "aralik": 11, "aralık": 11,
+};
 const DEFAULT_LEAD_TIME_DAYS = 14;
 const PRODUCTION_DAYS_PER_UNIT = 0.4;
 
@@ -208,6 +222,30 @@ const ALL_SKUS = [
 interface Order {
   id: string; customer: string; deadline: string;
   sku: string; quantity: number; createdAt: number;
+}
+
+function normalizeDeadlineInput(raw: string): string | null {
+  const v = raw.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(v)) return v;
+  const dot = v.match(/^(\d{1,2})[./](\d{1,2})(?:[./](\d{2,4}))?$/);
+  if (dot) {
+    const yRaw = dot[3] ? Number(dot[3]) : new Date().getFullYear();
+    const y = yRaw < 100 ? 2000 + yRaw : yRaw;
+    const m = Number(dot[2]);
+    const d = Number(dot[1]);
+    if (m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+      return `${y}-${String(m).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+    }
+  }
+  const tr = v.toLocaleLowerCase("tr").replace(/[,.]/g, " ");
+  const parts = tr.split(/\s+/).filter(Boolean);
+  const day = Number(parts[0]);
+  const monthIdx = parts[1] ? MONTH_PARSE_TR[parts[1]] : undefined;
+  const year = parts[2] ? Number(parts[2]) : new Date().getFullYear();
+  if (day >= 1 && day <= 31 && monthIdx !== undefined && year >= 2000 && year <= 2100) {
+    return `${year}-${String(monthIdx + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+  }
+  return null;
 }
 interface BomComponent {
   code: string; name: string; requiredPerUnit: number; unit: string;
@@ -2766,6 +2804,14 @@ interface CommandDef {
       addEdge: (from: string, to: string, label?: string, color?: string) => void;
       ensureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
       ensureProductionPill: (parentId: string, days: string) => string;
+      createProductionLine: (args: {
+        customerId: string | null;
+        categoryId: string | null;
+        productId: string | null;
+        deviceType: string;
+        quantity: number;
+        deadline: string;
+      }) => string;
       setManualFocus: (ids: string[]) => void;
       askAgent: () => boolean;
       openDiagram: () => boolean;
@@ -2814,13 +2860,18 @@ const COMMAND_DEFS: CommandDef[] = [
         field: "quantity", prompt: "Kaç Adet?", hint: "Sayı (örn: 500)",
         validator: (v) => /^\d+$/.test(v.trim()) ? null : "Sayı bekleniyor (örn: 500)",
       },
-      { field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 20 Temmuz · 2026-07-20" },
+      {
+        field: "deadline", prompt: "Teslim tarihi?", hint: "Örn: 20 Temmuz · 2026-07-20",
+        validator: (v) => normalizeDeadlineInput(v) ? null : "Tarih bekleniyor (örn: 2026-07-20 veya 20 Temmuz)",
+      },
     ],
     apply: ({ collected, ids, atomById }, h) => {
+      const qty = Number(collected.quantity);
+      const deadline = normalizeDeadlineInput(collected.deadline) ?? collected.deadline;
       // 1) Tüm seçili atomlara meta yaz (cihaz tipi + adet badge'i için)
       ids.forEach(id => h.applyMeta(id, {
         orderNumber: collected.deviceType,
-        quantity: collected.quantity,
+        quantity: String(qty),
       }));
       // 2) Müşteri / kategori bul → teslim pill onlara bağlı çıksın
       const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
@@ -2830,12 +2881,20 @@ const COMMAND_DEFS: CommandDef[] = [
       const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
       let deadlineNote = "";
       if (positionParent && edgeTarget) {
-        h.ensureDeadlinePill(positionParent, collected.deadline, edgeTarget);
+        h.ensureDeadlinePill(positionParent, deadline, edgeTarget);
         deadlineNote = ` · teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
       }
+      const orderNote = h.createProductionLine({
+        customerId,
+        categoryId,
+        productId,
+        deviceType: collected.deviceType,
+        quantity: qty,
+        deadline,
+      });
       // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
       h.setManualFocus(ids);
-      return `Üretim hattı: ${collected.deviceType} · ${collected.quantity} adet · ${ids.length} atom${deadlineNote} (ESC ile temizle)`;
+      return `Üretim hattı: ${collected.deviceType} · ${qty} adet · ${orderNote}${deadlineNote} (ESC ile temizle)`;
     },
   },
   {
@@ -2987,7 +3046,7 @@ function EdgeCommandPopover({
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
+  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
@@ -2997,6 +3056,14 @@ function CommandBar({
   onAddEdge: (fromId: string, toId: string, label?: string, color?: string) => void;
   onEnsureDeadlinePill: (positionParentId: string, deadline: string, edgeTargetId?: string) => string;
   onEnsureProductionPill: (parentId: string, days: string) => string;
+  onCreateProductionLine: (args: {
+    customerId: string | null;
+    categoryId: string | null;
+    productId: string | null;
+    deviceType: string;
+    quantity: number;
+    deadline: string;
+  }) => string;
   onSetManualFocus: (ids: string[]) => void;
   onAskAgent: () => boolean;
   onOpenDiagram: () => boolean;
@@ -3077,6 +3144,7 @@ function CommandBar({
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
+          createProductionLine: onCreateProductionLine,
           setManualFocus: onSetManualFocus,
           askAgent: onAskAgent,
           openDiagram: onOpenDiagram,
@@ -3089,7 +3157,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -3119,6 +3187,7 @@ function CommandBar({
           addEdge: onAddEdge,
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
+          createProductionLine: onCreateProductionLine,
           setManualFocus: onSetManualFocus,
           askAgent: onAskAgent,
           openDiagram: onOpenDiagram,
@@ -3133,7 +3202,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -3185,6 +3254,7 @@ function CommandBar({
             addEdge: onAddEdge,
             ensureDeadlinePill: onEnsureDeadlinePill,
             ensureProductionPill: onEnsureProductionPill,
+            createProductionLine: onCreateProductionLine,
             setManualFocus: onSetManualFocus,
             askAgent: onAskAgent,
             openDiagram: onOpenDiagram,
@@ -3201,7 +3271,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -3525,6 +3595,7 @@ function CustomersSceneRenderer({
   atomMeta, setAtomMetaField, clearAtomMeta,
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
   edgeCommands, setEdgeCommand,
+  flaskItems, reactionResult, onCreateProductionLine,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -3549,6 +3620,17 @@ function CustomersSceneRenderer({
   removeCustomAtom: (id: string) => void;
   edgeCommands: Record<string, string>;
   setEdgeCommand: (key: string, command: string | null) => void;
+  flaskItems: FlaskItem[];
+  reactionResult: ReactionResult | null;
+  onCreateProductionLine: (args: {
+    customerId: string | null;
+    categoryId: string | null;
+    productId: string | null;
+    deviceType: string;
+    quantity: number;
+    deadline: string;
+    atomById: Record<string, SceneAtom>;
+  }) => string;
 }) {
   // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
   // "N adet üretilebilir" gösterilir. WS stok güncellemeleri otomatik invalidate
@@ -4383,6 +4465,8 @@ function CustomersSceneRenderer({
             dimmed={dimmed}
             capacity={a.kind === "product" ? sceneCapacityBySku[a.id.replace(/^p-/, "")] : undefined}
             capacityLoading={a.kind === "product" ? sceneCapacityLoading : undefined}
+            flaskItems={flaskItems}
+            reactionResult={reactionResult}
             onContextMenu={isCustomAtom ? (e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -4524,6 +4608,7 @@ function CustomersSceneRenderer({
           setAtomMetaField(parentId, { productionDays: days, productionPillId: pillId });
           return pillId;
         }}
+        onCreateProductionLine={(args) => onCreateProductionLine({ ...args, atomById })}
         onSetManualFocus={(ids) => setManualFocusIds(new Set(ids))}
         onAskAgent={() => {
           if (globalSel.selected.length === 0) return false;
@@ -4835,7 +4920,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, capacity, capacityLoading,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, capacity, capacityLoading, flaskItems, reactionResult,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -4850,6 +4935,8 @@ function SceneAtomNode({
   dimmed?: boolean;
   capacity?: CapacityResp;
   capacityLoading?: boolean;
+  flaskItems?: FlaskItem[];
+  reactionResult?: ReactionResult | null;
 }) {
   const naturalCircle = atom.kind === "category" || atom.kind === "stage" || atom.kind === "component" || atom.kind === "subassembly";
   const effectiveShape: ShapeKind | null = shapeOverride
@@ -4879,12 +4966,19 @@ function SceneAtomNode({
       shapeStyle={shapeStyle}
       style={{ ...selectedStyle, ...dimStyle }}
     >
-      <SceneAtomVisual atom={atom} groupOpen={groupOpen} capacity={capacity} capacityLoading={capacityLoading} />
+      <SceneAtomVisual atom={atom} groupOpen={groupOpen} capacity={capacity} capacityLoading={capacityLoading} flaskItems={flaskItems} reactionResult={reactionResult} />
     </DragNode>
   );
 }
 
-function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading }: { atom: SceneAtom; groupOpen?: boolean; capacity?: CapacityResp; capacityLoading?: boolean }) {
+function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItems, reactionResult }: {
+  atom: SceneAtom;
+  groupOpen?: boolean;
+  capacity?: CapacityResp;
+  capacityLoading?: boolean;
+  flaskItems?: FlaskItem[];
+  reactionResult?: ReactionResult | null;
+}) {
   const accent =
     atom.highlight === "green" ? "#10b981" :
     atom.highlight === "blue"  ? "#38bdf8" : null;
@@ -5179,6 +5273,8 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading }: { atom:
   }
 
   if (atom.kind === "flask") {
+    const items = flaskItems ?? [];
+    const shared = reactionResult?.sharedComponents ?? [];
     return (
       <div style={{
         width: "100%", height: "100%",
@@ -5191,20 +5287,34 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading }: { atom:
       }}>
         {labelLine("TEPKİME", "#f59e0b")}
         <div style={{ fontSize: 13, fontWeight: 700 }}>{atom.label}</div>
+        <div style={{ fontSize: 10, color: C.cardSub, lineHeight: 1.35 }}>
+          {items.length > 0
+            ? items.map(it => `${it.sku} x${it.qty}`).join(" · ")
+            : "Üretim hattı komutu bekliyor"}
+        </div>
+        {shared.length > 0 && (
+          <div style={{ fontSize: 9, color: "#f59e0b", lineHeight: 1.25, marginTop: 2 }}>
+            ortak havuz: {shared.slice(0, 3).join(", ")}{shared.length > 3 ? ` +${shared.length - 3}` : ""}
+          </div>
+        )}
       </div>
     );
   }
   if (atom.kind === "timeline-s1") {
-    return <TimelineCard which="S1" />;
+    return <TimelineCard which="S1" reactionResult={reactionResult} />;
   }
   if (atom.kind === "timeline-s2") {
-    return <TimelineCard which="S2" />;
+    return <TimelineCard which="S2" reactionResult={reactionResult} />;
   }
   return <div>{atom.label}</div>;
 }
 
-function TimelineCard({ which }: { which: "S1" | "S2" }) {
-  const ok = which === "S2";
+function TimelineCard({ which, reactionResult }: { which: "S1" | "S2"; reactionResult?: ReactionResult | null }) {
+  const liveScenario = reactionResult?.scenarios.find(s => s.id === which);
+  const ok = liveScenario ? liveScenario.ontime : which === "S2";
+  if (liveScenario && reactionResult) {
+    return <LiveTimelineCard which={which} scenario={liveScenario} result={reactionResult} />;
+  }
   // X axis: 1 May, 15 May, 1 Haz (gün 0 → 31)
   const ticks = [
     { label: "1 May.",  pct: 0 },
@@ -5317,6 +5427,108 @@ function TimelineCard({ which }: { which: "S1" | "S2" }) {
         fontFamily: mono, lineHeight: 1.5,
         marginTop: 4,
       }}>{note}</div>
+    </div>
+  );
+}
+
+function LiveTimelineCard({ which, scenario, result }: { which: "S1" | "S2"; scenario: ReactionResult["scenarios"][number]; result: ReactionResult }) {
+  const ok = scenario.ontime;
+  const maxEnd = Math.max(
+    30,
+    ...scenario.segments.map(s => s.endDay),
+    ...scenario.supplySegments.map(s => s.endDay),
+    ...scenario.outcomes.map(o => o.deadlineDay),
+  );
+  const horizon = Math.max(1, Math.ceil((maxEnd + 2) / 5) * 5);
+  const lanes = Array.from(new Set(scenario.segments.map(s => s.sku)));
+  const startDate = new Date(result.startDate);
+  const fmtDay = (day: number) => {
+    const d = new Date(startDate.getTime() + day * 86400000);
+    return `${d.getDate()} ${MONTH_LABELS[d.getMonth()]}`;
+  };
+  const ticks = [
+    { day: 0, label: fmtDay(0) },
+    ...scenario.outcomes.map(o => ({ day: o.deadlineDay, label: fmtDay(o.deadlineDay) })),
+    { day: horizon, label: fmtDay(horizon) },
+  ].filter((t, i, arr) => arr.findIndex(x => x.day === t.day) === i);
+
+  return (
+    <div style={{
+      width: "100%", height: "100%",
+      background: C.cardBg, color: C.cardInk,
+      borderRadius: 12, padding: "14px 16px",
+      boxShadow: "0 6px 22px rgba(0,0,0,0.32)", fontFamily: mono,
+      display: "flex", flexDirection: "column", gap: 9,
+      border: ok ? "1.5px solid rgba(16,185,129,0.45)" : "1.5px solid rgba(239,68,68,0.42)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+        <div style={{ fontSize: 22, fontWeight: 700, color: ok ? C.ok : C.shortfall }}>{which}</div>
+        <div style={{ flex: 1 }}>
+          <div style={{ fontSize: 12, fontWeight: 700 }}>{scenario.label}</div>
+          <div style={{ fontSize: 9, color: C.cardSub }}>
+            {ok ? "tüm teslimler zamanında" : `en kötü gecikme ${Math.ceil(scenario.worstLateDays)} gün`}
+          </div>
+        </div>
+      </div>
+
+      <div style={{ position: "relative", height: 14 }}>
+        {ticks.map((t, i) => (
+          <div key={`${t.day}-${i}`} style={{
+            position: "absolute", left: `${Math.min(100, Math.max(0, t.day / horizon * 100))}%`, top: 0,
+            transform: i === 0 ? "translateX(0)" : "translateX(-50%)",
+            fontSize: 10, color: C.cardSub,
+          }}>{t.label}</div>
+        ))}
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column", gap: 8, flex: 1, minHeight: 0 }}>
+        {lanes.slice(0, 3).map((sku) => (
+          <div key={sku} style={{ position: "relative", height: 32, borderTop: `1px dashed ${C.panelEdge}`, borderBottom: `1px dashed ${C.panelEdge}` }}>
+            <div style={{ position: "absolute", left: 0, top: 9, width: 72, fontSize: 9, color: C.cardSub, zIndex: 1 }}>{sku}</div>
+            {scenario.segments.filter(s => s.sku === sku).map((seg, i) => {
+              const left = Math.max(0, seg.startDay / horizon * 100);
+              const width = Math.max(2, (seg.endDay - seg.startDay) / horizon * 100);
+              return (
+                <div key={`${sku}-${i}`} style={{
+                  position: "absolute", left: `${left}%`, width: `${width}%`,
+                  top: 5, height: 22,
+                  border: `2px solid ${seg.blocked ? C.shortfall : (seg.color ?? "#ffffff")}`,
+                  borderRadius: 2,
+                  display: "flex", alignItems: "center", justifyContent: "center",
+                  color: seg.blocked ? C.shortfall : (seg.color ?? "#ffffff"),
+                  fontSize: 9, fontWeight: 700,
+                  overflow: "hidden", whiteSpace: "nowrap",
+                  background: seg.blocked ? C.shortfallSoft : "transparent",
+                }}>
+                  x{fmtTR(seg.qty)}
+                </div>
+              );
+            })}
+          </div>
+        ))}
+        {scenario.supplySegments.length > 0 && (
+          <div style={{ position: "relative", height: 30, borderTop: `1px dashed ${C.panelEdge}`, borderBottom: `1px dashed ${C.panelEdge}` }}>
+            <div style={{ position: "absolute", left: 0, top: 8, width: 72, fontSize: 9, color: C.cardSub }}>tedarik</div>
+            {scenario.supplySegments.slice(0, 3).map((seg, i) => (
+              <div key={`${seg.code}-${i}`} style={{
+                position: "absolute", left: `${seg.startDay / horizon * 100}%`,
+                width: `${Math.max(4, (seg.endDay - seg.startDay) / horizon * 100)}%`,
+                top: 5, height: 20,
+                border: `1.5px solid ${C.warn}`,
+                color: C.warn,
+                borderRadius: 2,
+                fontSize: 8,
+                display: "flex", alignItems: "center", justifyContent: "center",
+                overflow: "hidden", whiteSpace: "nowrap",
+              }}>{seg.code}</div>
+            ))}
+          </div>
+        )}
+      </div>
+
+      <div style={{ fontSize: 10, color: ok ? C.ok : C.shortfall, lineHeight: 1.35 }}>
+        {scenario.outcomes.map(o => `${o.sku}: ${o.ontime ? "zamanında" : `${Math.ceil(o.daysLate)} gün geç`}`).join(" · ")}
+      </div>
     </div>
   );
 }
@@ -6553,6 +6765,73 @@ export default function StrategyCanvasPage() {
     onError: () => {},
   });
 
+  const runReactionForItems = useCallback(async (items: FlaskItem[], supplies: SupplyItem[] = flaskSupplies) => {
+    if (items.length === 0) {
+      setReactionResult(null);
+      return;
+    }
+    try {
+      const res = await apiRequest("POST", "/api/strategy/reaction-equation", {
+        devices: items.map((it) => ({
+          sku: it.sku,
+          qty: it.qty,
+          deadline: it.deadline,
+          color: it.color,
+        })),
+        supplyOrders: supplies.length
+          ? supplies.map((s) => ({
+              componentCode: s.componentCode,
+              qty: s.qty,
+              leadDays: s.leadDays,
+            }))
+          : undefined,
+      });
+      setReactionResult((await res.json()) as ReactionResult);
+    } catch {
+      // Komut UI'sini bloklama; flask overlay açıkken kullanıcı ayrıntılı hatayı tekrar çalıştırarak görebilir.
+    }
+  }, [flaskSupplies]);
+
+  const createProductionLineFromScene = useCallback((args: {
+    customerId: string | null;
+    categoryId: string | null;
+    productId: string | null;
+    deviceType: string;
+    quantity: number;
+    deadline: string;
+    atomById: Record<string, SceneAtom>;
+  }) => {
+    const sku = args.deviceType.trim() || (args.productId ? args.productId.replace(/^p-/, "") : "");
+    const customer = args.customerId ? args.atomById[args.customerId]?.label : null;
+    const category = args.categoryId ? args.atomById[args.categoryId]?.label : null;
+    const product = args.productId ? args.atomById[args.productId]?.label : null;
+    const order: Order = {
+      id: `pl_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`,
+      customer: customer ?? "Bayi",
+      sku,
+      quantity: args.quantity,
+      deadline: args.deadline,
+      createdAt: Date.now(),
+    };
+    setOrders(prev => [...prev, order]);
+    const color = FLASK_COLORS[flaskItems.length % FLASK_COLORS.length];
+    const nextItems: FlaskItem[] = [
+      ...flaskItems,
+      {
+        id: `pl_${order.id}`,
+        sku: order.sku,
+        qty: order.quantity,
+        deadline: order.deadline,
+        color,
+      },
+    ];
+    setFlaskItems(nextItems);
+    setFlaskOpen(false);
+    runReactionForItems(nextItems);
+    triggerOctopus.mutate();
+    return `${customer ?? "müşteri yok"} · ${category ?? "kategori yok"} · ${product ?? sku} · tepkime hazır`;
+  }, [FLASK_COLORS, flaskItems, runReactionForItems, triggerOctopus]);
+
   const upsertOrder = (o: Order) => {
     setOrders(prev => {
       const idx = prev.findIndex(p => p.id === o.id);
@@ -7002,6 +7281,9 @@ export default function StrategyCanvasPage() {
             removeCustomAtom={removeSceneCustomAtom}
             edgeCommands={sceneEdgeCommands}
             setEdgeCommand={setSceneEdgeCommand}
+            flaskItems={flaskItems}
+            reactionResult={reactionResult}
+            onCreateProductionLine={createProductionLineFromScene}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (

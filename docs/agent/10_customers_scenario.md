@@ -106,6 +106,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 2. Kaç adet (sayı)
 3. Teslim tarihi (örn `2026-07-20`)
 
+**2026-05-03 güncel davranış:** Komut artık sadece pill/meta çizmez; seçili müşteri/kategori/ürün bağlamından gerçek `Order` kaydı üretir, aynı siparişi `flaskItems` içine ekler ve mevcut `/api/strategy/reaction-equation` read-only backend hattını tetikleyerek S1/S2 timeline atomlarını canlı reaction sonucu ile besler. Tarih girdisi `YYYY-MM-DD`, `15.05.2026` veya `15 Mayıs` formatından ISO tarihe normalize edilir.
+
 **`apply()` ne yapar (satır 2819):**
 
 ```
@@ -128,6 +130,9 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 4) setManualFocus(ids)
    // /uretim-hatti'nin seçtiği atomlar belirginleşir, diğerleri dim.
    // ESC ile temizlenir.
+
+5) createProductionLine(...)
+   // Order + FlaskItem yaratır, reaction-equation sonucunu timeline atomlarına yansıtır.
 ```
 
 Pill ID konvansiyonu: `pill-d-{parentId}-{rand}` — multi-delivery için yeni pill, eski overwrite edilmez.
