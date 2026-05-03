@@ -1,4 +1,4 @@
-import { useState, createContext, useContext, useCallback, useRef } from "react";
+import { useState, createContext, useContext, useCallback, useRef, lazy, Suspense } from "react";
 import type { ProactiveAlertData } from "./lib/useStockWebSocket";
 import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
@@ -35,14 +35,7 @@ import PalantirPage from "@/pages/palantir";
 import LineAgePage from "@/pages/ontology"; // lineage force-graph sayfası
 import BhOntologyPage from "@/pages/bh-ontology";
 import OntologySimulatePage from "@/pages/ontology-simulate";
-import StrategyCanvasPage from "@/pages/strategy-canvas";
 import SceneErrorBoundary from "@/components/SceneErrorBoundary";
-
-const StrategyCanvasGuarded = () => (
-  <SceneErrorBoundary>
-    <StrategyCanvasPage />
-  </SceneErrorBoundary>
-);
 import VeriYukle from "@/pages/veri-yukle";
 import PipelineRunsPage from "@/pages/pipeline-runs";
 import TwinHealthPage from "@/pages/twin-health";
@@ -50,6 +43,16 @@ import DecisionLoopPage from "@/pages/decision-loop";
 import OperationsPage from "@/pages/operations";
 import SddiPage from "@/pages/sddi";
 import WorkshopPage from "@/pages/workshop";
+
+const StrategyCanvasPage = lazy(() => import("@/pages/strategy-canvas"));
+
+const StrategyCanvasGuarded = () => (
+  <SceneErrorBoundary>
+    <Suspense fallback={<div style={{ minHeight: "100vh", background: "#f8fafc" }} />}>
+      <StrategyCanvasPage />
+    </Suspense>
+  </SceneErrorBoundary>
+);
 
 // Global agent panel context
 const AgentPanelContext = createContext<{
