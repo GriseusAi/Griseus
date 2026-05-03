@@ -117,6 +117,8 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 
 **2026-05-03 zincir bütünlüğü düzeltmesi:** Üretim hattı silme/güncelleme artık sadece inspector butonuna bağlı değildir. `production-line` atomu Delete/Backspace veya sol toolbar üzerinden silinirse aynı merkezi cleanup çalışır: line atom, deadline pill, `groupId === productionLineId` edge'leri, order/flask item ve reaction sonucu birlikte temizlenir. Adet/tarih güncelleme de `managedEdgeIds` boş kalmış eski hatlarda bile `groupId` edge'lerini tarar; `xadet` label'ı, pill label'ı ve S1/S2 beslemesi aynı anda değişir.
 
+**2026-05-03 orphan guard:** Customers scene mount olduğunda canlı `production-line` atom listesi tek gerçek kaynak kabul edilir. `sceneCustomAtoms` içinde karşılığı olmayan eski `order_pline*`, `flask_pline*`, eski `pl_*` order/flask kayıtları otomatik temizlenir; bu, silinmiş GSS20P gibi eski simülasyon girdilerinin dock'ta yaşamaya devam etmesini engeller.
+
 **`apply()` ne yapar (satır 2819):**
 
 ```

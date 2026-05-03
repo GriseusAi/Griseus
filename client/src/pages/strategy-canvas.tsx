@@ -7520,6 +7520,47 @@ export default function StrategyCanvasPage() {
     }
   }, [flaskSupplies]);
 
+  const liveProductionLineIds = useMemo(
+    () => new Set(sceneCustomAtoms.filter(a => a.kind === "production-line").map(a => a.id)),
+    [sceneCustomAtoms],
+  );
+  const liveProductionLineKey = useMemo(
+    () => Array.from(liveProductionLineIds).sort().join("|"),
+    [liveProductionLineIds],
+  );
+  const lineIdFromFlaskItem = (id: string): string | null => {
+    if (id.startsWith("flask_pline-")) return id.slice("flask_".length);
+    if (id.startsWith("pl_order_pline-")) return id.slice("pl_order_".length);
+    if (id.startsWith("pl_pline-")) return id.slice("pl_".length);
+    if (id.startsWith("pl_pl_")) return "__legacy_orphan__";
+    return null;
+  };
+  const lineIdFromOrder = (id: string): string | null => {
+    if (id.startsWith("order_pline-")) return id.slice("order_".length);
+    if (id.startsWith("pl_")) return "__legacy_orphan__";
+    return null;
+  };
+
+  useEffect(() => {
+    setFlaskItems(prev => {
+      const next = prev.filter(item => {
+        const lineId = lineIdFromFlaskItem(item.id);
+        if (!lineId) return true;
+        return liveProductionLineIds.has(lineId);
+      });
+      if (next.length !== prev.length) {
+        if (next.length > 0) runReactionForItems(next);
+        else setReactionResult(null);
+      }
+      return next;
+    });
+    setOrders(prev => prev.filter(order => {
+      const lineId = lineIdFromOrder(order.id);
+      if (!lineId) return true;
+      return liveProductionLineIds.has(lineId);
+    }));
+  }, [liveProductionLineKey, runReactionForItems]);
+
   const createProductionLineFromScene = useCallback((args: {
     productionLineId: string;
     customerId: string | null;
