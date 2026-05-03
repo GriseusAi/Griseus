@@ -95,10 +95,22 @@ Her atom `{ id, kind, label, x, y, w, h, highlight?, sub? }`. Pozisyonlar `scene
 | `/üretim` | `uretim`, `production` | days (sayı) | Seçili atom(lar)a üretim süresi pill — `ensureProductionPill(id, days)` |
 | `/üretim-hattı` | `uretim-hatti`, `hat`, `production-line`, **`siparis`**, **`sipariş`**, **`order`** | deviceType, quantity, deadline | Üretim hattı oluştur — meta yaz + teslim pill (G2/G3 pattern) + manual focus |
 | `/sil` | `clear`, `temizle` | — | Seçili atom(lar)ın meta + pill'lerini temizle |
-| `/gix` | `ai`, `ai-sor`, `agent` | — | Seçili atomları AI agent'a context yolla (panel açılır) |
+| `/gix` | `ai`, `ai-sor`, `agent`, `codex`, `vibe` | request | Codex wrapper: isteği seçili canvas atomlarıyla teknik görev brief'ine çevirir |
 | `/diyagram-çiz` | `diyagram-ciz`, `diyagram`, `chart`, `compare` | — | 2+ atom için diyagram modal aç |
 
 `COMMAND_DEFS` dışına çıkma — yeni feature istiyorsan ya yeni komut ekle ya mevcut komutu genişlet. Sabit overlay panel veya buton ekleme.
+
+### `/gix` (alias `/codex`, `/vibe`) — Codex Wrapper
+
+`/gix <istek>` veya `/gix` + tek soru, Strategy Canvas içindeki seçili atomları ve kullanıcı isteğini Codex'e aktarılabilir teknik brief'e çevirir. Bu komut doğrudan prod üzerinde kod çalıştırmaz; agent panelini doldurur ve görevi şu formatta hazırlar:
+
+- kullanıcı isteği
+- seçili atom listesi (`id`, `kind`, `label`, `sub`, ilgili meta)
+- Griseus/Strategy Canvas bağlamı
+- 10 maddelik atom-preflight checklist
+- beklenen çıktı: kapsam, dosya dosya değişiklik planı, riskler, test/audit komutları, commit mesajı
+
+Amaç: `/gix üretim hattını tıklanınca düzenlenebilir yap` gibi doğal dil komutunu vibe-coding yüzeyi haline getirmek; fakat veri mutasyonu, commit veya deploy kararını hala Codex çalışma akışı ve audit kapıları yönetir.
 
 ### `/uretim-hatti` (alias `/siparis`) — G2/G3 Pattern Detayı
 

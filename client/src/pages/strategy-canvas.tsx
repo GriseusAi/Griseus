@@ -2847,10 +2847,70 @@ interface CommandDef {
         deadline: string;
       }) => { orderId: string; flaskItemId: string; note: string };
       setManualFocus: (ids: string[]) => void;
-      askAgent: () => boolean;
+      askAgent: (prefill?: string) => boolean;
       openDiagram: () => boolean;
     },
   ) => string;
+}
+
+function buildGixCodexPrompt(args: {
+  request: string;
+  ids: string[];
+  atomById: Record<string, SceneAtom>;
+  metaById: Record<string, AtomMeta>;
+}): string {
+  const selected = args.ids
+    .map((id, idx) => {
+      const atom = args.atomById[id];
+      if (!atom) return null;
+      const meta = args.metaById[id] ?? {};
+      const metaParts = [
+        meta.orderNumber ? `sku=${meta.orderNumber}` : null,
+        meta.quantity ? `adet=${meta.quantity}` : null,
+        meta.deadline ? `teslim=${meta.deadline}` : null,
+        meta.productionLineId ? `hat=${meta.productionLineId}` : null,
+        meta.customerId ? `musteri=${meta.customerId}` : null,
+        meta.categoryId ? `kategori=${meta.categoryId}` : null,
+        meta.productId ? `mamul=${meta.productId}` : null,
+      ].filter(Boolean).join(", ");
+      return `${idx + 1}. ${atom.id} | kind=${atom.kind} | label=${atom.label}${atom.sub ? ` | sub=${atom.sub}` : ""}${metaParts ? ` | meta: ${metaParts}` : ""}`;
+    })
+    .filter((line): line is string => !!line);
+
+  return [
+    "GIX CODEX WRAPPER",
+    "",
+    "Rol: Griseus Strategy Canvas icin Codex gorev brief'i hazirla ve uygulanabilir teknik plana cevir.",
+    "Kullanici istegi:",
+    args.request.trim(),
+    "",
+    selected.length > 0 ? "Secili canvas atomlari:" : "Secili canvas atomu yok.",
+    selected.length > 0 ? selected.join("\n") : "",
+    "",
+    "Baglam:",
+    "- Griseus, Cukurova Isi icin Palantir tarzinda ontoloji tabanli operasyon platformudur.",
+    "- Strategy Canvas'ta atomlar, edge'ler, slash komutlar, uretim hatti, teslim pill'i ve S1/S2 simulasyonlari ayni sahnede calisir.",
+    "- Yeni davranis sadece goruntu degil; veri modeli, reaction sonucu, agent gorunurlugu ve silme/guncelleme zinciriyle tutarli olmalidir.",
+    "",
+    "Codex icin zorunlu atom-preflight:",
+    "1. Hangi atomlar okunuyor veya yaziliyor?",
+    "2. Bu atomlar hangi atomlari besliyor?",
+    "3. Hangi endpoint veya local state etkileniyor?",
+    "4. Hangi UI component bunu cagiriyor?",
+    "5. WS broadcast gerekir mi?",
+    "6. Lineage gerekir mi?",
+    "7. Agent tool bu degisikligi gorebiliyor mu?",
+    "8. Ontology object/link type etkileniyor mu?",
+    "9. Cross-product veya paylasilan bilesen etkisi var mi?",
+    "10. Zaman, teslim tarihi veya seasonal boyut etkileniyor mu?",
+    "",
+    "Istenen cevap formati:",
+    "1. Kisa niyet ve kapsam",
+    "2. Dosya dosya uygulanacak degisiklikler",
+    "3. Riskler ve veri tutarliligi kontrolleri",
+    "4. Test ve audit komutlari",
+    "5. Commit mesaji onerisi",
+  ].filter(Boolean).join("\n");
 }
 
 const COMMAND_DEFS: CommandDef[] = [
@@ -3111,15 +3171,22 @@ const COMMAND_DEFS: CommandDef[] = [
   },
   {
     name: "gix",
-    aliases: ["ai", "ai-sor", "agent"],
-    description: "Seçili atomları AI agent'a context olarak yollar (panel açılır)",
-    minSelected: 1,
-    steps: [],
-    apply: ({ ids }, h) => {
-      const ok = h.askAgent();
+    aliases: ["ai", "ai-sor", "agent", "codex", "vibe"],
+    description: "Codex wrapper — isteği seçili canvas atomlarıyla teknik görev brief'ine çevirir",
+    steps: [
+      { field: "request", prompt: "Codex ne yapsın?", hint: "Örn: E2 üretim hattını tıklanınca düzenlenebilir yap" },
+    ],
+    apply: ({ collected, ids, atomById, metaById }, h) => {
+      const prompt = buildGixCodexPrompt({
+        request: collected.request,
+        ids,
+        atomById,
+        metaById,
+      });
+      const ok = h.askAgent(prompt);
       return ok
-        ? `${ids.length} atom AI agent'a yollandı — panel açıldı`
-        : "AI agent açılamadı (selection context boş)";
+        ? `gix Codex brief hazırlandı · ${ids.length} atom context'e eklendi`
+        : "gix paneli açılamadı";
     },
   },
   {
@@ -3270,7 +3337,7 @@ function CommandBar({
     deadline: string;
   }) => { orderId: string; flaskItemId: string; note: string };
   onSetManualFocus: (ids: string[]) => void;
-  onAskAgent: () => boolean;
+  onAskAgent: (prefill?: string) => boolean;
   onOpenDiagram: () => boolean;
   edgePalette: EdgePalette;
 }) {
@@ -5041,9 +5108,9 @@ function CustomersSceneRenderer({
         }}
         onCreateProductionLine={(args) => onCreateProductionLine({ ...args, atomById })}
         onSetManualFocus={(ids) => setManualFocusIds(new Set(ids))}
-        onAskAgent={() => {
-          if (globalSel.selected.length === 0) return false;
-          setAgentPrefill(buildAgentContext(globalSel.selected));
+        onAskAgent={(prefill) => {
+          if (!prefill && globalSel.selected.length === 0) return false;
+          setAgentPrefill(prefill ?? buildAgentContext(globalSel.selected));
           toggleAgentPanel();
           return true;
         }}
