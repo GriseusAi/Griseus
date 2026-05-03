@@ -4080,6 +4080,31 @@ function CustomersSceneRenderer({
     return m;
   }, [atoms]);
 
+  const cleanupProductionLine = useCallback((lineId: string) => {
+    const lineAtom = atomById[lineId];
+    if (!lineAtom || lineAtom.kind !== "production-line") return false;
+    const meta = atomMeta[lineId] ?? {};
+    const edgeIds = new Set([
+      ...(meta.managedEdgeIds ?? []),
+      ...customEdges.filter(e => e.groupId === lineId).map(e => e.id),
+    ]);
+    edgeIds.forEach(id => removeCustomEdge(id));
+    if (meta.deadlinePillId) {
+      customEdges
+        .filter(e => e.fromId === meta.deadlinePillId || e.toId === meta.deadlinePillId)
+        .forEach(e => removeCustomEdge(e.id));
+      removeCustomAtom(meta.deadlinePillId);
+    }
+    removeCustomAtom(lineId);
+    clearAtomMeta(lineId);
+    onDeleteProductionLine({
+      orderId: meta.orderId,
+      flaskItemId: meta.flaskItemId,
+      sku: meta.orderNumber,
+    });
+    return true;
+  }, [atomById, atomMeta, customEdges, removeCustomEdge, removeCustomAtom, clearAtomMeta, onDeleteProductionLine]);
+
   // Kullanıcının klavye Delete/Backspace ile sildiği atomlar — localStorage persist
   const [deletedAtomIds, setDeletedAtomIds] = useState<Set<string>>(() => {
     try {
@@ -4284,31 +4309,6 @@ function CustomersSceneRenderer({
     const id = Array.from(selectedIds).find(sel => atomById[sel]?.kind === "production-line");
     return id ? atomById[id] : null;
   }, [selectedIds, atomById]);
-
-  const cleanupProductionLine = useCallback((lineId: string) => {
-    const lineAtom = atomById[lineId];
-    if (!lineAtom || lineAtom.kind !== "production-line") return false;
-    const meta = atomMeta[lineId] ?? {};
-    const edgeIds = new Set([
-      ...(meta.managedEdgeIds ?? []),
-      ...customEdges.filter(e => e.groupId === lineId).map(e => e.id),
-    ]);
-    edgeIds.forEach(id => removeCustomEdge(id));
-    if (meta.deadlinePillId) {
-      customEdges
-        .filter(e => e.fromId === meta.deadlinePillId || e.toId === meta.deadlinePillId)
-        .forEach(e => removeCustomEdge(e.id));
-      removeCustomAtom(meta.deadlinePillId);
-    }
-    removeCustomAtom(lineId);
-    clearAtomMeta(lineId);
-    onDeleteProductionLine({
-      orderId: meta.orderId,
-      flaskItemId: meta.flaskItemId,
-      sku: meta.orderNumber,
-    });
-    return true;
-  }, [atomById, atomMeta, customEdges, removeCustomEdge, removeCustomAtom, clearAtomMeta, onDeleteProductionLine]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
