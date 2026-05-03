@@ -2482,6 +2482,16 @@ const compactName = (s: string): string => {
   return cleaned.length > 32 ? cleaned.slice(0, 30) + "…" : cleaned;
 };
 
+function inferProductIdFromBomAtomId(id: string): string | null {
+  const match = id.match(/^bom-(p-.+?)-/);
+  return match?.[1] ?? null;
+}
+
+function supplierNameForIndex(idx: number): string {
+  const names = ["Tedarikçi A", "Tedarikçi B", "Tedarikçi C", "Tedarikçi D", "Tedarikçi E"];
+  return names[idx] ?? `Tedarikçi ${idx + 1}`;
+}
+
 
 interface SceneEdge {
   fromId: string; toId: string;
@@ -2978,6 +2988,102 @@ const COMMAND_DEFS: CommandDef[] = [
       // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
       h.setManualFocus(Array.from(new Set([...ids, productionLineId, ...lineIds])));
       return `Üretim hattı: ${devMeta?.code ?? sku} · ${qty} adet · ${lineIds.length} atom · ${production.note}${deadlineNote} (ESC ile temizle)`;
+    },
+  },
+  {
+    name: "tedarik",
+    aliases: ["supply", "satinalma", "satınalma", "tedarik-hatti", "tedarik-hattı"],
+    description: "Seçili alt bileşenlerden canlı tedarik hattı kurar",
+    minSelected: 1,
+    steps: [],
+    apply: ({ ids, atomById, metaById }, h) => {
+      const selectedAtoms = ids.map(id => atomById[id]).filter((a): a is SceneAtom => !!a);
+      const supplyTargets = selectedAtoms.filter(a =>
+        a.kind === "bom-item" || a.kind === "component" || a.kind === "subassembly",
+      );
+      if (supplyTargets.length === 0) {
+        return "Tedarik hattı için alt bileşen veya yarı-mamül seç. GSA20'yi aç, eksik bileşenleri Shift+tıkla.";
+      }
+
+      const productId =
+        ids.map(inferProductIdFromBomAtomId).find((id): id is string => !!id && !!atomById[id])
+        ?? ids.find(id => atomById[id]?.kind === "product")
+        ?? null;
+      const productAtom = productId ? atomById[productId] : null;
+      const lineId = `supply-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
+      const maxX = Math.max(...supplyTargets.map(a => a.x + a.w), productAtom ? productAtom.x + productAtom.w : 0);
+      const minY = Math.min(...supplyTargets.map(a => a.y));
+      const baseX = Math.max(1080, maxX + 150);
+      const baseY = Math.max(64, minY - 26);
+      const color = "#38bdf8";
+      const focusIds = new Set<string>([...ids]);
+      const managedEdgeIds: string[] = [];
+      const addSupplyEdge = (from: string, to: string, label?: string, edgeColor = color) => {
+        const edgeId = h.addEdge(from, to, label, edgeColor, lineId);
+        managedEdgeIds.push(edgeId);
+      };
+
+      const hubId = `${lineId}-hub`;
+      h.addAtom({
+        id: hubId,
+        kind: "supply-bracket",
+        label: productAtom ? `${productAtom.label} tedarik` : "Canlı tedarik",
+        sub: `${supplyTargets.length} eksik bileşen · izleme açık`,
+        x: baseX,
+        y: baseY,
+        w: 230,
+        h: 64,
+        highlight: "blue",
+      });
+      focusIds.add(hubId);
+
+      const purchaseId = `${lineId}-purchase`;
+      h.addAtom({
+        id: purchaseId,
+        kind: "supply-bracket",
+        label: "Satınalma",
+        sub: "sipariş açıldı · canlı takip",
+        x: baseX + 300,
+        y: baseY + 86,
+        w: 180,
+        h: 58,
+        highlight: "blue",
+      });
+      focusIds.add(purchaseId);
+
+      supplyTargets.forEach((target, idx) => {
+        const supplierId = `${lineId}-supplier-${idx}`;
+        const leadDays = DEFAULT_LEAD_TIME_DAYS + idx * 2;
+        const requestedQty = metaById[target.id]?.quantity?.trim();
+        const qtyText = requestedQty ? ` x${requestedQty}` : "";
+        h.addAtom({
+          id: supplierId,
+          kind: "supply-bracket",
+          label: supplierNameForIndex(idx),
+          sub: `${target.label}${qtyText} · ${leadDays} gün`,
+          x: baseX,
+          y: baseY + 92 + idx * 76,
+          w: 230,
+          h: 58,
+          highlight: target.highlight === "red" ? "red" : "blue",
+        });
+        focusIds.add(supplierId);
+        addSupplyEdge(target.id, supplierId, requestedQty ? `x${requestedQty}` : "eksik", target.highlight === "red" ? "#ef4444" : color);
+        addSupplyEdge(supplierId, purchaseId, `${leadDays}g`, color);
+      });
+
+      addSupplyEdge(hubId, purchaseId, undefined, color);
+      if (productId) addSupplyEdge(productId, hubId, undefined, "rgba(56,189,248,0.7)");
+      addSupplyEdge(purchaseId, "stg-depo", undefined, "rgba(255,255,255,0.82)");
+      addSupplyEdge("stg-depo", "stg-uretim", undefined, "rgba(255,255,255,0.82)");
+      if (productId) addSupplyEdge("stg-uretim", productId, "hazır", "#10b981");
+
+      ["stg-depo", "stg-uretim"].forEach(id => focusIds.add(id));
+      if (productId) focusIds.add(productId);
+      h.applyMeta(hubId, { managedEdgeIds });
+      h.setManualFocus(Array.from(focusIds));
+
+      return `Tedarik hattı: ${supplyTargets.map(a => a.label).join(", ")} · ${supplierNameForIndex(0)}-${supplierNameForIndex(supplyTargets.length - 1)} · Depo → Üretim (ESC ile temizle)`;
     },
   },
   {
@@ -3738,6 +3844,7 @@ function CustomersSceneRenderer({
     sku?: string;
   }) => void;
 }) {
+  const qc = useQueryClient();
   // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
   // "N adet üretilebilir" gösterilir. WS stok güncellemeleri otomatik invalidate
   // ediyor (parent useStockWebSocket ALL_SKUS keylerini de invalidate eder).
@@ -3849,6 +3956,24 @@ function CustomersSceneRenderer({
     setSelectedIds(new Set());
     globalSel.clear();
   };
+
+  const persistComponentQuantity = useCallback(async (atom: SceneAtom, quantity: number) => {
+    const productId = inferProductIdFromBomAtomId(atom.id);
+    const sku = productId?.replace(/^p-/, "");
+    if (!sku) {
+      throw new Error("Bu atom için bağlı mamul bulunamadı. Önce mamul BOM ağacından bileşeni seç.");
+    }
+    const res = await apiRequest(
+      "PATCH",
+      `/api/bom/${encodeURIComponent(sku)}/components/${encodeURIComponent(atom.label)}/required-quantity`,
+      { requiredQuantity: quantity, actor: "strategy_canvas" },
+    );
+    await res.json();
+    setAtomMetaField(atom.id, { quantity: String(quantity) });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
+    qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
+  }, [qc, setAtomMetaField]);
 
   // ESC ile seçimi + popup + drill-down + müşteri odağı temizle
   useEffect(() => {
@@ -4343,6 +4468,13 @@ function CustomersSceneRenderer({
     const id = Array.from(selectedIds).find(sel => atomById[sel]?.kind === "production-line");
     return id ? atomById[id] : null;
   }, [selectedIds, atomById]);
+  const selectedComponentAtom = useMemo(() => {
+    const id = Array.from(selectedIds).find(sel => {
+      const kind = atomById[sel]?.kind;
+      return kind === "bom-item" || kind === "component" || kind === "subassembly";
+    });
+    return id ? atomById[id] : null;
+  }, [selectedIds, atomById]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
@@ -4658,6 +4790,7 @@ function CustomersSceneRenderer({
             viewport={viewport}
             shapeOverride={shapeOverrides[a.id]}
             dimmed={dimmed}
+            meta={atomMeta[a.id]}
             capacity={a.kind === "product" ? sceneCapacityBySku[a.id.replace(/^p-/, "")] : undefined}
             capacityLoading={a.kind === "product" ? sceneCapacityLoading : undefined}
             flaskItems={flaskItems}
@@ -4740,6 +4873,23 @@ function CustomersSceneRenderer({
           }}
           onDelete={() => {
             cleanupProductionLine(selectedLineAtom.id);
+            setSelectedIds(new Set());
+          }}
+        />
+      )}
+      {!selectedLineAtom && selectedComponentAtom && (
+        <ComponentQuantityInspector
+          atom={selectedComponentAtom}
+          meta={atomMeta[selectedComponentAtom.id] ?? {}}
+          product={(() => {
+            const pid = inferProductIdFromBomAtomId(selectedComponentAtom.id);
+            return pid ? atomById[pid] : null;
+          })()}
+          onClose={() => setSelectedIds(new Set())}
+          onUpdate={(quantity) => {
+            return persistComponentQuantity(selectedComponentAtom, quantity);
+          }}
+          onClear={() => {
             setSelectedIds(new Set());
           }}
         />
@@ -5042,6 +5192,172 @@ function ProductionLineInspector({
             }}
           >
             hattı sil
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function ComponentQuantityInspector({
+  atom,
+  meta,
+  product,
+  onClose,
+  onUpdate,
+  onClear,
+}: {
+  atom: SceneAtom;
+  meta: AtomMeta;
+  product: SceneAtom | null;
+  onClose: () => void;
+  onUpdate: (quantity: number) => void | Promise<void>;
+  onClear: () => void;
+}) {
+  const [quantity, setQuantity] = useState(meta.quantity ?? "");
+  const [error, setError] = useState<string | null>(null);
+  const [saving, setSaving] = useState(false);
+  const stripe = atom.highlight === "red" ? C.shortfall : atom.kind === "subassembly" ? C.accent : C.ok;
+  const title =
+    atom.kind === "subassembly" ? "YARI MAMÜL ADEDİ" :
+    atom.kind === "component" ? "BİLEŞEN ADEDİ" :
+    "ALT BİLEŞEN ADEDİ";
+
+  const save = async () => {
+    const qty = Number(quantity);
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setError("Adet pozitif sayı olmalı.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      await onUpdate(qty);
+    } catch (err: any) {
+      setError(err?.message ?? "BOM adet güncellemesi başarısız.");
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 112,
+        right: 18,
+        width: 340,
+        zIndex: 28,
+        background: C.cardBg,
+        color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        borderRadius: 12,
+        boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
+        fontFamily: mono,
+        overflow: "hidden",
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div style={{ minWidth: 0 }}>
+          <div style={{ fontSize: 9, letterSpacing: 1.8, color: stripe, fontWeight: 800 }}>
+            {title}
+          </div>
+          <div style={{ fontSize: 15, fontWeight: 800, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {atom.label}
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: `1px solid ${C.panelEdge}`,
+            background: "rgba(255,255,255,0.06)",
+            color: C.cardInk,
+            cursor: "pointer",
+            fontFamily: mono,
+          }}
+          aria-label="Kapat"
+        >
+          x
+        </button>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <InfoCell label="Bağlı mamul" value={product?.label ?? "-"} />
+          <InfoCell label="Tip" value={atom.kind === "subassembly" ? "Yarı mamül" : "Bileşen"} />
+        </div>
+        {atom.sub && <InfoCell label="Açıklama" value={atom.sub} />}
+        <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
+          <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Adet</span>
+          <input
+            value={quantity}
+            onChange={(e) => setQuantity(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Enter") {
+                e.preventDefault();
+                save();
+              }
+            }}
+            placeholder="örn: 13"
+            style={{
+              background: C.cardBgAlt,
+              color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`,
+              borderRadius: 8,
+              padding: "9px 10px",
+              fontFamily: mono,
+              fontSize: 13,
+              outline: "none",
+            }}
+          />
+        </label>
+        {error && (
+          <div style={{ color: C.shortfall, fontSize: 11, lineHeight: 1.35 }}>{error}</div>
+        )}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 2 }}>
+          <button
+            type="button"
+            onClick={save}
+            disabled={saving}
+            style={{
+              border: "none",
+              borderRadius: 8,
+              background: stripe,
+              color: "#ffffff",
+              padding: "10px 12px",
+              fontFamily: mono,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: saving ? "default" : "pointer",
+              opacity: saving ? 0.65 : 1,
+            }}
+          >
+            {saving ? "octopus..." : "güncelle"}
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              onClear();
+            }}
+            style={{
+              border: `1px solid ${C.panelEdge}`,
+              borderRadius: 8,
+              background: "transparent",
+              color: C.cardSub,
+              padding: "10px 12px",
+              fontFamily: mono,
+              fontSize: 12,
+              fontWeight: 800,
+              cursor: "pointer",
+            }}
+          >
+            kapat
           </button>
         </div>
       </div>
@@ -5654,7 +5970,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, capacity, capacityLoading, flaskItems, reactionResult,
+  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, meta, capacity, capacityLoading, flaskItems, reactionResult,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -5667,6 +5983,7 @@ function SceneAtomNode({
   shapeOverride?: ShapeKind;
   onContextMenu?: (e: React.MouseEvent) => void;
   dimmed?: boolean;
+  meta?: AtomMeta;
   capacity?: CapacityResp;
   capacityLoading?: boolean;
   flaskItems?: FlaskItem[];
@@ -5700,14 +6017,15 @@ function SceneAtomNode({
       shapeStyle={shapeStyle}
       style={{ ...selectedStyle, ...dimStyle }}
     >
-      <SceneAtomVisual atom={atom} groupOpen={groupOpen} capacity={capacity} capacityLoading={capacityLoading} flaskItems={flaskItems} reactionResult={reactionResult} />
+      <SceneAtomVisual atom={atom} groupOpen={groupOpen} meta={meta} capacity={capacity} capacityLoading={capacityLoading} flaskItems={flaskItems} reactionResult={reactionResult} />
     </DragNode>
   );
 }
 
-function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItems, reactionResult }: {
+function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, flaskItems, reactionResult }: {
   atom: SceneAtom;
   groupOpen?: boolean;
+  meta?: AtomMeta;
   capacity?: CapacityResp;
   capacityLoading?: boolean;
   flaskItems?: FlaskItem[];
@@ -5734,6 +6052,21 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
   const labelLine = (text: string, color: string = C.cardSub): React.ReactNode => (
     <div style={{ fontSize: 9, color, letterSpacing: 1.6, fontWeight: 600 }}>{text}</div>
   );
+  const qtyBadge = meta?.quantity ? (
+    <div style={{
+      fontSize: 9,
+      color: C.cardInk,
+      background: "rgba(249,115,22,0.18)",
+      border: "1px solid rgba(249,115,22,0.45)",
+      borderRadius: 4,
+      padding: "1px 5px",
+      fontWeight: 800,
+      lineHeight: 1.25,
+      whiteSpace: "nowrap",
+    }}>
+      x{meta.quantity}
+    </div>
+  ) : null;
 
   if (atom.kind === "label") {
     // "Customers" master label — tıklanabilir grup başlığı (chevron + hover)
@@ -5899,7 +6232,8 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
           <div style={{ fontSize: 8, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
             {isCritical ? "KRİTİK" : "BİLEŞEN"}
           </div>
-          <div style={{ fontSize: 11, fontWeight: 700, marginLeft: "auto" }}>{atom.label}</div>
+          <div style={{ marginLeft: "auto" }}>{qtyBadge}</div>
+          <div style={{ fontSize: 11, fontWeight: 700 }}>{atom.label}</div>
         </div>
         {atom.sub && (
           <div style={{ fontSize: 9, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
@@ -5929,6 +6263,7 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
         <div style={{ fontSize: 12, fontWeight: 700, lineHeight: 1.1 }}>
           {atom.label}
         </div>
+        {qtyBadge}
         <div style={{ fontSize: 8, color: stripe, opacity: 0.85 }}>
           {groupOpen ? "▾ açık" : "▸ tıkla"}
         </div>
@@ -5949,6 +6284,7 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
       }}>
         {labelLine("BİLEŞEN", "#ef4444")}
         <div style={{ fontSize: 22, fontWeight: 700 }}>{atom.label}</div>
+        {qtyBadge}
       </div>
     );
   }
@@ -6025,6 +6361,31 @@ function SceneAtomVisual({ atom, groupOpen, capacity, capacityLoading, flaskItem
         <div style={{ fontSize: 10, color: C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {atom.sub ?? "seç, değiştir veya sil"}
         </div>
+      </div>
+    );
+  }
+
+  if (atom.kind === "supply-bracket") {
+    const stripe = atom.highlight === "red" ? C.shortfall : (accent ?? C.info);
+    return (
+      <div style={{
+        width: "100%", height: "100%",
+        background: C.cardBg, color: C.cardInk,
+        borderRadius: 10, padding: "8px 11px",
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `4px solid ${stripe}`,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+        fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.36)",
+      }}>
+        {labelLine(atom.label === "Satınalma" ? "SATINALMA" : "TEDARİK", stripe)}
+        <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+          {atom.label}
+        </div>
+        {atom.sub && (
+          <div style={{ fontSize: 10, color: C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+            {atom.sub}
+          </div>
+        )}
       </div>
     );
   }
@@ -6802,7 +7163,11 @@ export default function StrategyCanvasPage() {
       const cur = prev[id] ?? {};
       const merged: AtomMeta = { ...cur, ...patch };
       // Tüm alanlar boşsa kaydı sil
-      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity && !merged.deadlinePillId && !merged.productionDays && !merged.productionPillId;
+      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity
+        && !merged.deadlinePillId && !merged.productionDays && !merged.productionPillId
+        && !merged.productionLineId && !merged.orderId && !merged.flaskItemId
+        && !merged.customerId && !merged.categoryId && !merged.productId
+        && !(merged.managedEdgeIds && merged.managedEdgeIds.length > 0);
       if (isEmpty) {
         if (!(id in prev)) return prev;
         const next = { ...prev };

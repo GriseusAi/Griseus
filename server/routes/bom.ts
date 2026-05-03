@@ -3,9 +3,11 @@ import { db } from "../db";
 import { bomItems, componentStock, products } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { broadcastStockUpdate, broadcastProactiveAlert, broadcastImpactPropagation } from "../ws";
+import { broadcastEntityChanged } from "../ws";
 import { evaluateRules } from "../rules-engine";
 import { computeImpactPropagation, takePreSnapshot } from "../lib/impact-engine";
 import { isBHVariableComponent } from "@shared/octopus-chain-config";
+import { createSnapshot, recordLineage } from "./foundry";
 
 const router = Router();
 
@@ -421,6 +423,135 @@ router.post("/component-stock/update", async (req: Request, res: Response) => {
     .catch(err => console.error("[impact-engine]", err));
 
   res.json({ success: true, componentCode: code, newStock: stock });
+});
+
+// ── PATCH /api/bom/:sku/components/:code/required-quantity ──
+// Gerçek BOM reçete adedini değiştirir. Snapshot + lineage + Octopus Chain gate.
+router.patch("/:sku/components/:code/required-quantity", async (req: Request, res: Response) => {
+  const sku = req.params.sku as string;
+  const code = req.params.code as string;
+  const requiredQuantity = Number(req.body?.requiredQuantity);
+  const actor = req.body?.actor || "strategy_canvas";
+
+  if (!sku || !code || !Number.isFinite(requiredQuantity) || requiredQuantity <= 0) {
+    return res.status(400).json({ error: "sku, component code ve pozitif requiredQuantity gerekli" });
+  }
+
+  const existing = await db
+    .select()
+    .from(bomItems)
+    .where(and(eq(bomItems.parentProductSku, sku), eq(bomItems.componentCode, code)))
+    .limit(1);
+
+  if (existing.length === 0) {
+    return res.status(404).json({ error: `BOM satırı bulunamadı: ${sku} / ${code}` });
+  }
+
+  const before = existing[0];
+  const previousQuantity = String(before.requiredQuantity);
+  const nextQuantity = String(requiredQuantity);
+
+  if (previousQuantity === nextQuantity) {
+    return res.json({
+      success: true,
+      unchanged: true,
+      sku,
+      componentCode: code,
+      requiredQuantity,
+    });
+  }
+
+  const snapshotId = await createSnapshot(
+    `BOM adet güncelleme öncesi: ${sku} / ${code}`,
+    "auto_pre_bom_required_quantity",
+    ["bom_items", "component_stock"],
+    actor,
+  );
+
+  await db
+    .update(bomItems)
+    .set({ requiredQuantity: nextQuantity })
+    .where(and(eq(bomItems.parentProductSku, sku), eq(bomItems.componentCode, code)));
+
+  const lineageId = await recordLineage({
+    entity: "bom_items",
+    entityId: `${sku}:${code}`,
+    field: "required_quantity",
+    previousValue: previousQuantity,
+    newValue: nextQuantity,
+    sourceType: "strategy_canvas_component_quantity",
+    sourceId: String(snapshotId),
+    sourceName: `Canvas BOM adet güncellemesi: ${sku} / ${code}`,
+    actor,
+    metadata: { snapshotId, sku, componentCode: code, bomItemId: before.id },
+  });
+
+  broadcastEntityChanged({
+    event: "entity_changed",
+    entities: ["bom_items"],
+    scope: sku,
+    count: 1,
+    source: "strategy_canvas_component_quantity",
+  });
+
+  const { runOctopusChainAudit } = await import("../lib/orchestrator");
+  const audit = await runOctopusChainAudit(
+    "data_ingestion",
+    `BOM required_quantity update: ${sku}/${code} ${previousQuantity} -> ${nextQuantity}`,
+    { changedCodes: [code], skuHint: sku },
+  );
+
+  if (audit.redCount > 0) {
+    await db
+      .update(bomItems)
+      .set({ requiredQuantity: previousQuantity })
+      .where(and(eq(bomItems.parentProductSku, sku), eq(bomItems.componentCode, code)));
+
+    await recordLineage({
+      entity: "bom_items",
+      entityId: `${sku}:${code}`,
+      field: "required_quantity",
+      previousValue: nextQuantity,
+      newValue: previousQuantity,
+      sourceType: "octopus_chain_rollback",
+      sourceId: String(audit.id),
+      sourceName: `Octopus Chain RED rollback: run #${audit.id}`,
+      parentLineageId: lineageId,
+      actor: "octopus_chain",
+      metadata: { snapshotId, auditId: audit.id, sku, componentCode: code },
+    });
+
+    broadcastEntityChanged({
+      event: "entity_changed",
+      entities: ["bom_items"],
+      scope: sku,
+      count: 1,
+      source: "octopus_chain_rollback",
+    });
+
+    return res.status(409).json({
+      success: false,
+      rolledBack: true,
+      error: "Octopus Chain RED döndü; BOM adet değişikliği geri alındı.",
+      sku,
+      componentCode: code,
+      attemptedQuantity: requiredQuantity,
+      restoredQuantity: Number(previousQuantity),
+      snapshotId,
+      audit,
+    });
+  }
+
+  res.json({
+    success: true,
+    sku,
+    componentCode: code,
+    previousQuantity: Number(previousQuantity),
+    requiredQuantity,
+    snapshotId,
+    lineageId,
+    audit,
+  });
 });
 
 // ── GET /api/bom/:sku/simulate?quantity=100 — üretim simülasyonu ──
