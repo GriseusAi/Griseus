@@ -1,5 +1,5 @@
 import { useState, useMemo, useEffect, useCallback, useRef } from "react";
-import { useQueries, useMutation, useQueryClient } from "@tanstack/react-query";
+import { useQueries, useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { apiRequest } from "@/lib/queryClient";
 import { useStockWebSocket } from "@/lib/useStockWebSocket";
@@ -298,6 +298,17 @@ interface ProcurementCandidate {
   supplier: string;
   severity: "critical" | "watch" | "ok";
   reason: string;
+}
+
+interface ProcurementActionHistory {
+  kind: "placeOrder" | "transferStock";
+  id: number;
+  at: string;
+  status: string;
+  quantity: number;
+  unit: string;
+  detail: string;
+  actor: string;
 }
 
 function flattenStockComponents(items: BomComponent[] | undefined): Record<string, BomComponent> {
@@ -4910,6 +4921,18 @@ function CustomersSceneRenderer({
     () => procurementCandidates.find(c => c.id === selectedProcurementId) ?? null,
     [procurementCandidates, selectedProcurementId],
   );
+  const procurementHistoryQuery = useQuery<{ code: string; total: number; actions: ProcurementActionHistory[] }>({
+    queryKey: selectedProcurement ? [`/api/ontology/actions/history/${selectedProcurement.code}`] : ["procurement-history", "none"],
+    queryFn: async () => {
+      if (!selectedProcurement) return { code: "", total: 0, actions: [] };
+      const res = await fetch(`/api/ontology/actions/history/${encodeURIComponent(selectedProcurement.code)}?limit=8`, {
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("Aksiyon geçmişi alınamadı");
+      return res.json();
+    },
+    enabled: !!selectedProcurement,
+  });
   const focusProcurementCandidate = useCallback((candidate: ProcurementCandidate) => {
     setSelectedProcurementId(candidate.id);
     const productId = `p-${candidate.sku}`;
@@ -4934,15 +4957,34 @@ function CustomersSceneRenderer({
       }
     }
   }, [atomById, atomToSelectedItem, globalSel, setViewport, wrapperRef]);
-  const createProcurementDraft = useCallback((candidate: ProcurementCandidate) => {
-    onApplySupplyPlan([{
-      id: `sup_${Date.now().toString(36)}_${candidate.code}`,
-      componentCode: candidate.code,
-      qty: candidate.openQty,
-      leadDays: candidate.leadDays,
-    }]);
-    setProcurementToast(`${candidate.code} için ${fmtTR(candidate.openQty)} adet PO taslağı tepkimeye aktarıldı.`);
-  }, [onApplySupplyPlan]);
+  const createProcurementMutation = useMutation({
+    mutationFn: async (candidate: ProcurementCandidate) => {
+      const deadline = addDaysISO(new Date(), candidate.leadDays);
+      const res = await apiRequest("POST", "/api/ontology/action/place-order", {
+        code: candidate.code,
+        quantity: candidate.openQty,
+        supplier: candidate.supplier,
+        deadline,
+        note: `${candidate.sku} canlı tedarik senaryosu · ${candidate.reason}`,
+        createdBy: "strategy_canvas",
+      });
+      return res.json();
+    },
+    onSuccess: (data, candidate) => {
+      onApplySupplyPlan([{
+        id: `sup_${Date.now().toString(36)}_${candidate.code}`,
+        componentCode: candidate.code,
+        qty: candidate.openQty,
+        leadDays: candidate.leadDays,
+      }]);
+      qc.invalidateQueries({ queryKey: [`/api/ontology/actions/history/${candidate.code}`] });
+      qc.invalidateQueries({ queryKey: ["/api/ontology/actions"] });
+      setProcurementToast(data?.message ?? `${candidate.code} için PO oluşturuldu.`);
+    },
+    onError: (err: any, candidate) => {
+      setProcurementToast(`${candidate.code} PO oluşturulamadı: ${err?.message ?? "hata"}`);
+    },
+  });
   useEffect(() => {
     if (!procurementToast) return;
     const t = window.setTimeout(() => setProcurementToast(null), 3200);
@@ -5128,8 +5170,12 @@ function CustomersSceneRenderer({
         candidates={procurementCandidates}
         selected={selectedProcurement}
         onSelect={focusProcurementCandidate}
-        onCreateDraft={createProcurementDraft}
+        onCreateDraft={(candidate) => createProcurementMutation.mutate(candidate)}
         onCloseSelection={() => setSelectedProcurementId(null)}
+        creating={createProcurementMutation.isPending}
+        history={procurementHistoryQuery.data?.actions ?? []}
+        historyLoading={procurementHistoryQuery.isLoading}
+        historyError={procurementHistoryQuery.error instanceof Error ? procurementHistoryQuery.error.message : null}
       />
 
       {procurementToast && (
@@ -5920,12 +5966,20 @@ function ProcurementDock({
   onSelect,
   onCreateDraft,
   onCloseSelection,
+  creating,
+  history,
+  historyLoading,
+  historyError,
 }: {
   candidates: ProcurementCandidate[];
   selected: ProcurementCandidate | null;
   onSelect: (c: ProcurementCandidate) => void;
   onCreateDraft: (c: ProcurementCandidate) => void;
   onCloseSelection: () => void;
+  creating: boolean;
+  history: ProcurementActionHistory[];
+  historyLoading: boolean;
+  historyError: string | null;
 }) {
   const [mode, setMode] = useState<"open" | "mini">("open");
   const critical = candidates.filter(c => c.severity === "critical");
@@ -6077,26 +6131,77 @@ function ProcurementDock({
               <button
                 type="button"
                 onClick={() => onCreateDraft(selected)}
+                disabled={creating}
                 style={{
                   border: "none", borderRadius: 8, background: C.shortfall,
                   color: "#ffffff", padding: "10px 12px", fontFamily: mono,
-                  fontSize: 12, fontWeight: 850, cursor: "pointer",
+                  fontSize: 12, fontWeight: 850, cursor: creating ? "default" : "pointer",
+                  opacity: creating ? 0.68 : 1,
                 }}
               >
-                PO taslağı
+                {creating ? "oluşturuluyor" : "PO oluştur"}
               </button>
               <button
                 type="button"
                 onClick={() => onCreateDraft({ ...selected, openQty: Math.ceil(selected.openQty * 1.15) })}
+                disabled={creating}
                 style={{
                   border: `1px solid ${C.panelEdge}`, borderRadius: 8,
                   background: "rgba(255,255,255,0.06)", color: C.cardInk,
                   padding: "10px 12px", fontFamily: mono, fontSize: 12,
-                  fontWeight: 850, cursor: "pointer",
+                  fontWeight: 850, cursor: creating ? "default" : "pointer",
+                  opacity: creating ? 0.68 : 1,
                 }}
               >
                 +%15 emniyet
               </button>
+            </div>
+            <div style={{ borderTop: `1px solid ${C.panelEdge}`, paddingTop: 10, marginTop: 2 }}>
+              <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 800, marginBottom: 6 }}>
+                AKSİYON GEÇMİŞİ
+              </div>
+              {historyLoading ? (
+                <div style={{ fontSize: 11, color: C.cardSub }}>yükleniyor...</div>
+              ) : historyError ? (
+                <div style={{ fontSize: 11, color: C.shortfall }}>{historyError}</div>
+              ) : history.length === 0 ? (
+                <div style={{ fontSize: 11, color: C.cardSub }}>Bu bileşen için kayıtlı PO/transfer yok.</div>
+              ) : (
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 158, overflowY: "auto" }}>
+                  {history.map((h) => {
+                    const isOrder = h.kind === "placeOrder";
+                    const accent = isOrder ? C.info : C.accent;
+                    const date = h.at
+                      ? new Date(h.at).toLocaleDateString("tr-TR", { day: "2-digit", month: "short", hour: "2-digit", minute: "2-digit" })
+                      : "-";
+                    return (
+                      <div
+                        key={`${h.kind}-${h.id}`}
+                        style={{
+                          border: `1px solid ${C.panelEdge}`,
+                          borderLeft: `3px solid ${accent}`,
+                          borderRadius: 7,
+                          background: "rgba(255,255,255,0.045)",
+                          padding: "7px 8px",
+                        }}
+                      >
+                        <div style={{ display: "flex", alignItems: "baseline", gap: 7 }}>
+                          <span style={{ fontSize: 10, color: accent, fontWeight: 850 }}>
+                            {isOrder ? "PO" : "TRANSFER"}
+                          </span>
+                          <span style={{ fontSize: 11, color: C.cardInk, fontWeight: 800 }}>
+                            {fmtTR(h.quantity)} {h.unit}
+                          </span>
+                          <span style={{ marginLeft: "auto", fontSize: 9, color: C.cardSub }}>{date}</span>
+                        </div>
+                        <div style={{ fontSize: 9.5, color: C.cardSub, marginTop: 3, lineHeight: 1.35 }}>
+                          {h.status} · {h.actor} · {h.detail}
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           </div>
         </div>
