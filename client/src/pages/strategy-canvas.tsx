@@ -2844,6 +2844,31 @@ function makeDefaultSceneAtoms(): SceneAtom[] {
   atoms.push({ id: "stg-depo",   kind: "stage", label: "Depo",   x: 1100, y: 380, w: 130, h: 130 });
   atoms.push({ id: "stg-satis",  kind: "stage", label: "Satış",  x: 1100, y: 560, w: 130, h: 130 });
 
+  // Default canlı tedarik zinciri — tedarik paneli kapalıyken bile sahnede
+  // hangi ürün/bileşenin kaç adet ve kaç günde geleceği görünür.
+  atoms.push({
+    id: "sup-live-a",
+    kind: "supply-bracket",
+    label: "Tedarikçi A",
+    sub: buildSupplierSub("25.103", "200", "2026-05-18", "14"),
+    x: 1320,
+    y: 205,
+    w: 280,
+    h: 76,
+    highlight: "blue",
+  });
+  atoms.push({
+    id: "sup-live-b",
+    kind: "supply-bracket",
+    label: "Tedarikçi B",
+    sub: buildSupplierSub("27.097", "200", "2026-05-19", "15"),
+    x: 1320,
+    y: 302,
+    w: 280,
+    h: 76,
+    highlight: "red",
+  });
+
   // Factory
   atoms.push({ id: "fact",  kind: "factory", label: "Fabrika", x: 1340, y: 420, w: 150, h: 130 });
 
@@ -2885,6 +2910,10 @@ const SCENE_EDGES: SceneEdge[] = [
   // Mamul → Üretim/Depo/Satış, stage → Fabrika ve lead-pill → stage ok'ları
   // kaldırıldı (2026-05-03) — kullanıcı üretim zincirini /uretim-hatti komutu
   // ile baştan kuracak.
+  { fromId: "p-GSA30", toId: "sup-live-a", fromPort: "e", toPort: "w", dashed: true, color: "#38bdf8", curveK: 0.45, label: "PO" },
+  { fromId: "p-ELT.5-7", toId: "sup-live-b", fromPort: "e", toPort: "w", dashed: true, color: "#ef4444", curveK: 0.45, label: "PO" },
+  { fromId: "sup-live-a", toId: "stg-depo", fromPort: "w", toPort: "e", dashed: true, color: "#38bdf8", curveK: 0.45, label: "14g" },
+  { fromId: "sup-live-b", toId: "stg-depo", fromPort: "w", toPort: "e", dashed: true, color: "#ef4444", curveK: 0.45, label: "15g" },
 
   // Deadline pill → müşteri chip
   // Müşteri-bağlı pill ok'ları kaldırıldı (2026-05-03) — pill atom'ları da silindi.
