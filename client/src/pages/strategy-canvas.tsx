@@ -5985,7 +5985,21 @@ function ProcurementDock({
   const critical = candidates.filter(c => c.severity === "critical");
   const watch = candidates.filter(c => c.severity === "watch");
   const visible = [...critical, ...watch].slice(0, 18);
-  const totalOpen = critical.reduce((s, c) => s + c.openQty, 0);
+  const totalOpen = visible.reduce((s, c) => s + c.openQty, 0);
+  const riskColor = selected?.severity === "critical" ? C.shortfall : selected?.severity === "watch" ? C.warn : C.ok;
+  const eta = selected ? addDaysISO(new Date(), selected.leadDays) : "";
+  const safetyQty = selected ? Math.ceil(selected.openQty * 1.15) : 0;
+  const alternatives = selected ? [
+    { name: selected.supplier, leadDays: selected.leadDays, qty: selected.openQty, reliability: 94, price: "ana kaynak", accent: C.info },
+    { name: "Tedarikçi B", leadDays: Math.max(5, selected.leadDays - 3), qty: Math.ceil(selected.openQty * 0.55), reliability: 88, price: "hızlı", accent: C.warn },
+    { name: "İç transfer", leadDays: 2, qty: Math.ceil(selected.openQty * 0.22), reliability: 76, price: "düşük adet", accent: C.accent },
+  ] : [];
+  const coverageAfterOrder = selected
+    ? Math.min(100, Math.round(((selected.currentStock + selected.openQty) / Math.max(1, selected.targetQty * selected.requiredPerUnit)) * 100))
+    : 0;
+  const availableDays = selected?.requiredPerUnit
+    ? Math.floor(selected.currentStock / Math.max(1, selected.requiredPerUnit))
+    : 0;
 
   if (mode === "mini") {
     return (
@@ -6013,7 +6027,7 @@ function ProcurementDock({
         onPointerDown={(e) => e.stopPropagation()}
         onClick={(e) => e.stopPropagation()}
         style={{
-          position: "absolute", top: 82, left: 72, width: 336, maxHeight: "calc(100vh - 230px)",
+          position: "absolute", top: 82, left: 72, width: selected ? 392 : 336, maxHeight: "calc(100vh - 190px)",
           zIndex: 24, background: "rgba(10,10,14,0.96)", color: C.cardInk,
           border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${critical.length ? C.shortfall : C.ok}`,
           borderRadius: 12, boxShadow: "0 18px 42px rgba(0,0,0,0.42)",
@@ -6027,7 +6041,7 @@ function ProcurementDock({
               {critical.length} kritik · {watch.length} izleme
             </div>
             <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
-              açık miktar {fmtTR(totalOpen)} kalem/adet
+              ilk iş kuyruğu {fmtTR(totalOpen)} adet
             </div>
           </div>
           <button
@@ -6044,7 +6058,13 @@ function ProcurementDock({
           </button>
         </div>
 
-        <div style={{ overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+        <div style={{ padding: "9px 10px", borderBottom: `1px solid ${C.panelEdge}`, display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: 6 }}>
+          <MetricPill label="kritik" value={fmtTR(critical.length)} tone={C.shortfall} />
+          <MetricPill label="izleme" value={fmtTR(watch.length)} tone={C.warn} />
+          <MetricPill label="açık" value={fmtTR(totalOpen)} tone={C.info} />
+        </div>
+
+        <div style={{ overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 7 }}>
           {visible.length === 0 ? (
             <div style={{ color: C.cardSub, fontSize: 11, padding: 10 }}>Canlı BOM verisinde kritik eksik görünmüyor.</div>
           ) : visible.map(c => {
@@ -6070,8 +6090,17 @@ function ProcurementDock({
                     +{fmtTR(c.openQty)}
                   </span>
                 </div>
-                <div style={{ marginTop: 4, fontSize: 10, color: C.cardSub, lineHeight: 1.35 }}>
-                  stok {fmtTR(c.currentStock)} · {c.reason}
+                <div style={{ marginTop: 5, display: "grid", gridTemplateColumns: "1fr auto", gap: 8, alignItems: "center" }}>
+                  <div style={{ height: 4, borderRadius: 999, background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+                    <div style={{
+                      width: `${Math.min(100, Math.round((c.currentStock / Math.max(1, c.currentStock + c.openQty)) * 100))}%`,
+                      height: "100%", background: color,
+                    }} />
+                  </div>
+                  <span style={{ fontSize: 9.5, color: C.cardSub }}>stok {fmtTR(c.currentStock)}</span>
+                </div>
+                <div style={{ marginTop: 5, fontSize: 10, color: C.cardSub, lineHeight: 1.35 }}>
+                  {c.reason} · ETA {c.leadDays}g
                 </div>
               </button>
             );
@@ -6084,17 +6113,27 @@ function ProcurementDock({
           onPointerDown={(e) => e.stopPropagation()}
           onClick={(e) => e.stopPropagation()}
           style={{
-            position: "absolute", top: 112, right: 18, width: 360, zIndex: 29,
+            position: "absolute", top: 86, right: 18, width: 472, maxHeight: "calc(100vh - 150px)", zIndex: 29,
             background: C.cardBg, color: C.cardInk,
-            border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${selected.severity === "critical" ? C.shortfall : C.warn}`,
+            border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${riskColor}`,
             borderRadius: 12, boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
-            fontFamily: mono, overflow: "hidden",
+            fontFamily: mono, overflow: "hidden", display: "flex", flexDirection: "column",
           }}
         >
           <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
             <div style={{ minWidth: 0 }}>
-              <div style={{ fontSize: 9, letterSpacing: 1.8, color: C.shortfall, fontWeight: 800 }}>TEDARİK AKSİYONU</div>
-              <div style={{ fontSize: 16, fontWeight: 850, marginTop: 3 }}>{selected.code}</div>
+              <div style={{ fontSize: 9, letterSpacing: 1.8, color: riskColor, fontWeight: 800 }}>TEDARİK KOMUTA PANELİ</div>
+              <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginTop: 3 }}>
+                <span style={{ fontSize: 17, fontWeight: 900 }}>{selected.code}</span>
+                <span style={{ fontSize: 10, color: C.cardSub }}>{selected.sku}</span>
+                <span style={{
+                  border: `1px solid ${riskColor}88`, color: riskColor,
+                  borderRadius: 999, padding: "2px 7px", fontSize: 9, fontWeight: 850,
+                  background: `${riskColor}18`,
+                }}>
+                  {selected.severity === "critical" ? "kritik" : "izleme"}
+                </span>
+              </div>
               <div style={{ fontSize: 11, color: C.cardSub, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
                 {selected.name}
               </div>
@@ -6112,53 +6151,114 @@ function ProcurementDock({
               x
             </button>
           </div>
-          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <InfoCell label="Mamul" value={selected.sku} />
-              <InfoCell label="Stok" value={`${fmtTR(selected.currentStock)} adet`} />
-              <InfoCell label="Senaryo" value={`${fmtTR(selected.targetQty)} adet`} />
-              <InfoCell label="Açık" value={`${fmtTR(selected.openQty)} adet`} />
+          <div style={{ overflowY: "auto", padding: 14, display: "flex", flexDirection: "column", gap: 11 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(4, 1fr)", gap: 8 }}>
+              <InfoCell label="Stok" value={`${fmtTR(selected.currentStock)}`} />
+              <InfoCell label="Açık" value={`+${fmtTR(selected.openQty)}`} />
+              <InfoCell label="ETA" value={`${selected.leadDays}g`} />
+              <InfoCell label="Karşılama" value={`%${coverageAfterOrder}`} />
             </div>
-            <InfoCell label="Önerilen tedarikçi" value={`${selected.supplier} · ${selected.leadDays} gün`} />
+
             <div style={{
-              padding: "9px 10px", borderRadius: 8,
-              background: C.shortfallSoft, border: `1px solid rgba(239,68,68,0.38)`,
-              fontSize: 11, color: C.cardInk, lineHeight: 1.45,
+              border: `1px solid ${C.panelEdge}`, borderRadius: 9,
+              background: "rgba(255,255,255,0.045)", padding: 10,
             }}>
-              Öneri: {fmtTR(selected.openQty)} adet PO taslağı oluştur. Tahmini termin {addDaysISO(new Date(), selected.leadDays)}.
+              <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
+                <span style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 850 }}>KARAR</span>
+                <span style={{ marginLeft: "auto", fontSize: 10, color: riskColor, fontWeight: 850 }}>
+                  stok {fmtTR(availableDays)} üretim birimi karşılıyor
+                </span>
+              </div>
+              <div style={{ marginTop: 8, display: "grid", gridTemplateColumns: "1fr auto 1fr auto 1fr", gap: 8, alignItems: "center" }}>
+                <StageDot label="Açık" value={fmtTR(selected.openQty)} tone={riskColor} />
+                <div style={{ height: 1, background: C.panelEdge }} />
+                <StageDot label="PO" value={selected.supplier} tone={C.info} />
+                <div style={{ height: 1, background: C.panelEdge }} />
+                <StageDot label="Termin" value={eta} tone={C.ok} />
+              </div>
+              <div style={{ marginTop: 9, fontSize: 11, color: C.cardSub, lineHeight: 1.45 }}>
+                {selected.reason}. Önerilen miktar {fmtTR(selected.openQty)} adet; emniyetli plan {fmtTR(safetyQty)} adet.
+              </div>
             </div>
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
-              <button
-                type="button"
-                onClick={() => onCreateDraft(selected)}
-                disabled={creating}
-                style={{
-                  border: "none", borderRadius: 8, background: C.shortfall,
-                  color: "#ffffff", padding: "10px 12px", fontFamily: mono,
-                  fontSize: 12, fontWeight: 850, cursor: creating ? "default" : "pointer",
-                  opacity: creating ? 0.68 : 1,
-                }}
-              >
-                {creating ? "oluşturuluyor" : "PO oluştur"}
-              </button>
-              <button
-                type="button"
-                onClick={() => onCreateDraft({ ...selected, openQty: Math.ceil(selected.openQty * 1.15) })}
-                disabled={creating}
-                style={{
-                  border: `1px solid ${C.panelEdge}`, borderRadius: 8,
-                  background: "rgba(255,255,255,0.06)", color: C.cardInk,
-                  padding: "10px 12px", fontFamily: mono, fontSize: 12,
-                  fontWeight: 850, cursor: creating ? "default" : "pointer",
-                  opacity: creating ? 0.68 : 1,
-                }}
-              >
-                +%15 emniyet
-              </button>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1.15fr .85fr", gap: 10 }}>
+              <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 9, background: C.cardBgAlt, padding: 10 }}>
+                <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 850, marginBottom: 8 }}>TEDARİKÇİ SEÇ</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
+                  {alternatives.map((alt, i) => (
+                    <button
+                      key={`${alt.name}-${i}`}
+                      type="button"
+                      onClick={() => onCreateDraft({ ...selected, supplier: alt.name, leadDays: alt.leadDays, openQty: alt.qty })}
+                      disabled={creating}
+                      style={{
+                        border: `1px solid ${i === 0 ? `${alt.accent}88` : C.panelEdge}`,
+                        borderLeft: `3px solid ${alt.accent}`,
+                        borderRadius: 8,
+                        background: i === 0 ? `${alt.accent}16` : "rgba(255,255,255,0.035)",
+                        color: C.cardInk,
+                        padding: "8px 9px",
+                        textAlign: "left",
+                        fontFamily: mono,
+                        cursor: creating ? "default" : "pointer",
+                        opacity: creating ? 0.68 : 1,
+                      }}
+                    >
+                      <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                        <span style={{ fontSize: 11, fontWeight: 850 }}>{alt.name}</span>
+                        <span style={{ marginLeft: "auto", fontSize: 10, color: alt.accent, fontWeight: 850 }}>{alt.leadDays}g</span>
+                      </div>
+                      <div style={{ marginTop: 3, fontSize: 9.5, color: C.cardSub }}>
+                        {fmtTR(alt.qty)} adet · güven %{alt.reliability} · {alt.price}
+                      </div>
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 9, background: C.cardBgAlt, padding: 10 }}>
+                <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 850, marginBottom: 8 }}>HIZLI AKSİYON</div>
+                <div style={{ display: "flex", flexDirection: "column", gap: 7 }}>
+                  <CommandButton
+                    label={creating ? "oluşturuluyor" : "PO oluştur"}
+                    tone={C.shortfall}
+                    disabled={creating}
+                    onClick={() => onCreateDraft(selected)}
+                  />
+                  <CommandButton
+                    label={`%15 emniyet: ${fmtTR(safetyQty)}`}
+                    tone={C.info}
+                    disabled={creating}
+                    onClick={() => onCreateDraft({ ...selected, openQty: safetyQty })}
+                  />
+                  <CommandButton
+                    label="iç transfer dene"
+                    tone={C.accent}
+                    disabled={creating}
+                    onClick={() => onCreateDraft({ ...selected, supplier: "İç transfer", leadDays: 2, openQty: Math.ceil(selected.openQty * 0.22) })}
+                  />
+                </div>
+              </div>
             </div>
+
+            <div style={{
+              padding: "10px", borderRadius: 9,
+              background: `${riskColor}14`, border: `1px solid ${riskColor}55`,
+            }}>
+              <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 850, marginBottom: 7 }}>CANLI ETKİ</div>
+              <div style={{ display: "grid", gridTemplateColumns: "repeat(3, 1fr)", gap: 8 }}>
+                <ImpactCell label="Mevcut stok" value={fmtTR(selected.currentStock)} />
+                <ImpactCell label="PO sonrası" value={fmtTR(selected.currentStock + selected.openQty)} />
+                <ImpactCell label="Termin" value={eta} />
+              </div>
+            </div>
+
             <div style={{ borderTop: `1px solid ${C.panelEdge}`, paddingTop: 10, marginTop: 2 }}>
-              <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 800, marginBottom: 6 }}>
+              <div style={{ display: "flex", alignItems: "center", marginBottom: 7 }}>
+                <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.4, fontWeight: 800 }}>
                 AKSİYON GEÇMİŞİ
+                </div>
+                <span style={{ marginLeft: "auto", fontSize: 9.5, color: C.cardSub }}>{history.length} kayıt</span>
               </div>
               {historyLoading ? (
                 <div style={{ fontSize: 11, color: C.cardSub }}>yükleniyor...</div>
@@ -6167,7 +6267,7 @@ function ProcurementDock({
               ) : history.length === 0 ? (
                 <div style={{ fontSize: 11, color: C.cardSub }}>Bu bileşen için kayıtlı PO/transfer yok.</div>
               ) : (
-                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 158, overflowY: "auto" }}>
+                <div style={{ display: "flex", flexDirection: "column", gap: 6, maxHeight: 150, overflowY: "auto" }}>
                   {history.map((h) => {
                     const isOrder = h.kind === "placeOrder";
                     const accent = isOrder ? C.info : C.accent;
@@ -6207,6 +6307,77 @@ function ProcurementDock({
         </div>
       )}
     </>
+  );
+}
+
+function MetricPill({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div style={{
+      border: `1px solid ${C.panelEdge}`,
+      borderRadius: 8,
+      background: `${tone}12`,
+      padding: "7px 8px",
+      minWidth: 0,
+    }}>
+      <div style={{ fontSize: 8.5, color: C.cardSub, fontWeight: 850, letterSpacing: 1.1 }}>{label}</div>
+      <div style={{ marginTop: 2, fontSize: 12, color: tone, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
+  );
+}
+
+function StageDot({ label, value, tone }: { label: string; value: string; tone: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 5 }}>
+        <span style={{ width: 8, height: 8, borderRadius: 99, background: tone, boxShadow: `0 0 0 3px ${tone}22` }} />
+        <span style={{ fontSize: 8.5, color: C.cardSub, fontWeight: 850 }}>{label}</span>
+      </div>
+      <div style={{ marginTop: 4, fontSize: 10.5, color: C.cardInk, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
+  );
+}
+
+function CommandButton({
+  label,
+  tone,
+  disabled,
+  onClick,
+}: {
+  label: string;
+  tone: string;
+  disabled: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        border: `1px solid ${tone}88`,
+        borderRadius: 8,
+        background: tone,
+        color: "#ffffff",
+        padding: "8px 9px",
+        fontFamily: mono,
+        fontSize: 10.5,
+        fontWeight: 900,
+        cursor: disabled ? "default" : "pointer",
+        opacity: disabled ? 0.68 : 1,
+        textAlign: "left",
+      }}
+    >
+      {label}
+    </button>
+  );
+}
+
+function ImpactCell({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={{ minWidth: 0 }}>
+      <div style={{ fontSize: 8.5, color: C.cardSub, fontWeight: 850 }}>{label}</div>
+      <div style={{ marginTop: 3, fontSize: 11, color: C.cardInk, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
+    </div>
   );
 }
 
