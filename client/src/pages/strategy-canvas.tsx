@@ -4900,6 +4900,30 @@ function CustomersSceneRenderer({
     return edges;
   }, [selectedIds, atomById, hiddenIds, edgePalette]);
 
+  const warehouseStockEdges = useMemo<SceneEdge[]>(() => {
+    const activeProductIds = new Set(
+      customAtoms
+        .filter(a => a.kind === "production-line" && !hiddenIds.has(a.id))
+        .map(a => atomMeta[a.id]?.productId)
+        .filter((id): id is string => !!id && !!atomById[id] && !hiddenIds.has(id)),
+    );
+    return Array.from(activeProductIds).flatMap(productId => {
+      const sku = productId.replace(/^p-/, "");
+      const inWarehouse = sceneFinishedStockBySku[sku]?.inWarehouse;
+      if (!Number.isFinite(inWarehouse) || Number(inWarehouse) <= 0) return [];
+      return [{
+        fromId: productId,
+        toId: "stg-depo",
+        fromPort: "e",
+        toPort: "w",
+        color: "#38bdf8",
+        dashed: true,
+        curveK: 0.45,
+        label: `x${fmtTR(Number(inWarehouse))}`,
+      }];
+    });
+  }, [customAtoms, atomMeta, atomById, hiddenIds, sceneFinishedStockBySku]);
+
   // Custom edges → SceneEdge formatına dönüştür (palette select rengi, dashed
   // çünkü kalıcı bağlantı diğer sahne ok'ları gibi görünmeli — sadece geçici
   // shift+click live preview turuncu solid kalın)
@@ -4946,10 +4970,10 @@ function CustomersSceneRenderer({
   // Görünür edge'ler: family bağları en arkada (şeffaf), üzerine SCENE_EDGES,
   // sonra dinamik BOM, en üstte kullanıcının kalıcı custom edge'leri
   const visibleSceneEdges = useMemo(
-    () => [...familyEdges, ...SCENE_EDGES, ...bomEdges, ...customSceneEdges]
+    () => [...familyEdges, ...SCENE_EDGES, ...bomEdges, ...warehouseStockEdges, ...customSceneEdges]
       .filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId))
       .filter(e => !isSuppressedSceneAtom(e.fromId) && !isSuppressedSceneAtom(e.toId)),
-    [hiddenIds, familyEdges, bomEdges, customSceneEdges, isSuppressedSceneAtom],
+    [hiddenIds, familyEdges, bomEdges, warehouseStockEdges, customSceneEdges, isSuppressedSceneAtom],
   );
 
   // Müşteri odağı aktif ise: focusedCustomerId'den SADECE primary edge'lerle BFS
