@@ -2712,6 +2712,22 @@ function buildSupplierSub(product: string, quantity: string, deadline: string, l
   return `${product || "ürün ?"} · PO x${quantity || "?"} · ${leadDays || "?"}g · ETA ${eta} · hatta giriş ${ready}`;
 }
 
+function supplierEdgeLabel(edge: SceneEdge, from: SceneAtom, to: SceneAtom, metaById: Record<string, AtomMeta>): string | undefined {
+  const fromSupplier = isSupplierSupplyAtom(from);
+  const toSupplier = isSupplierSupplyAtom(to);
+  if (!fromSupplier && !toSupplier) return undefined;
+  const supplier = fromSupplier ? from : to;
+  const details = parseSupplierAtomDetails(supplier, metaById[supplier.id]);
+  const qty = details.quantity || "?";
+  const product = details.product || supplier.label;
+  const lead = details.leadDays || "?";
+
+  if (fromSupplier && (to.kind === "stage" || to.id === "stg-depo")) return `${lead}g`;
+  if (toSupplier) return `${product} x${qty}`;
+  if (fromSupplier) return `${lead}g`;
+  return edge.label;
+}
+
 function buildProcurementCandidates(args: {
   stockBySku: Record<string, Record<string, BomComponent>>;
   capacityBySku: Record<string, CapacityResp>;
@@ -3427,20 +3443,6 @@ const COMMAND_DEFS: CommandDef[] = [
       });
       focusIds.add(hubId);
 
-      const purchaseId = `${lineId}-purchase`;
-      h.addAtom({
-        id: purchaseId,
-        kind: "supply-bracket",
-        label: "Satınalma emri",
-        sub: `durum: taslak · sipariş tarihi ${addDaysISO(today, 0)} · onay bekliyor`,
-        x: baseX + 340,
-        y: baseY + 86,
-        w: 260,
-        h: 72,
-        highlight: "blue",
-      });
-      focusIds.add(purchaseId);
-
       requestedRows.forEach(({ target, idx, requestedQty, stockQty, shortage, orderQty, leadDays, eta, lineReady }) => {
         const materialId = `${lineId}-material-${idx}`;
         const supplierId = `${lineId}-supplier-${idx}`;
@@ -3480,12 +3482,11 @@ const COMMAND_DEFS: CommandDef[] = [
         });
         focusIds.add(supplierId);
         addSupplyEdge(target.id, materialId, requestedQty === null ? "ihtiyaç ?" : `ihtiyaç ${fmtTR(requestedQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
-        addSupplyEdge(materialId, purchaseId, orderQty === null ? "PO ?" : `PO x${fmtTR(orderQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
-        addSupplyEdge(purchaseId, supplierId, `${leadDays}g`, color);
-        addSupplyEdge(supplierId, "stg-depo", eta, color);
+        addSupplyEdge(materialId, supplierId, orderQty === null ? "PO ?" : `${target.label} x${fmtTR(orderQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
+        addSupplyEdge(supplierId, "stg-depo", `${leadDays}g`, color);
       });
 
-      addSupplyEdge(hubId, purchaseId, undefined, color);
+      requestedRows.forEach(({ idx }) => addSupplyEdge(hubId, `${lineId}-material-${idx}`, undefined, color));
       if (productId) addSupplyEdge(productId, hubId, undefined, "rgba(56,189,248,0.7)");
       addSupplyEdge("stg-depo", "stg-uretim", undefined, "rgba(255,255,255,0.82)");
       if (productId) addSupplyEdge("stg-uretim", productId, "üretime serbest", "#10b981");
@@ -4797,7 +4798,10 @@ function CustomersSceneRenderer({
 
   const isSuppressedSceneAtom = useCallback((id: string) => {
     const atom = atomById[id];
-    return atom?.kind === "supply-bracket" && atom.label === "Tedarik hattı";
+    return atom?.kind === "supply-bracket" && (
+      atom.label === "Tedarik hattı" ||
+      atom.label === "Satınalma emri"
+    );
   }, [atomById]);
 
   const visibleAtoms = useMemo(
@@ -5090,8 +5094,10 @@ function CustomersSceneRenderer({
     };
     const eKey = isLive ? null : makeEdgeKey(e);
     const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
-    const hasLabelText = !!e.label;
-    const labelDisplay = hasLabelText ? e.label! : (assignedCommand ? "▸" : "");
+    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta);
+    const edgeLabel = dynamicLabel ?? e.label;
+    const hasLabelText = !!edgeLabel;
+    const labelDisplay = hasLabelText ? edgeLabel! : (assignedCommand ? "▸" : "");
     const showLabelGroup = !isLive && (hasLabelText || !!assignedCommand);
     const isEditing = !!eKey && editingEdgeKey === eKey;
     // Label hit area boyutu — kısa labellar için minimum genişlik garantisi
@@ -5158,7 +5164,7 @@ function CustomersSceneRenderer({
                 textAnchor="middle"
                 style={{ pointerEvents: "none" }}
               >
-                {e.label}
+                {edgeLabel}
               </text>
             )}
             {assignedCommand && (
@@ -5187,7 +5193,7 @@ function CustomersSceneRenderer({
           >
             <EdgeCommandPopover
               initial={assignedCommand ?? ""}
-              edgeLabel={e.label}
+              edgeLabel={edgeLabel}
               onSave={(cmd) => { setEdgeCommand(eKey, cmd); setEditingEdgeKey(null); }}
               onClear={() => { setEdgeCommand(eKey, null); setEditingEdgeKey(null); }}
               onCancel={() => setEditingEdgeKey(null)}
