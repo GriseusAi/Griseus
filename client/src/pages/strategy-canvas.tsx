@@ -2750,7 +2750,12 @@ function supplierEdgeLabel(edge: SceneEdge, from: SceneAtom, to: SceneAtom, meta
   return edge.label;
 }
 
-function productionEdgeLabel(edge: SceneEdge, metaById: Record<string, AtomMeta>, customEdges: CustomEdge[]): string | undefined {
+function productionEdgeLabel(
+  edge: SceneEdge,
+  metaById: Record<string, AtomMeta>,
+  customEdges: CustomEdge[],
+  stockBySku?: Record<string, FinishedStockLevel>,
+): string | undefined {
   if (!edge.customEdgeId) return undefined;
   const customEdge = customEdges.find(e => e.id === edge.customEdgeId);
   if (!customEdge?.groupId) return undefined;
@@ -2758,6 +2763,12 @@ function productionEdgeLabel(edge: SceneEdge, metaById: Record<string, AtomMeta>
   if (!meta?.productionLineId && !meta?.orderId) return undefined;
   if (meta.categoryId === edge.fromId && meta.productId === edge.toId) {
     return `x${meta.quantity ?? "?"}`;
+  }
+  if (meta.productId === edge.fromId && edge.toId === "stg-uretim") {
+    const sku = meta.orderNumber ?? meta.productId?.replace(/^p-/, "") ?? "";
+    const qty = parseTRNumber(meta.quantity) ?? 0;
+    const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
+    return `x${fmtTR(Math.max(0, qty - warehouse))}`;
   }
   return undefined;
 }
@@ -5191,7 +5202,7 @@ function CustomersSceneRenderer({
     };
     const eKey = isLive ? null : makeEdgeKey(e);
     const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
-    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta) ?? productionEdgeLabel(e, atomMeta, customEdges);
+    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta) ?? productionEdgeLabel(e, atomMeta, customEdges, sceneFinishedStockBySku);
     const edgeLabel = dynamicLabel ?? e.label;
     const hasLabelText = !!edgeLabel;
     const labelDisplay = hasLabelText ? edgeLabel! : (assignedCommand ? "▸" : "");
