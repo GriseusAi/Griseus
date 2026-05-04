@@ -2756,19 +2756,19 @@ function productionEdgeLabel(
   customEdges: CustomEdge[],
   stockBySku?: Record<string, FinishedStockLevel>,
 ): string | undefined {
-  if (!edge.customEdgeId) return undefined;
-  const customEdge = customEdges.find(e => e.id === edge.customEdgeId);
-  if (!customEdge?.groupId) return undefined;
-  const meta = metaById[customEdge.groupId];
-  if (!meta?.productionLineId && !meta?.orderId) return undefined;
-  if (meta.categoryId === edge.fromId && meta.productId === edge.toId) {
+  const lineMetas = Object.values(metaById).filter(meta => !!(meta.productionLineId || meta.orderId));
+  const customEdge = edge.customEdgeId ? customEdges.find(e => e.id === edge.customEdgeId) : undefined;
+  const meta = customEdge?.groupId ? metaById[customEdge.groupId] : undefined;
+  if (meta?.categoryId === edge.fromId && meta.productId === edge.toId) {
     return `x${meta.quantity ?? "?"}`;
   }
-  if (meta.productId === edge.fromId && edge.toId === "stg-uretim") {
-    const sku = meta.orderNumber ?? meta.productId?.replace(/^p-/, "") ?? "";
-    const qty = parseTRNumber(meta.quantity) ?? 0;
+  if (edge.toId === "stg-uretim" && edge.fromId.startsWith("p-")) {
+    const matchingLines = lineMetas.filter(line => line.productId === edge.fromId);
+    if (matchingLines.length === 0) return undefined;
+    const sku = matchingLines[0]?.orderNumber ?? edge.fromId.replace(/^p-/, "");
+    const totalQty = matchingLines.reduce((sum, line) => sum + (parseTRNumber(line.quantity) ?? 0), 0);
     const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
-    return `x${fmtTR(Math.max(0, qty - warehouse))}`;
+    return `x${fmtTR(Math.max(0, totalQty - warehouse))}`;
   }
   return undefined;
 }
