@@ -9,7 +9,7 @@
 - **Mimari kalbi:** Octopus — 1 merkezi beyin (DB + Ontology) + bağımsız ama koordineli kollar (motorlar). Her atom diğer her atomdan haberdar.
 - **Felsefe:** Yeni özellik = ÇOĞUNLUKLA sadece veri ekleme (sıfır kod değişikliği). Hardcoded SKU/ürün YASAK.
 - **Stack:** React 18 + TS + Wouter + TanStack Query | Express + Drizzle + PostgreSQL + pgvector | Anthropic Claude API.
-- **Deploy:** GitHub `GriseusAi/Griseus` main branch → Vercel auto-deploy. Repo path: `/Users/gurkanduruak/Griseus`.
+- **Deploy:** GitHub `GriseusAi/Griseus` main branch → Vercel auto-deploy. iMac repo path: `/Users/gurkanduruak/Desktop/griseus-main`.
 
 ## En Kritik 5 Kural (atlama, hepsi BLOCKING)
 
@@ -65,7 +65,7 @@ Vercel deploy ~1-2 dk
 ## Hızlı Referans
 
 - **Üretim:** https://griseus.io · GitHub: https://github.com/GriseusAi/Griseus.git · Branch: `main`
-- **Lokal repo:** `/Users/gurkanduruak/Griseus`
+- **Lokal repo:** `/Users/gurkanduruak/Desktop/griseus-main`
 - **DB seed:** `server/seed.ts` (server boot'ta otomatik)
 - **Tema:** `client/src/lib/claude-theme.ts` (CT, CT_FONT, CT_MONO)
 - **Atom registry:** `client/src/lib/palantir-atoms-schema.ts`
