@@ -9,6 +9,7 @@ import { SKUProvider } from "@/lib/sku-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { SelectionProvider } from "@/lib/selection-context";
 import SelectionPanel from "@/components/selection-panel";
+import CommandSafetyLayer from "@/components/command-safety-layer";
 
 /* ═══════════════════════════════════════════════════════════
    GRISEUS — Single-Product Stock Intelligence
@@ -125,6 +126,7 @@ function App() {
         </Switch>
         <AgentPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
         <SelectionPanel />
+        <CommandSafetyLayer />
         <Toaster />
       </AgentPanelContext.Provider>
       </AlertContext.Provider>
