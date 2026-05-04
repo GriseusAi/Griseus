@@ -2728,6 +2728,34 @@ function supplierEdgeLabel(edge: SceneEdge, from: SceneAtom, to: SceneAtom, meta
   return edge.label;
 }
 
+function buildSupplyTargetsFromProduct(product: SceneAtom, atomById: Record<string, SceneAtom>): SceneAtom[] {
+  const sku = product.id.replace(/^p-/, "");
+  const visibleBom = Object.values(atomById)
+    .filter(a => a.id.startsWith(`bom-${product.id}-`) && (a.kind === "bom-item" || a.kind === "subassembly"));
+  const visibleCritical = visibleBom.filter(a => {
+    const text = `${a.label} ${a.sub ?? ""}`.toLocaleLowerCase("tr");
+    return a.highlight === "red" || text.includes("stok 0") || text.includes("darboğaz") || text.includes("üretilemez");
+  });
+  if (visibleCritical.length > 0) return visibleCritical.slice(0, 4);
+  if (visibleBom.length > 0) return visibleBom.slice(0, 4);
+
+  const tree = DEVICE_BOM_TREE[sku] ?? [];
+  return tree
+    .map((t1, idx): SceneAtom => ({
+      id: `virtual-supply-${product.id}-${t1.code}`,
+      kind: t1.children.length > 0 ? "subassembly" : "bom-item",
+      label: t1.code,
+      sub: `${compactName(t1.name)} · stok ${t1.stock == null ? "?" : fmtTR(Number(t1.stock))}`,
+      x: product.x + product.w + 90,
+      y: product.y + idx * 86,
+      w: t1.children.length > 0 ? 96 : 220,
+      h: t1.children.length > 0 ? 80 : 42,
+      highlight: isCriticalBom(t1.name) || Number(t1.stock ?? 1) <= 0 ? "red" : null,
+    }))
+    .filter(a => a.highlight === "red" || /stok 0\b/.test(a.sub ?? ""))
+    .slice(0, 4);
+}
+
 function buildProcurementCandidates(args: {
   stockBySku: Record<string, Record<string, BomComponent>>;
   capacityBySku: Record<string, CapacityResp>;
@@ -3378,22 +3406,30 @@ const COMMAND_DEFS: CommandDef[] = [
   },
   {
     name: "tedarik",
-    aliases: ["supply", "satinalma", "satınalma", "tedarik-hatti", "tedarik-hattı"],
-    description: "Seçili alt bileşenlerden canlı tedarik hattı kurar",
+    aliases: ["supply", "satinalma", "satınalma", "tedarik-hatti", "tedarik-hattı", "tedarik-zinciri", "tedarikci", "tedarikçi", "procurement"],
+    description: "Seçili mamul veya alt bileşenlerden canlı tedarik hattı kurar",
     minSelected: 1,
     steps: [],
     apply: ({ ids, atomById, metaById }, h) => {
       const selectedAtoms = ids.map(id => atomById[id]).filter((a): a is SceneAtom => !!a);
-      const supplyTargets = selectedAtoms.filter(a =>
+      let supplyTargets = selectedAtoms.filter(a =>
         a.kind === "bom-item" || a.kind === "component" || a.kind === "subassembly",
       );
+      const selectedProduct = selectedAtoms.find(a => a.kind === "product") ?? null;
+      if (supplyTargets.length === 0 && selectedProduct) {
+        const inferredTargets = buildSupplyTargetsFromProduct(selectedProduct, atomById);
+        inferredTargets.forEach(target => {
+          if (!atomById[target.id]) h.addAtom(target);
+        });
+        supplyTargets = inferredTargets;
+      }
       if (supplyTargets.length === 0) {
-        return "Tedarik hattı için alt bileşen veya yarı-mamül seç. GSA20'yi aç, eksik bileşenleri Shift+tıkla.";
+        return "Tedarik hattı için mamul, alt bileşen veya yarı-mamül seç. Mamulü açmadan da /tedarik yazarsan kritik kalemleri sistem çıkarır.";
       }
 
       const productId =
-        ids.map(inferProductIdFromBomAtomId).find((id): id is string => !!id && !!atomById[id])
-        ?? ids.find(id => atomById[id]?.kind === "product")
+        selectedProduct?.id
+        ?? ids.map(inferProductIdFromBomAtomId).find((id): id is string => !!id && !!atomById[id])
         ?? null;
       const productAtom = productId ? atomById[productId] : null;
       const lineId = `supply-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
@@ -3422,7 +3458,7 @@ const COMMAND_DEFS: CommandDef[] = [
           lineReady: addDaysISO(today, leadDays + 1),
         };
       });
-      const focusIds = new Set<string>([...ids]);
+      const focusIds = new Set<string>([...ids, ...supplyTargets.map(a => a.id)]);
       const managedEdgeIds: string[] = [];
       const addSupplyEdge = (from: string, to: string, label?: string, edgeColor = color) => {
         const edgeId = h.addEdge(from, to, label, edgeColor, lineId);
