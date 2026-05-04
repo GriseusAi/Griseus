@@ -175,6 +175,7 @@ interface AtomMeta {
   orderNumber?: string;
   deadline?: string;
   quantity?: string;
+  supplierLeadDays?: string;
   labelOverride?: string;
   subOverride?: string;
   widthOverride?: string;
@@ -2679,6 +2680,38 @@ function addDaysISO(base: Date, days: number): string {
   return d.toISOString().slice(0, 10);
 }
 
+function daysFromTodayISO(iso?: string): number | null {
+  if (!iso || !/^\d{4}-\d{2}-\d{2}$/.test(iso)) return null;
+  return Math.max(0, daysBetween(new Date(), new Date(`${iso}T00:00:00`)));
+}
+
+function isSupplierSupplyAtom(atom: SceneAtom): boolean {
+  return atom.kind === "supply-bracket" && (
+    /^Tedarikçi\b/i.test(atom.label) ||
+    /^İç transfer\b/i.test(atom.label) ||
+    /^Ic transfer\b/i.test(atom.label) ||
+    /PO\s+x/i.test(atom.sub ?? "")
+  );
+}
+
+function parseSupplierAtomDetails(atom: SceneAtom, meta?: AtomMeta) {
+  const sub = meta?.subOverride ?? atom.sub ?? "";
+  const parts = sub.split("·").map(s => s.trim()).filter(Boolean);
+  const poText = parts.find(p => /^PO\b/i.test(p));
+  const etaText = parts.find(p => /^ETA\b/i.test(p));
+  const product = meta?.orderNumber ?? parts.find(p => !/^PO\b|^ETA\b|^hatta/i.test(p)) ?? "";
+  const quantity = meta?.quantity ?? (poText ? String(parseTRNumber(poText) ?? "") : "");
+  const deadline = meta?.deadline ?? etaText?.replace(/^ETA\s*/i, "").trim() ?? "";
+  const leadDays = meta?.supplierLeadDays ?? String(daysFromTodayISO(deadline) ?? DEFAULT_LEAD_TIME_DAYS);
+  return { product, quantity, deadline, leadDays };
+}
+
+function buildSupplierSub(product: string, quantity: string, deadline: string, leadDays: string): string {
+  const eta = deadline || addDaysISO(new Date(), parseTRNumber(leadDays) ?? DEFAULT_LEAD_TIME_DAYS);
+  const ready = addDaysISO(new Date(`${eta}T00:00:00`), 1);
+  return `${product || "ürün ?"} · PO x${quantity || "?"} · ${leadDays || "?"}g · ETA ${eta} · hatta giriş ${ready}`;
+}
+
 function buildProcurementCandidates(args: {
   stockBySku: Record<string, Record<string, BomComponent>>;
   capacityBySku: Record<string, CapacityResp>;
@@ -3379,20 +3412,6 @@ const COMMAND_DEFS: CommandDef[] = [
       });
       focusIds.add(purchaseId);
 
-      const inboundId = `${lineId}-inbound`;
-      h.addAtom({
-        id: inboundId,
-        kind: "supply-bracket",
-        label: "Tedarik hattı",
-        sub: "PO onayı · tedarikçi · yolda · depo kabul · üretim serbest",
-        x: baseX + 680,
-        y: baseY + 86,
-        w: 320,
-        h: 72,
-        highlight: "blue",
-      });
-      focusIds.add(inboundId);
-
       requestedRows.forEach(({ target, idx, requestedQty, stockQty, shortage, orderQty, leadDays, eta, lineReady }) => {
         const materialId = `${lineId}-material-${idx}`;
         const supplierId = `${lineId}-supplier-${idx}`;
@@ -3417,23 +3436,28 @@ const COMMAND_DEFS: CommandDef[] = [
           id: supplierId,
           kind: "supply-bracket",
           label: supplierNameForIndex(idx),
-          sub: `${target.label} · PO ${orderQty === null ? "taslak" : `x${fmtTR(orderQty)}`} · ETA ${eta} · hatta giriş ${lineReady}`,
+          sub: buildSupplierSub(target.label, orderQty === null ? "" : fmtTR(orderQty), eta, String(leadDays)),
           x: baseX + 340,
           y: baseY + 184 + idx * 92,
           w: 300,
           h: 74,
           highlight: shortage !== null && shortage > 0 ? "red" : "blue",
         });
+        h.applyMeta(supplierId, {
+          orderNumber: target.label,
+          quantity: orderQty === null ? undefined : String(orderQty),
+          deadline: eta,
+          supplierLeadDays: String(leadDays),
+        });
         focusIds.add(supplierId);
         addSupplyEdge(target.id, materialId, requestedQty === null ? "ihtiyaç ?" : `ihtiyaç ${fmtTR(requestedQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
         addSupplyEdge(materialId, purchaseId, orderQty === null ? "PO ?" : `PO x${fmtTR(orderQty)}`, shortage !== null && shortage > 0 ? "#ef4444" : color);
         addSupplyEdge(purchaseId, supplierId, `${leadDays}g`, color);
-        addSupplyEdge(supplierId, inboundId, eta, color);
+        addSupplyEdge(supplierId, "stg-depo", eta, color);
       });
 
       addSupplyEdge(hubId, purchaseId, undefined, color);
       if (productId) addSupplyEdge(productId, hubId, undefined, "rgba(56,189,248,0.7)");
-      addSupplyEdge(inboundId, "stg-depo", "depo kabul", "rgba(255,255,255,0.82)");
       addSupplyEdge("stg-depo", "stg-uretim", undefined, "rgba(255,255,255,0.82)");
       if (productId) addSupplyEdge("stg-uretim", productId, "üretime serbest", "#10b981");
 
@@ -4742,9 +4766,14 @@ function CustomersSceneRenderer({
     });
   }, [deletedAtomIds, atomById, cleanupProductionLine]);
 
+  const isSuppressedSceneAtom = useCallback((id: string) => {
+    const atom = atomById[id];
+    return atom?.kind === "supply-bracket" && atom.label === "Tedarik hattı";
+  }, [atomById]);
+
   const visibleAtoms = useMemo(
-    () => atoms.filter(a => !hiddenIds.has(a.id)),
-    [atoms, hiddenIds],
+    () => atoms.filter(a => !hiddenIds.has(a.id) && !isSuppressedSceneAtom(a.id)),
+    [atoms, hiddenIds, isSuppressedSceneAtom],
   );
 
   // Otomatik ekrana sığdırma — BOM drill-down açılırken/kapanırken sahne
@@ -4816,8 +4845,9 @@ function CustomersSceneRenderer({
   // sonra dinamik BOM, en üstte kullanıcının kalıcı custom edge'leri
   const visibleSceneEdges = useMemo(
     () => [...familyEdges, ...SCENE_EDGES, ...bomEdges, ...customSceneEdges]
-      .filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId)),
-    [hiddenIds, familyEdges, bomEdges, customSceneEdges],
+      .filter(e => !hiddenIds.has(e.fromId) && !hiddenIds.has(e.toId))
+      .filter(e => !isSuppressedSceneAtom(e.fromId) && !isSuppressedSceneAtom(e.toId)),
+    [hiddenIds, familyEdges, bomEdges, customSceneEdges, isSuppressedSceneAtom],
   );
 
   // Müşteri odağı aktif ise: focusedCustomerId'den SADECE primary edge'lerle BFS
@@ -5298,6 +5328,11 @@ function CustomersSceneRenderer({
             setPopupAtomId(null);
             focusProductionLine(a.id);
           };
+        } else if (isSupplierSupplyAtom(a)) {
+          baseTap = () => {
+            setPopupAtomId(null);
+            setEditingAtomId(a.id);
+          };
         } else {
           baseTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
@@ -5399,6 +5434,10 @@ function CustomersSceneRenderer({
               subOverride: undefined,
               widthOverride: undefined,
               heightOverride: undefined,
+              orderNumber: undefined,
+              quantity: undefined,
+              deadline: undefined,
+              supplierLeadDays: undefined,
             });
             setEditingAtomId(null);
           }}
@@ -5981,7 +6020,7 @@ function ProcurementDock({
   historyLoading: boolean;
   historyError: string | null;
 }) {
-  const [mode, setMode] = useState<"open" | "mini">("open");
+  const [mode, setMode] = useState<"open" | "mini">("mini");
   const critical = candidates.filter(c => c.severity === "critical");
   const watch = candidates.filter(c => c.severity === "watch");
   const visible = [...critical, ...watch].slice(0, 18);
@@ -6703,8 +6742,14 @@ function AtomEditPopover({
   onSave: (patch: AtomMeta) => void;
   onReset: () => void;
 }) {
+  const isSupplier = isSupplierSupplyAtom(atom);
+  const supplierDetails = parseSupplierAtomDetails(atom, meta);
   const [label, setLabel] = useState(meta.labelOverride ?? atom.label);
   const [sub, setSub] = useState(meta.subOverride ?? atom.sub ?? "");
+  const [supplierProduct, setSupplierProduct] = useState(supplierDetails.product);
+  const [supplierQty, setSupplierQty] = useState(supplierDetails.quantity);
+  const [supplierLeadDays, setSupplierLeadDays] = useState(supplierDetails.leadDays);
+  const [supplierDeadline, setSupplierDeadline] = useState(supplierDetails.deadline);
   const [width, setWidth] = useState(meta.widthOverride ?? String(Math.round(atom.w)));
   const [height, setHeight] = useState(meta.heightOverride ?? String(Math.round(atom.h)));
   const POPUP_W = 320;
@@ -6757,15 +6802,70 @@ function AtomEditPopover({
     >
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
         <div>
-          <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 800 }}>KUTU DÜZENLE</div>
-          <div style={{ fontSize: 12, color: C.cardSub, marginTop: 2 }}>{atom.kind}</div>
+          <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 800 }}>
+            {isSupplier ? "TEDARİKÇİ SİPARİŞİ" : "KUTU DÜZENLE"}
+          </div>
+          <div style={{ fontSize: 12, color: C.cardSub, marginTop: 2 }}>
+            {isSupplier ? "miktar ve teslim süresi düzenlenir" : atom.kind}
+          </div>
         </div>
         <button onClick={onClose} style={{ ...buttonBase, padding: "4px 8px", background: "rgba(255,255,255,0.06)", border: `1px solid ${C.panelEdge}`, color: C.cardInk }}>×</button>
       </div>
       <label style={lbl}>ETİKET</label>
       <input value={label} onChange={e => setLabel(e.target.value)} style={{ ...field, marginTop: 5, marginBottom: 10 }} />
-      <label style={lbl}>DETAY SATIRI</label>
-      <textarea value={sub} onChange={e => setSub(e.target.value)} rows={3} style={{ ...field, resize: "vertical", marginTop: 5, marginBottom: 10 }} />
+      {isSupplier ? (
+        <>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+            <div>
+              <label style={lbl}>ÜRÜN / BİLEŞEN</label>
+              <input value={supplierProduct} onChange={e => setSupplierProduct(e.target.value)} style={{ ...field, marginTop: 5 }} />
+            </div>
+            <div>
+              <label style={lbl}>SİPARİŞ MİKTARI</label>
+              <input value={supplierQty} onChange={e => setSupplierQty(e.target.value)} style={{ ...field, marginTop: 5 }} />
+            </div>
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginTop: 10, marginBottom: 10 }}>
+            <div>
+              <label style={lbl}>TESLİM SÜRESİ</label>
+              <input
+                type="number"
+                min={0}
+                value={supplierLeadDays}
+                onChange={e => {
+                  const next = e.target.value;
+                  setSupplierLeadDays(next);
+                  const n = parseTRNumber(next);
+                  if (n !== null) setSupplierDeadline(addDaysISO(new Date(), n));
+                }}
+                style={{ ...field, marginTop: 5 }}
+              />
+            </div>
+            <div>
+              <label style={lbl}>TESLİM TARİHİ</label>
+              <input
+                type="date"
+                value={supplierDeadline}
+                onChange={e => {
+                  const next = e.target.value;
+                  setSupplierDeadline(next);
+                  const n = daysFromTodayISO(next);
+                  if (n !== null) setSupplierLeadDays(String(n));
+                }}
+                style={{ ...field, marginTop: 5 }}
+              />
+            </div>
+          </div>
+          <div style={{ marginBottom: 10, padding: "8px 9px", borderRadius: 8, border: `1px solid ${C.panelEdge}`, background: "rgba(255,255,255,0.04)", fontSize: 10.5, color: C.cardSub, lineHeight: 1.4 }}>
+            Kart metni: {buildSupplierSub(supplierProduct, supplierQty, supplierDeadline, supplierLeadDays)}
+          </div>
+        </>
+      ) : (
+        <>
+          <label style={lbl}>DETAY SATIRI</label>
+          <textarea value={sub} onChange={e => setSub(e.target.value)} rows={3} style={{ ...field, resize: "vertical", marginTop: 5, marginBottom: 10 }} />
+        </>
+      )}
       <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
         <div>
           <label style={lbl}>GENİŞLİK</label>
@@ -6783,7 +6883,11 @@ function AtomEditPopover({
           <button
             onClick={() => onSave({
               labelOverride: label.trim() || undefined,
-              subOverride: sub,
+              subOverride: isSupplier ? buildSupplierSub(supplierProduct, supplierQty, supplierDeadline, supplierLeadDays) : sub,
+              orderNumber: isSupplier ? supplierProduct.trim() || undefined : meta.orderNumber,
+              quantity: isSupplier ? supplierQty.trim() || undefined : meta.quantity,
+              deadline: isSupplier ? supplierDeadline.trim() || undefined : meta.deadline,
+              supplierLeadDays: isSupplier ? supplierLeadDays.trim() || undefined : meta.supplierLeadDays,
               widthOverride: width.trim() || undefined,
               heightOverride: height.trim() || undefined,
             })}
@@ -7488,10 +7592,13 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fin
   if (atom.kind === "supply-bracket") {
     const stripe = atom.highlight === "red" ? C.shortfall : (accent ?? C.info);
     const detailLines = atom.sub ? atom.sub.split("·").map(s => s.trim()).filter(Boolean).slice(0, 2) : [];
+    const supplierDetails = isSupplierSupplyAtom(atom) ? parseSupplierAtomDetails(atom, meta) : null;
     const labelKind = atom.label.includes("Satınalma")
       ? "SATINALMA"
       : atom.label === "Tedarik hattı"
         ? "TEDARİK HATTI"
+        : supplierDetails
+          ? "TEDARİKÇİ"
         : "TEDARİK";
     return (
       <div style={{
@@ -7508,22 +7615,31 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fin
         <div style={{ fontSize: 15, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.12 }}>
           {atom.label}
         </div>
-        {detailLines.map((line, idx) => (
-          <div
-            key={`${line}-${idx}`}
-            style={{
-              fontSize: idx === 0 ? 11.5 : 10.5,
-              color: idx === 0 ? C.cardInk : C.cardSub,
-              fontWeight: idx === 0 ? 850 : 700,
-              whiteSpace: "nowrap",
-              overflow: "hidden",
-              textOverflow: "ellipsis",
-              lineHeight: 1.2,
-            }}
-          >
-            {line}
-          </div>
-        ))}
+        {supplierDetails ? (
+          <>
+            <div style={{ fontSize: 11.5, color: C.cardInk, fontWeight: 850, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+              {supplierDetails.product || "ürün ?"} · {supplierDetails.quantity || "?"} adet
+            </div>
+            <div style={{ fontSize: 10.5, color: C.cardSub, fontWeight: 750, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.2 }}>
+              teslim {supplierDetails.leadDays || "?"}g · {supplierDetails.deadline || "ETA ?"}
+            </div>
+          </>
+        ) : detailLines.map((line, idx) => (
+            <div
+              key={`${line}-${idx}`}
+              style={{
+                fontSize: idx === 0 ? 11.5 : 10.5,
+                color: idx === 0 ? C.cardInk : C.cardSub,
+                fontWeight: idx === 0 ? 850 : 700,
+                whiteSpace: "nowrap",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                lineHeight: 1.2,
+              }}
+            >
+              {line}
+            </div>
+          ))}
       </div>
     );
   }
@@ -8301,7 +8417,7 @@ export default function StrategyCanvasPage() {
       const cur = prev[id] ?? {};
       const merged: AtomMeta = { ...cur, ...patch };
       // Tüm alanlar boşsa kaydı sil
-      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity
+      const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity && !merged.supplierLeadDays
         && !merged.labelOverride && merged.subOverride === undefined
         && !merged.widthOverride && !merged.heightOverride
         && !merged.deadlinePillId && !merged.productionDays && !merged.productionPillId
