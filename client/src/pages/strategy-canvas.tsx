@@ -273,8 +273,32 @@ interface CapacityResp {
   bottlenecks: { code: string; name: string; maxProducts: number; reason?: string }[];
 }
 interface StockResp { product: string; components: BomComponent[]; }
+interface FinishedStockLevel {
+  productSku: string;
+  productName?: string;
+  inProduction: number;
+  inWarehouse: number;
+  totalSold: number;
+  updatedAt?: string;
+}
 type XY = { x: number; y: number };
 type PositionOverrides = Record<string, Record<string, XY>>;
+
+interface ProcurementCandidate {
+  id: string;
+  sku: string;
+  code: string;
+  name: string;
+  currentStock: number;
+  requiredPerUnit: number;
+  targetQty: number;
+  openQty: number;
+  maxProducts: number | null;
+  leadDays: number;
+  supplier: string;
+  severity: "critical" | "watch" | "ok";
+  reason: string;
+}
 
 function flattenStockComponents(items: BomComponent[] | undefined): Record<string, BomComponent> {
   const out: Record<string, BomComponent> = {};
@@ -390,7 +414,7 @@ function monthSlots(start: Date, end: Date): { label: string; t: number }[] {
 
 /* ─────── Geometri ─────── */
 const ORDER_W = 250, ORDER_H = 96;
-const PRODUCT_W = 190, PRODUCT_H = 76;
+const PRODUCT_W = 190, PRODUCT_H = 112;
 const COMP_W = 200, COMP_H = 36;
 const SUB_R = 28;
 const PANEL_W = 440, PANEL_H = 620;
@@ -446,6 +470,70 @@ type ActionItem =
 
 interface CrossImpact { code: string; orders: { id: string; customer: string; sku: string; quantity: number }[]; }
 
+interface OrderFulfillment {
+  requested: number;
+  warehouseTotal: number;
+  warehouseReservedBefore: number;
+  warehouseAvailableForOrder: number;
+  fromWarehouse: number;
+  toProduce: number;
+  maxProductionCapacity: number;
+  producibleNow: number;
+  shortageAfterProduction: number;
+  totalCovered: number;
+  coveragePct: number;
+  status: "ready" | "produce" | "blocked";
+  statusLabel: string;
+}
+
+function computeOrderFulfillment(args: {
+  order: Order;
+  allOrders: Order[];
+  finishedStock?: FinishedStockLevel;
+  capacity?: CapacityResp;
+}): OrderFulfillment {
+  const { order, allOrders, finishedStock, capacity } = args;
+  const requested = Math.max(0, order.quantity);
+  const warehouseTotal = Math.max(0, Number(finishedStock?.inWarehouse ?? 0));
+  const sameSku = allOrders.filter(o => o.sku === order.sku).sort((a, b) => a.createdAt - b.createdAt);
+  let warehouseReservedBefore = 0;
+  for (const o of sameSku) {
+    if (o.id === order.id) break;
+    warehouseReservedBefore += Math.max(0, o.quantity);
+  }
+  warehouseReservedBefore = Math.min(warehouseReservedBefore, warehouseTotal);
+  const warehouseAvailableForOrder = Math.max(0, warehouseTotal - warehouseReservedBefore);
+  const fromWarehouse = Math.min(requested, warehouseAvailableForOrder);
+  const toProduce = Math.max(0, requested - fromWarehouse);
+  const maxProductionCapacity = Math.max(0, Number(capacity?.maxProducible ?? 0));
+  const producibleNow = Math.min(toProduce, maxProductionCapacity);
+  const shortageAfterProduction = Math.max(0, toProduce - maxProductionCapacity);
+  const totalCovered = fromWarehouse + producibleNow;
+  const coveragePct = requested > 0 ? Math.min(100, Math.round((totalCovered / requested) * 100)) : 0;
+  const status: OrderFulfillment["status"] =
+    requested === 0 || toProduce === 0 ? "ready" :
+    shortageAfterProduction === 0 ? "produce" : "blocked";
+  const statusLabel =
+    status === "ready" ? "Depodan tamam" :
+    status === "produce" ? "Üretimle tamam" : "Kapasite yetersiz";
+
+  return {
+    requested,
+    warehouseTotal,
+    warehouseReservedBefore,
+    warehouseAvailableForOrder,
+    fromWarehouse,
+    toProduce,
+    maxProductionCapacity,
+    producibleNow,
+    shortageAfterProduction,
+    totalCovered,
+    coveragePct,
+    status,
+    statusLabel,
+  };
+}
+
 interface Strategy {
   capacityPct: number;
   riskScore: number;
@@ -456,6 +544,7 @@ interface Strategy {
   actions: ActionItem[];
   crossImpact: CrossImpact[];
   bottleneckCascade: { code: string; name: string; coveragePct: number; max: number }[];
+  fulfillment: OrderFulfillment;
   timeline: {
     todayT: number; deadlineT: number;
     procurementEndT: number; productionStartT: number; productionEndT: number;
@@ -470,33 +559,40 @@ function computeStrategy(args: {
   enriched: (BomComponent & { needed: number; shortfall: number })[];
   allOrders: Order[];
   stockBySku: Record<string, StockResp>;
+  finishedStockBySku: Record<string, FinishedStockLevel>;
 }): Strategy {
-  const { order, capacity, components, enriched, allOrders, stockBySku } = args;
+  const { order, capacity, components, enriched, allOrders, stockBySku, finishedStockBySku } = args;
+  const fulfillment = computeOrderFulfillment({
+    order,
+    allOrders,
+    finishedStock: finishedStockBySku[order.sku],
+    capacity,
+  });
   const today = new Date();
   const deadline = order.deadline ? new Date(order.deadline) : new Date(Date.now() + 90 * 86400000);
   const todayT = today.getTime(); const deadlineT = deadline.getTime();
   const daysToDeadline = Math.max(0, daysBetween(today, deadline));
 
-  const maxProd = capacity?.maxProducible ?? 0;
-  const possible = Math.min(order.quantity, maxProd);
-  const missing = Math.max(0, order.quantity - maxProd);
-  const capacityPct = order.quantity > 0 ? Math.min(100, Math.round((possible / order.quantity) * 100)) : 0;
+  const possible = fulfillment.totalCovered;
+  const missing = fulfillment.shortageAfterProduction;
+  const capacityPct = fulfillment.coveragePct;
 
   const reasons: string[] = [];
   let risk = 0;
   const gapRatio = order.quantity > 0 ? missing / order.quantity : 0;
   risk += gapRatio * 40;
   if (gapRatio > 0.15) reasons.push(`%${Math.round(gapRatio * 100)} talep eksiği`);
+  if (fulfillment.fromWarehouse > 0) reasons.push(`${fmtTR(fulfillment.fromWarehouse)} adet depodan düşüldü`);
   const leadDays = DEFAULT_LEAD_TIME_DAYS;
   const tightness = leadDays > 0 ? Math.max(0, 1 - daysToDeadline / (leadDays * 2)) : 0;
   risk += tightness * 35;
   if (daysToDeadline < leadDays) reasons.push(`teslime ${daysToDeadline} gün, tedarik ~${leadDays} gün`);
   else if (daysToDeadline < leadDays * 1.5) reasons.push(`teslime ${daysToDeadline} gün — sınırda`);
   const bn = capacity?.bottlenecks?.[0];
-  if (bn && bn.maxProducts < order.quantity) {
-    const sev = 1 - bn.maxProducts / Math.max(1, order.quantity);
+  if (bn && bn.maxProducts < fulfillment.toProduce) {
+    const sev = 1 - bn.maxProducts / Math.max(1, fulfillment.toProduce);
     risk += sev * 25;
-    reasons.push(`darboğaz ${bn.code} maks ${fmtTR(bn.maxProducts)}`);
+    reasons.push(`darboğaz ${bn.code} üretim maks ${fmtTR(bn.maxProducts)}`);
   }
   risk = Math.max(0, Math.min(100, Math.round(risk)));
   const riskBand: "low" | "med" | "high" = risk >= 65 ? "high" : risk >= 30 ? "med" : "low";
@@ -553,8 +649,10 @@ function computeStrategy(args: {
       kind: "uret",
       sku: order.sku, quantity: possible, daysNeeded: days,
       rationale: missing > 0
-        ? `${fmtTR(possible)} adet hemen üretilebilir; ${fmtTR(missing)} adet tedariğe bağlı`
-        : `tüm talep mevcut stokla karşılanıyor`,
+        ? `${fmtTR(fulfillment.fromWarehouse)} depo + ${fmtTR(fulfillment.producibleNow)} üretim; ${fmtTR(missing)} adet tedariğe bağlı`
+        : fulfillment.toProduce > 0
+          ? `${fmtTR(fulfillment.fromWarehouse)} depo + ${fmtTR(fulfillment.producibleNow)} üretim ile tamamlanır`
+          : `tüm talep depodaki hazır stokla karşılanıyor`,
       impact: missing > 0 ? `kısmi teslim güvence altına alınır` : `tam teslim, ekstra eylem gerekmez`,
     });
   }
@@ -575,17 +673,17 @@ function computeStrategy(args: {
 
   const bottleneckCascade = (capacity?.bottlenecks ?? []).slice(0, 3).map(b => ({
     code: b.code, name: b.name, max: b.maxProducts,
-    coveragePct: order.quantity > 0 ? Math.min(100, Math.round((b.maxProducts / order.quantity) * 100)) : 0,
+    coveragePct: fulfillment.toProduce > 0 ? Math.min(100, Math.round((b.maxProducts / fulfillment.toProduce) * 100)) : 100,
   }));
 
   const procurementEndT = todayT + leadDays * 86400000;
   const productionStartT = missing > 0 ? procurementEndT : todayT;
-  const productionEndT = productionStartT + Math.ceil(possible * PRODUCTION_DAYS_PER_UNIT) * 86400000;
+  const productionEndT = productionStartT + Math.ceil(fulfillment.producibleNow * PRODUCTION_DAYS_PER_UNIT) * 86400000;
 
   return {
     capacityPct, riskScore: risk, riskBand, riskReasons: reasons.slice(0, 3),
     confidencePct: conf, confidenceNote: confNote,
-    actions, crossImpact, bottleneckCascade,
+    actions, crossImpact, bottleneckCascade, fulfillment,
     timeline: { todayT, deadlineT, procurementEndT, productionStartT, productionEndT, daysToDeadline },
   };
 }
@@ -677,9 +775,22 @@ function StrategyPanel({ s, order, loading, enriched }: {
 }
 
 function OverviewLens({ s, order }: { s: Strategy; order: Order }) {
-  const possible = Math.min(order.quantity, order.quantity - (order.quantity - Math.round(order.quantity * s.capacityPct / 100)));
+  const possible = s.fulfillment.totalCovered;
+  const statusColor =
+    s.fulfillment.status === "ready" ? C.ok :
+    s.fulfillment.status === "produce" ? C.info : C.shortfall;
   return (
     <>
+      <Section title="SİPARİŞ KARŞILAMA">
+        <KV k="Sipariş" v={`${fmtTR(s.fulfillment.requested)} adet ${order.sku}`} />
+        <KV k="Depoda hazır" v={`${fmtTR(s.fulfillment.fromWarehouse)} adet`} color={s.fulfillment.fromWarehouse > 0 ? C.ok : C.cardSub} />
+        <KV k="Üretilecek" v={`${fmtTR(s.fulfillment.toProduce)} adet`} color={s.fulfillment.toProduce > 0 ? C.info : C.ok} />
+        <KV k="Maks. üretim" v={`${fmtTR(s.fulfillment.maxProductionCapacity)} adet`} />
+        <KV k="Sonuç" v={s.fulfillment.statusLabel} color={statusColor} />
+        {s.fulfillment.warehouseReservedBefore > 0 && (
+          <KV k="Önceki siparişlere ayrılan" v={`${fmtTR(s.fulfillment.warehouseReservedBefore)} adet`} color={C.warn} />
+        )}
+      </Section>
       {s.riskReasons.length > 0 && (
         <Section title="RİSK GEREKÇESİ">
           <div style={{ fontSize: 10, color: C.cardSub, lineHeight: 1.5 }}>
@@ -690,7 +801,7 @@ function OverviewLens({ s, order }: { s: Strategy; order: Order }) {
       <Section title="ÖZET">
         <KV k="Talep" v={`${fmtTR(order.quantity)} adet ${order.sku}`} />
         <KV k="Üretilebilir" v={`${fmtTR(possible)} adet`} />
-        <KV k="Eksik" v={s.capacityPct >= 100 ? "yok" : `${fmtTR(order.quantity - possible)} adet`}
+        <KV k="Eksik" v={s.capacityPct >= 100 ? "yok" : `${fmtTR(s.fulfillment.shortageAfterProduction)} adet`}
           color={s.capacityPct >= 100 ? C.ok : C.shortfall} />
         <KV k="Aksiyon sayısı" v={String(s.actions.length)} />
         <KV k="Çapraz etki" v={s.crossImpact.length > 0 ? `${s.crossImpact.length} bileşen` : "yok"} />
@@ -1186,7 +1297,7 @@ function OrderBlock({
   expandedSubs, toggleSub,
   onRemove, onEdit, onAddToFlask,
   getMouseInWorld, viewport,
-  allOrders, stockBySku,
+  allOrders, stockBySku, finishedStockBySku,
 }: {
   order: Order;
   capacity?: CapacityResp;
@@ -1204,6 +1315,7 @@ function OrderBlock({
   viewport: { vx: number; vy: number; scale: number };
   allOrders: Order[];
   stockBySku: Record<string, StockResp>;
+  finishedStockBySku: Record<string, FinishedStockLevel>;
 }) {
   const top = useMemo(() => (stock?.components ?? []).filter(c => c.parentComponentCode === null), [stock]);
   const enriched = useMemo(() => top.map(c => {
@@ -1234,9 +1346,13 @@ function OrderBlock({
   const productOut = { x: productP.x + PRODUCT_W, y: productP.y + PRODUCT_H / 2 };
 
   const strategy = useMemo(
-    () => computeStrategy({ order, capacity, components: stock?.components ?? [], enriched, allOrders, stockBySku }),
-    [order, capacity, stock, enriched, allOrders, stockBySku],
+    () => computeStrategy({ order, capacity, components: stock?.components ?? [], enriched, allOrders, stockBySku, finishedStockBySku }),
+    [order, capacity, stock, enriched, allOrders, stockBySku, finishedStockBySku],
   );
+  const fulfillment = strategy.fulfillment;
+  const fulfillmentColor =
+    fulfillment.status === "ready" ? C.ok :
+    fulfillment.status === "produce" ? C.info : C.shortfall;
 
   return (
     <>
@@ -1278,6 +1394,22 @@ function OrderBlock({
           <div style={cardLabel}>MAMUL</div>
           <div style={{ fontSize: 16, fontWeight: 700, lineHeight: 1.1, marginTop: 2 }}>{fmtTR(order.quantity)} adet</div>
           <div style={{ fontSize: 12, fontWeight: 600, color: C.cardSub, marginTop: 1 }}>{order.sku}</div>
+          <div style={{
+            marginTop: 7,
+            paddingTop: 6,
+            borderTop: `1px solid ${C.panelEdge}`,
+            display: "grid",
+            gridTemplateColumns: "1fr 1fr",
+            gap: 4,
+            fontSize: 9,
+            lineHeight: 1.25,
+          }}>
+            <span style={{ color: C.cardSub }}>depo <b style={{ color: C.ok }}>{fmtTR(fulfillment.fromWarehouse)}</b></span>
+            <span style={{ color: C.cardSub }}>üret <b style={{ color: C.info }}>{fmtTR(fulfillment.toProduce)}</b></span>
+            <span style={{ gridColumn: "1 / -1", color: fulfillmentColor, fontWeight: 700 }}>
+              {fulfillment.statusLabel} · maks {fmtTR(fulfillment.maxProductionCapacity)}
+            </span>
+          </div>
         </div>
       </DragNode>
 
@@ -2534,6 +2666,67 @@ function addDaysISO(base: Date, days: number): string {
   const d = new Date(base);
   d.setDate(d.getDate() + days);
   return d.toISOString().slice(0, 10);
+}
+
+function buildProcurementCandidates(args: {
+  stockBySku: Record<string, Record<string, BomComponent>>;
+  capacityBySku: Record<string, CapacityResp>;
+  demandBySku: Record<string, number>;
+}): ProcurementCandidate[] {
+  const { stockBySku, capacityBySku, demandBySku } = args;
+  const rows: ProcurementCandidate[] = [];
+  ALL_SKUS.forEach((sku, skuIdx) => {
+    const components = stockBySku[sku] ?? {};
+    const capacity = capacityBySku[sku];
+    const bottleneckCodes = new Set((capacity?.bottlenecks ?? []).map(b => b.code));
+    const targetQty = Math.max(1, Math.ceil(demandBySku[sku] ?? 100));
+    Object.values(components).forEach((c, idx) => {
+      const currentStock = Math.max(0, Number(c.currentStock ?? c.rawStock ?? 0));
+      const requiredPerUnit = Math.max(0, Number(c.requiredPerUnit ?? 0));
+      const requiredForTarget = Math.ceil(requiredPerUnit * targetQty);
+      const targetShortfall = Math.max(0, requiredForTarget - currentStock);
+      const maxProducts = c.maxProducts;
+      const blocksTarget = maxProducts !== null && maxProducts < targetQty;
+      const isBottleneck = bottleneckCodes.has(c.code);
+      const isWatch = !targetShortfall && currentStock <= Math.max(10, requiredPerUnit * 20);
+
+      if (!targetShortfall && !blocksTarget && !isBottleneck && !isWatch) return;
+
+      const openQty = Math.max(
+        targetShortfall,
+        blocksTarget ? Math.ceil(requiredPerUnit * Math.max(1, targetQty - Math.max(0, maxProducts ?? 0))) : 0,
+        isBottleneck ? Math.ceil(requiredPerUnit * Math.max(10, Math.round(targetQty * 0.25))) : 0,
+        isWatch ? Math.ceil(Math.max(10, requiredPerUnit * 20 - currentStock)) : 0,
+      );
+      const severity: ProcurementCandidate["severity"] =
+        targetShortfall > 0 || blocksTarget || isBottleneck ? "critical" :
+        isWatch ? "watch" : "ok";
+      const reason =
+        targetShortfall > 0 ? `${fmtTR(targetQty)} adet senaryo için eksik` :
+        isBottleneck ? "kapasite darboğazında" :
+        blocksTarget ? `maks ${fmtTR(maxProducts ?? 0)} mamul` :
+        "emniyet stoğu düşük";
+      rows.push({
+        id: `${sku}:${c.code}`,
+        sku,
+        code: c.code,
+        name: c.name || c.code,
+        currentStock,
+        requiredPerUnit,
+        targetQty,
+        openQty: Math.max(1, openQty),
+        maxProducts,
+        leadDays: DEFAULT_LEAD_TIME_DAYS,
+        supplier: supplierNameForIndex((skuIdx + idx) % 5),
+        severity,
+        reason,
+      });
+    });
+  });
+  return rows.sort((a, b) => {
+    const rank = (x: ProcurementCandidate) => x.severity === "critical" ? 0 : x.severity === "watch" ? 1 : 2;
+    return rank(a) - rank(b) || b.openQty - a.openQty || a.sku.localeCompare(b.sku);
+  });
 }
 
 
@@ -3954,7 +4147,8 @@ function CustomersSceneRenderer({
   atomMeta, setAtomMetaField, clearAtomMeta,
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
   edgeCommands, setEdgeCommand,
-  flaskItems, reactionResult, onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
+  flaskItems, reactionResult, onApplySupplyPlan,
+  onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -3982,6 +4176,7 @@ function CustomersSceneRenderer({
   setEdgeCommand: (key: string, command: string | null) => void;
   flaskItems: FlaskItem[];
   reactionResult: ReactionResult | null;
+  onApplySupplyPlan: (items: SupplyItem[]) => void;
   onCreateProductionLine: (args: {
     productionLineId: string;
     customerId: string | null;
@@ -4023,6 +4218,18 @@ function CustomersSceneRenderer({
     return m;
   }, [sceneCapacityQueries.map(q => q.data).join("|")]);
   const sceneCapacityLoading = sceneCapacityQueries.some(q => q.isLoading);
+  const sceneFinishedStockQueries = useQueries({
+    queries: ALL_SKUS.map(sku => ({ queryKey: [`/api/stock/levels?sku=${encodeURIComponent(sku)}`] })),
+  });
+  const sceneFinishedStockBySku = useMemo(() => {
+    const m: Record<string, FinishedStockLevel> = {};
+    ALL_SKUS.forEach((sku, i) => {
+      const rows = sceneFinishedStockQueries[i]?.data as FinishedStockLevel[] | undefined;
+      const row = rows?.[0];
+      if (row) m[sku] = row;
+    });
+    return m;
+  }, [sceneFinishedStockQueries.map(q => q.data).join("|")]);
   const sceneStockQueries = useQueries({
     queries: ALL_SKUS.map(sku => ({ queryKey: [`/api/bom/${sku}/stock`] })),
   });
@@ -4676,6 +4883,71 @@ function CustomersSceneRenderer({
     });
     return id ? atomById[id] : null;
   }, [selectedIds, atomById]);
+  const [selectedProcurementId, setSelectedProcurementId] = useState<string | null>(null);
+  const [procurementToast, setProcurementToast] = useState<string | null>(null);
+  const demandBySku = useMemo(() => {
+    const m: Record<string, number> = {};
+    customAtoms
+      .filter(a => a.kind === "production-line")
+      .forEach(a => {
+        const meta = atomMeta[a.id] ?? {};
+        const sku = meta.orderNumber ?? a.label.split(" x")[0];
+        const qty = parseTRNumber(meta.quantity) ?? parseTRNumber(a.label.split("x")[1]) ?? 0;
+        if (!sku || qty <= 0) return;
+        m[sku] = Math.max(m[sku] ?? 0, qty);
+      });
+    return m;
+  }, [customAtoms, atomMeta]);
+  const procurementCandidates = useMemo(
+    () => buildProcurementCandidates({
+      stockBySku: sceneStockBySku,
+      capacityBySku: sceneCapacityBySku,
+      demandBySku,
+    }),
+    [sceneStockBySku, sceneCapacityBySku, demandBySku],
+  );
+  const selectedProcurement = useMemo(
+    () => procurementCandidates.find(c => c.id === selectedProcurementId) ?? null,
+    [procurementCandidates, selectedProcurementId],
+  );
+  const focusProcurementCandidate = useCallback((candidate: ProcurementCandidate) => {
+    setSelectedProcurementId(candidate.id);
+    const productId = `p-${candidate.sku}`;
+    setExpandedDeviceIds(prev => {
+      const n = new Set(prev);
+      n.add(productId);
+      return n;
+    });
+    setSelectedIds(new Set([productId]));
+    globalSel.clear();
+    const product = atomById[productId];
+    if (product) {
+      const item = atomToSelectedItem(product);
+      if (item) globalSel.toggle(item);
+      const el = wrapperRef.current;
+      if (el) {
+        setViewport(v => ({
+          ...v,
+          vx: el.clientWidth / 2 - (product.x + product.w / 2) * v.scale,
+          vy: el.clientHeight / 2 - (product.y + product.h / 2) * v.scale,
+        }));
+      }
+    }
+  }, [atomById, atomToSelectedItem, globalSel, setViewport, wrapperRef]);
+  const createProcurementDraft = useCallback((candidate: ProcurementCandidate) => {
+    onApplySupplyPlan([{
+      id: `sup_${Date.now().toString(36)}_${candidate.code}`,
+      componentCode: candidate.code,
+      qty: candidate.openQty,
+      leadDays: candidate.leadDays,
+    }]);
+    setProcurementToast(`${candidate.code} için ${fmtTR(candidate.openQty)} adet PO taslağı tepkimeye aktarıldı.`);
+  }, [onApplySupplyPlan]);
+  useEffect(() => {
+    if (!procurementToast) return;
+    const t = window.setTimeout(() => setProcurementToast(null), 3200);
+    return () => window.clearTimeout(t);
+  }, [procurementToast]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
@@ -4852,6 +5124,29 @@ function CustomersSceneRenderer({
         onClearCustomEdges={clearAllCustomEdges}
       />
 
+      <ProcurementDock
+        candidates={procurementCandidates}
+        selected={selectedProcurement}
+        onSelect={focusProcurementCandidate}
+        onCreateDraft={createProcurementDraft}
+        onCloseSelection={() => setSelectedProcurementId(null)}
+      />
+
+      {procurementToast && (
+        <div
+          style={{
+            position: "absolute", right: 18, top: 82, zIndex: 31,
+            background: C.cardBg, color: C.cardInk,
+            border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${C.ok}`,
+            borderRadius: 10, padding: "9px 12px", fontFamily: mono,
+            fontSize: 11, fontWeight: 750,
+            boxShadow: "0 12px 32px rgba(0,0,0,0.34)",
+          }}
+        >
+          {procurementToast}
+        </div>
+      )}
+
       {/* Seçim göstergesi — sağ üstte sabit pill (DragNode dışında, viewport'tan bağımsız) */}
       {selectedIds.size > 0 && (
         <div style={{
@@ -5002,6 +5297,7 @@ function CustomersSceneRenderer({
             meta={atomMeta[a.id]}
             capacity={a.kind === "product" ? sceneCapacityBySku[a.id.replace(/^p-/, "")] : undefined}
             capacityLoading={a.kind === "product" ? sceneCapacityLoading : undefined}
+            finishedStock={a.kind === "product" ? sceneFinishedStockBySku[a.id.replace(/^p-/, "")] : undefined}
             flaskItems={flaskItems}
             reactionResult={reactionResult}
             onContextMenu={isCustomAtom ? (e) => {
@@ -5615,6 +5911,197 @@ function InfoCell({ label, value }: { label: string; value: string }) {
       <div style={{ fontSize: 9, color: C.cardSub, fontWeight: 800, marginBottom: 3 }}>{label}</div>
       <div style={{ fontSize: 12, color: C.cardInk, fontWeight: 700, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>{value}</div>
     </div>
+  );
+}
+
+function ProcurementDock({
+  candidates,
+  selected,
+  onSelect,
+  onCreateDraft,
+  onCloseSelection,
+}: {
+  candidates: ProcurementCandidate[];
+  selected: ProcurementCandidate | null;
+  onSelect: (c: ProcurementCandidate) => void;
+  onCreateDraft: (c: ProcurementCandidate) => void;
+  onCloseSelection: () => void;
+}) {
+  const [mode, setMode] = useState<"open" | "mini">("open");
+  const critical = candidates.filter(c => c.severity === "critical");
+  const watch = candidates.filter(c => c.severity === "watch");
+  const visible = [...critical, ...watch].slice(0, 18);
+  const totalOpen = critical.reduce((s, c) => s + c.openQty, 0);
+
+  if (mode === "mini") {
+    return (
+      <button
+        type="button"
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.stopPropagation(); setMode("open"); }}
+        style={{
+          position: "absolute", top: 82, left: 72, zIndex: 24,
+          background: C.cardBg, color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${C.shortfall}`,
+          borderRadius: 10, padding: "10px 12px", fontFamily: mono,
+          fontSize: 11, fontWeight: 800, cursor: "pointer",
+          boxShadow: "0 12px 32px rgba(0,0,0,0.34)",
+        }}
+      >
+        Tedarik · {critical.length}
+      </button>
+    );
+  }
+
+  return (
+    <>
+      <div
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "absolute", top: 82, left: 72, width: 336, maxHeight: "calc(100vh - 230px)",
+          zIndex: 24, background: "rgba(10,10,14,0.96)", color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${critical.length ? C.shortfall : C.ok}`,
+          borderRadius: 12, boxShadow: "0 18px 42px rgba(0,0,0,0.42)",
+          fontFamily: mono, overflow: "hidden", display: "flex", flexDirection: "column",
+        }}
+      >
+        <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", gap: 10, alignItems: "center" }}>
+          <div style={{ flex: 1, minWidth: 0 }}>
+            <div style={{ fontSize: 9, color: C.shortfall, letterSpacing: 1.8, fontWeight: 800 }}>CANLI TEDARİK</div>
+            <div style={{ fontSize: 15, fontWeight: 850, marginTop: 3 }}>
+              {critical.length} kritik · {watch.length} izleme
+            </div>
+            <div style={{ fontSize: 10, color: C.cardSub, marginTop: 2 }}>
+              açık miktar {fmtTR(totalOpen)} kalem/adet
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={() => setMode("mini")}
+            style={{
+              width: 28, height: 28, borderRadius: 7, border: `1px solid ${C.panelEdge}`,
+              background: "rgba(255,255,255,0.06)", color: C.cardInk,
+              fontFamily: mono, cursor: "pointer",
+            }}
+            aria-label="Küçült"
+          >
+            -
+          </button>
+        </div>
+
+        <div style={{ overflowY: "auto", padding: 10, display: "flex", flexDirection: "column", gap: 6 }}>
+          {visible.length === 0 ? (
+            <div style={{ color: C.cardSub, fontSize: 11, padding: 10 }}>Canlı BOM verisinde kritik eksik görünmüyor.</div>
+          ) : visible.map(c => {
+            const active = selected?.id === c.id;
+            const color = c.severity === "critical" ? C.shortfall : C.warn;
+            return (
+              <button
+                key={c.id}
+                type="button"
+                onClick={() => onSelect(c)}
+                style={{
+                  textAlign: "left", borderRadius: 8, padding: "9px 10px",
+                  background: active ? `${color}22` : "rgba(255,255,255,0.045)",
+                  border: `1px solid ${active ? `${color}88` : C.panelEdge}`,
+                  borderLeft: `3px solid ${color}`,
+                  color: C.cardInk, fontFamily: mono, cursor: "pointer",
+                }}
+              >
+                <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+                  <span style={{ fontSize: 12, fontWeight: 850 }}>{c.code}</span>
+                  <span style={{ fontSize: 10, color: C.cardSub }}>{c.sku}</span>
+                  <span style={{ marginLeft: "auto", fontSize: 11, color, fontWeight: 850 }}>
+                    +{fmtTR(c.openQty)}
+                  </span>
+                </div>
+                <div style={{ marginTop: 4, fontSize: 10, color: C.cardSub, lineHeight: 1.35 }}>
+                  stok {fmtTR(c.currentStock)} · {c.reason}
+                </div>
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      {selected && (
+        <div
+          onPointerDown={(e) => e.stopPropagation()}
+          onClick={(e) => e.stopPropagation()}
+          style={{
+            position: "absolute", top: 112, right: 18, width: 360, zIndex: 29,
+            background: C.cardBg, color: C.cardInk,
+            border: `1px solid ${C.panelEdge}`, borderLeft: `3px solid ${selected.severity === "critical" ? C.shortfall : C.warn}`,
+            borderRadius: 12, boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
+            fontFamily: mono, overflow: "hidden",
+          }}
+        >
+          <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
+            <div style={{ minWidth: 0 }}>
+              <div style={{ fontSize: 9, letterSpacing: 1.8, color: C.shortfall, fontWeight: 800 }}>TEDARİK AKSİYONU</div>
+              <div style={{ fontSize: 16, fontWeight: 850, marginTop: 3 }}>{selected.code}</div>
+              <div style={{ fontSize: 11, color: C.cardSub, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                {selected.name}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={onCloseSelection}
+              style={{
+                width: 26, height: 26, borderRadius: 6, border: `1px solid ${C.panelEdge}`,
+                background: "rgba(255,255,255,0.06)", color: C.cardInk,
+                cursor: "pointer", fontFamily: mono,
+              }}
+              aria-label="Kapat"
+            >
+              x
+            </button>
+          </div>
+          <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <InfoCell label="Mamul" value={selected.sku} />
+              <InfoCell label="Stok" value={`${fmtTR(selected.currentStock)} adet`} />
+              <InfoCell label="Senaryo" value={`${fmtTR(selected.targetQty)} adet`} />
+              <InfoCell label="Açık" value={`${fmtTR(selected.openQty)} adet`} />
+            </div>
+            <InfoCell label="Önerilen tedarikçi" value={`${selected.supplier} · ${selected.leadDays} gün`} />
+            <div style={{
+              padding: "9px 10px", borderRadius: 8,
+              background: C.shortfallSoft, border: `1px solid rgba(239,68,68,0.38)`,
+              fontSize: 11, color: C.cardInk, lineHeight: 1.45,
+            }}>
+              Öneri: {fmtTR(selected.openQty)} adet PO taslağı oluştur. Tahmini termin {addDaysISO(new Date(), selected.leadDays)}.
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+              <button
+                type="button"
+                onClick={() => onCreateDraft(selected)}
+                style={{
+                  border: "none", borderRadius: 8, background: C.shortfall,
+                  color: "#ffffff", padding: "10px 12px", fontFamily: mono,
+                  fontSize: 12, fontWeight: 850, cursor: "pointer",
+                }}
+              >
+                PO taslağı
+              </button>
+              <button
+                type="button"
+                onClick={() => onCreateDraft({ ...selected, openQty: Math.ceil(selected.openQty * 1.15) })}
+                style={{
+                  border: `1px solid ${C.panelEdge}`, borderRadius: 8,
+                  background: "rgba(255,255,255,0.06)", color: C.cardInk,
+                  padding: "10px 12px", fontFamily: mono, fontSize: 12,
+                  fontWeight: 850, cursor: "pointer",
+                }}
+              >
+                +%15 emniyet
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
   );
 }
 
@@ -6318,7 +6805,7 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onDoubleClick, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, meta, capacity, capacityLoading, flaskItems, reactionResult,
+  atom, onMove, onTap, onDoubleClick, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, meta, capacity, capacityLoading, finishedStock, flaskItems, reactionResult,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
@@ -6335,6 +6822,7 @@ function SceneAtomNode({
   meta?: AtomMeta;
   capacity?: CapacityResp;
   capacityLoading?: boolean;
+  finishedStock?: FinishedStockLevel;
   flaskItems?: FlaskItem[];
   reactionResult?: ReactionResult | null;
 }) {
@@ -6367,17 +6855,18 @@ function SceneAtomNode({
       shapeStyle={shapeStyle}
       style={{ ...selectedStyle, ...dimStyle }}
     >
-      <SceneAtomVisual atom={atom} groupOpen={groupOpen} meta={meta} capacity={capacity} capacityLoading={capacityLoading} flaskItems={flaskItems} reactionResult={reactionResult} />
+      <SceneAtomVisual atom={atom} groupOpen={groupOpen} meta={meta} capacity={capacity} capacityLoading={capacityLoading} finishedStock={finishedStock} flaskItems={flaskItems} reactionResult={reactionResult} />
     </DragNode>
   );
 }
 
-function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, flaskItems, reactionResult }: {
+function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, finishedStock, flaskItems, reactionResult }: {
   atom: SceneAtom;
   groupOpen?: boolean;
   meta?: AtomMeta;
   capacity?: CapacityResp;
   capacityLoading?: boolean;
+  finishedStock?: FinishedStockLevel;
   flaskItems?: FlaskItem[];
   reactionResult?: ReactionResult | null;
 }) {
@@ -6531,19 +7020,24 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
         </div>
         {(() => {
           const maxProd = capacity?.maxProducible;
+          const inWarehouse = finishedStock?.inWarehouse;
           const capColor =
             maxProd === undefined ? C.cardSub :
             maxProd === 0 ? C.shortfall :
             maxProd < 50 ? "#f59e0b" :
             "#10b981";
-          const capLine =
+          const warehouseLine = inWarehouse === undefined
+            ? "depo ?"
+            : `depoda ${fmtTR(inWarehouse)}`;
+          const capacityLine =
             capacityLoading && maxProd === undefined ? "yükleniyor…" :
             maxProd === undefined ? "kapasite ?" :
             maxProd === 0 ? "üretilemez · darboğaz" :
-            `${fmtTR(maxProd)} adet üretilebilir`;
+            `maks üretim ${fmtTR(maxProd)}`;
           return (
-            <div style={{ fontSize: 12, color: capColor, fontWeight: 800, lineHeight: 1.2, letterSpacing: 0.1, marginTop: 1 }}>
-              {capLine}
+            <div style={{ fontSize: 10.5, fontWeight: 800, lineHeight: 1.18, letterSpacing: 0.1, marginTop: 1 }}>
+              <div style={{ color: inWarehouse === 0 ? C.warn : C.ok }}>{warehouseLine}</div>
+              <div style={{ color: capColor }}>{capacityLine}</div>
             </div>
           );
         })()}
@@ -8296,6 +8790,9 @@ export default function StrategyCanvasPage() {
   const capacityQueries = useQueries({
     queries: skuSet.map(sku => ({ queryKey: [`/api/bom/${sku}/production-capacity`], enabled: !!sku })),
   });
+  const finishedStockQueries = useQueries({
+    queries: skuSet.map(sku => ({ queryKey: [`/api/stock/levels?sku=${encodeURIComponent(sku)}`], enabled: !!sku })),
+  });
   const stockBySku = useMemo(() => {
     const m: Record<string, StockResp> = {};
     skuSet.forEach((sku, i) => { const d = stockQueries[i]?.data as StockResp | undefined; if (d) m[sku] = d; });
@@ -8306,7 +8803,16 @@ export default function StrategyCanvasPage() {
     skuSet.forEach((sku, i) => { const d = capacityQueries[i]?.data as CapacityResp | undefined; if (d) m[sku] = d; });
     return m;
   }, [skuSet, capacityQueries.map(q => q.data).join("|")]);
-  const anyLoading = stockQueries.some(q => q.isLoading) || capacityQueries.some(q => q.isLoading);
+  const finishedStockBySku = useMemo(() => {
+    const m: Record<string, FinishedStockLevel> = {};
+    skuSet.forEach((sku, i) => {
+      const rows = finishedStockQueries[i]?.data as FinishedStockLevel[] | undefined;
+      const row = rows?.[0];
+      if (row) m[sku] = row;
+    });
+    return m;
+  }, [skuSet, finishedStockQueries.map(q => q.data).join("|")]);
+  const anyLoading = stockQueries.some(q => q.isLoading) || capacityQueries.some(q => q.isLoading) || finishedStockQueries.some(q => q.isLoading);
 
   const handleStockUpdate = useCallback(() => {
     // Sipariş SKU'ları + sahne canvas'taki tüm cihazlar (ALL_SKUS).
@@ -8315,6 +8821,7 @@ export default function StrategyCanvasPage() {
     targets.forEach(sku => {
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/stock`] });
       qc.invalidateQueries({ queryKey: [`/api/bom/${sku}/production-capacity`] });
+      qc.invalidateQueries({ queryKey: [`/api/stock/levels?sku=${encodeURIComponent(sku)}`] });
     });
   }, [qc, skuSet]);
   const { connected } = useStockWebSocket(handleStockUpdate);
@@ -8945,6 +9452,19 @@ export default function StrategyCanvasPage() {
             setEdgeCommand={setSceneEdgeCommand}
             flaskItems={flaskItems}
             reactionResult={reactionResult}
+            onApplySupplyPlan={(items) => {
+              setFlaskSupplies(prev => {
+                const byCode = new Map(prev.map(s => [s.componentCode, s]));
+                items.forEach(s => {
+                  const existing = byCode.get(s.componentCode);
+                  byCode.set(s.componentCode, existing
+                    ? { ...existing, qty: existing.qty + s.qty, leadDays: Math.max(existing.leadDays, s.leadDays) }
+                    : s);
+                });
+                return Array.from(byCode.values());
+              });
+              setFlaskOpen(true);
+            }}
             onCreateProductionLine={createProductionLineFromScene}
             onUpdateProductionLine={updateProductionLineFromScene}
             onDeleteProductionLine={deleteProductionLineFromScene}
@@ -8999,6 +9519,7 @@ export default function StrategyCanvasPage() {
                 getMouseInWorld={getMouseInWorld} viewport={viewport}
                 allOrders={orders}
                 stockBySku={stockBySku}
+                finishedStockBySku={finishedStockBySku}
               />
             ))}
           </>
