@@ -175,6 +175,10 @@ interface AtomMeta {
   orderNumber?: string;
   deadline?: string;
   quantity?: string;
+  labelOverride?: string;
+  subOverride?: string;
+  widthOverride?: string;
+  heightOverride?: string;
   deadlinePillId?: string;
   productionDays?: string;
   productionPillId?: string;
@@ -1070,13 +1074,14 @@ function Legend({ dot, children }: { dot: string; children: React.ReactNode }) {
    DRAGGABLE NODE — saf HTML div, absolute pozisyon, transform parent içinde
    ──────────────────────────────────────────────────────────────────── */
 function DragNode({
-  pos, width, height, onDrag, onTap, onMultiSelect, onContextMenu, getMouseInWorld, children, style, asCircle, viewport, shapeStyle,
+  pos, width, height, onDrag, onTap, onDoubleClick, onMultiSelect, onContextMenu, getMouseInWorld, children, style, asCircle, viewport, shapeStyle,
 }: {
   pos: XY;
   width: number;
   height: number;
   onDrag: (xy: XY) => void;
   onTap?: () => void;
+  onDoubleClick?: () => void;
   onMultiSelect?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   getMouseInWorld: (e: React.PointerEvent) => XY;
@@ -1130,6 +1135,12 @@ function DragNode({
       onTap();
     }
   };
+  const handleDoubleClick = (e: React.MouseEvent) => {
+    if (!onDoubleClick) return;
+    e.preventDefault();
+    e.stopPropagation();
+    onDoubleClick();
+  };
   const sx = pos.x * viewport.scale + viewport.vx;
   const sy = pos.y * viewport.scale + viewport.vy;
   const sw = width * viewport.scale;
@@ -1140,6 +1151,7 @@ function DragNode({
       onPointerMove={handleMove}
       onPointerUp={handleUp}
       onClick={handleClick}
+      onDoubleClick={handleDoubleClick}
       onContextMenu={onContextMenu}
       style={{
         position: "absolute",
@@ -4029,6 +4041,8 @@ function CustomersSceneRenderer({
   const [selectedIds, setSelectedIds] = useState<Set<string>>(() => new Set());
   // Pop-up drill-down — atom'a tıklayınca yan tarafta detay kartı açılır
   const [popupAtomId, setPopupAtomId] = useState<string | null>(null);
+  // Kutular çift tıkla hızlı düzenlenir: etiket, detay ve boyut.
+  const [editingAtomId, setEditingAtomId] = useState<string | null>(null);
   // Edge label tıklanınca o edge için komut atama popover'ı açılır.
   const [editingEdgeKey, setEditingEdgeKey] = useState<string | null>(null);
   // Müşteri sipariş hattı odağı — müşteri-chip'e tıklayınca o müşterinin
@@ -4143,6 +4157,7 @@ function CustomersSceneRenderer({
       if (e.key === "Escape") {
         clearSelection();
         setPopupAtomId(null);
+        setEditingAtomId(null);
         setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
         setFocusedCustomerId(null);
@@ -4175,9 +4190,19 @@ function CustomersSceneRenderer({
     const merged = [...defaults, ...customAtoms];
     return merged.map(a => {
       const p = positions[a.id];
-      return p ? { ...a, x: p.x, y: p.y } : a;
+      const meta = atomMeta[a.id];
+      const widthOverride = parseTRNumber(meta?.widthOverride);
+      const heightOverride = parseTRNumber(meta?.heightOverride);
+      const next: SceneAtom = {
+        ...a,
+        label: meta?.labelOverride?.trim() || a.label,
+        sub: meta?.subOverride !== undefined ? meta.subOverride : a.sub,
+        w: widthOverride && widthOverride >= 40 ? widthOverride : a.w,
+        h: heightOverride && heightOverride >= 28 ? heightOverride : a.h,
+      };
+      return p ? { ...next, x: p.x, y: p.y } : next;
     });
-  }, [positions, customAtoms]);
+  }, [positions, customAtoms, atomMeta]);
 
   // Yarı-mamül expand state — birden fazla yarı-mamül aynı anda açık olabilir
   // (kategori grup pattern'inin aynısı: Set<string> içinde subassembly atom id'leri)
@@ -4957,6 +4982,11 @@ function CustomersSceneRenderer({
             atom={a}
             onMove={(xy) => onMove(a.id, xy)}
             onTap={onTap}
+            onDoubleClick={() => {
+              setSelectedIds(new Set([a.id]));
+              setPopupAtomId(null);
+              setEditingAtomId(a.id);
+            }}
             onMultiSelect={() => toggleSelect(a.id)}
             selected={selectedIds.has(a.id)}
             groupOpen={groupOpen}
@@ -5003,6 +5033,28 @@ function CustomersSceneRenderer({
           onClose={() => setPopupAtomId(null)}
           onJumpToAtom={(id) => { setPopupAtomId(id); }}
           viewport={viewport}
+        />
+      )}
+
+      {editingAtomId && atomById[editingAtomId] && !hiddenIds.has(editingAtomId) && (
+        <AtomEditPopover
+          atom={atomById[editingAtomId]}
+          meta={atomMeta[editingAtomId] ?? {}}
+          viewport={viewport}
+          onClose={() => setEditingAtomId(null)}
+          onSave={(patch) => {
+            setAtomMetaField(editingAtomId, patch);
+            setEditingAtomId(null);
+          }}
+          onReset={() => {
+            setAtomMetaField(editingAtomId, {
+              labelOverride: undefined,
+              subOverride: undefined,
+              widthOverride: undefined,
+              heightOverride: undefined,
+            });
+            setEditingAtomId(null);
+          }}
         />
       )}
 
@@ -5873,6 +5925,110 @@ const dockButtonStyle: React.CSSProperties = {
    SCENE POPUP — atom kind'ına göre drill-down içerik
    Atom dünya konumundan ekran konumuna projeksiyon, sabit boyut.
    ──────────────────────────────────────────────────────────────────── */
+function AtomEditPopover({
+  atom, meta, viewport, onClose, onSave, onReset,
+}: {
+  atom: SceneAtom;
+  meta: AtomMeta;
+  viewport: { vx: number; vy: number; scale: number };
+  onClose: () => void;
+  onSave: (patch: AtomMeta) => void;
+  onReset: () => void;
+}) {
+  const [label, setLabel] = useState(meta.labelOverride ?? atom.label);
+  const [sub, setSub] = useState(meta.subOverride ?? atom.sub ?? "");
+  const [width, setWidth] = useState(meta.widthOverride ?? String(Math.round(atom.w)));
+  const [height, setHeight] = useState(meta.heightOverride ?? String(Math.round(atom.h)));
+  const POPUP_W = 320;
+  const atomScreenRight = (atom.x + atom.w) * viewport.scale + viewport.vx;
+  const atomScreenTop = atom.y * viewport.scale + viewport.vy;
+  const willOverflowRight = (typeof window !== "undefined")
+    ? atomScreenRight + POPUP_W + 24 > window.innerWidth
+    : false;
+  const left = willOverflowRight
+    ? atom.x * viewport.scale + viewport.vx - POPUP_W - 12
+    : atomScreenRight + 12;
+  const top = Math.max(12, atomScreenTop);
+  const field: React.CSSProperties = {
+    width: "100%",
+    boxSizing: "border-box",
+    background: "rgba(255,255,255,0.06)",
+    color: C.cardInk,
+    border: `1px solid ${C.panelEdge}`,
+    borderRadius: 8,
+    padding: "9px 10px",
+    fontFamily: mono,
+    fontSize: 13,
+    outline: "none",
+  };
+  const buttonBase: React.CSSProperties = {
+    borderRadius: 8,
+    padding: "8px 12px",
+    fontFamily: mono,
+    fontSize: 12,
+    cursor: "pointer",
+  };
+  return (
+    <div
+      style={{
+        position: "absolute",
+        left, top,
+        width: POPUP_W,
+        background: C.cardBg,
+        color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${C.accent}`,
+        borderRadius: 12,
+        boxShadow: "0 18px 40px rgba(0,0,0,0.55)",
+        fontFamily: mono,
+        zIndex: 35,
+        padding: 12,
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 10 }}>
+        <div>
+          <div style={{ fontSize: 9, color: C.accent, letterSpacing: 1.8, fontWeight: 800 }}>KUTU DÜZENLE</div>
+          <div style={{ fontSize: 12, color: C.cardSub, marginTop: 2 }}>{atom.kind}</div>
+        </div>
+        <button onClick={onClose} style={{ ...buttonBase, padding: "4px 8px", background: "rgba(255,255,255,0.06)", border: `1px solid ${C.panelEdge}`, color: C.cardInk }}>×</button>
+      </div>
+      <label style={lbl}>ETİKET</label>
+      <input value={label} onChange={e => setLabel(e.target.value)} style={{ ...field, marginTop: 5, marginBottom: 10 }} />
+      <label style={lbl}>DETAY SATIRI</label>
+      <textarea value={sub} onChange={e => setSub(e.target.value)} rows={3} style={{ ...field, resize: "vertical", marginTop: 5, marginBottom: 10 }} />
+      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+        <div>
+          <label style={lbl}>GENİŞLİK</label>
+          <input type="number" min={40} value={width} onChange={e => setWidth(e.target.value)} style={{ ...field, marginTop: 5 }} />
+        </div>
+        <div>
+          <label style={lbl}>YÜKSEKLİK</label>
+          <input type="number" min={28} value={height} onChange={e => setHeight(e.target.value)} style={{ ...field, marginTop: 5 }} />
+        </div>
+      </div>
+      <div style={{ display: "flex", justifyContent: "space-between", gap: 8, marginTop: 12 }}>
+        <button onClick={onReset} style={{ ...buttonBase, background: "transparent", border: `1px solid ${C.panelEdge}`, color: C.cardSub }}>sıfırla</button>
+        <div style={{ display: "flex", gap: 8 }}>
+          <button onClick={onClose} style={{ ...buttonBase, background: "transparent", border: `1px solid ${C.panelEdge}`, color: C.cardSub }}>vazgeç</button>
+          <button
+            onClick={() => onSave({
+              labelOverride: label.trim() || undefined,
+              subOverride: sub,
+              widthOverride: width.trim() || undefined,
+              heightOverride: height.trim() || undefined,
+            })}
+            style={{ ...buttonBase, background: C.accent, border: "none", color: "#ffffff", fontWeight: 800 }}
+          >
+            uygula
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function ScenePopup({
   atom, allAtoms, onClose, onJumpToAtom, viewport,
 }: {
@@ -6157,11 +6313,12 @@ function ScenePopupContent({
 }
 
 function SceneAtomNode({
-  atom, onMove, onTap, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, meta, capacity, capacityLoading, flaskItems, reactionResult,
+  atom, onMove, onTap, onDoubleClick, onMultiSelect, selected, groupOpen, getMouseInWorld, viewport, shapeOverride, onContextMenu, dimmed, meta, capacity, capacityLoading, flaskItems, reactionResult,
 }: {
   atom: SceneAtom;
   onMove: (xy: XY) => void;
   onTap?: () => void;
+  onDoubleClick?: () => void;
   onMultiSelect?: () => void;
   selected?: boolean;
   groupOpen?: boolean;
@@ -6196,6 +6353,7 @@ function SceneAtomNode({
       height={atom.h}
       onDrag={onMove}
       onTap={onTap}
+      onDoubleClick={onDoubleClick}
       onMultiSelect={onMultiSelect}
       onContextMenu={onContextMenu}
       getMouseInWorld={getMouseInWorld}
@@ -6237,7 +6395,7 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
   });
 
   const labelLine = (text: string, color: string = C.cardSub): React.ReactNode => (
-    <div style={{ fontSize: 9, color, letterSpacing: 1.6, fontWeight: 600 }}>{text}</div>
+    <div style={{ fontSize: 10.5, color, letterSpacing: 1.25, fontWeight: 800, lineHeight: 1.15 }}>{text}</div>
   );
   const qtyBadge = meta?.quantity ? (
     <div style={{
@@ -6350,15 +6508,15 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
-        borderRadius: 12, padding: "10px 12px",
+        borderRadius: 12, padding: "11px 13px",
         boxShadow: "0 6px 22px rgba(0,0,0,0.32)",
         border: `1px solid ${C.panelEdge}`,
         borderLeft: `3px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
         fontFamily: mono,
       }}>
         {labelLine("MAMUL", accent ?? C.cardSub)}
-        <div style={{ fontSize: 14, fontWeight: 700, display: "flex", alignItems: "center", gap: 6 }}>
+        <div style={{ fontSize: 17, fontWeight: 850, display: "flex", alignItems: "center", gap: 6, lineHeight: 1.1 }}>
           {showChevron && (
             <span style={{ fontSize: 10, color: stripe, opacity: 0.85 }}>
               {groupOpen ? "▾" : "▸"}
@@ -6379,7 +6537,7 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
             maxProd === 0 ? "üretilemez · darboğaz" :
             `${fmtTR(maxProd)} adet üretilebilir`;
           return (
-            <div style={{ fontSize: 10, color: capColor, fontWeight: 600, lineHeight: 1.1, letterSpacing: 0.2, marginTop: 1 }}>
+            <div style={{ fontSize: 12, color: capColor, fontWeight: 800, lineHeight: 1.2, letterSpacing: 0.1, marginTop: 1 }}>
               {capLine}
             </div>
           );
@@ -6408,22 +6566,22 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
-        borderRadius: 10, padding: "5px 9px",
+        borderRadius: 10, padding: "7px 10px",
         boxShadow: "0 4px 14px rgba(0,0,0,0.3)",
         border: `1px solid ${C.panelEdge}`,
         borderLeft: `3px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 1,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 2,
         fontFamily: mono,
       }}>
         <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-          <div style={{ fontSize: 8, letterSpacing: 1.4, color: stripe, fontWeight: 700 }}>
+          <div style={{ fontSize: 9.5, letterSpacing: 1.1, color: stripe, fontWeight: 800 }}>
             {isCritical ? "KRİTİK" : "BİLEŞEN"}
           </div>
           <div style={{ marginLeft: "auto" }}>{qtyBadge}</div>
-          <div style={{ fontSize: 11, fontWeight: 700 }}>{atom.label}</div>
+          <div style={{ fontSize: 13, fontWeight: 850, lineHeight: 1.05 }}>{atom.label}</div>
         </div>
         {atom.sub && (
-          <div style={{ fontSize: 9, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+          <div style={{ fontSize: 10.5, color: C.cardSub, lineHeight: 1.25, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
             {atom.sub}
           </div>
         )}
@@ -6564,27 +6722,27 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
-        borderRadius: 10, padding: "8px 11px",
+        borderRadius: 10, padding: "11px 13px",
         border: `1px solid ${C.panelEdge}`,
         borderLeft: `4px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 3,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
         fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.36)",
       }}>
         {labelLine(labelKind, stripe)}
-        <div style={{ fontSize: 13, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+        <div style={{ fontSize: 16, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.08 }}>
           {atom.label}
         </div>
         {detailLines.map((line, idx) => (
           <div
             key={`${line}-${idx}`}
             style={{
-              fontSize: idx === 0 ? 10 : 9,
+              fontSize: idx === 0 ? 12 : 11,
               color: idx === 0 ? C.cardInk : C.cardSub,
-              fontWeight: idx === 0 ? 700 : 600,
+              fontWeight: idx === 0 ? 850 : 700,
               whiteSpace: "nowrap",
               overflow: "hidden",
               textOverflow: "ellipsis",
-              lineHeight: 1.15,
+              lineHeight: 1.2,
             }}
           >
             {line}
@@ -7368,6 +7526,8 @@ export default function StrategyCanvasPage() {
       const merged: AtomMeta = { ...cur, ...patch };
       // Tüm alanlar boşsa kaydı sil
       const isEmpty = !merged.orderNumber && !merged.deadline && !merged.quantity
+        && !merged.labelOverride && merged.subOverride === undefined
+        && !merged.widthOverride && !merged.heightOverride
         && !merged.deadlinePillId && !merged.productionDays && !merged.productionPillId
         && !merged.productionLineId && !merged.orderId && !merged.flaskItemId
         && !merged.customerId && !merged.categoryId && !merged.productId
