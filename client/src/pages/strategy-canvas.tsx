@@ -4193,12 +4193,17 @@ function CustomersSceneRenderer({
       const meta = atomMeta[a.id];
       const widthOverride = parseTRNumber(meta?.widthOverride);
       const heightOverride = parseTRNumber(meta?.heightOverride);
+      const minReadableW = a.kind === "supply-bracket" ? 340 : a.w;
+      const minReadableH =
+        a.kind === "supply-bracket" ? 118 :
+        a.kind === "product" ? 92 :
+        a.h;
       const next: SceneAtom = {
         ...a,
         label: meta?.labelOverride?.trim() || a.label,
         sub: meta?.subOverride !== undefined ? meta.subOverride : a.sub,
-        w: widthOverride && widthOverride >= 40 ? widthOverride : a.w,
-        h: heightOverride && heightOverride >= 28 ? heightOverride : a.h,
+        w: Math.max(minReadableW, widthOverride && widthOverride >= 40 ? widthOverride : a.w),
+        h: Math.max(minReadableH, heightOverride && heightOverride >= 28 ? heightOverride : a.h),
       };
       return p ? { ...next, x: p.x, y: p.y } : next;
     });
@@ -6712,7 +6717,7 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
 
   if (atom.kind === "supply-bracket") {
     const stripe = atom.highlight === "red" ? C.shortfall : (accent ?? C.info);
-    const detailLines = atom.sub ? atom.sub.split("·").map(s => s.trim()).filter(Boolean).slice(0, 4) : [];
+    const detailLines = atom.sub ? atom.sub.split("·").map(s => s.trim()).filter(Boolean).slice(0, 2) : [];
     const labelKind = atom.label.includes("Satınalma")
       ? "SATINALMA"
       : atom.label === "Tedarik hattı"
@@ -6725,18 +6730,19 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fla
         borderRadius: 10, padding: "11px 13px",
         border: `1px solid ${C.panelEdge}`,
         borderLeft: `4px solid ${stripe}`,
-        display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
+        display: "flex", flexDirection: "column", justifyContent: "center", gap: 6,
         fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.36)",
+        overflow: "hidden",
       }}>
         {labelLine(labelKind, stripe)}
-        <div style={{ fontSize: 16, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.08 }}>
+        <div style={{ fontSize: 15, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", lineHeight: 1.12 }}>
           {atom.label}
         </div>
         {detailLines.map((line, idx) => (
           <div
             key={`${line}-${idx}`}
             style={{
-              fontSize: idx === 0 ? 12 : 11,
+              fontSize: idx === 0 ? 11.5 : 10.5,
               color: idx === 0 ? C.cardInk : C.cardSub,
               fontWeight: idx === 0 ? 850 : 700,
               whiteSpace: "nowrap",
