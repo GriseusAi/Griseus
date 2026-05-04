@@ -2712,21 +2712,25 @@ function buildSupplierSub(product: string, quantity: string, deadline: string, l
   return `${product || "ürün ?"} · PO x${quantity || "?"} · ${leadDays || "?"}g · ETA ${eta} · hatta giriş ${ready}`;
 }
 
-function productionCapacityStatus(atom: SceneAtom, meta?: AtomMeta, capacity?: CapacityResp, quantityOverride?: string) {
+function productionCapacityStatus(atom: SceneAtom, meta?: AtomMeta, capacity?: CapacityResp, finishedStock?: FinishedStockLevel, quantityOverride?: string) {
   const sku = meta?.orderNumber ?? atom.label.split(" x")[0] ?? "";
   const qty = parseTRNumber(quantityOverride ?? meta?.quantity ?? atom.label.split(" x")[1]);
   const max = capacity?.maxProducible;
+  const warehouse = Math.max(0, Number(finishedStock?.inWarehouse ?? 0));
+  const toProduce = Math.max(0, (qty ?? 0) - warehouse);
   if (!Number.isFinite(qty ?? NaN) || max === undefined) {
-    return { sku, qty: qty ?? null, max: max ?? null, over: false, shortage: 0, pct: null as number | null };
+    return { sku, qty: qty ?? null, warehouse, toProduce, max: max ?? null, over: false, shortage: 0, pct: null as number | null };
   }
-  const shortage = Math.max(0, (qty ?? 0) - max);
+  const shortage = Math.max(0, toProduce - max);
   return {
     sku,
     qty: qty ?? null,
+    warehouse,
+    toProduce,
     max,
     over: shortage > 0,
     shortage,
-    pct: Math.min(100, Math.round((max / Math.max(1, qty ?? 1)) * 100)),
+    pct: Math.min(100, Math.round((max / Math.max(1, toProduce)) * 100)),
   };
 }
 
@@ -5510,7 +5514,11 @@ function CustomersSceneRenderer({
                 ? sceneCapacityBySku[(atomMeta[a.id]?.orderNumber ?? a.label.split(" x")[0] ?? "").trim()]
                 : undefined}
             capacityLoading={a.kind === "product" || a.kind === "production-line" ? sceneCapacityLoading : undefined}
-            finishedStock={a.kind === "product" ? sceneFinishedStockBySku[a.id.replace(/^p-/, "")] : undefined}
+            finishedStock={a.kind === "product"
+              ? sceneFinishedStockBySku[a.id.replace(/^p-/, "")]
+              : a.kind === "production-line"
+                ? sceneFinishedStockBySku[(atomMeta[a.id]?.orderNumber ?? a.label.split(" x")[0] ?? "").trim()]
+                : undefined}
             flaskItems={flaskItems}
             reactionResult={reactionResult}
             onContextMenu={isCustomAtom ? (e) => {
@@ -5582,6 +5590,7 @@ function CustomersSceneRenderer({
           meta={atomMeta[selectedLineAtom.id] ?? {}}
           atomById={atomById}
           capacity={sceneCapacityBySku[(atomMeta[selectedLineAtom.id]?.orderNumber ?? selectedLineAtom.label.split(" x")[0] ?? "").trim()]}
+          finishedStock={sceneFinishedStockBySku[(atomMeta[selectedLineAtom.id]?.orderNumber ?? selectedLineAtom.label.split(" x")[0] ?? "").trim()]}
           capacityLoading={sceneCapacityLoading}
           onClose={() => setSelectedIds(new Set())}
           onUpdate={(next) => {
@@ -5782,6 +5791,7 @@ function ProductionLineInspector({
   meta,
   atomById,
   capacity,
+  finishedStock,
   capacityLoading,
   onClose,
   onUpdate,
@@ -5791,6 +5801,7 @@ function ProductionLineInspector({
   meta: AtomMeta;
   atomById: Record<string, SceneAtom>;
   capacity?: CapacityResp;
+  finishedStock?: FinishedStockLevel;
   capacityLoading?: boolean;
   onClose: () => void;
   onUpdate: (next: { sku: string; quantity: number; deadline: string }) => void;
@@ -5803,7 +5814,7 @@ function ProductionLineInspector({
   const customer = meta.customerId ? atomById[meta.customerId]?.label : null;
   const product = meta.productId ? atomById[meta.productId]?.label : null;
   const stageText = ["Üretim", "Depo", "Satış"].join(" -> ");
-  const cap = productionCapacityStatus(atom, meta, capacity, quantity);
+  const cap = productionCapacityStatus(atom, meta, capacity, finishedStock, quantity);
   const capTone = cap.over ? C.shortfall : C.ok;
 
   const save = () => {
@@ -5890,10 +5901,10 @@ function ProductionLineInspector({
           </div>
           <div style={{ marginTop: 6, fontSize: 11, color: cap.over ? C.shortfall : C.cardInk, fontWeight: 800 }}>
             {cap.over
-              ? `${fmtTR(cap.qty ?? 0)} talep, ${fmtTR(cap.shortage)} adet kapasite üstü`
+              ? `${fmtTR(cap.qty ?? 0)} talep · ${fmtTR(cap.warehouse)} depo · ${fmtTR(cap.shortage)} adet üretim kapasitesi üstü`
               : cap.max === null
                 ? "Canlı kapasite verisi bekleniyor."
-                : `${fmtTR(cap.qty ?? 0)} talep kapasite içinde`}
+                : `${fmtTR(cap.qty ?? 0)} talep · ${fmtTR(cap.warehouse)} depo · ${fmtTR(cap.toProduce)} üretilecek`}
           </div>
           <div style={{ marginTop: 7, height: 5, borderRadius: 999, background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
             <div style={{
@@ -7737,7 +7748,7 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fin
   }
 
   if (atom.kind === "production-line") {
-    const cap = productionCapacityStatus(atom, meta, capacity);
+    const cap = productionCapacityStatus(atom, meta, capacity, finishedStock);
     const stripe = cap.over ? C.shortfall : accent ?? C.warn;
     return (
       <div style={{
@@ -7755,7 +7766,9 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fin
         </div>
         <div style={{ fontSize: 10, color: cap.over ? C.shortfall : C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: cap.over ? 850 : 600 }}>
           {cap.over && cap.max !== null
-            ? `maks ${fmtTR(cap.max)} · +${fmtTR(cap.shortage)} aşım`
+            ? `depo ${fmtTR(cap.warehouse)} · üretim +${fmtTR(cap.shortage)} aşım`
+            : cap.max !== null && cap.qty !== null
+              ? `depo ${fmtTR(cap.warehouse)} · üretilecek ${fmtTR(cap.toProduce)}`
             : atom.sub ?? "seç, değiştir veya sil"}
         </div>
       </div>
