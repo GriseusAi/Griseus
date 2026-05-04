@@ -2712,6 +2712,24 @@ function buildSupplierSub(product: string, quantity: string, deadline: string, l
   return `${product || "ürün ?"} · PO x${quantity || "?"} · ${leadDays || "?"}g · ETA ${eta} · hatta giriş ${ready}`;
 }
 
+function productionCapacityStatus(atom: SceneAtom, meta?: AtomMeta, capacity?: CapacityResp, quantityOverride?: string) {
+  const sku = meta?.orderNumber ?? atom.label.split(" x")[0] ?? "";
+  const qty = parseTRNumber(quantityOverride ?? meta?.quantity ?? atom.label.split(" x")[1]);
+  const max = capacity?.maxProducible;
+  if (!Number.isFinite(qty ?? NaN) || max === undefined) {
+    return { sku, qty: qty ?? null, max: max ?? null, over: false, shortage: 0, pct: null as number | null };
+  }
+  const shortage = Math.max(0, (qty ?? 0) - max);
+  return {
+    sku,
+    qty: qty ?? null,
+    max,
+    over: shortage > 0,
+    shortage,
+    pct: Math.min(100, Math.round((max / Math.max(1, qty ?? 1)) * 100)),
+  };
+}
+
 function supplierEdgeLabel(edge: SceneEdge, from: SceneAtom, to: SceneAtom, metaById: Record<string, AtomMeta>): string | undefined {
   const fromSupplier = isSupplierSupplyAtom(from);
   const toSupplier = isSupplierSupplyAtom(to);
@@ -5462,8 +5480,12 @@ function CustomersSceneRenderer({
             shapeOverride={shapeOverrides[a.id]}
             dimmed={dimmed}
             meta={atomMeta[a.id]}
-            capacity={a.kind === "product" ? sceneCapacityBySku[a.id.replace(/^p-/, "")] : undefined}
-            capacityLoading={a.kind === "product" ? sceneCapacityLoading : undefined}
+            capacity={a.kind === "product"
+              ? sceneCapacityBySku[a.id.replace(/^p-/, "")]
+              : a.kind === "production-line"
+                ? sceneCapacityBySku[(atomMeta[a.id]?.orderNumber ?? a.label.split(" x")[0] ?? "").trim()]
+                : undefined}
+            capacityLoading={a.kind === "product" || a.kind === "production-line" ? sceneCapacityLoading : undefined}
             finishedStock={a.kind === "product" ? sceneFinishedStockBySku[a.id.replace(/^p-/, "")] : undefined}
             flaskItems={flaskItems}
             reactionResult={reactionResult}
@@ -5535,6 +5557,8 @@ function CustomersSceneRenderer({
           atom={selectedLineAtom}
           meta={atomMeta[selectedLineAtom.id] ?? {}}
           atomById={atomById}
+          capacity={sceneCapacityBySku[(atomMeta[selectedLineAtom.id]?.orderNumber ?? selectedLineAtom.label.split(" x")[0] ?? "").trim()]}
+          capacityLoading={sceneCapacityLoading}
           onClose={() => setSelectedIds(new Set())}
           onUpdate={(next) => {
             const meta = atomMeta[selectedLineAtom.id] ?? {};
@@ -5733,6 +5757,8 @@ function ProductionLineInspector({
   atom,
   meta,
   atomById,
+  capacity,
+  capacityLoading,
   onClose,
   onUpdate,
   onDelete,
@@ -5740,6 +5766,8 @@ function ProductionLineInspector({
   atom: SceneAtom;
   meta: AtomMeta;
   atomById: Record<string, SceneAtom>;
+  capacity?: CapacityResp;
+  capacityLoading?: boolean;
   onClose: () => void;
   onUpdate: (next: { sku: string; quantity: number; deadline: string }) => void;
   onDelete: () => void;
@@ -5751,6 +5779,8 @@ function ProductionLineInspector({
   const customer = meta.customerId ? atomById[meta.customerId]?.label : null;
   const product = meta.productId ? atomById[meta.productId]?.label : null;
   const stageText = ["Üretim", "Depo", "Satış"].join(" -> ");
+  const cap = productionCapacityStatus(atom, meta, capacity, quantity);
+  const capTone = cap.over ? C.shortfall : C.ok;
 
   const save = () => {
     const qty = Number(quantity);
@@ -5779,7 +5809,7 @@ function ProductionLineInspector({
         background: C.cardBg,
         color: C.cardInk,
         border: `1px solid ${C.panelEdge}`,
-        borderLeft: `3px solid ${atom.highlight === "green" ? C.ok : C.info}`,
+        borderLeft: `3px solid ${cap.over ? C.shortfall : atom.highlight === "green" ? C.ok : C.info}`,
         borderRadius: 12,
         boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
         fontFamily: mono,
@@ -5791,7 +5821,7 @@ function ProductionLineInspector({
       <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
         <div>
           <div style={{ fontSize: 9, letterSpacing: 1.8, color: atom.highlight === "green" ? C.ok : C.info, fontWeight: 800 }}>
-            ÜRETİM HATTI
+            {cap.over ? "KAPASİTE AŞIMI" : "ÜRETİM HATTI"}
           </div>
           <div style={{ fontSize: 15, fontWeight: 800, marginTop: 3 }}>{sku}</div>
         </div>
@@ -5819,6 +5849,36 @@ function ProductionLineInspector({
           <InfoCell label="Mamul" value={product ?? sku} />
         </div>
         <InfoCell label="Akış" value={stageText} />
+        <div style={{
+          border: `1px solid ${cap.over ? `${C.shortfall}88` : C.panelEdge}`,
+          borderLeft: `3px solid ${capTone}`,
+          borderRadius: 9,
+          background: cap.over ? C.shortfallSoft : "rgba(16,185,129,0.10)",
+          padding: "9px 10px",
+        }}>
+          <div style={{ display: "flex", alignItems: "baseline", gap: 8 }}>
+            <span style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.3, fontWeight: 850 }}>
+              KAPASİTE
+            </span>
+            <span style={{ marginLeft: "auto", fontSize: 11, color: capTone, fontWeight: 900 }}>
+              {capacityLoading && cap.max === null ? "hesaplanıyor" : cap.max === null ? "bilinmiyor" : `maks ${fmtTR(cap.max)}`}
+            </span>
+          </div>
+          <div style={{ marginTop: 6, fontSize: 11, color: cap.over ? C.shortfall : C.cardInk, fontWeight: 800 }}>
+            {cap.over
+              ? `${fmtTR(cap.qty ?? 0)} talep, ${fmtTR(cap.shortage)} adet kapasite üstü`
+              : cap.max === null
+                ? "Canlı kapasite verisi bekleniyor."
+                : `${fmtTR(cap.qty ?? 0)} talep kapasite içinde`}
+          </div>
+          <div style={{ marginTop: 7, height: 5, borderRadius: 999, background: "rgba(255,255,255,0.10)", overflow: "hidden" }}>
+            <div style={{
+              width: `${cap.pct ?? 0}%`,
+              height: "100%",
+              background: capTone,
+            }} />
+          </div>
+        </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Adet</span>
           <input
@@ -5827,7 +5887,7 @@ function ProductionLineInspector({
             style={{
               background: C.cardBgAlt,
               color: C.cardInk,
-              border: `1px solid ${C.panelEdge}`,
+              border: `1px solid ${cap.over ? `${C.shortfall}88` : C.panelEdge}`,
               borderRadius: 8,
               padding: "9px 10px",
               fontFamily: mono,
@@ -7653,23 +7713,26 @@ function SceneAtomVisual({ atom, groupOpen, meta, capacity, capacityLoading, fin
   }
 
   if (atom.kind === "production-line") {
-    const stripe = accent ?? C.warn;
+    const cap = productionCapacityStatus(atom, meta, capacity);
+    const stripe = cap.over ? C.shortfall : accent ?? C.warn;
     return (
       <div style={{
         width: "100%", height: "100%",
         background: C.cardBg, color: C.cardInk,
         borderRadius: 10, padding: "9px 11px",
-        border: `1px solid ${C.panelEdge}`,
+        border: `1px solid ${cap.over ? `${C.shortfall}88` : C.panelEdge}`,
         borderLeft: `4px solid ${stripe}`,
         display: "flex", flexDirection: "column", justifyContent: "center", gap: 4,
         fontFamily: mono, boxShadow: "0 8px 24px rgba(0,0,0,0.38)",
       }}>
-        {labelLine("HAT", stripe)}
+        {labelLine(cap.over ? "HAT RİSK" : "HAT", stripe)}
         <div style={{ fontSize: 14, fontWeight: 800, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
           {atom.label}
         </div>
-        <div style={{ fontSize: 10, color: C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-          {atom.sub ?? "seç, değiştir veya sil"}
+        <div style={{ fontSize: 10, color: cap.over ? C.shortfall : C.cardSub, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis", fontWeight: cap.over ? 850 : 600 }}>
+          {cap.over && cap.max !== null
+            ? `maks ${fmtTR(cap.max)} · +${fmtTR(cap.shortage)} aşım`
+            : atom.sub ?? "seç, değiştir veya sil"}
         </div>
       </div>
     );
