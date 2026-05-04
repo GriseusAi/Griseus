@@ -2728,6 +2728,18 @@ function supplierEdgeLabel(edge: SceneEdge, from: SceneAtom, to: SceneAtom, meta
   return edge.label;
 }
 
+function productionEdgeLabel(edge: SceneEdge, metaById: Record<string, AtomMeta>, customEdges: CustomEdge[]): string | undefined {
+  if (!edge.customEdgeId) return undefined;
+  const customEdge = customEdges.find(e => e.id === edge.customEdgeId);
+  if (!customEdge?.groupId) return undefined;
+  const meta = metaById[customEdge.groupId];
+  if (!meta?.productionLineId && !meta?.orderId) return undefined;
+  if (meta.categoryId === edge.fromId && meta.productId === edge.toId) {
+    return `x${meta.quantity ?? "?"}`;
+  }
+  return undefined;
+}
+
 function buildSupplyTargetsFromProduct(product: SceneAtom, atomById: Record<string, SceneAtom>): SceneAtom[] {
   const sku = product.id.replace(/^p-/, "");
   const visibleBom = Object.values(atomById)
@@ -3346,6 +3358,9 @@ const COMMAND_DEFS: CommandDef[] = [
       ].filter((id): id is string => !!id && (id === deadlinePillId || !!atomById[id]));
       if (customerId && deadlinePillId) {
         addLineEdge(customerId, deadlinePillId, undefined, lineColor);
+      }
+      if (customerId && categoryId) {
+        addLineEdge(customerId, categoryId, undefined, lineColor);
       }
       if (deadlinePillId && categoryId) {
         addLineEdge(deadlinePillId, categoryId, undefined, lineColor);
@@ -5130,7 +5145,7 @@ function CustomersSceneRenderer({
     };
     const eKey = isLive ? null : makeEdgeKey(e);
     const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
-    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta);
+    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta) ?? productionEdgeLabel(e, atomMeta, customEdges);
     const edgeLabel = dynamicLabel ?? e.label;
     const hasLabelText = !!edgeLabel;
     const labelDisplay = hasLabelText ? edgeLabel! : (assignedCommand ? "▸" : "");
@@ -8534,12 +8549,38 @@ export default function StrategyCanvasPage() {
     );
     const findLineForProduct = (productId: string) => liveLines.find(line => line.meta.productId === productId);
     const hasAnyStageLine = liveLines.some(line => !!line.meta.productId);
+    const lineColor = (categoryId?: string) => categoryId === "cat-elektrikli" ? "#10b981" : "#38bdf8";
     let changed = false;
     setSceneCustomEdges(prev => {
-      const next: CustomEdge[] = [];
+      const next: CustomEdge[] = [...prev];
+      const ensureLineEdge = (lineId: string, fromId?: string, toId?: string, label?: string, color?: string) => {
+        if (!fromId || !toId) return;
+        const idx = next.findIndex(e => e.groupId === lineId && e.fromId === fromId && e.toId === toId);
+        if (idx >= 0) {
+          if (next[idx].label !== label || next[idx].color !== color) {
+            next[idx] = { ...next[idx], label, color };
+            changed = true;
+          }
+          return;
+        }
+        next.push({
+          id: `ce_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+          fromId,
+          toId,
+          label,
+          color,
+          groupId: lineId,
+        });
+        changed = true;
+      };
+      liveLines.forEach(line => {
+        ensureLineEdge(line.id, line.meta.customerId, line.meta.categoryId, undefined, lineColor(line.meta.categoryId));
+        ensureLineEdge(line.id, line.meta.categoryId, line.meta.productId, `x${line.meta.quantity ?? "?"}`, lineColor(line.meta.categoryId));
+      });
+      const cleaned: CustomEdge[] = [];
       for (const e of prev) {
         if (e.groupId) {
-          next.push(e);
+          cleaned.push(next.find(ne => ne.id === e.id) ?? e);
           continue;
         }
         if (/^x\d+$/i.test(e.label ?? "")) {
@@ -8549,7 +8590,7 @@ export default function StrategyCanvasPage() {
             continue;
           }
           const nextLabel = `x${line.meta.quantity ?? e.label?.replace(/^x/i, "") ?? ""}`;
-          next.push({ ...e, label: nextLabel, groupId: line.id });
+          cleaned.push({ ...e, label: nextLabel, groupId: line.id });
           changed = true;
           continue;
         }
@@ -8559,7 +8600,7 @@ export default function StrategyCanvasPage() {
             changed = true;
             continue;
           }
-          next.push({ ...e, groupId: line.id });
+          cleaned.push({ ...e, groupId: line.id });
           changed = true;
           continue;
         }
@@ -8569,9 +8610,20 @@ export default function StrategyCanvasPage() {
             continue;
           }
         }
-        next.push(e);
+        cleaned.push(e);
       }
-      return changed ? next : prev;
+      next
+        .filter(e => !prev.some(pe => pe.id === e.id))
+        .forEach(e => cleaned.push(e));
+      if (!changed) return prev;
+      const seen = new Set<string>();
+      return cleaned.filter(e => {
+        if (!e.groupId) return true;
+        const key = `${e.groupId}:${e.fromId}->${e.toId}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        return true;
+      });
     });
   }, [sceneCustomAtoms, sceneAtomMeta]);
 
