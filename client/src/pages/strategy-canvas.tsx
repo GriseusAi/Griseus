@@ -2783,10 +2783,11 @@ function productionLineNumbers(
   const qty = parseTRNumber(meta.quantity);
   if (!sku || qty === null) return null;
   const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
-  const toProduce = Math.max(0, qty - warehouse);
+  const fromWarehouse = Math.min(qty, warehouse);
+  const toProduce = Math.max(0, qty - fromWarehouse);
   const max = capacityBySku?.[sku]?.maxProducible;
   const over = max !== undefined && toProduce > max;
-  return { sku, qty, warehouse, toProduce, max: max ?? null, over };
+  return { sku, qty, warehouse, fromWarehouse, toProduce, max: max ?? null, over };
 }
 
 type FlowStageKey = "uretim" | "depo" | "satis";
@@ -2849,6 +2850,9 @@ function productionEdgeState(
       (edge.fromId === "stg-uretim" && meta.productId === edge.toId)
     ) {
       return { label: `x${fmtTR(numbers.toProduce)}`, color: productionColor };
+    }
+    if (meta.productId === edge.fromId && edge.toId === "stg-depo") {
+      return { label: `x${fmtTR(numbers.fromWarehouse)}`, color: "#38bdf8" };
     }
     if (edge.fromId === "stg-uretim" && edge.toId === "stg-depo") {
       return { label: `x${fmtTR(numbers.toProduce)}`, color: productionColor };
@@ -3351,6 +3355,8 @@ interface CommandDef {
         quantity: number;
         deadline: string;
       }) => { orderId: string; flaskItemId: string; note: string };
+      finishedStockBySku: Record<string, FinishedStockLevel>;
+      capacityBySku: Record<string, CapacityResp>;
       setManualFocus: (ids: string[]) => void;
       askAgent: (prefill?: string) => boolean;
       openDiagram: () => boolean;
@@ -3491,6 +3497,13 @@ const COMMAND_DEFS: CommandDef[] = [
         const edgeId = h.addEdge(from, to, label, color, productionLineId);
         managedEdgeIds.push(edgeId);
       };
+      const resolvedSku = devMeta?.code ?? sku;
+      const warehouseQty = Math.max(0, Number(h.finishedStockBySku[resolvedSku]?.inWarehouse ?? 0));
+      const fromWarehouse = Math.min(qty, warehouseQty);
+      const toProduce = Math.max(0, qty - fromWarehouse);
+      const maxProducible = h.capacityBySku[resolvedSku]?.maxProducible;
+      const overCapacity = maxProducible !== undefined && toProduce > maxProducible;
+      const productionColor = overCapacity ? "#ef4444" : "#10b981";
       let deadlineNote = "";
       let deadlinePillId = "";
       if (positionParent && edgeTarget) {
@@ -3520,11 +3533,16 @@ const COMMAND_DEFS: CommandDef[] = [
         addLineEdge(categoryId, productId, `x${qty}`, lineColor);
       }
       if (productId) {
-        addLineEdge(productId, "stg-uretim", undefined, "#f59e0b");
-        addLineEdge("stg-uretim", "stg-depo", undefined, "rgba(255,255,255,0.82)");
-        addLineEdge("stg-depo", "stg-satis", undefined, "rgba(255,255,255,0.82)");
-        addLineEdge("stg-satis", "fact", undefined, "rgba(255,255,255,0.82)");
-        addLineEdge(productId, "flask", undefined, "rgba(245,158,11,0.55)");
+        if (toProduce > 0) {
+          addLineEdge(productId, "stg-uretim", `x${fmtTR(toProduce)}`, productionColor);
+          addLineEdge("stg-uretim", "stg-depo", `x${fmtTR(toProduce)}`, productionColor);
+        }
+        if (fromWarehouse > 0) {
+          addLineEdge(productId, "stg-depo", `x${fmtTR(fromWarehouse)}`, "#38bdf8");
+        }
+        addLineEdge("stg-depo", "stg-satis", `x${fmtTR(qty)}`, "rgba(255,255,255,0.82)");
+        addLineEdge("stg-satis", "fact", `x${fmtTR(qty)}`, "rgba(255,255,255,0.82)");
+        addLineEdge(productId, "flask", `x${fmtTR(qty)}`, "rgba(245,158,11,0.55)");
       }
       const production = h.createProductionLine({
         productionLineId,
@@ -3533,7 +3551,7 @@ const COMMAND_DEFS: CommandDef[] = [
         productId,
         deadlinePillId: deadlinePillId || null,
         managedEdgeIds,
-        deviceType: devMeta?.code ?? sku,
+        deviceType: resolvedSku,
         quantity: qty,
         deadline,
       });
@@ -3556,7 +3574,7 @@ const COMMAND_DEFS: CommandDef[] = [
         productionLineId,
         orderId: production.orderId,
         flaskItemId: production.flaskItemId,
-        orderNumber: devMeta?.code ?? sku,
+        orderNumber: resolvedSku,
         quantity: String(qty),
         deadline,
         deadlinePillId: deadlinePillId || undefined,
@@ -3567,7 +3585,8 @@ const COMMAND_DEFS: CommandDef[] = [
       });
       // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
       h.setManualFocus(Array.from(new Set([...ids, productionLineId, ...lineIds])));
-      return `Üretim hattı: ${devMeta?.code ?? sku} · ${qty} adet · ${lineIds.length} atom · ${production.note}${deadlineNote} (ESC ile temizle)`;
+      const allocationNote = `üretim ${fmtTR(toProduce)} · depo ${fmtTR(fromWarehouse)} · satış ${fmtTR(qty)}`;
+      return `Üretim hattı: ${resolvedSku} · ${fmtTR(qty)} adet · ${allocationNote} · ${lineIds.length} atom · ${production.note}${deadlineNote} (ESC ile temizle)`;
     },
   },
   {
@@ -3858,11 +3877,13 @@ function EdgeCommandPopover({
 }
 
 function CommandBar({
-  selectedIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
+  selectedIds, atomById, atomMeta, finishedStockBySku, capacityBySku, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram, edgePalette,
 }: {
   selectedIds: Set<string>;
   atomById: Record<string, SceneAtom>;
   atomMeta: Record<string, AtomMeta>;
+  finishedStockBySku: Record<string, FinishedStockLevel>;
+  capacityBySku: Record<string, CapacityResp>;
   onApplyMeta: (id: string, patch: AtomMeta) => void;
   onClearMeta: (ids: string[]) => void;
   onAddAtom: (atom: SceneAtom) => void;
@@ -3962,6 +3983,8 @@ function CommandBar({
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
           createProductionLine: onCreateProductionLine,
+          finishedStockBySku,
+          capacityBySku,
           setManualFocus: onSetManualFocus,
           askAgent: onAskAgent,
           openDiagram: onOpenDiagram,
@@ -3974,7 +3997,7 @@ function CommandBar({
     setPending({ defName: def.name, collected: {}, stepIdx: 0 });
     setInput("");
     setResult(null);
-  }, [validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, atomById, atomMeta, finishedStockBySku, capacityBySku, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   // Pending durumda step submit
   const submitStep = useCallback((value: string) => {
@@ -4006,6 +4029,8 @@ function CommandBar({
           ensureDeadlinePill: onEnsureDeadlinePill,
           ensureProductionPill: onEnsureProductionPill,
           createProductionLine: onCreateProductionLine,
+          finishedStockBySku,
+          capacityBySku,
           setManualFocus: onSetManualFocus,
           askAgent: onAskAgent,
           openDiagram: onOpenDiagram,
@@ -4020,7 +4045,7 @@ function CommandBar({
     setPending({ ...pending, collected, stepIdx: nextIdx });
     setInput("");
     setResult(null);
-  }, [pending, pendingDef, validIds, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [pending, pendingDef, validIds, atomById, atomMeta, finishedStockBySku, capacityBySku, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const runIdleCommand = useCallback((raw: string) => {
     const text = raw.trim();
@@ -4074,6 +4099,8 @@ function CommandBar({
             ensureDeadlinePill: onEnsureDeadlinePill,
             ensureProductionPill: onEnsureProductionPill,
             createProductionLine: onCreateProductionLine,
+            finishedStockBySku,
+            capacityBySku,
             setManualFocus: onSetManualFocus,
             askAgent: onAskAgent,
             openDiagram: onOpenDiagram,
@@ -4090,7 +4117,7 @@ function CommandBar({
     }
 
     startCommand(cmd);
-  }, [validIds, startCommand, atomById, atomMeta, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
+  }, [validIds, startCommand, atomById, atomMeta, finishedStockBySku, capacityBySku, onApplyMeta, onClearMeta, onAddAtom, onAddEdge, onEnsureDeadlinePill, onEnsureProductionPill, onCreateProductionLine, onSetManualFocus, onAskAgent, onOpenDiagram]);
 
   const onKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     if (e.key === "Enter") {
@@ -5816,6 +5843,8 @@ function CustomersSceneRenderer({
         selectedIds={selectedIds}
         atomById={atomById}
         atomMeta={atomMeta}
+        finishedStockBySku={sceneFinishedStockBySku}
+        capacityBySku={sceneCapacityBySku}
         edgePalette={edgePalette}
         onApplyMeta={(id, patch) => setAtomMetaField(id, patch)}
         onClearMeta={(ids) => {
