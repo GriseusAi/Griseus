@@ -38,6 +38,8 @@ Do not move production routing or split services until a staging environment exi
 4. Express serves API routes, WebSocket endpoints, and frontend static assets.
 5. Frontend API calls use the same origin, so `griseus.io/api/...` reaches the Railway backend.
 
+The `staging` GitHub branch exists for a separate Railway staging environment. Production should remain on `main`.
+
 ## Data Safety
 
 - Production DB backups live locally under ignored `backups/`.

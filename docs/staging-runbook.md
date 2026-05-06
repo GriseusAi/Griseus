@@ -22,6 +22,7 @@ Staging may reuse non-data API keys such as Anthropic, Voyage, and Resend if cos
 - Production runtime: Railway
 - Production database: Railway Postgres
 - Production branch: `main`
+- Staging branch: `staging`
 - Production smoke command:
 
 ```bash
@@ -32,6 +33,8 @@ npm run smoke:url -- https://griseus.io
 
 1. Keep production unchanged.
 2. Create a Railway environment named `staging`, or create a separate Railway service/project named `Griseus Staging`.
+   - Connect it to the GitHub branch `staging`.
+   - Keep the production Railway service connected to `main`.
 3. Add a new Railway Postgres service for staging.
 4. Restore a copy of the latest local backup into the staging Postgres database.
 5. Set staging service variables:
