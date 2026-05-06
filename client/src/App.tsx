@@ -4,7 +4,6 @@ import { Switch, Route, Redirect } from "wouter";
 import { queryClient } from "./lib/queryClient";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { Toaster } from "@/components/ui/toaster";
-import AgentPanel from "@/components/AgentPanel";
 import { SKUProvider } from "@/lib/sku-context";
 import { ThemeProvider } from "@/lib/theme-context";
 import { SelectionProvider } from "@/lib/selection-context";
@@ -27,30 +26,33 @@ import CommandSafetyLayer from "@/components/command-safety-layer";
    ═══════════════════════════════════════════════════════════ */
 
 import Home from "@/pages/home";
-import StokDurum from "@/pages/stok-durum";
-import UrunIstihbarat from "@/pages/urun-istihbarat";
 import LoginPage from "@/pages/login";
 import NotFound from "@/pages/not-found";
-import AdminPage from "@/pages/admin/index";
-import PalantirPage from "@/pages/palantir";
-import LineAgePage from "@/pages/ontology"; // lineage force-graph sayfası
-import BhOntologyPage from "@/pages/bh-ontology";
-import OntologySimulatePage from "@/pages/ontology-simulate";
 import SceneErrorBoundary from "@/components/SceneErrorBoundary";
-import VeriYukle from "@/pages/veri-yukle";
-import PipelineRunsPage from "@/pages/pipeline-runs";
-import TwinHealthPage from "@/pages/twin-health";
-import DecisionLoopPage from "@/pages/decision-loop";
-import OperationsPage from "@/pages/operations";
-import SddiPage from "@/pages/sddi";
-import WorkshopPage from "@/pages/workshop";
 
+const AgentPanel = lazy(() => import("@/components/AgentPanel"));
+const StokDurum = lazy(() => import("@/pages/stok-durum"));
+const UrunIstihbarat = lazy(() => import("@/pages/urun-istihbarat"));
+const AdminPage = lazy(() => import("@/pages/admin/index"));
+const PalantirPage = lazy(() => import("@/pages/palantir"));
+const LineAgePage = lazy(() => import("@/pages/ontology"));
+const BhOntologyPage = lazy(() => import("@/pages/bh-ontology"));
+const OntologySimulatePage = lazy(() => import("@/pages/ontology-simulate"));
+const VeriYukle = lazy(() => import("@/pages/veri-yukle"));
+const PipelineRunsPage = lazy(() => import("@/pages/pipeline-runs"));
+const TwinHealthPage = lazy(() => import("@/pages/twin-health"));
+const DecisionLoopPage = lazy(() => import("@/pages/decision-loop"));
+const OperationsPage = lazy(() => import("@/pages/operations"));
+const SddiPage = lazy(() => import("@/pages/sddi"));
+const WorkshopPage = lazy(() => import("@/pages/workshop"));
 const StrategyCanvasPage = lazy(() => import("@/pages/strategy-canvas"));
 const BhOntologyRoute = () => <BhOntologyPage />;
 
+const PageFallback = () => <div style={{ minHeight: "100vh", background: "#f8fafc" }} />;
+
 const StrategyCanvasGuarded = () => (
   <SceneErrorBoundary>
-    <Suspense fallback={<div style={{ minHeight: "100vh", background: "#f8fafc" }} />}>
+    <Suspense fallback={<PageFallback />}>
       <StrategyCanvasPage />
     </Suspense>
   </SceneErrorBoundary>
@@ -80,7 +82,11 @@ export function useGlobalAlerts() {
 
 function App() {
   const [agentOpen, setAgentOpen] = useState(false);
-  const toggleAgent = useCallback(() => setAgentOpen(prev => !prev), []);
+  const [agentLoaded, setAgentLoaded] = useState(false);
+  const toggleAgent = useCallback(() => {
+    setAgentLoaded(true);
+    setAgentOpen(prev => !prev);
+  }, []);
   const [prefillInput, setPrefillInput] = useState("");
 
   const [alerts, setAlerts] = useState<ProactiveAlertData[]>([]);
@@ -102,30 +108,32 @@ function App() {
       <SelectionProvider>
       <AlertContext.Provider value={{ alerts, pushAlerts }}>
       <AgentPanelContext.Provider value={{ agentOpen, toggleAgent, prefillInput, setPrefillInput }}>
-        <Switch>
-          <Route path="/" component={Home} />
-          <Route path="/home" component={Home} />
-          <Route path="/stok/durum" component={StokDurum} />
-          <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
-          <Route path="/sihir" component={PalantirPage} />
-          <Route path="/lineage" component={LineAgePage} />
-          <Route path="/ontology" component={StrategyCanvasGuarded} />
-          <Route path="/ontology/bh" component={BhOntologyRoute} />
-          <Route path="/ontology/simulate" component={OntologySimulatePage} />
-          <Route path="/ontology/senaryo"><Redirect to="/ontology" /></Route>
-          <Route path="/ontology/strategy"><Redirect to="/ontology" /></Route>
-          <Route path="/pipeline" component={PipelineRunsPage} />
-          <Route path="/twin-health" component={TwinHealthPage} />
-          <Route path="/loop" component={DecisionLoopPage} />
-          <Route path="/operations" component={OperationsPage} />
-          <Route path="/sddi" component={SddiPage} />
-          <Route path="/workshop" component={WorkshopPage} />
-          <Route path="/veri-yukle" component={VeriYukle} />
-          <Route path="/login" component={LoginPage} />
-          <Route path="/admin" component={AdminPage} />
-          <Route component={NotFound} />
-        </Switch>
-        <AgentPanel open={agentOpen} onClose={() => setAgentOpen(false)} />
+        <Suspense fallback={<PageFallback />}>
+          <Switch>
+            <Route path="/" component={Home} />
+            <Route path="/home" component={Home} />
+            <Route path="/stok/durum" component={StokDurum} />
+            <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
+            <Route path="/sihir" component={PalantirPage} />
+            <Route path="/lineage" component={LineAgePage} />
+            <Route path="/ontology" component={StrategyCanvasGuarded} />
+            <Route path="/ontology/bh" component={BhOntologyRoute} />
+            <Route path="/ontology/simulate" component={OntologySimulatePage} />
+            <Route path="/ontology/senaryo"><Redirect to="/ontology" /></Route>
+            <Route path="/ontology/strategy"><Redirect to="/ontology" /></Route>
+            <Route path="/pipeline" component={PipelineRunsPage} />
+            <Route path="/twin-health" component={TwinHealthPage} />
+            <Route path="/loop" component={DecisionLoopPage} />
+            <Route path="/operations" component={OperationsPage} />
+            <Route path="/sddi" component={SddiPage} />
+            <Route path="/workshop" component={WorkshopPage} />
+            <Route path="/veri-yukle" component={VeriYukle} />
+            <Route path="/login" component={LoginPage} />
+            <Route path="/admin" component={AdminPage} />
+            <Route component={NotFound} />
+          </Switch>
+          {agentLoaded && <AgentPanel open={agentOpen} onClose={() => setAgentOpen(false)} />}
+        </Suspense>
         <SelectionPanel />
         <CommandSafetyLayer />
         <Toaster />
