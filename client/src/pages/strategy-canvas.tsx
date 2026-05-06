@@ -5373,6 +5373,44 @@ function CustomersSceneRenderer({
     return () => window.clearTimeout(t);
   }, [procurementToast]);
 
+  const selectedProductionLinesForChart = useMemo(() => {
+    return Array.from(selectedIds)
+      .map(id => {
+        const atom = atomById[id];
+        if (!atom || atom.kind !== "production-line") return null;
+        const meta = atomMeta[id] ?? {};
+        const sku = (meta.orderNumber ?? atom.label.split(" x")[0] ?? "").trim();
+        const quantity = parseTRNumber(meta.quantity) ?? Number(atom.label.match(/x(\d+)/)?.[1] ?? 0);
+        if (!sku || !quantity) return null;
+        const warehouse = Math.max(0, Number(sceneFinishedStockBySku[sku]?.inWarehouse ?? 0));
+        const fromWarehouse = Math.min(quantity, warehouse);
+        const toProduce = Math.max(0, quantity - fromWarehouse);
+        const maxProducible = sceneCapacityBySku[sku]?.maxProducible ?? null;
+        return {
+          id,
+          customer: meta.customerId ? (atomById[meta.customerId]?.label ?? meta.customerId) : "Müşteri",
+          sku,
+          quantity,
+          deadline: meta.deadline ?? "",
+          fromWarehouse,
+          toProduce,
+          maxProducible,
+          overCapacity: maxProducible !== null && toProduce > maxProducible,
+        };
+      })
+      .filter((line): line is {
+        id: string;
+        customer: string;
+        sku: string;
+        quantity: number;
+        deadline: string;
+        fromWarehouse: number;
+        toProduce: number;
+        maxProducible: number | null;
+        overCapacity: boolean;
+      } => !!line);
+  }, [selectedIds, atomById, atomMeta, sceneFinishedStockBySku, sceneCapacityBySku]);
+
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
     const b = atomById[e.toId];
@@ -6066,6 +6104,7 @@ function CustomersSceneRenderer({
       {chartPromptOpen && (
         <ChartPromptModal
           items={globalSel.selected}
+          context={{ productionLines: selectedProductionLinesForChart }}
           onClose={() => setChartPromptOpen(false)}
         />
       )}

@@ -27,7 +27,7 @@ const mono =
   "'Anthropic Sans', 'Söhne', ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Helvetica, Arial, sans-serif";
 
 interface ChartSpec {
-  type: "line" | "bar" | "area" | "pie";
+  type: "line" | "bar" | "area" | "pie" | "timeline";
   title: string;
   xKey?: string;
   yLabel?: string;
@@ -45,6 +45,18 @@ interface ChartResponse {
   plan?: PlanSpec;
 }
 
+type ProductionLinePlan = {
+  id: string;
+  customer: string;
+  sku: string;
+  quantity: number;
+  deadline: string;
+  fromWarehouse: number;
+  toProduce: number;
+  maxProducible: number | null;
+  overCapacity: boolean;
+};
+
 const QUICK_PROMPTS = [
   "Önümüzdeki 6 ay için 4 BH cihazının üretim forecast grafiği çiz",
   "Seçili bileşenlerin stok / günlük tüketim oranını bar grafik olarak göster",
@@ -53,6 +65,114 @@ const QUICK_PROMPTS = [
 ];
 
 function renderChart(spec: ChartSpec) {
+  if (spec.type === "timeline") {
+    const rows = spec.data;
+    const ticks = rows[0]?.ticks as { label: string; pct: number }[] | undefined;
+    const tasks = rows.filter(r => r.kind === "task");
+    const lanes = Array.from(new Set(tasks.map(t => String(t.lane))));
+    return (
+      <div style={{ minHeight: 360, padding: "8px 4px 2px" }}>
+        <div style={{ position: "relative", height: 28, marginLeft: 128, marginRight: 24 }}>
+          {(ticks ?? []).map((t, i) => (
+            <div
+              key={`${t.label}-${i}`}
+              style={{
+                position: "absolute",
+                left: `${t.pct}%`,
+                top: 0,
+                transform: i === 0 ? "translateX(0)" : i === (ticks?.length ?? 0) - 1 ? "translateX(-100%)" : "translateX(-50%)",
+                color: C.inkDim,
+                fontSize: 12,
+                fontWeight: 600,
+              }}
+            >
+              {t.label}
+            </div>
+          ))}
+        </div>
+        <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+          {lanes.map((lane) => {
+            const laneTasks = tasks.filter(t => String(t.lane) === lane);
+            return (
+              <div key={lane} style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: 16, alignItems: "center" }}>
+                <div style={{ color: C.ink, fontWeight: 700, fontSize: 13, lineHeight: 1.25 }}>
+                  {lane}
+                  <div style={{ color: C.inkFaint, fontWeight: 500, fontSize: 11, marginTop: 3 }}>
+                    {laneTasks[0]?.customer}
+                  </div>
+                </div>
+                <div
+                  style={{
+                    position: "relative",
+                    height: 52,
+                    borderTop: `1px dashed ${C.borderStrong}`,
+                    borderBottom: `1px dashed ${C.border}`,
+                  }}
+                >
+                  {(ticks ?? []).map((t, i) => (
+                    <div
+                      key={i}
+                      style={{
+                        position: "absolute",
+                        left: `${t.pct}%`,
+                        top: -1,
+                        bottom: -1,
+                        borderLeft: `1px dashed ${C.border}`,
+                      }}
+                    />
+                  ))}
+                  {laneTasks.map((task, i) => (
+                    <div
+                      key={`${task.label}-${i}`}
+                      title={String(task.note ?? task.label)}
+                      style={{
+                        position: "absolute",
+                        left: `${task.startPct}%`,
+                        width: `${task.widthPct}%`,
+                        minWidth: 42,
+                        top: i % 2 === 0 ? 8 : 28,
+                        height: 16,
+                        borderRadius: 999,
+                        background: task.color,
+                        boxShadow: task.risk ? `0 0 0 3px rgba(205,66,70,0.12)` : "none",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: 8,
+                          top: -22,
+                          color: task.risk ? C.err : C.ink,
+                          fontSize: 12,
+                          fontWeight: 700,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {task.label}
+                      </span>
+                      <span
+                        style={{
+                          position: "absolute",
+                          right: 4,
+                          top: 17,
+                          color: C.inkDim,
+                          fontSize: 11,
+                          whiteSpace: "nowrap",
+                        }}
+                      >
+                        {task.durationLabel}
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      </div>
+    );
+  }
+
   const xKey = spec.xKey ?? "name";
   if (spec.type === "pie") {
     return (
@@ -140,11 +260,136 @@ function renderChart(spec: ChartSpec) {
   );
 }
 
+function parseDateYmd(v: string | undefined): Date | null {
+  if (!v) return null;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function fmtDayMonth(d: Date) {
+  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" }).replace(".", "");
+}
+
+function daysBetween(a: Date, b: Date) {
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function buildProductionPlanResponse(lines: ProductionLinePlan[]): ChartResponse {
+  const today = new Date(2026, 4, 6);
+  const deadlines = lines.map(l => parseDateYmd(l.deadline)).filter((d): d is Date => !!d);
+  const latestDeadline = deadlines.length > 0
+    ? new Date(Math.max(...deadlines.map(d => d.getTime())))
+    : new Date(today.getTime() + 30 * 86400000);
+  const horizonEnd = new Date(Math.max(latestDeadline.getTime(), today.getTime() + 30 * 86400000));
+  const totalDays = Math.max(1, daysBetween(today, horizonEnd));
+  const tickMid = new Date(today.getTime() + Math.round(totalDays / 2) * 86400000);
+  const ticks = [
+    { label: fmtDayMonth(today), pct: 0 },
+    { label: fmtDayMonth(tickMid), pct: 50 },
+    { label: fmtDayMonth(horizonEnd), pct: 100 },
+  ];
+
+  const data: Record<string, any>[] = [{ kind: "ticks", ticks }];
+  const bullets: string[] = [];
+  lines.forEach((line) => {
+    const deadline = parseDateYmd(line.deadline) ?? horizonEnd;
+    const daysToDeadline = Math.max(1, daysBetween(today, deadline));
+    const capacityBase = Math.max(8, Math.floor((line.maxProducible ?? Math.max(line.toProduce, 30)) / 8));
+    const productionDays = line.toProduce > 0 ? clamp(Math.ceil(line.toProduce / capacityBase), 3, Math.max(3, daysToDeadline)) : 0;
+    const procurementDays = line.overCapacity ? clamp(Math.ceil((line.toProduce - (line.maxProducible ?? 0)) / Math.max(8, capacityBase)) + 7, 7, 18) : 0;
+    const warehouseDays = line.fromWarehouse > 0 ? 1 : 0;
+    const lane = `${line.sku} x${line.quantity}`;
+    const customer = line.customer || "Müşteri";
+    const prodStart = procurementDays;
+    const prodEnd = Math.min(daysToDeadline - 1, prodStart + productionDays);
+
+    if (procurementDays > 0) {
+      data.push({
+        kind: "task",
+        lane,
+        customer,
+        label: `tedarik açığı`,
+        startPct: 0,
+        widthPct: clamp((procurementDays / totalDays) * 100, 8, 100),
+        durationLabel: `${procurementDays} gün`,
+        color: C.err,
+        risk: true,
+        note: `${line.sku}: üretim kapasitesi ${line.toProduce - (line.maxProducible ?? 0)} adet eksik`,
+      });
+    }
+    if (productionDays > 0) {
+      data.push({
+        kind: "task",
+        lane,
+        customer,
+        label: `x${line.toProduce} üretim`,
+        startPct: clamp((prodStart / totalDays) * 100, 0, 100),
+        widthPct: clamp(((prodEnd - prodStart) / totalDays) * 100, 8, 100),
+        durationLabel: `${productionDays} gün`,
+        color: line.overCapacity ? C.warn : C.ok,
+        risk: line.overCapacity,
+      });
+    }
+    if (warehouseDays > 0) {
+      data.push({
+        kind: "task",
+        lane,
+        customer,
+        label: `x${line.fromWarehouse} depodan`,
+        startPct: clamp(((daysToDeadline - 2) / totalDays) * 100, 0, 100),
+        widthPct: clamp((warehouseDays / totalDays) * 100, 5, 100),
+        durationLabel: "hazır",
+        color: C.blue,
+      });
+    }
+    data.push({
+      kind: "task",
+      lane,
+      customer,
+      label: `teslim ${customer}`,
+      startPct: clamp((daysToDeadline / totalDays) * 100, 0, 100),
+      widthPct: 3,
+      durationLabel: fmtDayMonth(deadline),
+      color: line.overCapacity ? C.err : C.accent,
+      risk: line.overCapacity,
+    });
+
+    const status = line.toProduce === 0
+      ? "tamamı depodan karşılanır"
+      : line.overCapacity
+        ? `${line.toProduce} üretim gerekir; kapasite ${line.maxProducible ?? 0}, risk var`
+        : `${line.toProduce} üretim gerekir; mevcut kapasite yeterli`;
+    bullets.push(`${customer} · ${line.sku} x${line.quantity}: ${status}. Teslim ${line.deadline}.`);
+  });
+
+  return {
+    chartSpec: {
+      type: "timeline",
+      title: "Seçili Üretim Hatları Teslim Planı",
+      xKey: "day",
+      yLabel: "Hat",
+      series: [],
+      data,
+    },
+    plan: {
+      title: "Seçili Hatlar İçin Aksiyon Planı",
+      bullets,
+    },
+  };
+}
+
 export default function ChartPromptModal({
   items,
+  context,
   onClose,
 }: {
   items: SelectedItem[];
+  context?: { productionLines?: ProductionLinePlan[] };
   onClose: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -158,10 +403,14 @@ export default function ChartPromptModal({
     setLoading(true);
     setError(null);
     try {
+      if ((context?.productionLines?.length ?? 0) >= 2) {
+        setResponse(buildProductionPlanResponse(context!.productionLines!));
+        return;
+      }
       const res = await fetch("/api/chart/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ prompt: p, items }),
+        body: JSON.stringify({ prompt: p, items, context }),
       });
       const data = await res.json();
       if (!res.ok) {
