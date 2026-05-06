@@ -3364,6 +3364,22 @@ interface CommandDef {
   ) => string;
 }
 
+interface SceneUndoSnapshot {
+  label: string;
+  customEdges: CustomEdge[];
+  atomMeta: Record<string, AtomMeta>;
+  customAtoms: SceneAtom[];
+  edgeCommands: Record<string, string>;
+  orders: Order[];
+  flaskItems: FlaskItem[];
+  deletedAtomIds: string[];
+  selectedIds: string[];
+  manualFocusIds: string[] | null;
+  focusedCustomerId: string | null;
+  stageInspectorId: string | null;
+  popupAtomId: string | null;
+}
+
 function buildGixCodexPrompt(args: {
   request: string;
   ids: string[];
@@ -4443,7 +4459,7 @@ function CustomersSceneRenderer({
   edgeCommands, setEdgeCommand,
   orders, flaskItems, reactionResult, onApplySupplyPlan,
   onUpdateStageOrder,
-  onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
+  onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine, onRestoreUndoSnapshot,
 }: {
   positions: Record<string, XY>;
   onMove: (id: string, xy: XY) => void;
@@ -4498,6 +4514,7 @@ function CustomersSceneRenderer({
     flaskItemId?: string;
     sku?: string;
   }) => void;
+  onRestoreUndoSnapshot: (snapshot: SceneUndoSnapshot) => void;
 }) {
   const qc = useQueryClient();
   // Tüm cihazların canlı üretim kapasitesi — her MAMUL atom kutusunda
@@ -4984,6 +5001,48 @@ function CustomersSceneRenderer({
     } catch { /* noop */ }
   }, [deletedAtomIds]);
 
+  const undoStackRef = useRef<SceneUndoSnapshot[]>([]);
+  const [undoDepth, setUndoDepth] = useState(0);
+  const pushUndoSnapshot = useCallback((label: string) => {
+    undoStackRef.current = [
+      ...undoStackRef.current.slice(-19),
+      {
+        label,
+        customEdges: customEdges.map(e => ({ ...e })),
+        atomMeta: JSON.parse(JSON.stringify(atomMeta)) as Record<string, AtomMeta>,
+        customAtoms: customAtoms.map(a => ({ ...a })),
+        edgeCommands: { ...edgeCommands },
+        orders: orders.map(o => ({ ...o })),
+        flaskItems: flaskItems.map(item => ({ ...item })),
+        deletedAtomIds: Array.from(deletedAtomIds),
+        selectedIds: Array.from(selectedIds),
+        manualFocusIds: manualFocusIds ? Array.from(manualFocusIds) : null,
+        focusedCustomerId,
+        stageInspectorId,
+        popupAtomId,
+      },
+    ];
+    setUndoDepth(undoStackRef.current.length);
+  }, [
+    customEdges, atomMeta, customAtoms, edgeCommands, orders, flaskItems,
+    deletedAtomIds, selectedIds, manualFocusIds, focusedCustomerId, stageInspectorId, popupAtomId,
+  ]);
+  const restoreLastUndo = useCallback(() => {
+    const snapshot = undoStackRef.current[undoStackRef.current.length - 1];
+    if (!snapshot) return false;
+    undoStackRef.current = undoStackRef.current.slice(0, -1);
+    setUndoDepth(undoStackRef.current.length);
+    onRestoreUndoSnapshot(snapshot);
+    setDeletedAtomIds(new Set(snapshot.deletedAtomIds));
+    setSelectedIds(new Set(snapshot.selectedIds));
+    setManualFocusIds(snapshot.manualFocusIds ? new Set(snapshot.manualFocusIds) : null);
+    setFocusedCustomerId(snapshot.focusedCustomerId);
+    setStageInspectorId(snapshot.stageInspectorId);
+    setPopupAtomId(snapshot.popupAtomId);
+    globalSel.clear();
+    return true;
+  }, [onRestoreUndoSnapshot, globalSel]);
+
   // Kapalı grubun üyelerini + silinen atomları gizle — hem atom hem edge filter'ı
   const hiddenIds = useMemo(() => {
     const h = new Set<string>();
@@ -4993,6 +5052,20 @@ function CustomersSceneRenderer({
     deletedAtomIds.forEach(id => h.add(id));
     return h;
   }, [openGroups, deletedAtomIds]);
+
+  // Cmd/Ctrl+Z → son sahne mutasyonunu geri al (input/textarea içindeyse native undo çalışır)
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key.toLowerCase() !== "z" || !(e.metaKey || e.ctrlKey) || e.shiftKey) return;
+      const target = e.target as HTMLElement | null;
+      const tag = target?.tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || target?.isContentEditable) return;
+      if (!restoreLastUndo()) return;
+      e.preventDefault();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [restoreLastUndo]);
 
   // Delete/Backspace → seçili atom(lar)ı sil (input/textarea içindeyse atla)
   useEffect(() => {
@@ -5004,6 +5077,7 @@ function CustomersSceneRenderer({
       e.preventDefault();
       const ids = Array.from(selectedIds);
       const lineIds = ids.filter(id => atomById[id]?.kind === "production-line");
+      pushUndoSnapshot("silme");
       lineIds.forEach(cleanupProductionLine);
       const plainIds = ids.filter(id => atomById[id]?.kind !== "production-line");
       setDeletedAtomIds(prev => {
@@ -5015,7 +5089,7 @@ function CustomersSceneRenderer({
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
-  }, [selectedIds, atomById, cleanupProductionLine]);
+  }, [selectedIds, atomById, cleanupProductionLine, pushUndoSnapshot]);
 
   // Eski build'de Delete ile sadece gizlenmiş üretim hattı kalmışsa,
   // mount sırasında gerçek order/flask/edge temizliğini tamamla.
@@ -5350,6 +5424,7 @@ function CustomersSceneRenderer({
       if (!ceId) return;
       ev.preventDefault();
       ev.stopPropagation();
+      pushUndoSnapshot("bağlantı silme");
       removeCustomEdge(ceId);
     };
     const eKey = isLive ? null : makeEdgeKey(e);
@@ -5517,6 +5592,46 @@ function CustomersSceneRenderer({
           }}
         >
           {procurementToast}
+        </div>
+      )}
+
+      {undoDepth > 0 && (
+        <div style={{
+          position: "absolute",
+          right: 12,
+          bottom: 58,
+          zIndex: 24,
+          background: C.cardBg,
+          color: C.cardInk,
+          border: `1px solid ${C.panelEdge}`,
+          borderRadius: 10,
+          padding: "8px 10px",
+          fontFamily: mono,
+          fontSize: 11,
+          boxShadow: "0 6px 22px rgba(0,0,0,0.35)",
+          display: "flex",
+          alignItems: "center",
+          gap: 8,
+        }}>
+          <button
+            type="button"
+            onClick={restoreLastUndo}
+            style={{
+              background: "rgba(255,255,255,0.06)",
+              color: C.cardInk,
+              border: `1px solid ${C.panelEdge}`,
+              borderRadius: 6,
+              padding: "5px 9px",
+              fontFamily: mono,
+              fontSize: 11,
+              cursor: "pointer",
+              fontWeight: 800,
+            }}
+            title="Son işlemi geri al"
+          >
+            geri al
+          </button>
+          <span style={{ color: C.cardSub }}>Cmd+Z</span>
         </div>
       )}
 
@@ -5694,6 +5809,7 @@ function CustomersSceneRenderer({
             onContextMenu={isCustomAtom ? (e) => {
               e.preventDefault();
               e.stopPropagation();
+              pushUndoSnapshot("atom silme");
               // Pill atomu silerken parent atom'un meta'sındaki referansı da temizle
               const deadlineParents = Object.entries(atomMeta).filter(
                 ([, m]) => m.deadlinePillId === a.id,
@@ -5808,6 +5924,7 @@ function CustomersSceneRenderer({
             });
           }}
           onDelete={() => {
+            pushUndoSnapshot("üretim hattı silme");
             cleanupProductionLine(selectedLineAtom.id);
             setSelectedIds(new Set());
           }}
@@ -10151,6 +10268,17 @@ export default function StrategyCanvasPage() {
     triggerOctopus.mutate();
   }, [runReactionForItems, triggerOctopus]);
 
+  const restoreSceneUndoSnapshot = useCallback((snapshot: SceneUndoSnapshot) => {
+    setSceneCustomEdges(snapshot.customEdges);
+    setSceneAtomMeta(snapshot.atomMeta);
+    setSceneCustomAtoms(snapshot.customAtoms);
+    setSceneEdgeCommands(snapshot.edgeCommands);
+    setOrders(snapshot.orders);
+    setFlaskItems(snapshot.flaskItems);
+    if (snapshot.flaskItems.length > 0) runReactionForItems(snapshot.flaskItems);
+    else setReactionResult(null);
+  }, [runReactionForItems]);
+
   const upsertOrder = (o: Order) => {
     setOrders(prev => {
       const idx = prev.findIndex(p => p.id === o.id);
@@ -10622,6 +10750,7 @@ export default function StrategyCanvasPage() {
             onCreateProductionLine={createProductionLineFromScene}
             onUpdateProductionLine={updateProductionLineFromScene}
             onDeleteProductionLine={deleteProductionLineFromScene}
+            onRestoreUndoSnapshot={restoreSceneUndoSnapshot}
           />
         )}
         {!widgetVis.scene && widgetVis.supply && (
