@@ -275,6 +275,7 @@ interface CapacityResp {
 }
 interface StockResp { product: string; components: BomComponent[]; }
 interface FinishedStockLevel {
+  productId?: number;
   productSku: string;
   productName?: string;
   inProduction: number;
@@ -282,6 +283,17 @@ interface FinishedStockLevel {
   totalSold: number;
   updatedAt?: string;
 }
+type StrategyProductionLinePlan = {
+  id: string;
+  customer: string;
+  sku: string;
+  quantity: number;
+  deadline: string;
+  fromWarehouse: number;
+  toProduce: number;
+  maxProducible: number | null;
+  overCapacity: boolean;
+};
 type XY = { x: number; y: number };
 type PositionOverrides = Record<string, Record<string, XY>>;
 
@@ -406,9 +418,27 @@ const CUSTOMERS_HEADER_H = 56;
 const CUSTOMERS_CHIP_H = 38;
 const CUSTOMERS_ORDER_ROW_H = 56;
 
-const safeParse = <T,>(raw: string | null, fallback: T): T => {
+const isRecord = (value: unknown): value is Record<string, unknown> =>
+  !!value && typeof value === "object" && !Array.isArray(value);
+
+const isXY = (value: unknown): value is XY =>
+  isRecord(value) && typeof value.x === "number" && typeof value.y === "number";
+
+const isXYRecord = (value: unknown): value is Record<string, XY> =>
+  isRecord(value) && Object.values(value).every(isXY);
+
+const isPositionOverrides = (value: unknown): value is PositionOverrides =>
+  isRecord(value) && Object.values(value).every(isXYRecord);
+
+const isViewport = (value: unknown): value is { vx: number; vy: number; scale: number } =>
+  isRecord(value) && typeof value.vx === "number" && typeof value.vy === "number" && typeof value.scale === "number";
+
+const safeParse = <T,>(raw: string | null, fallback: T, validate?: (value: unknown) => boolean): T => {
   if (!raw) return fallback;
-  try { return JSON.parse(raw) as T; } catch { return fallback; }
+  try {
+    const parsed = JSON.parse(raw);
+    return validate && !validate(parsed) ? fallback : parsed as T;
+  } catch { return fallback; }
 };
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86400000);
 
@@ -844,7 +874,7 @@ function OverviewLens({ s, order }: { s: Strategy; order: Order }) {
 function ActionsLens({ s, order, loading }: { s: Strategy; order: Order; loading: boolean }) {
   const key = `griseus_strategy_action_status_v1:${order.id}`;
   const [statuses, setStatuses] = useState<Record<number, ActionStatus>>(
-    () => safeParse(localStorage.getItem(key), {} as Record<number, ActionStatus>),
+    () => safeParse(localStorage.getItem(key), {} as Record<number, ActionStatus>, isRecord),
   );
   useEffect(() => { localStorage.setItem(key, JSON.stringify(statuses)); }, [key, statuses]);
   const set = (i: number, st: ActionStatus) => setStatuses(p => ({ ...p, [i]: st }));
@@ -4979,7 +5009,8 @@ function CustomersSceneRenderer({
   const [deletedAtomIds, setDeletedAtomIds] = useState<Set<string>>(() => {
     try {
       const raw = localStorage.getItem("griseus_scene_deleted_v1");
-      return raw ? new Set(JSON.parse(raw)) : new Set();
+      const parsed = raw ? JSON.parse(raw) : [];
+      return Array.isArray(parsed) ? new Set(parsed.filter((id): id is string => typeof id === "string")) : new Set();
     } catch { return new Set(); }
   });
   useEffect(() => {
@@ -5373,42 +5404,32 @@ function CustomersSceneRenderer({
     return () => window.clearTimeout(t);
   }, [procurementToast]);
 
-  const selectedProductionLinesForChart = useMemo(() => {
-    return Array.from(selectedIds)
-      .map(id => {
-        const atom = atomById[id];
-        if (!atom || atom.kind !== "production-line") return null;
-        const meta = atomMeta[id] ?? {};
-        const sku = (meta.orderNumber ?? atom.label.split(" x")[0] ?? "").trim();
-        const quantity = parseTRNumber(meta.quantity) ?? Number(atom.label.match(/x(\d+)/)?.[1] ?? 0);
-        if (!sku || !quantity) return null;
-        const warehouse = Math.max(0, Number(sceneFinishedStockBySku[sku]?.inWarehouse ?? 0));
-        const fromWarehouse = Math.min(quantity, warehouse);
-        const toProduce = Math.max(0, quantity - fromWarehouse);
-        const maxProducible = sceneCapacityBySku[sku]?.maxProducible ?? null;
-        return {
-          id,
-          customer: meta.customerId ? (atomById[meta.customerId]?.label ?? meta.customerId) : "Müşteri",
-          sku,
-          quantity,
-          deadline: meta.deadline ?? "",
-          fromWarehouse,
-          toProduce,
-          maxProducible,
-          overCapacity: maxProducible !== null && toProduce > maxProducible,
-        };
-      })
-      .filter((line): line is {
-        id: string;
-        customer: string;
-        sku: string;
-        quantity: number;
-        deadline: string;
-        fromWarehouse: number;
-        toProduce: number;
-        maxProducible: number | null;
-        overCapacity: boolean;
-      } => !!line);
+  const selectedProductionLinesForChart = useMemo<StrategyProductionLinePlan[]>(() => {
+    const lines: StrategyProductionLinePlan[] = [];
+    for (const id of Array.from(selectedIds)) {
+      const atom = atomById[id];
+      if (!atom || atom.kind !== "production-line") continue;
+      const meta = atomMeta[id] ?? {};
+      const sku = (meta.orderNumber ?? atom.label.split(" x")[0] ?? "").trim();
+      const quantity = parseTRNumber(meta.quantity) ?? Number(atom.label.match(/x(\d+)/)?.[1] ?? 0);
+      if (!sku || !quantity) continue;
+      const warehouse = Math.max(0, Number(sceneFinishedStockBySku[sku]?.inWarehouse ?? 0));
+      const fromWarehouse = Math.min(quantity, warehouse);
+      const toProduce = Math.max(0, quantity - fromWarehouse);
+      const maxProducible: number | null = sceneCapacityBySku[sku]?.maxProducible ?? null;
+      lines.push({
+        id,
+        customer: meta.customerId ? (atomById[meta.customerId]?.label ?? meta.customerId) : "Müşteri",
+        sku,
+        quantity,
+        deadline: meta.deadline ?? "",
+        fromWarehouse,
+        toProduce,
+        maxProducible,
+        overCapacity: maxProducible !== null && toProduce > maxProducible,
+      });
+    }
+    return lines;
   }, [selectedIds, atomById, atomMeta, sceneFinishedStockBySku, sceneCapacityBySku]);
 
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
@@ -8945,7 +8966,7 @@ function OntologySearchBox({
         s.name.toLowerCase().includes(term) ||
         (s.description ?? "").toLowerCase().includes(term);
       if (!matchTerm) continue;
-      const orderCount = s.payload.orders.length;
+      const orderCount = Array.isArray(s.payload?.orders) ? s.payload.orders.length : 0;
       const date = new Date(s.updatedAt).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" });
       hits.push({
         kind: "scenario",
@@ -9147,7 +9168,7 @@ export default function StrategyCanvasPage() {
 
   // Sahne atom şekil override'ları — kullanıcı sol palet üzerinden değiştirir
   const [sceneShapeOverrides, setSceneShapeOverrides] = useState<Record<string, ShapeKind>>(
-    () => safeParse<Record<string, ShapeKind>>(localStorage.getItem(SHAPE_OVERRIDES_KEY), {}),
+    () => safeParse<Record<string, ShapeKind>>(localStorage.getItem(SHAPE_OVERRIDES_KEY), {}, isRecord),
   );
   useEffect(() => { localStorage.setItem(SHAPE_OVERRIDES_KEY, JSON.stringify(sceneShapeOverrides)); }, [sceneShapeOverrides]);
   const setSceneShape = useCallback((id: string, kind: ShapeKind) => {
@@ -9164,7 +9185,7 @@ export default function StrategyCanvasPage() {
 
   // Sahne custom edges — kullanıcı 2 atom seçip ok butonuna basınca eklenir
   const [sceneCustomEdges, setSceneCustomEdges] = useState<CustomEdge[]>(
-    () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), []),
+    () => safeParse<CustomEdge[]>(localStorage.getItem(CUSTOM_EDGES_KEY), [], Array.isArray),
   );
   useEffect(() => { localStorage.setItem(CUSTOM_EDGES_KEY, JSON.stringify(sceneCustomEdges)); }, [sceneCustomEdges]);
   const addSceneCustomEdge = useCallback((fromId: string, toId: string, label?: string, color?: string, groupId?: string) => {
@@ -9220,7 +9241,7 @@ export default function StrategyCanvasPage() {
   // Edge label'larına atanan komutlar — anahtar makeEdgeKey ile üretilir.
   // Custom edge silinince kendi command'ı da temizlenir.
   const [sceneEdgeCommands, setSceneEdgeCommands] = useState<Record<string, string>>(
-    () => safeParse<Record<string, string>>(localStorage.getItem(EDGE_COMMANDS_KEY), {}),
+    () => safeParse<Record<string, string>>(localStorage.getItem(EDGE_COMMANDS_KEY), {}, isRecord),
   );
   useEffect(() => { localStorage.setItem(EDGE_COMMANDS_KEY, JSON.stringify(sceneEdgeCommands)); }, [sceneEdgeCommands]);
   const setSceneEdgeCommand = useCallback((key: string, command: string | null) => {
@@ -9234,7 +9255,7 @@ export default function StrategyCanvasPage() {
 
   // Sahne custom atomları — komut bar'dan oluşturulan pill atomlar (deadline pill vs)
   const [sceneCustomAtoms, setSceneCustomAtoms] = useState<SceneAtom[]>(
-    () => safeParse<SceneAtom[]>(localStorage.getItem(CUSTOM_ATOMS_KEY), []),
+    () => safeParse<SceneAtom[]>(localStorage.getItem(CUSTOM_ATOMS_KEY), [], Array.isArray),
   );
   useEffect(() => { localStorage.setItem(CUSTOM_ATOMS_KEY, JSON.stringify(sceneCustomAtoms)); }, [sceneCustomAtoms]);
   const addSceneCustomAtom = useCallback((atom: SceneAtom) => {
@@ -9252,7 +9273,7 @@ export default function StrategyCanvasPage() {
 
   // Atom metadata — komut bar'dan set edilir (sipariş no, teslim tarihi)
   const [sceneAtomMeta, setSceneAtomMeta] = useState<Record<string, AtomMeta>>(
-    () => safeParse<Record<string, AtomMeta>>(localStorage.getItem(ATOM_META_KEY), {}),
+    () => safeParse<Record<string, AtomMeta>>(localStorage.getItem(ATOM_META_KEY), {}, isRecord),
   );
   useEffect(() => { localStorage.setItem(ATOM_META_KEY, JSON.stringify(sceneAtomMeta)); }, [sceneAtomMeta]);
   const setSceneAtomMetaField = useCallback((id: string, patch: AtomMeta) => {
@@ -9391,16 +9412,16 @@ export default function StrategyCanvasPage() {
   useEffect(() => { localStorage.setItem(EDGE_PALETTE_KEY, edgePaletteId); }, [edgePaletteId]);
   const edgePalette = useMemo(() => getEdgePalette(edgePaletteId), [edgePaletteId]);
 
-  const [orders, setOrders] = useState<Order[]>(() => safeParse<Order[]>(localStorage.getItem(ORDERS_KEY), []));
+  const [orders, setOrders] = useState<Order[]>(() => safeParse<Order[]>(localStorage.getItem(ORDERS_KEY), [], Array.isArray));
   useEffect(() => { localStorage.setItem(ORDERS_KEY, JSON.stringify(orders)); }, [orders]);
 
   const [posOverrides, setPosOverrides] = useState<PositionOverrides>(
-    () => safeParse<PositionOverrides>(localStorage.getItem(POS_KEY), {}),
+    () => safeParse<PositionOverrides>(localStorage.getItem(POS_KEY), {}, isPositionOverrides),
   );
   useEffect(() => { localStorage.setItem(POS_KEY, JSON.stringify(posOverrides)); }, [posOverrides]);
 
   const [expandedSubs, setExpandedSubs] = useState<Record<string, string[]>>(
-    () => safeParse<Record<string, string[]>>(localStorage.getItem(EXPAND_KEY), {}),
+    () => safeParse<Record<string, string[]>>(localStorage.getItem(EXPAND_KEY), {}, isRecord),
   );
   useEffect(() => { localStorage.setItem(EXPAND_KEY, JSON.stringify(expandedSubs)); }, [expandedSubs]);
   const toggleSub = useCallback((orderId: string, code: string) => {
@@ -9414,24 +9435,24 @@ export default function StrategyCanvasPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Order | null>(null);
 
-  const initialView = safeParse<{ vx: number; vy: number; scale: number }>(localStorage.getItem(VIEW_KEY), { vx: 0, vy: 0, scale: 0.85 });
+  const initialView = safeParse<{ vx: number; vy: number; scale: number }>(localStorage.getItem(VIEW_KEY), { vx: 0, vy: 0, scale: 0.85 }, isViewport);
   const [viewport, setViewport] = useState(initialView);
   useEffect(() => { localStorage.setItem(VIEW_KEY, JSON.stringify(viewport)); }, [viewport]);
 
   /* ── Müşteri kayıtları (free-form, drillable, hypothetical seed) ── */
   const [customers, setCustomers] = useState<Customer[]>(() => {
-    const stored = safeParse<Customer[] | null>(localStorage.getItem(CUSTOMERS_KEY), null);
+    const stored = safeParse<Customer[] | null>(localStorage.getItem(CUSTOMERS_KEY), null, (v) => v === null || Array.isArray(v));
     return stored && stored.length > 0 ? stored : SAMPLE_CUSTOMERS;
   });
   useEffect(() => { localStorage.setItem(CUSTOMERS_KEY, JSON.stringify(customers)); }, [customers]);
 
   const [customersPanelOpen, setCustomersPanelOpen] = useState<boolean>(
-    () => safeParse<boolean>(localStorage.getItem(CUSTOMERS_PANEL_OPEN_KEY), true),
+    () => safeParse<boolean>(localStorage.getItem(CUSTOMERS_PANEL_OPEN_KEY), true, (v) => typeof v === "boolean"),
   );
   useEffect(() => { localStorage.setItem(CUSTOMERS_PANEL_OPEN_KEY, JSON.stringify(customersPanelOpen)); }, [customersPanelOpen]);
 
   const [expandedCustomers, setExpandedCustomers] = useState<string[]>(
-    () => safeParse<string[]>(localStorage.getItem(CUSTOMERS_EXPANDED_KEY), []),
+    () => safeParse<string[]>(localStorage.getItem(CUSTOMERS_EXPANDED_KEY), [], Array.isArray),
   );
   useEffect(() => { localStorage.setItem(CUSTOMERS_EXPANDED_KEY, JSON.stringify(expandedCustomers)); }, [expandedCustomers]);
 
@@ -9462,32 +9483,32 @@ export default function StrategyCanvasPage() {
 
   // Free-form widget pozisyonları
   const [customersPanelPos, setCustomersPanelPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_customers_panel_pos_v1"), { x: -300, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_customers_panel_pos_v1"), { x: -300, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_customers_panel_pos_v1", JSON.stringify(customersPanelPos)); }, [customersPanelPos]);
 
   const [categoriesPos, setCategoriesPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_categories_pos_v1"), { x: -40, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_categories_pos_v1"), { x: -40, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_categories_pos_v1", JSON.stringify(categoriesPos)); }, [categoriesPos]);
 
   const [productsPos, setProductsPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_products_pos_v1"), { x: 220, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_products_pos_v1"), { x: 220, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_products_pos_v1", JSON.stringify(productsPos)); }, [productsPos]);
 
   const [stagesPos, setStagesPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_stages_pos_v1"), { x: 480, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_stages_pos_v1"), { x: 480, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_stages_pos_v1", JSON.stringify(stagesPos)); }, [stagesPos]);
 
   const [factoryPos, setFactoryPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_factory_pos_v1"), { x: 700, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_factory_pos_v1"), { x: 700, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_factory_pos_v1", JSON.stringify(factoryPos)); }, [factoryPos]);
 
   const [supplyPos, setSupplyPos] = useState<XY>(() =>
-    safeParse<XY>(localStorage.getItem("griseus_supply_pos_v1"), { x: 880, y: 60 }),
+    safeParse<XY>(localStorage.getItem("griseus_supply_pos_v1"), { x: 880, y: 60 }, isXY),
   );
   useEffect(() => { localStorage.setItem("griseus_supply_pos_v1", JSON.stringify(supplyPos)); }, [supplyPos]);
 
@@ -9495,7 +9516,7 @@ export default function StrategyCanvasPage() {
     safeParse<SupplyEntry[]>(localStorage.getItem("griseus_supply_entries_v1"), [
       { id: "sup_a", code: "a", qty: 300, leadDays: 15 },
       { id: "sup_b", code: "b", qty: 180, leadDays: 12 },
-    ]),
+    ], Array.isArray),
   );
   useEffect(() => { localStorage.setItem("griseus_supply_entries_v1", JSON.stringify(supplyEntries)); }, [supplyEntries]);
 
@@ -9503,7 +9524,7 @@ export default function StrategyCanvasPage() {
 
   // Customers Senaryosu sahne atom pozisyonları (kullanıcı sürükledikçe persist)
   const [scenePositions, setScenePositions] = useState<Record<string, XY>>(() =>
-    safeParse<Record<string, XY>>(localStorage.getItem("griseus_scene_pos_v1"), {}),
+    safeParse<Record<string, XY>>(localStorage.getItem("griseus_scene_pos_v1"), {}, isXYRecord),
   );
   useEffect(() => { localStorage.setItem("griseus_scene_pos_v1", JSON.stringify(scenePositions)); }, [scenePositions]);
   const moveSceneAtom = useCallback((id: string, xy: XY) => {
@@ -9538,7 +9559,7 @@ export default function StrategyCanvasPage() {
 
   /* ── Senaryo yönetimi (canvas state'i adlı kayıt olarak yaşar) ── */
   const [scenarios, setScenarios] = useState<ScenarioSnapshot[]>(
-    () => safeParse<ScenarioSnapshot[]>(localStorage.getItem(SCENARIOS_KEY), []),
+    () => safeParse<ScenarioSnapshot[]>(localStorage.getItem(SCENARIOS_KEY), [], Array.isArray),
   );
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
     () => localStorage.getItem(ACTIVE_SCENARIO_KEY),
@@ -9912,22 +9933,23 @@ export default function StrategyCanvasPage() {
   const loadScenario = useCallback((id: string) => {
     const s = scenarios.find(x => x.id === id);
     if (!s) return;
-    setOrders(s.payload.orders);
-    setPosOverrides(s.payload.posOverrides);
-    setExpandedSubs(s.payload.expandedSubs);
-    if (s.payload.customers) setCustomers(s.payload.customers);
-    if (typeof s.payload.customersPanelOpen === "boolean") setCustomersPanelOpen(s.payload.customersPanelOpen);
-    if (s.payload.expandedCustomers) setExpandedCustomers(s.payload.expandedCustomers);
+    const payload = s.payload ?? {};
+    setOrders(Array.isArray(payload.orders) ? payload.orders : []);
+    setPosOverrides(isPositionOverrides(payload.posOverrides) ? payload.posOverrides : {});
+    setExpandedSubs(isRecord(payload.expandedSubs) ? payload.expandedSubs as Record<string, string[]> : {});
+    if (Array.isArray(payload.customers)) setCustomers(payload.customers);
+    if (typeof payload.customersPanelOpen === "boolean") setCustomersPanelOpen(payload.customersPanelOpen);
+    if (Array.isArray(payload.expandedCustomers)) setExpandedCustomers(payload.expandedCustomers);
     // Eski senaryolarda widgetVisibility yok → DEFAULT (hepsi kapalı) → workbench görünmez
-    setWidgetVis(s.payload.widgetVisibility ?? DEFAULT_WIDGET_VIS);
-    if (s.payload.supplyEntries) setSupplyEntries(s.payload.supplyEntries);
-    setScenePositions(s.payload.scenePositions ?? {});
-    setFlaskItems(s.payload.flaskItems ?? []);
-    setFlaskSupplies(s.payload.flaskSupplies ?? []);
-    if (s.payload.viewport) setViewport(s.payload.viewport);
-    if (s.payload.customersPanelPos) setCustomersPanelPos(s.payload.customersPanelPos);
-    setFlaskOpen(s.payload.flaskOpen ?? false);
-    setReactionResult((s.payload.reactionResult as ReactionResult | null) ?? null);
+    setWidgetVis(isRecord(payload.widgetVisibility) ? payload.widgetVisibility as WidgetVisibility : DEFAULT_WIDGET_VIS);
+    if (Array.isArray(payload.supplyEntries)) setSupplyEntries(payload.supplyEntries);
+    setScenePositions(isXYRecord(payload.scenePositions) ? payload.scenePositions : {});
+    setFlaskItems(Array.isArray(payload.flaskItems) ? payload.flaskItems : []);
+    setFlaskSupplies(Array.isArray(payload.flaskSupplies) ? payload.flaskSupplies : []);
+    if (isViewport(payload.viewport)) setViewport(payload.viewport);
+    if (isXY(payload.customersPanelPos)) setCustomersPanelPos(payload.customersPanelPos);
+    setFlaskOpen(typeof payload.flaskOpen === "boolean" ? payload.flaskOpen : false);
+    setReactionResult(isRecord(payload.reactionResult) ? payload.reactionResult as unknown as ReactionResult : null);
     setActiveScenarioId(id);
     setModalOpen(false);
     setEditing(null);
@@ -10591,9 +10613,9 @@ export default function StrategyCanvasPage() {
                             )}
                           </div>
                           <div style={{ fontSize: 10, color: C.mid, fontFamily: mono, marginTop: 2 }}>
-                            {s.payload.orders.length} sipariş
-                            {(s.payload.customers ?? []).length > 0 && ` · ${(s.payload.customers ?? []).length} müşteri`}
-                            {(s.payload.flaskItems ?? []).length > 0 && ` · tepkime ${(s.payload.flaskItems ?? []).length}`}
+                            {Array.isArray(s.payload?.orders) ? s.payload.orders.length : 0} sipariş
+                            {Array.isArray(s.payload?.customers) && s.payload.customers.length > 0 && ` · ${s.payload.customers.length} müşteri`}
+                            {Array.isArray(s.payload?.flaskItems) && s.payload.flaskItems.length > 0 && ` · tepkime ${s.payload.flaskItems.length}`}
                             {" · "}{date}
                           </div>
                         </div>

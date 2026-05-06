@@ -12,14 +12,27 @@ interface State { error: Error | null }
 
 const STORAGE_KEYS = [
   "griseus_strategy_pos",
+  "griseus_strategy_orders_v1",
+  "griseus_strategy_positions_v3",
+  "griseus_strategy_viewport_v2",
+  "griseus_strategy_expanded_v1",
   "griseus_strategy_subs_v1",
   "griseus_customers_expanded_v1",
+  "griseus_customers_panel_open_v1",
+  "griseus_customers_panel_pos_v1",
   "griseus_scene_pos_v1",
   "griseus_scene_deleted_v1",
   "griseus_scene_shapes_v1",
   "griseus_scene_custom_edges_v1",
+  "griseus_scene_edge_commands_v1",
   "griseus_scene_atom_meta_v1",
   "griseus_scene_custom_atoms_v1",
+  "griseus_categories_pos_v1",
+  "griseus_products_pos_v1",
+  "griseus_stages_pos_v1",
+  "griseus_factory_pos_v1",
+  "griseus_supply_pos_v1",
+  "griseus_supply_entries_v1",
 ];
 
 export default class SceneErrorBoundary extends Component<Props, State> {
