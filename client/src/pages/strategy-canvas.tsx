@@ -2773,6 +2773,84 @@ function productionEdgeLabel(
   return undefined;
 }
 
+function productionLineNumbers(
+  meta: AtomMeta | undefined,
+  stockBySku?: Record<string, FinishedStockLevel>,
+  capacityBySku?: Record<string, CapacityResp>,
+) {
+  if (!meta) return null;
+  const sku = (meta.orderNumber ?? (meta.productId ? meta.productId.replace(/^p-/, "") : "")).trim();
+  const qty = parseTRNumber(meta.quantity);
+  if (!sku || qty === null) return null;
+  const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
+  const toProduce = Math.max(0, qty - warehouse);
+  const max = capacityBySku?.[sku]?.maxProducible;
+  const over = max !== undefined && toProduce > max;
+  return { sku, qty, warehouse, toProduce, max: max ?? null, over };
+}
+
+function productionEdgeState(
+  edge: SceneEdge,
+  metaById: Record<string, AtomMeta>,
+  customEdges: CustomEdge[],
+  stockBySku?: Record<string, FinishedStockLevel>,
+  capacityBySku?: Record<string, CapacityResp>,
+): { label?: string; color?: string } | null {
+  const customEdge = edge.customEdgeId ? customEdges.find(e => e.id === edge.customEdgeId) : undefined;
+  const meta = customEdge?.groupId ? metaById[customEdge.groupId] : undefined;
+  const numbers = productionLineNumbers(meta, stockBySku, capacityBySku);
+  const demandColor = meta?.categoryId === "cat-elektrikli" ? "#10b981" : "#38bdf8";
+  const productionColor = numbers?.over ? "#ef4444" : "#10b981";
+
+  if (meta && numbers) {
+    if (
+      (meta.customerId === edge.fromId && meta.categoryId === edge.toId) ||
+      (meta.deadlinePillId === edge.fromId && meta.categoryId === edge.toId) ||
+      (meta.customerId === edge.fromId && meta.deadlinePillId === edge.toId) ||
+      (meta.categoryId === edge.fromId && meta.productId === edge.toId)
+    ) {
+      return { label: `x${fmtTR(numbers.qty)}`, color: demandColor };
+    }
+    if (meta.productId === edge.fromId && edge.toId === "stg-uretim") {
+      return { label: `x${fmtTR(numbers.toProduce)}`, color: productionColor };
+    }
+    if (edge.fromId === "stg-uretim" && edge.toId === "stg-depo") {
+      return { label: `x${fmtTR(numbers.toProduce)}`, color: productionColor };
+    }
+    if (edge.fromId === "stg-depo" && edge.toId === "stg-satis") {
+      return { label: `x${fmtTR(numbers.qty)}`, color: numbers.over ? "#ef4444" : "rgba(255,255,255,0.82)" };
+    }
+    if (edge.fromId === "stg-satis" && edge.toId === "fact") {
+      return { label: `x${fmtTR(numbers.qty)}`, color: numbers.over ? "#ef4444" : "rgba(255,255,255,0.82)" };
+    }
+    if (meta.productId === edge.fromId && edge.toId === "flask") {
+      return { label: `x${fmtTR(numbers.qty)}`, color: numbers.over ? "#ef4444" : "rgba(245,158,11,0.65)" };
+    }
+  }
+
+  if (edge.fromId.startsWith("p-") && edge.toId === "stg-depo") {
+    const sku = edge.fromId.replace(/^p-/, "");
+    const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
+    if (warehouse > 0) return { label: `x${fmtTR(warehouse)}`, color: "#38bdf8" };
+  }
+
+  if (edge.toId === "stg-uretim" && edge.fromId.startsWith("p-")) {
+    const matchingLines = Object.values(metaById).filter(line => line.productId === edge.fromId);
+    if (matchingLines.length === 0) return null;
+    const sku = matchingLines[0]?.orderNumber ?? edge.fromId.replace(/^p-/, "");
+    const totalQty = matchingLines.reduce((sum, line) => sum + (parseTRNumber(line.quantity) ?? 0), 0);
+    const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
+    const toProduce = Math.max(0, totalQty - warehouse);
+    const max = capacityBySku?.[sku]?.maxProducible;
+    return {
+      label: `x${fmtTR(toProduce)}`,
+      color: max !== undefined && toProduce > max ? "#ef4444" : "#10b981",
+    };
+  }
+
+  return null;
+}
+
 function buildSupplyTargetsFromProduct(product: SceneAtom, atomById: Record<string, SceneAtom>): SceneAtom[] {
   const sku = product.id.replace(/^p-/, "");
   const visibleBom = Object.values(atomById)
@@ -5181,10 +5259,12 @@ function CustomersSceneRenderer({
     const path = `M ${x1} ${y1} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x2} ${y2}`;
     const midX = (x1 + x2) / 2;
     const midY = (y1 + y2) / 2 - 6;
+    const productionState = productionEdgeState(e, atomMeta, customEdges, sceneFinishedStockBySku, sceneCapacityBySku);
+    const effectiveColor = productionState?.color ?? e.color;
     const fallback = asRgba(edgePalette.colors.neutral, 0.4);
     const labelFallback = asRgba(edgePalette.colors.neutral, 0.85);
-    const stroke = remapEdgeColor(e.color, edgePalette) ?? fallback;
-    const labelFill = remapEdgeColor(e.color, edgePalette) ?? labelFallback;
+    const stroke = remapEdgeColor(effectiveColor, edgePalette) ?? fallback;
+    const labelFill = remapEdgeColor(effectiveColor, edgePalette) ?? labelFallback;
     const liveGlow = asRgba(edgePalette.colors.select, 0.55);
     const isCustom = !!e.customEdgeId;
     const ceId = e.customEdgeId;
@@ -5202,7 +5282,9 @@ function CustomersSceneRenderer({
     };
     const eKey = isLive ? null : makeEdgeKey(e);
     const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
-    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta) ?? productionEdgeLabel(e, atomMeta, customEdges, sceneFinishedStockBySku);
+    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta)
+      ?? productionState?.label
+      ?? productionEdgeLabel(e, atomMeta, customEdges, sceneFinishedStockBySku);
     const edgeLabel = dynamicLabel ?? e.label;
     const hasLabelText = !!edgeLabel;
     const labelDisplay = hasLabelText ? edgeLabel! : (assignedCommand ? "▸" : "");
