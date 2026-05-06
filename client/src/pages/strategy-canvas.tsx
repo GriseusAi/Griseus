@@ -4415,6 +4415,7 @@ function CustomersSceneRenderer({
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
   edgeCommands, setEdgeCommand,
   orders, flaskItems, reactionResult, onApplySupplyPlan,
+  onUpdateStageOrder,
   onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
 }: {
   positions: Record<string, XY>;
@@ -4445,6 +4446,7 @@ function CustomersSceneRenderer({
   flaskItems: FlaskItem[];
   reactionResult: ReactionResult | null;
   onApplySupplyPlan: (items: SupplyItem[]) => void;
+  onUpdateStageOrder: (orderId: string, patch: Partial<Pick<Order, "customer" | "sku" | "quantity" | "deadline">>) => void;
   onCreateProductionLine: (args: {
     productionLineId: string;
     customerId: string | null;
@@ -5705,6 +5707,7 @@ function CustomersSceneRenderer({
           orders={orders}
           finishedStockBySku={sceneFinishedStockBySku}
           capacityBySku={sceneCapacityBySku}
+          onUpdateOrder={onUpdateStageOrder}
           onClose={() => setStageInspectorId(null)}
         />
       )}
@@ -6327,15 +6330,22 @@ function FlowStageInspector({
   orders,
   finishedStockBySku,
   capacityBySku,
+  onUpdateOrder,
   onClose,
 }: {
   stage: SceneAtom;
   orders: Order[];
   finishedStockBySku: Record<string, FinishedStockLevel>;
   capacityBySku: Record<string, CapacityResp>;
+  onUpdateOrder: (orderId: string, patch: Partial<Pick<Order, "customer" | "sku" | "quantity" | "deadline">>) => void;
   onClose: () => void;
 }) {
+  const qc = useQueryClient();
   const stageKey = flowStageKeyFromAtom(stage);
+  const [editingKey, setEditingKey] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Record<string, string>>({});
+  const [savingKey, setSavingKey] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
   const stripe =
     stageKey === "uretim" ? C.warn :
     stageKey === "depo" ? C.info :
@@ -6348,6 +6358,8 @@ function FlowStageInspector({
     .filter(x => x.toProduce > 0)
     .map(x => ({
       key: x.order.id,
+      kind: "order" as const,
+      order: x.order,
       customer: x.order.customer,
       sku: x.order.sku,
       qty: x.toProduce,
@@ -6355,6 +6367,8 @@ function FlowStageInspector({
     }));
   const salesRows = orders.map(order => ({
     key: order.id,
+    kind: "order" as const,
+    order,
     customer: order.customer,
     sku: order.sku,
     qty: order.quantity,
@@ -6365,8 +6379,11 @@ function FlowStageInspector({
       const stock = Math.max(0, Number(finishedStockBySku[sku]?.inWarehouse ?? 0));
       const inProduction = Math.max(0, Number(finishedStockBySku[sku]?.inProduction ?? 0));
       const max = capacityBySku[sku]?.maxProducible;
+      const productId = finishedStockBySku[sku]?.productId;
       return {
         key: sku,
+        kind: "warehouse" as const,
+        productId,
         customer: sku,
         sku: max === undefined ? "kapasite ?" : `maks üretim ${fmtTR(max)}`,
         qty: stock,
@@ -6390,6 +6407,106 @@ function FlowStageInspector({
     stageKey === "uretim" ? "Üretime düşen açık müşteri talebi yok." :
     stageKey === "depo" ? "Depoda kayıtlı mamul stoğu yok." :
     "Satış/sipariş kaydı yok.";
+  const startEdit = (row: (typeof rows)[number]) => {
+    setEditingKey(row.key);
+    setError(null);
+    if (row.kind === "order") {
+      setDraft({
+        customer: row.order.customer,
+        sku: row.order.sku,
+        quantity: String(row.order.quantity),
+        deadline: row.order.deadline ?? "",
+      });
+    } else {
+      setDraft({
+        warehouse: String(row.qty),
+        production: String(row.inProduction),
+      });
+    }
+  };
+  const saveEdit = async (row: (typeof rows)[number]) => {
+    setError(null);
+    if (row.kind === "order") {
+      const qty = Number(draft.quantity);
+      if (!draft.customer?.trim()) {
+        setError("Müşteri boş olamaz.");
+        return;
+      }
+      if (!ALL_SKUS.includes(draft.sku as typeof ALL_SKUS[number])) {
+        setError("Cihaz tipi geçerli SKU olmalı.");
+        return;
+      }
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setError("Adet pozitif sayı olmalı.");
+        return;
+      }
+      const normalizedDeadline = draft.deadline ? normalizeDeadlineInput(draft.deadline) : row.order.deadline;
+      onUpdateOrder(row.order.id, {
+        customer: draft.customer.trim(),
+        sku: draft.sku,
+        quantity: Math.round(qty),
+        deadline: normalizedDeadline ?? draft.deadline ?? row.order.deadline,
+      });
+      setEditingKey(null);
+      return;
+    }
+
+    if (!row.productId) {
+      setError("Bu SKU için ürün stok kaydı bulunamadı.");
+      return;
+    }
+    const warehouse = Number(draft.warehouse);
+    const production = Number(draft.production);
+    if (!Number.isFinite(warehouse) || warehouse < 0 || !Number.isFinite(production) || production < 0) {
+      setError("Depo ve üretim adetleri negatif olamaz.");
+      return;
+    }
+    setSavingKey(row.key);
+    try {
+      for (const [target, quantity] of [["warehouse", warehouse], ["production", production]] as const) {
+        const res = await apiRequest("POST", "/api/stock/movements", {
+          product_id: row.productId,
+          movement_type: "inventory_count",
+          quantity: Math.round(quantity),
+          target,
+          note: `Strategy canvas ${stage.label} panel sayımı`,
+          created_by: "strategy_canvas",
+        });
+        await res.json();
+      }
+      await apiRequest("POST", "/api/orchestrator/run-audit", { source: "strategy_canvas_stage_panel" }).catch(() => undefined);
+      qc.invalidateQueries({ queryKey: [`/api/stock/levels?sku=${encodeURIComponent(row.key)}`] });
+      qc.invalidateQueries({ queryKey: [`/api/bom/${row.key}/production-capacity`] });
+      qc.invalidateQueries({ queryKey: [`/api/bom/${row.key}/stock`] });
+      setEditingKey(null);
+    } catch (err: any) {
+      setError(err?.message ?? "Stok güncellenemedi.");
+    } finally {
+      setSavingKey(null);
+    }
+  };
+  const fieldStyle: React.CSSProperties = {
+    background: C.cardBg,
+    color: C.cardInk,
+    border: `1px solid ${C.panelEdge}`,
+    borderRadius: 7,
+    padding: "7px 8px",
+    fontFamily: mono,
+    fontSize: 11,
+    outline: "none",
+    minWidth: 0,
+  };
+  const tinyButton = (tone: string): React.CSSProperties => ({
+    border: `1px solid ${tone}88`,
+    borderRadius: 7,
+    background: `${tone}22`,
+    color: tone,
+    padding: "6px 8px",
+    fontFamily: mono,
+    fontSize: 10,
+    fontWeight: 900,
+    cursor: "pointer",
+  });
 
   return (
     <div
@@ -6443,11 +6560,18 @@ function FlowStageInspector({
           />
         </div>
         <div style={{ maxHeight: 420, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 2 }}>
+          {error && (
+            <div style={{ border: `1px solid ${C.shortfall}77`, borderRadius: 9, background: C.shortfallSoft, padding: "8px 10px", color: C.shortfall, fontSize: 11, fontWeight: 800 }}>
+              {error}
+            </div>
+          )}
           {rows.length === 0 ? (
             <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 9, background: C.cardBgAlt, padding: "10px 11px", color: C.cardSub, fontSize: 11, lineHeight: 1.4 }}>
               {emptyText}
             </div>
-          ) : rows.map(row => (
+          ) : rows.map(row => {
+            const isEditing = editingKey === row.key;
+            return (
             <div
               key={row.key}
               style={{
@@ -6458,21 +6582,56 @@ function FlowStageInspector({
                 padding: "9px 10px",
               }}
             >
-              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {row.customer}
-                  </div>
-                  <div style={{ fontSize: 10, color: C.cardSub, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
-                    {row.sku} · {row.sub}
+              {isEditing ? (
+                <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
+                  {row.kind === "order" ? (
+                    <>
+                      <input value={draft.customer ?? ""} onChange={e => setDraft(d => ({ ...d, customer: e.target.value }))} style={fieldStyle} placeholder="Müşteri" />
+                      <div style={{ display: "grid", gridTemplateColumns: "1fr 76px", gap: 7 }}>
+                        <select value={draft.sku ?? row.order.sku} onChange={e => setDraft(d => ({ ...d, sku: e.target.value }))} style={fieldStyle}>
+                          {ALL_SKUS.map(sku => <option key={sku} value={sku}>{sku}</option>)}
+                        </select>
+                        <input type="number" min={1} value={draft.quantity ?? ""} onChange={e => setDraft(d => ({ ...d, quantity: e.target.value }))} style={fieldStyle} />
+                      </div>
+                      <input value={draft.deadline ?? ""} onChange={e => setDraft(d => ({ ...d, deadline: e.target.value }))} style={fieldStyle} placeholder="Teslim tarihi" />
+                    </>
+                  ) : (
+                    <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 9, color: C.cardSub, fontWeight: 900 }}>
+                        DEPO
+                        <input type="number" min={0} value={draft.warehouse ?? ""} onChange={e => setDraft(d => ({ ...d, warehouse: e.target.value }))} style={fieldStyle} />
+                      </label>
+                      <label style={{ display: "flex", flexDirection: "column", gap: 4, fontSize: 9, color: C.cardSub, fontWeight: 900 }}>
+                        ÜRETİM
+                        <input type="number" min={0} value={draft.production ?? ""} onChange={e => setDraft(d => ({ ...d, production: e.target.value }))} style={fieldStyle} />
+                      </label>
+                    </div>
+                  )}
+                  <div style={{ display: "flex", justifyContent: "flex-end", gap: 7 }}>
+                    <button type="button" onClick={() => setEditingKey(null)} style={tinyButton(C.cardSub)}>vazgeç</button>
+                    <button type="button" onClick={() => saveEdit(row)} disabled={savingKey === row.key} style={{ ...tinyButton(stripe), opacity: savingKey === row.key ? 0.65 : 1 }}>
+                      {savingKey === row.key ? "kaydediliyor" : "kaydet"}
+                    </button>
                   </div>
                 </div>
-                <div style={{ color: stripe, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap" }}>
-                  {fmtTR(row.qty)}
+              ) : (
+                <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                  <div style={{ minWidth: 0 }}>
+                    <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {row.customer}
+                    </div>
+                    <div style={{ fontSize: 10, color: C.cardSub, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                      {row.sku} · {row.sub}
+                    </div>
+                  </div>
+                  <button type="button" onClick={() => startEdit(row)} style={{ border: "none", background: "transparent", color: stripe, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap", cursor: "pointer", fontFamily: mono }}>
+                    {fmtTR(row.qty)}
+                  </button>
                 </div>
-              </div>
+              )}
             </div>
-          ))}
+          );
+          })}
         </div>
       </div>
     </div>
@@ -9897,6 +10056,29 @@ export default function StrategyCanvasPage() {
     triggerOctopus.mutate();
   }, [runReactionForItems, triggerOctopus]);
 
+  const updateStageOrderFromScene = useCallback((orderId: string, patch: Partial<Pick<Order, "customer" | "sku" | "quantity" | "deadline">>) => {
+    setOrders(prev => prev.map(order => (
+      order.id === orderId ? { ...order, ...patch } : order
+    )));
+    setFlaskItems(prev => {
+      const lineId = lineIdFromOrder(orderId);
+      const flaskId = lineId && lineId !== "__legacy_orphan__" ? `flask_${lineId}` : null;
+      const next = prev.map(item => (
+        flaskId && item.id === flaskId
+          ? {
+              ...item,
+              sku: patch.sku ?? item.sku,
+              qty: patch.quantity ?? item.qty,
+              deadline: patch.deadline ?? item.deadline,
+            }
+          : item
+      ));
+      runReactionForItems(next);
+      return next;
+    });
+    triggerOctopus.mutate();
+  }, [runReactionForItems, triggerOctopus]);
+
   const deleteProductionLineFromScene = useCallback((args: {
     orderId?: string;
     flaskItemId?: string;
@@ -10389,6 +10571,7 @@ export default function StrategyCanvasPage() {
               });
               setFlaskOpen(true);
             }}
+            onUpdateStageOrder={updateStageOrderFromScene}
             onCreateProductionLine={createProductionLineFromScene}
             onUpdateProductionLine={updateProductionLineFromScene}
             onDeleteProductionLine={deleteProductionLineFromScene}
