@@ -56,6 +56,12 @@ No `.vercel` folder, `vercel.json`, GitHub Actions workflow, or local Railway pr
   - Local file: `backups/griseus-prod-20260506-211528.dump`
   - Size: 1.2 MB
   - Format: PostgreSQL custom dump (`pg_dump --format=custom`)
+- Repeatable backup command:
+  - Run `npm run backup:prod`.
+  - Paste the Railway Postgres public `DATABASE_URL` when prompted.
+  - The prompt hides input and the script never prints the connection string.
+  - Output files are written under ignored `backups/` as PostgreSQL custom dumps.
+  - Local prerequisite: `pg_dump` from PostgreSQL client tools. On this Mac it is provided by Homebrew `libpq`.
 
 ## Runtime Shape
 

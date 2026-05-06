@@ -8,6 +8,7 @@
     "build": "tsx script/build.ts",
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
+    "backup:prod": "bash script/backup-production-db.sh",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {
