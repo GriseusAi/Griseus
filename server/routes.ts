@@ -72,6 +72,29 @@ export async function registerRoutes(
   app.use("/api/chart", chartRouter);
   app.use("/api/strategy", strategyRouter);
 
+  // Runtime health endpoint for production/staging smoke tests.
+  app.get("/api/health", async (_req, res) => {
+    try {
+      await db.execute(sql`SELECT 1`);
+      res.json({
+        ok: true,
+        appEnv: process.env.APP_ENV || process.env.RAILWAY_ENVIRONMENT_NAME || process.env.NODE_ENV || "unknown",
+        nodeEnv: process.env.NODE_ENV || "unknown",
+        railwayEnvironment: process.env.RAILWAY_ENVIRONMENT_NAME || null,
+        commit: process.env.RAILWAY_GIT_COMMIT_SHA || null,
+        database: "ok",
+        timestamp: new Date().toISOString(),
+      });
+    } catch (err: any) {
+      res.status(500).json({
+        ok: false,
+        database: "error",
+        message: err.message,
+        timestamp: new Date().toISOString(),
+      });
+    }
+  });
+
   // Auto-seed ontology on first boot (idempotent)
   seedOntology().catch(err => console.error("[ontology] Seed error:", err.message));
 

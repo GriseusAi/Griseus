@@ -108,19 +108,17 @@ Do not paste secret values into chat or commit them to git. Verify and copy them
 
 ## Recommended Next Steps
 
-1. Log in to Railway locally or open the Railway dashboard and identify the active services under project `3fccb8d2-4588-40aa-ab36-c6b49556c355`.
-2. Locate the production database provider and take a dump or provider snapshot.
-3. Create a staging database from a sanitized or copied backup.
-4. Create a staging backend service connected to the staging database.
-5. Create a staging frontend/deployment URL pointed at the staging backend.
-6. Run smoke tests:
-   - `/api/products`
-   - `/api/bom/:sku/production-capacity`
-   - `/api/ontology/graph`
-   - `/api/orchestrator/runs`
-   - WebSocket `/ws/stock`
-   - Login/session flow
-7. Only after staging passes, decide whether Vercel remains frontend-only and Railway remains core backend.
+1. Follow `docs/staging-runbook.md`.
+2. Create a staging database from a sanitized or copied backup.
+3. Create a staging Railway service or environment connected to the staging database.
+4. Deploy staging with `APP_ENV=staging`.
+5. Run:
+
+```bash
+npm run smoke:url -- https://staging-url
+```
+
+6. Only after staging passes, decide whether Vercel remains frontend-only and Railway remains core backend.
 
 ## Current Recommendation
 

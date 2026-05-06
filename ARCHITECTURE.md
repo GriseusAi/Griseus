@@ -77,3 +77,5 @@ Create staging before any larger hosting split:
 2. Staging Railway service pointed at staging DB.
 3. Optional Vercel preview pointed at staging backend.
 4. Smoke tests for API, WebSocket, login/session, imports, and ontology screens.
+
+Operational runbook: `docs/staging-runbook.md`.
