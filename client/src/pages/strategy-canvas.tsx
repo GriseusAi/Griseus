@@ -3500,12 +3500,11 @@ const COMMAND_DEFS: CommandDef[] = [
         orderNumber: devMeta?.code ?? sku,
         quantity: String(qty),
       }));
-      // 2) Müşteri / kategori bul → teslim pill onlara bağlı çıksın
+      // 2) Müşteri / kategori bul. Üretim hattı artık teslim pill atomu üretmez;
+      // deadline sadece hat/order verisinde tutulur.
       const customerId = ids.find(id => atomById[id]?.kind === "customer-chip") ?? null;
       const categoryId = ids.find(id => atomById[id]?.kind === "category") ?? inferredCategoryId;
       const productId = ids.find(id => atomById[id]?.kind === "product") ?? (atomById[inferredProductId] ? inferredProductId : null);
-      const positionParent = categoryId ?? customerId ?? productId ?? ids[0];
-      const edgeTarget = customerId ?? categoryId ?? productId ?? ids[0];
       const lineColor = devMeta?.fuel === "elektrikli" ? "#10b981" : "#38bdf8";
       const productionLineId = `pline-${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
       const managedEdgeIds: string[] = [];
@@ -3520,30 +3519,18 @@ const COMMAND_DEFS: CommandDef[] = [
       const maxProducible = h.capacityBySku[resolvedSku]?.maxProducible;
       const overCapacity = maxProducible !== undefined && toProduce > maxProducible;
       const productionColor = overCapacity ? "#ef4444" : "#10b981";
-      let deadlineNote = "";
-      let deadlinePillId = "";
-      if (positionParent && edgeTarget) {
-        deadlinePillId = h.ensureDeadlinePill(positionParent, deadline, edgeTarget);
-        deadlineNote = ` · teslim pill → ${atomById[edgeTarget]?.label ?? edgeTarget}`;
-      }
+      const deadlinePillId = "";
       const lineIds = [
         customerId,
-        deadlinePillId || null,
         categoryId,
         productId,
         "stg-uretim",
         "stg-depo",
         "stg-satis",
         "fact",
-      ].filter((id): id is string => !!id && (id === deadlinePillId || !!atomById[id]));
-      if (customerId && deadlinePillId) {
-        addLineEdge(customerId, deadlinePillId, undefined, lineColor);
-      }
+      ].filter((id): id is string => !!id && !!atomById[id]);
       if (customerId && categoryId) {
         addLineEdge(customerId, categoryId, undefined, lineColor);
-      }
-      if (deadlinePillId && categoryId) {
-        addLineEdge(deadlinePillId, categoryId, undefined, lineColor);
       }
       if (categoryId && productId) {
         addLineEdge(categoryId, productId, `x${qty}`, lineColor);
@@ -3599,10 +3586,10 @@ const COMMAND_DEFS: CommandDef[] = [
         productId: productId ?? undefined,
         managedEdgeIds,
       });
-      // 3) Manuel üretim hattı odağı: seçili atomlar (+ teslim pill) belirginleşir
+      // 3) Manuel üretim hattı odağı: seçili atomlar belirginleşir
       h.setManualFocus(Array.from(new Set([...ids, productionLineId, ...lineIds])));
       const allocationNote = `üretim ${fmtTR(toProduce)} · depo ${fmtTR(fromWarehouse)} · satış ${fmtTR(qty)}`;
-      return `Üretim hattı: ${resolvedSku} · ${fmtTR(qty)} adet · ${allocationNote} · ${lineIds.length} atom · ${production.note}${deadlineNote} (ESC ile temizle)`;
+      return `Üretim hattı: ${resolvedSku} · ${fmtTR(qty)} adet · ${allocationNote} · ${lineIds.length} atom · ${production.note} (ESC ile temizle)`;
     },
   },
   {
