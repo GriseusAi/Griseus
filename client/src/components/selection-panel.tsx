@@ -1,8 +1,9 @@
-import { useState } from "react";
+import { lazy, Suspense, useState } from "react";
 import { useLocation } from "wouter";
 import { useSelection, type SelectedItem } from "@/lib/selection-context";
 import { useAgentPanel } from "../App";
-import ChartPromptModal from "./chart-prompt-modal";
+
+const ChartPromptModal = lazy(() => import("./chart-prompt-modal"));
 
 const C = {
   bg: "rgba(10,10,15,0.96)",
@@ -259,7 +260,9 @@ export default function SelectionPanel() {
       )}
 
       {compareOpen && (
-        <ChartPromptModal items={selected} onClose={() => setCompareOpen(false)} />
+        <Suspense fallback={null}>
+          <ChartPromptModal items={selected} onClose={() => setCompareOpen(false)} />
+        </Suspense>
       )}
     </>
   );
