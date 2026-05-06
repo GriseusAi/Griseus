@@ -6574,12 +6574,16 @@ function FlowStageInspector({
             return (
             <div
               key={row.key}
+              onClick={() => {
+                if (!isEditing) startEdit(row);
+              }}
               style={{
                 border: `1px solid ${C.panelEdge}`,
                 borderLeft: `3px solid ${stripe}`,
                 borderRadius: 9,
                 background: C.cardBgAlt,
                 padding: "9px 10px",
+                cursor: isEditing ? "default" : "pointer",
               }}
             >
               {isEditing ? (
@@ -6624,9 +6628,23 @@ function FlowStageInspector({
                       {row.sku} · {row.sub}
                     </div>
                   </div>
-                  <button type="button" onClick={() => startEdit(row)} style={{ border: "none", background: "transparent", color: stripe, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap", cursor: "pointer", fontFamily: mono }}>
-                    {fmtTR(row.qty)}
-                  </button>
+                  <div style={{ display: "flex", alignItems: "center", gap: 7, flexShrink: 0 }}>
+                    <span style={{ color: stripe, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap" }}>
+                      {fmtTR(row.qty)}
+                    </span>
+                    <span style={{
+                      border: `1px solid ${stripe}66`,
+                      borderRadius: 6,
+                      color: stripe,
+                      background: `${stripe}18`,
+                      padding: "4px 6px",
+                      fontSize: 9,
+                      fontWeight: 900,
+                      letterSpacing: 0.4,
+                    }}>
+                      düzenle
+                    </span>
+                  </div>
                 </div>
               )}
             </div>
