@@ -5,6 +5,10 @@ import { eq, desc } from "drizzle-orm";
 
 const router = Router();
 
+function routeParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] : value ?? "";
+}
+
 // GET /chat/sessions — list recent sessions
 router.get("/chat/sessions", async (_req: Request, res: Response) => {
   try {
@@ -36,7 +40,7 @@ router.post("/chat/sessions", async (req: Request, res: Response) => {
 // GET /chat/sessions/:id/messages — get all messages in a session
 router.get("/chat/sessions/:id/messages", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = routeParam(req.params.id);
     const messages = await db
       .select()
       .from(chatMessages)
@@ -51,7 +55,7 @@ router.get("/chat/sessions/:id/messages", async (req: Request, res: Response) =>
 // POST /chat/sessions/:id/messages — add a message to a session
 router.post("/chat/sessions/:id/messages", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = routeParam(req.params.id);
     const { role, content, mode, toolsUsed, agentsUsed } = req.body as {
       role: string;
       content: string;
@@ -96,7 +100,7 @@ router.post("/chat/sessions/:id/messages", async (req: Request, res: Response) =
 // PATCH /chat/sessions/:id — rename a session
 router.patch("/chat/sessions/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = routeParam(req.params.id);
     const { title } = req.body as { title?: string };
     if (!title?.trim()) return res.status(400).json({ error: "title gerekli" });
     const [updated] = await db
@@ -113,7 +117,7 @@ router.patch("/chat/sessions/:id", async (req: Request, res: Response) => {
 // DELETE /chat/sessions/:id — delete a session and its messages
 router.delete("/chat/sessions/:id", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = routeParam(req.params.id);
     await db.delete(chatMessages).where(eq(chatMessages.sessionId, id));
     await db.delete(chatSessions).where(eq(chatSessions.id, id));
     res.json({ ok: true });

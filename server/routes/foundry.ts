@@ -27,6 +27,14 @@ import { broadcastEntityChanged } from "../ws";
 
 const router = Router();
 
+function routeParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] : value ?? "";
+}
+
+function routeInt(value: string | string[] | undefined): number {
+  return parseInt(routeParam(value), 10);
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // 1. DATA LINEAGE — "Bu sayı nereden geldi?"
 // ══════════════════════════════════════════════════════════════════════
@@ -85,7 +93,8 @@ export async function recordLineageBatch(entries: Parameters<typeof recordLineag
 // GET /foundry/lineage/:entity/:entityId — trace full lineage for a data point
 router.get("/lineage/:entity/:entityId", async (req: Request, res: Response) => {
   try {
-    const { entity, entityId } = req.params;
+    const entity = routeParam(req.params.entity);
+    const entityId = routeParam(req.params.entityId);
     const entries = await db
       .select()
       .from(dataLineage)
@@ -101,7 +110,7 @@ router.get("/lineage/:entity/:entityId", async (req: Request, res: Response) => 
 // GET /foundry/lineage/chain/:id — walk upstream from a lineage entry
 router.get("/lineage/chain/:id", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     // Walk up the parent chain (max 20 hops to prevent infinite loops)
     const chain: any[] = [];
     let currentId: number | null = id;
@@ -153,7 +162,7 @@ router.post("/pipelines", async (req: Request, res: Response) => {
 // POST /foundry/pipelines/:id/run — manually trigger a pipeline
 router.post("/pipelines/:id/run", async (req: Request, res: Response) => {
   try {
-    const pipelineId = parseInt(req.params.id);
+    const pipelineId = routeInt(req.params.id);
     const [pipeline] = await db.select().from(pipelineDefinitions).where(eq(pipelineDefinitions.id, pipelineId));
     if (!pipeline) return res.status(404).json({ error: "Pipeline bulunamadi" });
 
@@ -249,7 +258,7 @@ router.post("/pipelines/:id/run", async (req: Request, res: Response) => {
 // GET /foundry/pipelines/:id/runs — list runs for a pipeline
 router.get("/pipelines/:id/runs", async (req: Request, res: Response) => {
   try {
-    const pipelineId = parseInt(req.params.id);
+    const pipelineId = routeInt(req.params.id);
     const runs = await db
       .select()
       .from(pipelineRuns)
@@ -265,7 +274,7 @@ router.get("/pipelines/:id/runs", async (req: Request, res: Response) => {
 // PATCH /foundry/pipelines/:id — update pipeline (enable/disable, change schedule)
 router.patch("/pipelines/:id", async (req: Request, res: Response) => {
   try {
-    const pipelineId = parseInt(req.params.id);
+    const pipelineId = routeInt(req.params.id);
     const { enabled, cronExpression, name, description, config } = req.body;
     const updates: Record<string, any> = { updatedAt: new Date() };
     if (enabled !== undefined) updates.enabled = enabled;
@@ -356,7 +365,7 @@ router.post("/snapshots", async (req: Request, res: Response) => {
 // GET /foundry/snapshots/:id — get full snapshot data
 router.get("/snapshots/:id", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [snapshot] = await db.select().from(dataSnapshots).where(eq(dataSnapshots.id, id));
     if (!snapshot) return res.status(404).json({ error: "Snapshot bulunamadi" });
     res.json(snapshot);
@@ -368,7 +377,7 @@ router.get("/snapshots/:id", async (req: Request, res: Response) => {
 // POST /foundry/snapshots/:id/rollback — restore data from snapshot
 router.post("/snapshots/:id/rollback", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [snapshot] = await db.select().from(dataSnapshots).where(eq(dataSnapshots.id, id));
     if (!snapshot) return res.status(404).json({ error: "Snapshot bulunamadi" });
 
@@ -420,7 +429,7 @@ router.post("/snapshots/:id/rollback", async (req: Request, res: Response) => {
 // POST /foundry/snapshots/:id/diff — compare snapshot with current state
 router.post("/snapshots/:id/diff", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [snapshot] = await db.select().from(dataSnapshots).where(eq(dataSnapshots.id, id));
     if (!snapshot) return res.status(404).json({ error: "Snapshot bulunamadi" });
 
@@ -492,7 +501,7 @@ router.post("/scenarios", async (req: Request, res: Response) => {
 // GET /foundry/scenarios/:id — get scenario with overrides
 router.get("/scenarios/:id", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, id));
     if (!scenario) return res.status(404).json({ error: "Senaryo bulunamadi" });
     const overrides = await db.select().from(scenarioOverrides).where(eq(scenarioOverrides.scenarioId, id));
@@ -505,7 +514,7 @@ router.get("/scenarios/:id", async (req: Request, res: Response) => {
 // POST /foundry/scenarios/:id/overrides — add overrides to a scenario
 router.post("/scenarios/:id/overrides", async (req: Request, res: Response) => {
   try {
-    const scenarioId = parseInt(req.params.id);
+    const scenarioId = routeInt(req.params.id);
     const overrides = req.body.overrides as Array<{
       entity: string; entityId: string; field: string;
       originalValue?: string; overrideValue: string;
@@ -533,22 +542,24 @@ router.post("/scenarios/:id/overrides", async (req: Request, res: Response) => {
 // POST /foundry/scenarios/:id/simulate — run what-if with scenario overrides
 router.post("/scenarios/:id/simulate", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, id));
     if (!scenario) return res.status(404).json({ error: "Senaryo bulunamadi" });
 
     const overrides = await db.select().from(scenarioOverrides).where(eq(scenarioOverrides.scenarioId, id));
 
-    // Build what-if scenarios from overrides
-    const whatIfScenarios: WhatIfScenario[] = overrides.map(o => ({
-      type: o.field === "quantity" ? "adjust_stock" : "custom",
-      componentCode: o.entityId,
-      quantity: parseInt(o.overrideValue) || 0,
-    }));
-
     // Get the SKU from request or default
     const sku = (req.body.sku as string) || "ELT.7-11";
-    const result = await simulateWhatIf(sku, whatIfScenarios);
+    const whatIfScenarios: WhatIfScenario[] = overrides
+      .filter(o => o.field === "quantity")
+      .map(o => ({
+        type: "restock_component",
+        componentCode: o.entityId,
+        quantity: parseInt(o.overrideValue, 10) || 0,
+      }));
+    const result = await Promise.all(
+      whatIfScenarios.map(scenario => simulateWhatIf(scenario, sku)),
+    );
 
     // Cache result
     await db.update(scenarios).set({
@@ -565,7 +576,7 @@ router.post("/scenarios/:id/simulate", async (req: Request, res: Response) => {
 // POST /foundry/scenarios/:id/apply — apply scenario overrides to real data
 router.post("/scenarios/:id/apply", async (req: Request, res: Response) => {
   try {
-    const id = parseInt(req.params.id);
+    const id = routeInt(req.params.id);
     const [scenario] = await db.select().from(scenarios).where(eq(scenarios.id, id));
     if (!scenario) return res.status(404).json({ error: "Senaryo bulunamadi" });
 

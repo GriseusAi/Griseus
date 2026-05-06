@@ -364,8 +364,8 @@ function PlatformArchitecture() {
               fill={i % 4 === 0 ? "#d4d4d8" : "#f3f4f6"}
               stroke="#a1a1aa" strokeWidth="0.6" />
             {i > 0 && i < 7 && (
-              <line x1={cx + [[-120, -80, -40, 0, 40, 80, 120][i - 1]]}
-                y1={645 + [[-8, -18, -5, -15, -8, -18, -5][i - 1]]}
+              <line x1={cx + [-120, -80, -40, 0, 40, 80, 120][i - 1]}
+                y1={645 + [-8, -18, -5, -15, -8, -18, -5][i - 1]}
                 x2={cx + dx} y2={645 + dy}
                 stroke="#d4d4d8" strokeWidth="0.5" />
             )}

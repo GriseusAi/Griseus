@@ -66,7 +66,7 @@ router.post("/execute", upload.single("file"), async (req: Request, res: Respons
 
     // Octopus zincir: veri değişti → tüm client'lar haberdar + orkestratör denetim
     if (result.imported + result.updated > 0) {
-      const entities = isCukurova
+      const entities: Array<"products" | "bom_items" | "component_stock" | "sales_history" | "seasonal_indices" | "purchase_suggestions" | "stock_transfers"> = isCukurova
         ? ["component_stock", "bom_items"]
         : finalType === "sales_history" ? ["sales_history"]
         : finalType === "bom_update" ? ["bom_items"]

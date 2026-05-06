@@ -31,6 +31,10 @@ import { eq, sql } from "drizzle-orm";
 
 const router = Router();
 
+function routeParam(value: string | string[] | undefined): string {
+  return Array.isArray(value) ? value[0] : value ?? "";
+}
+
 // ══════════════════════════════════════════════════════════════════════
 // OBJECT TYPES — "What exists in our world?"
 // ══════════════════════════════════════════════════════════════════════
@@ -44,15 +48,16 @@ router.get("/object-types", async (_req: Request, res: Response) => {
 
 router.get("/object-types/:id", async (req: Request, res: Response) => {
   try {
-    const [type] = await db.select().from(ontologyObjectTypes).where(eq(ontologyObjectTypes.id, req.params.id));
+    const id = routeParam(req.params.id);
+    const [type] = await db.select().from(ontologyObjectTypes).where(eq(ontologyObjectTypes.id, id));
     if (!type) return res.status(404).json({ error: "Object type bulunamadi" });
 
     // Get related links, actions, functions
     const links = await db.select().from(ontologyLinkTypes).where(
-      sql`${ontologyLinkTypes.sourceObjectType} = ${req.params.id} OR ${ontologyLinkTypes.targetObjectType} = ${req.params.id}`
+      sql`${ontologyLinkTypes.sourceObjectType} = ${id} OR ${ontologyLinkTypes.targetObjectType} = ${id}`
     );
-    const actions = await db.select().from(ontologyActionTypes).where(eq(ontologyActionTypes.targetObjectType, req.params.id));
-    const functions = await db.select().from(ontologyFunctionTypes).where(eq(ontologyFunctionTypes.sourceObjectType, req.params.id));
+    const actions = await db.select().from(ontologyActionTypes).where(eq(ontologyActionTypes.targetObjectType, id));
+    const functions = await db.select().from(ontologyFunctionTypes).where(eq(ontologyFunctionTypes.sourceObjectType, id));
 
     res.json({ ...type, links, actions, functions });
   } catch (err: any) { res.status(500).json({ error: err.message }); }
@@ -61,7 +66,8 @@ router.get("/object-types/:id", async (req: Request, res: Response) => {
 // Dynamic object instances from backing table
 router.get("/object-types/:id/objects", async (req: Request, res: Response) => {
   try {
-    const [type] = await db.select().from(ontologyObjectTypes).where(eq(ontologyObjectTypes.id, req.params.id));
+    const id = routeParam(req.params.id);
+    const [type] = await db.select().from(ontologyObjectTypes).where(eq(ontologyObjectTypes.id, id));
     if (!type) return res.status(404).json({ error: "Object type bulunamadi" });
 
     const limit = parseInt(req.query.limit as string) || 100;
@@ -84,7 +90,8 @@ router.get("/link-types", async (_req: Request, res: Response) => {
 // Resolve a link: get related objects for a specific object instance
 router.get("/link-types/:linkId/resolve", async (req: Request, res: Response) => {
   try {
-    const [link] = await db.select().from(ontologyLinkTypes).where(eq(ontologyLinkTypes.id, req.params.linkId));
+    const linkId = routeParam(req.params.linkId);
+    const [link] = await db.select().from(ontologyLinkTypes).where(eq(ontologyLinkTypes.id, linkId));
     if (!link) return res.status(404).json({ error: "Link type bulunamadi" });
 
     const sourceId = req.query.sourceId as string;
@@ -175,7 +182,7 @@ router.get("/graph", async (_req: Request, res: Response) => {
 // Toggle an action type on/off — controls whether agent can use the tool
 router.patch("/action-types/:id/toggle", async (req: Request, res: Response) => {
   try {
-    const { id } = req.params;
+    const id = routeParam(req.params.id);
     const [current] = await db.select().from(ontologyActionTypes).where(eq(ontologyActionTypes.id, id));
     if (!current) return res.status(404).json({ error: "Action type bulunamadi" });
 

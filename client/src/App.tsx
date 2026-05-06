@@ -46,6 +46,7 @@ import SddiPage from "@/pages/sddi";
 import WorkshopPage from "@/pages/workshop";
 
 const StrategyCanvasPage = lazy(() => import("@/pages/strategy-canvas"));
+const BhOntologyRoute = () => <BhOntologyPage />;
 
 const StrategyCanvasGuarded = () => (
   <SceneErrorBoundary>
@@ -109,7 +110,7 @@ function App() {
           <Route path="/sihir" component={PalantirPage} />
           <Route path="/lineage" component={LineAgePage} />
           <Route path="/ontology" component={StrategyCanvasGuarded} />
-          <Route path="/ontology/bh" component={BhOntologyPage} />
+          <Route path="/ontology/bh" component={BhOntologyRoute} />
           <Route path="/ontology/simulate" component={OntologySimulatePage} />
           <Route path="/ontology/senaryo"><Redirect to="/ontology" /></Route>
           <Route path="/ontology/strategy"><Redirect to="/ontology" /></Route>

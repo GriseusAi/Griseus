@@ -1807,6 +1807,7 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
     case "create_decision": {
       const { createDecision } = await import("../lib/decision-loop");
       const id = await createDecision({
+        tenantId: "cukurova",
         decisionType: input.decision_type,
         title: input.title,
         rationale: input.rationale,
@@ -1936,7 +1937,12 @@ export async function callTool(toolName: string, input: Record<string, any>): Pr
 
     case "create_workspace": {
       const { createWorkspace } = await import("../lib/workshop");
-      const id = await createWorkspace({ name: input.name, description: input.description });
+      const id = await createWorkspace({
+        name: input.name,
+        description: input.description,
+        ownerId: "agent",
+        visibility: "private",
+      });
       return { workspaceId: id };
     }
 

@@ -72,7 +72,7 @@ async function tick(): Promise<void> {
           // Import health check module dynamically to avoid circular deps
           const { componentStock } = await import("@shared/schema");
           const stocks = await db.select().from(componentStock);
-          const issues = stocks.filter(s => s.quantity !== null && s.quantity < 0);
+          const issues = stocks.filter(s => Number(s.currentStock) < 0);
           recordsProcessed = stocks.length;
 
           await recordLineage({

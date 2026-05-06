@@ -114,6 +114,14 @@ export async function computeComponentIntelligence(sku: string): Promise<{
   criticalCount: number;
   warningCount: number;
   topRisks: ComponentIntelligence[];
+  ontology: {
+    currentMonth: string;
+    currentSeasonalIndex: number;
+    winterRiskCount: number;
+    avgDaysDifference: number;
+    seasonalIndices: Array<{ month: string; index: number; baseline: number }>;
+    monthlyDemand: Array<{ month: string; demand: number; baseline: number }>;
+  };
 }> {
   // ATE — Adaptif eşikleri çek
   const T = await getThresholds();
