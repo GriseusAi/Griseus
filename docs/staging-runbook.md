@@ -37,6 +37,13 @@ npm run smoke:url -- https://griseus.io
    - Keep the production Railway service connected to `main`.
 3. Add a new Railway Postgres service for staging.
 4. Restore a copy of the latest local backup into the staging Postgres database.
+
+```bash
+npm run restore:staging
+```
+
+The command prompts for the staging `DATABASE_PUBLIC_URL` with hidden input and asks for a `STAGING` confirmation before modifying the target database.
+
 5. Set staging service variables:
 
 ```text

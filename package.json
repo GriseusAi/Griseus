@@ -9,6 +9,7 @@
     "start": "NODE_ENV=production node dist/index.cjs",
     "check": "tsc",
     "backup:prod": "bash script/backup-production-db.sh",
+    "restore:staging": "bash script/restore-staging-db.sh",
     "smoke:url": "bash script/smoke-test-url.sh",
     "db:push": "drizzle-kit push"
   },
