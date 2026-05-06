@@ -2789,6 +2789,39 @@ function productionLineNumbers(
   return { sku, qty, warehouse, toProduce, max: max ?? null, over };
 }
 
+type FlowStageKey = "uretim" | "depo" | "satis";
+
+function flowStageKeyFromAtom(atom: SceneAtom | null | undefined): FlowStageKey | null {
+  if (!atom || atom.kind !== "stage") return null;
+  if (atom.id === "stg-uretim" || atom.label === "Üretim") return "uretim";
+  if (atom.id === "stg-depo" || atom.label === "Depo") return "depo";
+  if (atom.id === "stg-satis" || atom.label === "Satış") return "satis";
+  return null;
+}
+
+function allocateOrdersByWarehouse(
+  orders: Order[],
+  finishedStockBySku: Record<string, FinishedStockLevel>,
+) {
+  const remainingWarehouse: Record<string, number> = {};
+  ALL_SKUS.forEach(sku => {
+    remainingWarehouse[sku] = Math.max(0, Number(finishedStockBySku[sku]?.inWarehouse ?? 0));
+  });
+
+  return [...orders]
+    .sort((a, b) => a.createdAt - b.createdAt)
+    .map(order => {
+      const warehouseAvailable = remainingWarehouse[order.sku] ?? 0;
+      const fromWarehouse = Math.min(order.quantity, warehouseAvailable);
+      remainingWarehouse[order.sku] = Math.max(0, warehouseAvailable - fromWarehouse);
+      return {
+        order,
+        fromWarehouse,
+        toProduce: Math.max(0, order.quantity - fromWarehouse),
+      };
+    });
+}
+
 function productionEdgeState(
   edge: SceneEdge,
   metaById: Record<string, AtomMeta>,
@@ -2811,7 +2844,10 @@ function productionEdgeState(
     ) {
       return { label: `x${fmtTR(numbers.qty)}`, color: demandColor };
     }
-    if (meta.productId === edge.fromId && edge.toId === "stg-uretim") {
+    if (
+      (meta.productId === edge.fromId && edge.toId === "stg-uretim") ||
+      (edge.fromId === "stg-uretim" && meta.productId === edge.toId)
+    ) {
       return { label: `x${fmtTR(numbers.toProduce)}`, color: productionColor };
     }
     if (edge.fromId === "stg-uretim" && edge.toId === "stg-depo") {
@@ -2834,10 +2870,14 @@ function productionEdgeState(
     if (warehouse > 0) return { label: `x${fmtTR(warehouse)}`, color: "#38bdf8" };
   }
 
-  if (edge.toId === "stg-uretim" && edge.fromId.startsWith("p-")) {
-    const matchingLines = Object.values(metaById).filter(line => line.productId === edge.fromId);
+  const productStageProductId =
+    edge.toId === "stg-uretim" && edge.fromId.startsWith("p-") ? edge.fromId :
+    edge.fromId === "stg-uretim" && edge.toId.startsWith("p-") ? edge.toId :
+    null;
+  if (productStageProductId) {
+    const matchingLines = Object.values(metaById).filter(line => line.productId === productStageProductId);
     if (matchingLines.length === 0) return null;
-    const sku = matchingLines[0]?.orderNumber ?? edge.fromId.replace(/^p-/, "");
+    const sku = matchingLines[0]?.orderNumber ?? productStageProductId.replace(/^p-/, "");
     const totalQty = matchingLines.reduce((sum, line) => sum + (parseTRNumber(line.quantity) ?? 0), 0);
     const warehouse = Math.max(0, Number(stockBySku?.[sku]?.inWarehouse ?? 0));
     const toProduce = Math.max(0, totalQty - warehouse);
@@ -4374,7 +4414,7 @@ function CustomersSceneRenderer({
   atomMeta, setAtomMetaField, clearAtomMeta,
   customAtoms, addCustomAtom, updateCustomAtom, removeCustomAtom,
   edgeCommands, setEdgeCommand,
-  flaskItems, reactionResult, onApplySupplyPlan,
+  orders, flaskItems, reactionResult, onApplySupplyPlan,
   onCreateProductionLine, onUpdateProductionLine, onDeleteProductionLine,
 }: {
   positions: Record<string, XY>;
@@ -4401,6 +4441,7 @@ function CustomersSceneRenderer({
   removeCustomAtom: (id: string) => void;
   edgeCommands: Record<string, string>;
   setEdgeCommand: (key: string, command: string | null) => void;
+  orders: Order[];
   flaskItems: FlaskItem[];
   reactionResult: ReactionResult | null;
   onApplySupplyPlan: (items: SupplyItem[]) => void;
@@ -4479,6 +4520,7 @@ function CustomersSceneRenderer({
   const [editingAtomId, setEditingAtomId] = useState<string | null>(null);
   // Edge label tıklanınca o edge için komut atama popover'ı açılır.
   const [editingEdgeKey, setEditingEdgeKey] = useState<string | null>(null);
+  const [stageInspectorId, setStageInspectorId] = useState<string | null>(null);
   // Müşteri sipariş hattı odağı — müşteri-chip'e tıklayınca o müşterinin
   // reachable subgraph'ı (kategori → mamul → akış → fabrika + pill) belirginleşir,
   // diğer tüm atom/edge dim olur. ESC veya boş alana tıklama ile temizlenir.
@@ -4591,6 +4633,7 @@ function CustomersSceneRenderer({
       if (e.key === "Escape") {
         clearSelection();
         setPopupAtomId(null);
+        setStageInspectorId(null);
         setEditingAtomId(null);
         setExpandedDeviceIds(new Set());
         setExpandedSubassemblies(new Set());
@@ -5282,8 +5325,8 @@ function CustomersSceneRenderer({
     };
     const eKey = isLive ? null : makeEdgeKey(e);
     const assignedCommand = eKey ? edgeCommands[eKey] : undefined;
-    const dynamicLabel = supplierEdgeLabel(e, a, b, atomMeta)
-      ?? productionState?.label
+    const dynamicLabel = productionState?.label
+      ?? supplierEdgeLabel(e, a, b, atomMeta)
       ?? productionEdgeLabel(e, atomMeta, customEdges, sceneFinishedStockBySku);
     const edgeLabel = dynamicLabel ?? e.label;
     const hasLabelText = !!edgeLabel;
@@ -5558,6 +5601,11 @@ function CustomersSceneRenderer({
             setPopupAtomId(null);
             setEditingAtomId(a.id);
           };
+        } else if (a.kind === "stage") {
+          baseTap = () => {
+            setPopupAtomId(null);
+            setStageInspectorId(prev => prev === a.id ? null : a.id);
+          };
         } else {
           baseTap = () => setPopupAtomId(prev => prev === a.id ? null : a.id);
         }
@@ -5648,6 +5696,16 @@ function CustomersSceneRenderer({
           onClose={() => setPopupAtomId(null)}
           onJumpToAtom={(id) => { setPopupAtomId(id); }}
           viewport={viewport}
+        />
+      )}
+
+      {stageInspectorId && atomById[stageInspectorId] && !hiddenIds.has(stageInspectorId) && (
+        <FlowStageInspector
+          stage={atomById[stageInspectorId]}
+          orders={orders}
+          finishedStockBySku={sceneFinishedStockBySku}
+          capacityBySku={sceneCapacityBySku}
+          onClose={() => setStageInspectorId(null)}
         />
       )}
 
@@ -6258,6 +6316,163 @@ function ComponentQuantityInspector({
           >
             kapat
           </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function FlowStageInspector({
+  stage,
+  orders,
+  finishedStockBySku,
+  capacityBySku,
+  onClose,
+}: {
+  stage: SceneAtom;
+  orders: Order[];
+  finishedStockBySku: Record<string, FinishedStockLevel>;
+  capacityBySku: Record<string, CapacityResp>;
+  onClose: () => void;
+}) {
+  const stageKey = flowStageKeyFromAtom(stage);
+  const stripe =
+    stageKey === "uretim" ? C.warn :
+    stageKey === "depo" ? C.info :
+    C.ok;
+  const allocated = useMemo(
+    () => allocateOrdersByWarehouse(orders, finishedStockBySku),
+    [orders, finishedStockBySku],
+  );
+  const productionRows = allocated
+    .filter(x => x.toProduce > 0)
+    .map(x => ({
+      key: x.order.id,
+      customer: x.order.customer,
+      sku: x.order.sku,
+      qty: x.toProduce,
+      sub: `talep ${fmtTR(x.order.quantity)} · depo ${fmtTR(x.fromWarehouse)}`,
+    }));
+  const salesRows = orders.map(order => ({
+    key: order.id,
+    customer: order.customer,
+    sku: order.sku,
+    qty: order.quantity,
+    sub: order.deadline ? `teslim ${order.deadline}` : "teslim tarihi yok",
+  }));
+  const warehouseRows = ALL_SKUS
+    .map(sku => {
+      const stock = Math.max(0, Number(finishedStockBySku[sku]?.inWarehouse ?? 0));
+      const inProduction = Math.max(0, Number(finishedStockBySku[sku]?.inProduction ?? 0));
+      const max = capacityBySku[sku]?.maxProducible;
+      return {
+        key: sku,
+        customer: sku,
+        sku: max === undefined ? "kapasite ?" : `maks üretim ${fmtTR(max)}`,
+        qty: stock,
+        inProduction,
+        sub: `üretimde ${fmtTR(inProduction)}`,
+      };
+    })
+    .filter(row => row.qty > 0 || row.inProduction > 0);
+
+  const rows =
+    stageKey === "uretim" ? productionRows :
+    stageKey === "depo" ? warehouseRows :
+    salesRows;
+  const totalQty = rows.reduce((sum, row) => sum + row.qty, 0);
+  const uniqueCustomers = new Set(salesRows.map(row => row.customer)).size;
+  const title =
+    stageKey === "uretim" ? "ÜRETİMDEKİ MÜŞTERİ TALEBİ" :
+    stageKey === "depo" ? "CANLI MAMUL DEPO STOĞU" :
+    "MÜŞTERİ SATIŞLARI";
+  const emptyText =
+    stageKey === "uretim" ? "Üretime düşen açık müşteri talebi yok." :
+    stageKey === "depo" ? "Depoda kayıtlı mamul stoğu yok." :
+    "Satış/sipariş kaydı yok.";
+
+  return (
+    <div
+      style={{
+        position: "absolute",
+        top: 112,
+        right: 18,
+        width: 380,
+        zIndex: 29,
+        background: C.cardBg,
+        color: C.cardInk,
+        border: `1px solid ${C.panelEdge}`,
+        borderLeft: `3px solid ${stripe}`,
+        borderRadius: 12,
+        boxShadow: "0 18px 42px rgba(0,0,0,0.45)",
+        fontFamily: mono,
+        overflow: "hidden",
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
+      <div style={{ padding: "12px 14px", borderBottom: `1px solid ${C.panelEdge}`, display: "flex", justifyContent: "space-between", gap: 10 }}>
+        <div>
+          <div style={{ fontSize: 9, letterSpacing: 1.8, color: stripe, fontWeight: 850 }}>{title}</div>
+          <div style={{ fontSize: 16, fontWeight: 900, marginTop: 3 }}>{stage.label}</div>
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          style={{
+            width: 26,
+            height: 26,
+            borderRadius: 6,
+            border: `1px solid ${C.panelEdge}`,
+            background: "rgba(255,255,255,0.06)",
+            color: C.cardInk,
+            cursor: "pointer",
+            fontFamily: mono,
+          }}
+          aria-label="Kapat"
+        >
+          x
+        </button>
+      </div>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
+          <InfoCell label={stageKey === "satis" ? "Toplam satış" : "Toplam adet"} value={`${fmtTR(totalQty)} adet`} />
+          <InfoCell
+            label={stageKey === "depo" ? "Cihaz tipi" : "Müşteri"}
+            value={stageKey === "depo" ? `${rows.length} SKU` : `${uniqueCustomers} müşteri`}
+          />
+        </div>
+        <div style={{ maxHeight: 420, overflowY: "auto", display: "flex", flexDirection: "column", gap: 6, paddingRight: 2 }}>
+          {rows.length === 0 ? (
+            <div style={{ border: `1px solid ${C.panelEdge}`, borderRadius: 9, background: C.cardBgAlt, padding: "10px 11px", color: C.cardSub, fontSize: 11, lineHeight: 1.4 }}>
+              {emptyText}
+            </div>
+          ) : rows.map(row => (
+            <div
+              key={row.key}
+              style={{
+                border: `1px solid ${C.panelEdge}`,
+                borderLeft: `3px solid ${stripe}`,
+                borderRadius: 9,
+                background: C.cardBgAlt,
+                padding: "9px 10px",
+              }}
+            >
+              <div style={{ display: "flex", justifyContent: "space-between", gap: 10, alignItems: "baseline" }}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 12, fontWeight: 900, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {row.customer}
+                  </div>
+                  <div style={{ fontSize: 10, color: C.cardSub, marginTop: 3, whiteSpace: "nowrap", overflow: "hidden", textOverflow: "ellipsis" }}>
+                    {row.sku} · {row.sub}
+                  </div>
+                </div>
+                <div style={{ color: stripe, fontSize: 13, fontWeight: 950, whiteSpace: "nowrap" }}>
+                  {fmtTR(row.qty)}
+                </div>
+              </div>
+            </div>
+          ))}
         </div>
       </div>
     </div>
@@ -10158,6 +10373,7 @@ export default function StrategyCanvasPage() {
             removeCustomAtom={removeSceneCustomAtom}
             edgeCommands={sceneEdgeCommands}
             setEdgeCommand={setSceneEdgeCommand}
+            orders={orders}
             flaskItems={flaskItems}
             reactionResult={reactionResult}
             onApplySupplyPlan={(items) => {
