@@ -56,6 +56,12 @@ No `.vercel` folder, `vercel.json`, GitHub Actions workflow, or local Railway pr
   - Local file: `backups/griseus-prod-20260506-211528.dump`
   - Size: 1.2 MB
   - Format: PostgreSQL custom dump (`pg_dump --format=custom`)
+- Manual backup taken on 2026-05-06 22:17 Europe/Istanbul:
+  - Local file: `backups/griseus-prod-20260506-221712.dump`
+  - Size: 1.2 MB
+  - Format: PostgreSQL custom dump (`pg_dump --format=custom`)
+  - Verified with `pg_restore --list`.
+- The Railway Postgres public connection URL was exposed in assistant chat during manual backup handoff. Rotate the Postgres password/connection credentials from Railway after confirming backups are retained.
 - Repeatable backup command:
   - Run `npm run backup:prod`.
   - Paste the Railway Postgres public `DATABASE_URL` when prompted.
