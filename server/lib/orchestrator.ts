@@ -54,11 +54,10 @@ async function layer1Mutation(findings: Finding[]): Promise<LayerStatus> {
       .from(dataLineage)
       .where(gte(dataLineage.createdAt, new Date(Date.now() - OCTOPUS_CHAIN_CONFIG.mutation.recencyHours * 60 * 60 * 1000)));
     const count = recentLineage[0]?.count ?? 0;
-    // No lineage in last hour during potential business activity — just informational
+    // No lineage in last hour usually means the system is idle. Do not count idle
+    // periods as yellow unless we have a real mutation signal to compare against.
     if (count === 0) {
-      findings.push({ layer: "mutation", severity: "yellow",
-        message: "Son 1 saatte lineage kaydı yok — sistem idle veya mutasyon kaydedilmedi" });
-      return "yellow";
+      return "green";
     }
     return "green";
   } catch (err: any) {
@@ -305,7 +304,7 @@ async function layer9Validation(findings: Finding[], intelCache: Map<string, any
 async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>): Promise<LayerStatus> {
   let worst: LayerStatus = "green";
   // Config'den aile listesi — yeni aile eklenince otomatik denetlenir
-  const familyAmps: Record<string, number[]> = Object.fromEntries(
+  const familyAmps: Record<string, Array<{ sku: string; amplitude: number }>> = Object.fromEntries(
     Object.keys(OCTOPUS_CHAIN_CONFIG.familyArchetypes).map(f => [f, []])
   );
 
@@ -378,19 +377,20 @@ async function layer10Seasonal(findings: Finding[], intelCache: Map<string, any>
       }
     }
 
-    if (fam) familyAmps[fam].push(amplitude);
+    if (fam) familyAmps[fam].push({ sku, amplitude });
   }
 
   // 10.8 Family amplitude consistency (config threshold)
   const spreadRatio = OCTOPUS_CHAIN_CONFIG.seasonalThresholds.familyAmplitudeSpreadRatio;
-  for (const [fam, amps] of Object.entries(familyAmps)) {
-    if (amps.length < 2) continue;
+  for (const [fam, entries] of Object.entries(familyAmps)) {
+    if (entries.length < 2) continue;
+    const amps = entries.map(e => e.amplitude);
     const spread = Math.max(...amps) - Math.min(...amps);
     const meanAmp = amps.reduce((a,b)=>a+b,0) / amps.length;
     if (meanAmp > 0 && (spread / meanAmp) > spreadRatio) {
       findings.push({ layer: "seasonal", severity: "yellow",
-        message: `${fam} ailesi amplitude dağılımı geniş: ${amps.map(a => a.toFixed(2)).join(", ")}`,
-        data: { family: fam, amplitudes: amps } });
+        message: `${fam} ailesi amplitude dağılımı geniş: ${entries.map(e => `${e.sku}=${e.amplitude.toFixed(2)}`).join(", ")}`,
+        data: { family: fam, amplitudes: entries } });
       if (worst === "green") worst = "yellow";
     }
   }

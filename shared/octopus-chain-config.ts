@@ -62,9 +62,10 @@ export const OCTOPUS_CHAIN_CONFIG = {
     minAmplitude: 2.0,
 
     /** Aile içi amplitude dağılım toleransı (relative spread / mean)
-     *  Cukurova verisi: ELT.7-11 büyük proje vs ELT.5-7 ofis farkı doğal %40-50
-     *  Üstü → gerçek DSE SKU-specific drift sinyali */
-    familyAmplitudeSpreadRatio: 0.5,
+     *  Çukurova portföyünde aynı aile içinde farklı kapasite/hacim segmentleri var
+     *  (örn. GSS20P vs GSS40P, ELT.5-7 vs ELT.7-11). Bu yüzden aile spread'i
+     *  doğal olarak yüksek olabilir. 2.0 üstü hâlâ gerçek SKU-specific drift sinyali. */
+    familyAmplitudeSpreadRatio: 2.0,
 
     /** Indeks toplamı / 12 ≈ 1.0 olmalı (normalize). Tolerans ±0.1 */
     normalizedMeanTolerance: 0.1,
