@@ -2854,6 +2854,19 @@ function productionShortageRows(capacity: CapacityResp | undefined, targetQty: n
     });
 }
 
+function digitalTwinBomHighlight(
+  code: string,
+  capacity: CapacityResp | undefined,
+  liveComponent: BomComponent | undefined,
+): SceneAtom["highlight"] {
+  if (!capacity) return null;
+  const productMax = Number(capacity.maxProducible);
+  const bottleneck = capacity.bottlenecks.find(b => b.code === code);
+  const componentMax = Number(liveComponent?.maxProducts ?? bottleneck?.maxProducts);
+  if (!Number.isFinite(productMax) || !Number.isFinite(componentMax)) return null;
+  return componentMax <= productMax ? "red" : null;
+}
+
 type FlowStageKey = "uretim" | "depo" | "satis";
 
 function flowStageKeyFromAtom(atom: SceneAtom | null | undefined): FlowStageKey | null {
@@ -4820,6 +4833,7 @@ function CustomersSceneRenderer({
       const tree = DEVICE_BOM_TREE[sku];
       if (!tree || tree.length === 0) return;
       const liveByCode = sceneStockBySku[sku] ?? {};
+      const capacity = sceneCapacityBySku[sku];
 
       const blockX = COL_BASE_X + deviceIdx * COL_WIDTH;
       const colXs = [blockX, blockX + CARD_W + T1_COL_GAP];   // T1 sol/sağ kolon X'leri
@@ -4846,19 +4860,19 @@ function CustomersSceneRenderer({
           const h = isSub ? SUB_H : CARD_H;
           const defaultX = isSub ? subXs[ci] : colXs[ci];
           const persistedT1 = positions[t1Id];
+          const t1Live = liveByCode[t1.code];
           out.push({
             id: t1Id,
             kind: isSub ? "subassembly" : "bom-item",
             label: t1.code,
             sub: compactName(t1.name) + (() => {
-              const live = liveByCode[t1.code];
-              const stock = live?.rawStock ?? live?.currentStock ?? t1.stock;
+              const stock = t1Live?.rawStock ?? t1Live?.currentStock ?? t1.stock;
               return stock != null ? ` · stok ${fmtTR(Number(stock))}` : "";
             })(),
             x: persistedT1 ? persistedT1.x : defaultX,
             y: persistedT1 ? persistedT1.y : cursorY,
             w, h,
-            highlight: isCriticalBom(t1.name) ? "red" : null,
+            highlight: digitalTwinBomHighlight(t1.code, capacity, t1Live),
           });
 
           if (isSub && expandedSubassemblies.has(t1Id)) {
@@ -4876,19 +4890,19 @@ function CustomersSceneRenderer({
               const persistedT2 = positions[t2Id];
               const defaultX2 = T2_X + t2Col * (T2_W + T2_INNER_GAP);
               const defaultY2 = t2StartY + t2Row * (T2_H + T2_GAP);
+              const childLive = liveByCode[c.code];
               out.push({
                 id: t2Id,
                 kind: "bom-item",
                 label: c.code,
                 sub: compactName(c.name) + (() => {
-                  const live = liveByCode[c.code];
-                  const stock = live?.rawStock ?? live?.currentStock ?? c.stock;
+                  const stock = childLive?.rawStock ?? childLive?.currentStock ?? c.stock;
                   return stock != null ? ` · stok ${fmtTR(Number(stock))}` : "";
                 })(),
                 x: persistedT2 ? persistedT2.x : defaultX2,
                 y: persistedT2 ? persistedT2.y : defaultY2,
                 w: T2_W, h: T2_H,
-                highlight: isCriticalBom(c.name) ? "red" : null,
+                highlight: digitalTwinBomHighlight(c.code, capacity, childLive),
               });
             });
           }
@@ -4898,7 +4912,7 @@ function CustomersSceneRenderer({
       });
     });
     return out;
-  }, [expandedDeviceIds, expandedSubassemblies, baseAtoms, positions, sceneStockBySku]);
+  }, [expandedDeviceIds, expandedSubassemblies, baseAtoms, positions, sceneStockBySku, sceneCapacityBySku]);
 
   const atoms = useMemo(() => [...baseAtoms, ...bomAtoms], [baseAtoms, bomAtoms]);
 
