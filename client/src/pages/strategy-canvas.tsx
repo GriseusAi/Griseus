@@ -361,7 +361,6 @@ const SCENARIOS_KEY = "griseus_scenarios_v1";
 const ACTIVE_SCENARIO_KEY = "griseus_scenario_active_v1";
 const SCENARIO_BACKUPS_KEY = "griseus_scenario_backups_v1";
 const SCENARIO_DELETED_KEY = "griseus_scenario_deleted_v1";
-const PROTECTED_SCENARIO_IDS = new Set(["s_customers_seed_v3"]);
 
 interface WidgetVisibility {
   customers: boolean;
@@ -9296,43 +9295,26 @@ function OntologySearchBox({
 
 function ScenarioSafetyDashboard({
   scenarios,
-  deletedScenarios,
-  backups,
   activeId,
   onLoad,
   onSave,
   onSaveAs,
-  onBackup,
   onDelete,
-  onRestoreDeleted,
-  onRestoreBackup,
 }: {
   scenarios: ScenarioSnapshot[];
-  deletedScenarios: ScenarioSnapshot[];
-  backups: ScenarioBackup[];
   activeId: string | null;
   onLoad: (id: string) => void;
   onSave: () => void;
   onSaveAs: () => void;
-  onBackup: (scenario: ScenarioSnapshot) => void;
   onDelete: (id: string) => void;
-  onRestoreDeleted: (scenario: ScenarioSnapshot) => void;
-  onRestoreBackup: (backup: ScenarioBackup) => void;
 }) {
   const [panelView, setPanelView] = useState<"home" | "scenarios">("home");
   const latestScenarios = useMemo(
     () => [...scenarios].sort((a, b) => b.updatedAt - a.updatedAt),
     [scenarios],
   );
-  const latestBackups = useMemo(
-    () => [...backups].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8),
-    [backups],
-  );
-  const activeScenario = scenarios.find(s => s.id === activeId) ?? null;
 
   const stopCanvas = (e: React.SyntheticEvent) => e.stopPropagation();
-  const archiveCount = deletedScenarios.length;
-  const backupCount = backups.length;
 
   return (
     <aside
@@ -9447,7 +9429,7 @@ function ScenarioSafetyDashboard({
             <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
               <div style={{ fontSize: 12, color: "#f8fafc", fontWeight: 850 }}>Senaryolar</div>
               <div style={{ fontSize: 10, color: "#9aa4b5", marginTop: 2 }}>
-                {scenarios.length} kayıt · {backupCount} yedek · {archiveCount} arşiv
+                {scenarios.length} kayıt · aç, kopyala, sil
               </div>
             </div>
             <div style={{ color: "#8792a3", fontSize: 16, fontWeight: 900 }}>›</div>
@@ -9493,7 +9475,6 @@ function ScenarioSafetyDashboard({
             <div style={sideSectionTitle}>KAYITLI SENARYOLAR</div>
             {latestScenarios.map(s => {
               const isActive = s.id === activeId;
-              const protectedScenario = PROTECTED_SCENARIO_IDS.has(s.id);
               return (
                 <div
                   key={s.id}
@@ -9518,69 +9499,22 @@ function ScenarioSafetyDashboard({
                     {scenarioOrderCount(s)} sipariş · {formatScenarioDate(s.updatedAt)}
                   </div>
                   <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                    <button type="button" onClick={(e) => { e.stopPropagation(); onBackup(s); }} style={sidePanelMiniBtn}>yedek al</button>
                     <button type="button" onClick={(e) => { e.stopPropagation(); onLoad(s.id); }} style={sidePanelMiniBtn}>aç</button>
                     <button
                       type="button"
-                      disabled={protectedScenario}
-                      title={protectedScenario ? "Varsayılan senaryo arşivlenemez" : "Arşivlemeden önce isim yazdırır"}
+                      title="senaryoyu sil"
                       onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
                       style={{
                         ...sidePanelMiniBtn,
-                        color: protectedScenario ? "#677183" : "#fca5a5",
-                        cursor: protectedScenario ? "not-allowed" : "pointer",
+                        color: "#fca5a5",
                       }}
                     >
-                      arşivle
+                      sil
                     </button>
                   </div>
                 </div>
               );
             })}
-
-            <div style={sideSectionTitle}>GÜVENLİK</div>
-            <div style={{
-              background: "rgba(12,16,22,0.58)",
-              border: "1px solid rgba(255,255,255,0.08)",
-              borderRadius: 7,
-              padding: 9,
-              fontSize: 10,
-              color: "#aab3c2",
-              lineHeight: 1.45,
-            }}>
-              Silme artık direkt yok: senaryo önce yedeklenir, arşive taşınır ve geri yüklenebilir.
-              {activeScenario && <div style={{ marginTop: 6, color: "#e2e8f0" }}>Açık: {activeScenario.name}</div>}
-            </div>
-
-            {deletedScenarios.length > 0 && (
-              <>
-                <div style={sideSectionTitle}>ARŞİV</div>
-                {[...deletedScenarios].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(s => (
-                  <div key={`deleted-${s.id}`} style={sideArchiveRow}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-                      <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{formatScenarioDate(s.updatedAt)}</div>
-                    </div>
-                    <button type="button" onClick={() => onRestoreDeleted(s)} style={sidePanelMiniBtn}>geri yükle</button>
-                  </div>
-                ))}
-              </>
-            )}
-
-            {latestBackups.length > 0 && (
-              <>
-                <div style={sideSectionTitle}>YEDEKLER</div>
-                {latestBackups.map(b => (
-                  <div key={b.id} style={sideArchiveRow}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.snapshot.name}</div>
-                      <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{b.reason} · {formatScenarioDate(b.createdAt)}</div>
-                    </div>
-                    <button type="button" onClick={() => onRestoreBackup(b)} style={sidePanelMiniBtn}>aç</button>
-                  </div>
-                ))}
-              </>
-            )}
           </div>
         </>
       )}
@@ -10422,14 +10356,9 @@ export default function StrategyCanvasPage() {
   }, [scenarios, applyScenarioSnapshot]);
 
   const deleteScenarioById = useCallback((id: string) => {
-    if (PROTECTED_SCENARIO_IDS.has(id)) {
-      window.alert("Bu varsayılan senaryo arşivlenemez. İstersen 'farklı kaydet' ile kopyasını oluştur.");
-      return;
-    }
     const scenario = scenarios.find(s => s.id === id);
     if (!scenario) return;
-    const typed = window.prompt(`Arşivlemek için senaryo adını aynen yaz:\n${scenario.name}`);
-    if (typed !== scenario.name) return;
+    if (!window.confirm(`"${scenario.name}" senaryosu silinsin mi?`)) return;
     backupScenarioSnapshot(scenario, "delete");
     setDeletedScenarios(prev => {
       const without = prev.filter(s => s.id !== scenario.id);
@@ -10438,31 +10367,6 @@ export default function StrategyCanvasPage() {
     setScenarios(prev => prev.filter(s => s.id !== id));
     if (activeScenarioId === id) setActiveScenarioId(null);
   }, [activeScenarioId, backupScenarioSnapshot, scenarios]);
-
-  const restoreDeletedScenario = useCallback((scenario: ScenarioSnapshot) => {
-    backupScenarioSnapshot(scenario, "restore");
-    const restored = { ...scenario, updatedAt: Date.now() };
-    setScenarios(prev => {
-      const without = prev.filter(s => s.id !== restored.id);
-      return [...without, restored];
-    });
-    setDeletedScenarios(prev => prev.filter(s => s.id !== scenario.id));
-    applyScenarioSnapshot(restored);
-    setActiveScenarioId(restored.id);
-  }, [applyScenarioSnapshot, backupScenarioSnapshot]);
-
-  const restoreBackupScenario = useCallback((backup: ScenarioBackup) => {
-    const restored: ScenarioSnapshot = {
-      ...backup.snapshot,
-      id: `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
-      name: `${backup.snapshot.name} (yedekten)`,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    setScenarios(prev => [...prev, restored]);
-    applyScenarioSnapshot(restored);
-    setActiveScenarioId(restored.id);
-  }, [applyScenarioSnapshot]);
 
   const newBlankScenario = useCallback(() => {
     if (orders.length > 0) {
@@ -11188,16 +11092,11 @@ export default function StrategyCanvasPage() {
       >
         <ScenarioSafetyDashboard
           scenarios={scenarios}
-          deletedScenarios={deletedScenarios}
-          backups={scenarioBackups}
           activeId={activeScenarioId}
           onLoad={loadScenario}
           onSave={handleQuickSave}
           onSaveAs={promptSaveAs}
-          onBackup={(scenario) => backupScenarioSnapshot(scenario, "manual")}
           onDelete={deleteScenarioById}
-          onRestoreDeleted={restoreDeletedScenario}
-          onRestoreBackup={restoreBackupScenario}
         />
 
         {/* ─── Workbench widget'ları — sadece widgetVis bayrağı açıksa render ─── */}
@@ -11501,16 +11400,6 @@ const sideSectionTitle: React.CSSProperties = {
   color: "#8792a3",
   letterSpacing: 1.5,
   fontWeight: 850,
-};
-const sideArchiveRow: React.CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  background: "rgba(12,16,22,0.48)",
-  border: "1px solid rgba(255,255,255,0.07)",
-  borderRadius: 7,
-  padding: 8,
-  marginBottom: 6,
 };
 const hdrBtnAccent: React.CSSProperties = {
   padding: "9px 16px", borderRadius: 8, cursor: "pointer",
