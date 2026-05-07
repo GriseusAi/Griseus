@@ -34,6 +34,11 @@ app.use(express.urlencoded({ extended: false }));
 // Session setup
 const isProduction = process.env.NODE_ENV === "production";
 const MemoryStore = createMemoryStore(session);
+const sessionSecret = process.env.SESSION_SECRET;
+
+if (isProduction && !sessionSecret) {
+  throw new Error("SESSION_SECRET is required in production");
+}
 
 if (isProduction) {
   app.set("trust proxy", 1);
@@ -41,7 +46,7 @@ if (isProduction) {
 
 app.use(
   session({
-    secret: process.env.SESSION_SECRET || "griseus-dev-secret-change-in-prod",
+    secret: sessionSecret || "griseus-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
     store: new MemoryStore({ checkPeriod: 86400000 }),
