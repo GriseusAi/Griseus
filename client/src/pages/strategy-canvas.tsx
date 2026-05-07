@@ -271,7 +271,16 @@ interface BomComponent {
 }
 interface CapacityResp {
   product: string; maxProducible: number;
-  bottlenecks: { code: string; name: string; maxProducts: number; reason?: string }[];
+  bottlenecks: {
+    code: string;
+    name: string;
+    tier?: number;
+    stock?: number;
+    required?: number;
+    maxProducts: number;
+    note?: string;
+    reason?: string;
+  }[];
 }
 interface StockResp { product: string; components: BomComponent[]; }
 interface FinishedStockLevel {
@@ -2818,6 +2827,31 @@ function productionLineNumbers(
   const max = capacityBySku?.[sku]?.maxProducible;
   const over = max !== undefined && toProduce > max;
   return { sku, qty, warehouse, fromWarehouse, toProduce, max: max ?? null, over };
+}
+
+function productionShortageRows(capacity: CapacityResp | undefined, targetQty: number) {
+  if (!capacity || targetQty <= 0) return [];
+  return capacity.bottlenecks
+    .filter(b => Number.isFinite(b.maxProducts) && b.maxProducts < targetQty)
+    .slice(0, 4)
+    .map(b => {
+      const requiredPerUnit = Math.max(0, Number(b.required ?? 0));
+      const fallbackAvailable = b.maxProducts * Math.max(1, requiredPerUnit);
+      const available = Math.max(0, Math.floor(Number(b.stock ?? fallbackAvailable)));
+      const requiredTotal = requiredPerUnit > 0 ? Math.ceil(requiredPerUnit * targetQty) : 0;
+      const missing = requiredTotal > 0
+        ? Math.max(0, requiredTotal - available)
+        : Math.max(0, targetQty - b.maxProducts);
+      return {
+        code: b.code,
+        name: b.name,
+        maxProducts: b.maxProducts,
+        available,
+        requiredTotal,
+        missing,
+        note: b.note,
+      };
+    });
 }
 
 type FlowStageKey = "uretim" | "depo" | "satis";
@@ -6163,6 +6197,7 @@ function ProductionLineInspector({
   const stageText = ["Üretim", "Depo", "Satış"].join(" -> ");
   const cap = productionCapacityStatus(atom, meta, capacity, finishedStock, quantity);
   const capTone = cap.over ? C.shortfall : C.ok;
+  const shortageRows = productionShortageRows(capacity, cap.toProduce);
 
   const save = () => {
     const qty = Number(quantity);
@@ -6225,7 +6260,7 @@ function ProductionLineInspector({
           x
         </button>
       </div>
-      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10 }}>
+      <div style={{ padding: 14, display: "flex", flexDirection: "column", gap: 10, maxHeight: "calc(100vh - 190px)", overflowY: "auto" }}>
         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8 }}>
           <InfoCell label="Müşteri" value={customer ?? "-"} />
           <InfoCell label="Mamul" value={product ?? sku} />
@@ -6260,6 +6295,42 @@ function ProductionLineInspector({
               background: capTone,
             }} />
           </div>
+          {cap.over && shortageRows.length > 0 && (
+            <div style={{ marginTop: 10, display: "flex", flexDirection: "column", gap: 7 }}>
+              <div style={{ fontSize: 9, color: C.cardSub, letterSpacing: 1.2, fontWeight: 850 }}>
+                ÜRETİLEMEME NEDENİ
+              </div>
+              {shortageRows.map(row => (
+                <div
+                  key={row.code}
+                  style={{
+                    border: `1px solid rgba(239,68,68,0.32)`,
+                    borderRadius: 8,
+                    background: "rgba(239,68,68,0.08)",
+                    padding: "8px 9px",
+                  }}
+                >
+                  <div style={{ display: "flex", gap: 8, alignItems: "baseline" }}>
+                    <span style={{ color: C.cardInk, fontSize: 11, fontWeight: 900 }}>{row.code}</span>
+                    <span style={{ color: C.shortfall, fontSize: 11, fontWeight: 900, marginLeft: "auto" }}>
+                      eksik {fmtTR(row.missing)}
+                    </span>
+                  </div>
+                  <div style={{ marginTop: 3, color: C.cardSub, fontSize: 10.5, lineHeight: 1.25 }}>
+                    {row.name}
+                  </div>
+                  <div style={{ marginTop: 5, color: C.cardInk, fontSize: 10.5, lineHeight: 1.25 }}>
+                    {fmtTR(cap.toProduce)} üretim için {row.requiredTotal > 0 ? fmtTR(row.requiredTotal) : "?"} gerekli; elde {fmtTR(row.available)} var. Bu parça en fazla {fmtTR(row.maxProducts)} adet üretime izin veriyor.
+                  </div>
+                  {row.note && (
+                    <div style={{ marginTop: 5, color: C.warn, fontSize: 10, lineHeight: 1.25 }}>
+                      {row.note}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          )}
         </div>
         <label style={{ display: "flex", flexDirection: "column", gap: 5 }}>
           <span style={{ fontSize: 10, color: C.cardSub, fontWeight: 800 }}>Adet</span>
