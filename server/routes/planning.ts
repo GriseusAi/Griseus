@@ -40,6 +40,7 @@ type SupplyLineInput = {
   leadDays?: number | null;
   label?: string;
 };
+type BomWithStockRow = Awaited<ReturnType<typeof getBomWithStock>>[number];
 
 function parseDateYmd(v: string | undefined): Date | null {
   if (!v) return null;
@@ -74,6 +75,43 @@ function taskPct(startDay: number, durationDays: number, totalDays: number) {
 
 function cleanCode(v: unknown) {
   return String(v ?? "").trim().toUpperCase();
+}
+
+function sortPlanLines<T extends { deadline: string }>(lines: T[]) {
+  return [...lines].sort((a, b) => {
+    const ad = parseDateYmd(a.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    const bd = parseDateYmd(b.deadline)?.getTime() ?? Number.MAX_SAFE_INTEGER;
+    return ad - bd;
+  });
+}
+
+function topLevelBomRows(rows: BomWithStockRow[]) {
+  return rows.filter(row => !row.parentComponentCode && row.requiredQty > 0);
+}
+
+function applyRemainingStock(rows: BomWithStockRow[], remainingStock: Map<string, number>) {
+  return rows.map(row => ({
+    ...row,
+    currentStock: remainingStock.get(cleanCode(row.code)) ?? row.currentStock,
+  }));
+}
+
+function reserveComponentsForProduction(
+  rows: BomWithStockRow[],
+  remainingStock: Map<string, number>,
+  units: number,
+) {
+  const reserved: Array<{ code: string; qty: number; remaining: number }> = [];
+  if (units <= 0) return reserved;
+  for (const row of topLevelBomRows(rows)) {
+    const code = cleanCode(row.code);
+    const before = remainingStock.get(code) ?? row.currentStock;
+    const qty = row.requiredQty * units;
+    const after = Math.max(0, before - qty);
+    remainingStock.set(code, after);
+    reserved.push({ code: row.code, qty, remaining: after });
+  }
+  return reserved;
 }
 
 // POST /api/planning/compute — selected canvas lines -> deterministic digital-twin plan
@@ -113,13 +151,18 @@ router.post("/compute", async (req: Request, res: Response) => {
     }
 
     const today = startOfToday();
-    const capacityBySku = new Map<string, ReturnType<typeof computeProductionCapacity>>();
+    const bomBySku = new Map<string, BomWithStockRow[]>();
+    const remainingStock = new Map<string, number>();
     for (const sku of Array.from(new Set(normalized.map(line => line.sku)))) {
       const bom = await getBomWithStock(sku);
-      if (bom.length > 0) {
-        capacityBySku.set(sku, computeProductionCapacity(bom, sku));
+      bomBySku.set(sku, bom);
+      for (const row of bom) {
+        const code = cleanCode(row.code);
+        const previous = remainingStock.get(code);
+        remainingStock.set(code, previous === undefined ? row.currentStock : Math.max(previous, row.currentStock));
       }
     }
+    const planLines = sortPlanLines(normalized);
 
     const deadlines = normalized.map(line => parseDateYmd(line.deadline)).filter((d): d is Date => !!d);
     const latestDeadline = deadlines.length > 0
@@ -138,12 +181,17 @@ router.post("/compute", async (req: Request, res: Response) => {
     }];
     const bullets: string[] = [];
 
-    for (const line of normalized) {
-      const capacity = capacityBySku.get(line.sku);
+    bullets.push(`Solver stratejisi: teslim tarihi öncelikli allocation. Aynı komponent bir siparişe ayrılınca sonraki siparişlerin kapasitesinden düşülür.`);
+
+    for (const line of planLines) {
+      const rawBom = bomBySku.get(line.sku) ?? [];
+      const adjustedBom = applyRemainingStock(rawBom, remainingStock);
+      const capacity = adjustedBom.length > 0 ? computeProductionCapacity(adjustedBom, line.sku) : undefined;
       const maxProducible = capacity?.maxProducible ?? line.toProduce;
       const bottlenecks = capacity?.bottlenecks ?? [];
       const producibleNow = Math.max(0, Math.min(line.toProduce, maxProducible));
       const blockedQty = Math.max(0, line.toProduce - producibleNow);
+      const reserved = reserveComponentsForProduction(adjustedBom, remainingStock, producibleNow);
       const deadline = parseDateYmd(line.deadline) ?? horizonEnd;
       const daysToDeadline = Math.max(1, daysBetween(today, deadline));
       const lane = `${line.sku} x${line.quantity}`;
@@ -187,7 +235,9 @@ router.post("/compute", async (req: Request, res: Response) => {
           durationLabel: `${nowProductionDays} gün`,
           color: PLAN_COLORS.ok,
           risk: false,
-          note: `${line.sku}: canlı BOM kapasitesiyle hemen üretilebilir miktar`,
+          note: reserved.length > 0
+            ? `${line.sku}: ${reserved.length} komponent havuzdan rezerve edildi`
+            : `${line.sku}: canlı BOM kapasitesiyle hemen üretilebilir miktar`,
           row: 0,
           ...pct,
         });
