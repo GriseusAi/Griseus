@@ -9319,6 +9319,7 @@ function ScenarioSafetyDashboard({
   onRestoreDeleted: (scenario: ScenarioSnapshot) => void;
   onRestoreBackup: (backup: ScenarioBackup) => void;
 }) {
+  const [panelView, setPanelView] = useState<"home" | "scenarios">("home");
   const latestScenarios = useMemo(
     () => [...scenarios].sort((a, b) => b.updatedAt - a.updatedAt),
     [scenarios],
@@ -9330,6 +9331,8 @@ function ScenarioSafetyDashboard({
   const activeScenario = scenarios.find(s => s.id === activeId) ?? null;
 
   const stopCanvas = (e: React.SyntheticEvent) => e.stopPropagation();
+  const archiveCount = deletedScenarios.length;
+  const backupCount = backups.length;
 
   return (
     <aside
@@ -9360,121 +9363,227 @@ function ScenarioSafetyDashboard({
         justifyContent: "space-between",
         gap: 10,
       }}>
-        <div>
-          <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>DASHBOARD</div>
-          <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Senaryolar</div>
-        </div>
-        <div style={{
-          fontSize: 11,
-          color: "#84f0b4",
-          border: "1px solid rgba(132,240,180,0.35)",
-          background: "rgba(20,184,104,0.12)",
-          padding: "4px 7px",
-          borderRadius: 6,
-          fontWeight: 800,
-        }}>
-          {scenarios.length} aktif
-        </div>
-      </div>
-
-      <div style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
-        <button type="button" onClick={onSave} style={sidePanelPrimaryBtn}>kaydet</button>
-        <button type="button" onClick={onSaveAs} style={sidePanelBtn}>kopya kaydet</button>
-      </div>
-
-      <div style={{ padding: "0 10px 10px", overflowY: "auto" }}>
-        <div style={sideSectionTitle}>KAYITLI SENARYOLAR</div>
-        {latestScenarios.map(s => {
-          const isActive = s.id === activeId;
-          const protectedScenario = PROTECTED_SCENARIO_IDS.has(s.id);
-          return (
-            <div
-              key={s.id}
-              onClick={() => onLoad(s.id)}
+        {panelView === "home" ? (
+          <>
+            <div>
+              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>GRISEUS</div>
+              <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Dashboard</div>
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: "#84f0b4",
+              border: "1px solid rgba(132,240,180,0.35)",
+              background: "rgba(20,184,104,0.12)",
+              padding: "4px 7px",
+              borderRadius: 6,
+              fontWeight: 800,
+            }}>
+              canlı
+            </div>
+          </>
+        ) : (
+          <>
+            <button
+              type="button"
+              onClick={() => setPanelView("home")}
               style={{
-                background: isActive ? "rgba(124,88,238,0.20)" : "rgba(12,16,22,0.58)",
-                border: `1px solid ${isActive ? "rgba(124,88,238,0.48)" : "rgba(255,255,255,0.08)"}`,
-                borderRadius: 7,
-                padding: 9,
-                marginBottom: 7,
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                border: "1px solid rgba(255,255,255,0.12)",
+                background: "rgba(255,255,255,0.06)",
+                color: "#e2e8f0",
                 cursor: "pointer",
+                fontFamily: mono,
+                fontSize: 15,
+                fontWeight: 850,
               }}
+              title="Dashboard'a dön"
             >
-              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
-                <span style={{ color: isActive ? "#a78bfa" : "#7dd3fc", fontSize: 13 }}>◇</span>
-                <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  {s.name}
-                </div>
-                {isActive && <span style={{ fontSize: 9, color: "#c4b5fd", fontWeight: 850 }}>AÇIK</span>}
-              </div>
-              <div style={{ marginTop: 4, fontSize: 10, color: "#aab3c2" }}>
-                {scenarioOrderCount(s)} sipariş · {formatScenarioDate(s.updatedAt)}
-              </div>
-              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
-                <button type="button" onClick={(e) => { e.stopPropagation(); onBackup(s); }} style={sidePanelMiniBtn}>yedek al</button>
-                <button type="button" onClick={(e) => { e.stopPropagation(); onLoad(s.id); }} style={sidePanelMiniBtn}>aç</button>
-                <button
-                  type="button"
-                  disabled={protectedScenario}
-                  title={protectedScenario ? "Varsayılan senaryo arşivlenemez" : "Arşivlemeden önce isim yazdırır"}
-                  onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
-                  style={{
-                    ...sidePanelMiniBtn,
-                    color: protectedScenario ? "#677183" : "#fca5a5",
-                    cursor: protectedScenario ? "not-allowed" : "pointer",
-                  }}
-                >
-                  arşivle
-                </button>
+              ‹
+            </button>
+            <div style={{ flex: 1 }}>
+              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>DASHBOARD / APP</div>
+              <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Senaryolar</div>
+            </div>
+            <div style={{
+              fontSize: 11,
+              color: "#84f0b4",
+              border: "1px solid rgba(132,240,180,0.35)",
+              background: "rgba(20,184,104,0.12)",
+              padding: "4px 7px",
+              borderRadius: 6,
+              fontWeight: 800,
+            }}>
+              {scenarios.length} aktif
+            </div>
+          </>
+        )}
+      </div>
+
+      {panelView === "home" ? (
+        <div style={{ padding: "0 10px 10px", overflowY: "auto" }}>
+          <div style={sideSectionTitle}>APPS</div>
+          <button
+            type="button"
+            onClick={() => setPanelView("scenarios")}
+            style={sideAppTile}
+          >
+            <div style={{
+              width: 28,
+              height: 28,
+              borderRadius: 6,
+              background: "rgba(124,88,238,0.20)",
+              border: "1px solid rgba(124,88,238,0.42)",
+              color: "#c4b5fd",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+              fontWeight: 900,
+              flex: "0 0 auto",
+            }}>
+              S
+            </div>
+            <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
+              <div style={{ fontSize: 12, color: "#f8fafc", fontWeight: 850 }}>Senaryolar</div>
+              <div style={{ fontSize: 10, color: "#9aa4b5", marginTop: 2 }}>
+                {scenarios.length} kayıt · {backupCount} yedek · {archiveCount} arşiv
               </div>
             </div>
-          );
-        })}
+            <div style={{ color: "#8792a3", fontSize: 16, fontWeight: 900 }}>›</div>
+          </button>
 
-        <div style={sideSectionTitle}>GÜVENLİK</div>
-        <div style={{
-          background: "rgba(12,16,22,0.58)",
-          border: "1px solid rgba(255,255,255,0.08)",
-          borderRadius: 7,
-          padding: 9,
-          fontSize: 10,
-          color: "#aab3c2",
-          lineHeight: 1.45,
-        }}>
-          Silme artık direkt yok: senaryo önce yedeklenir, arşive taşınır ve geri yüklenebilir.
-          {activeScenario && <div style={{ marginTop: 6, color: "#e2e8f0" }}>Açık: {activeScenario.name}</div>}
+          <div style={sideSectionTitle}>WORKSPACE</div>
+          {[
+            ["Object explorer", "Atom ve obje keşfi"],
+            ["Lineage", "Veri zinciri ve etki"],
+            ["Reports", "Özet ve çıktı kutuları"],
+          ].map(([label, sub]) => (
+            <div key={label} style={sideDisabledTile}>
+              <div style={{
+                width: 28,
+                height: 28,
+                borderRadius: 6,
+                background: "rgba(148,163,184,0.10)",
+                border: "1px solid rgba(148,163,184,0.14)",
+                color: "#94a3b8",
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "center",
+                fontWeight: 900,
+                flex: "0 0 auto",
+              }}>
+                {label.slice(0, 1)}
+              </div>
+              <div style={{ flex: 1, minWidth: 0 }}>
+                <div style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 800 }}>{label}</div>
+                <div style={{ fontSize: 10, color: "#7f8999", marginTop: 2 }}>{sub}</div>
+              </div>
+            </div>
+          ))}
         </div>
+      ) : (
+        <>
+          <div style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            <button type="button" onClick={onSave} style={sidePanelPrimaryBtn}>kaydet</button>
+            <button type="button" onClick={onSaveAs} style={sidePanelBtn}>kopya kaydet</button>
+          </div>
 
-        {deletedScenarios.length > 0 && (
-          <>
-            <div style={sideSectionTitle}>ARŞİV</div>
-            {[...deletedScenarios].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(s => (
-              <div key={`deleted-${s.id}`} style={sideArchiveRow}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
-                  <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{formatScenarioDate(s.updatedAt)}</div>
+          <div style={{ padding: "0 10px 10px", overflowY: "auto" }}>
+            <div style={sideSectionTitle}>KAYITLI SENARYOLAR</div>
+            {latestScenarios.map(s => {
+              const isActive = s.id === activeId;
+              const protectedScenario = PROTECTED_SCENARIO_IDS.has(s.id);
+              return (
+                <div
+                  key={s.id}
+                  onClick={() => onLoad(s.id)}
+                  style={{
+                    background: isActive ? "rgba(124,88,238,0.20)" : "rgba(12,16,22,0.58)",
+                    border: `1px solid ${isActive ? "rgba(124,88,238,0.48)" : "rgba(255,255,255,0.08)"}`,
+                    borderRadius: 7,
+                    padding: 9,
+                    marginBottom: 7,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                    <span style={{ color: isActive ? "#a78bfa" : "#7dd3fc", fontSize: 13 }}>◇</span>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                      {s.name}
+                    </div>
+                    {isActive && <span style={{ fontSize: 9, color: "#c4b5fd", fontWeight: 850 }}>AÇIK</span>}
+                  </div>
+                  <div style={{ marginTop: 4, fontSize: 10, color: "#aab3c2" }}>
+                    {scenarioOrderCount(s)} sipariş · {formatScenarioDate(s.updatedAt)}
+                  </div>
+                  <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onBackup(s); }} style={sidePanelMiniBtn}>yedek al</button>
+                    <button type="button" onClick={(e) => { e.stopPropagation(); onLoad(s.id); }} style={sidePanelMiniBtn}>aç</button>
+                    <button
+                      type="button"
+                      disabled={protectedScenario}
+                      title={protectedScenario ? "Varsayılan senaryo arşivlenemez" : "Arşivlemeden önce isim yazdırır"}
+                      onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
+                      style={{
+                        ...sidePanelMiniBtn,
+                        color: protectedScenario ? "#677183" : "#fca5a5",
+                        cursor: protectedScenario ? "not-allowed" : "pointer",
+                      }}
+                    >
+                      arşivle
+                    </button>
+                  </div>
                 </div>
-                <button type="button" onClick={() => onRestoreDeleted(s)} style={sidePanelMiniBtn}>geri yükle</button>
-              </div>
-            ))}
-          </>
-        )}
+              );
+            })}
 
-        {latestBackups.length > 0 && (
-          <>
-            <div style={sideSectionTitle}>YEDEKLER</div>
-            {latestBackups.map(b => (
-              <div key={b.id} style={sideArchiveRow}>
-                <div style={{ flex: 1, minWidth: 0 }}>
-                  <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.snapshot.name}</div>
-                  <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{b.reason} · {formatScenarioDate(b.createdAt)}</div>
-                </div>
-                <button type="button" onClick={() => onRestoreBackup(b)} style={sidePanelMiniBtn}>aç</button>
-              </div>
-            ))}
-          </>
-        )}
-      </div>
+            <div style={sideSectionTitle}>GÜVENLİK</div>
+            <div style={{
+              background: "rgba(12,16,22,0.58)",
+              border: "1px solid rgba(255,255,255,0.08)",
+              borderRadius: 7,
+              padding: 9,
+              fontSize: 10,
+              color: "#aab3c2",
+              lineHeight: 1.45,
+            }}>
+              Silme artık direkt yok: senaryo önce yedeklenir, arşive taşınır ve geri yüklenebilir.
+              {activeScenario && <div style={{ marginTop: 6, color: "#e2e8f0" }}>Açık: {activeScenario.name}</div>}
+            </div>
+
+            {deletedScenarios.length > 0 && (
+              <>
+                <div style={sideSectionTitle}>ARŞİV</div>
+                {[...deletedScenarios].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(s => (
+                  <div key={`deleted-${s.id}`} style={sideArchiveRow}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                      <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{formatScenarioDate(s.updatedAt)}</div>
+                    </div>
+                    <button type="button" onClick={() => onRestoreDeleted(s)} style={sidePanelMiniBtn}>geri yükle</button>
+                  </div>
+                ))}
+              </>
+            )}
+
+            {latestBackups.length > 0 && (
+              <>
+                <div style={sideSectionTitle}>YEDEKLER</div>
+                {latestBackups.map(b => (
+                  <div key={b.id} style={sideArchiveRow}>
+                    <div style={{ flex: 1, minWidth: 0 }}>
+                      <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.snapshot.name}</div>
+                      <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{b.reason} · {formatScenarioDate(b.createdAt)}</div>
+                    </div>
+                    <button type="button" onClick={() => onRestoreBackup(b)} style={sidePanelMiniBtn}>aç</button>
+                  </div>
+                ))}
+              </>
+            )}
+          </div>
+        </>
+      )}
     </aside>
   );
 }
@@ -11346,6 +11455,34 @@ const sidePanelPrimaryBtn: React.CSSProperties = {
   background: "#7c58ee",
   border: "1px solid #7c58ee",
   color: "#ffffff",
+};
+const sideAppTile: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 9px",
+  borderRadius: 7,
+  cursor: "pointer",
+  background: "rgba(12,16,22,0.58)",
+  border: "1px solid rgba(255,255,255,0.08)",
+  color: "#e2e8f0",
+  fontFamily: mono,
+  marginBottom: 7,
+};
+const sideDisabledTile: React.CSSProperties = {
+  width: "100%",
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 9px",
+  borderRadius: 7,
+  background: "rgba(12,16,22,0.34)",
+  border: "1px solid rgba(255,255,255,0.06)",
+  color: "#94a3b8",
+  fontFamily: mono,
+  marginBottom: 7,
+  opacity: 0.78,
 };
 const sidePanelMiniBtn: React.CSSProperties = {
   padding: "5px 7px",
