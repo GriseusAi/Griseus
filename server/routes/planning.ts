@@ -13,6 +13,242 @@ import { bulkUpdateFromSalesHistory } from "../lib/dynamic-seasonality";
 const router = Router();
 const upload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 10 * 1024 * 1024 } });
 
+const PLAN_COLORS = {
+  ok: "#238551",
+  warn: "#C87619",
+  err: "#CD4246",
+  blue: "#2D72D2",
+  accent: "#D97757",
+};
+
+type PlanningLineInput = {
+  id?: string;
+  customer?: string;
+  sku?: string;
+  quantity?: number;
+  deadline?: string;
+  fromWarehouse?: number;
+  toProduce?: number;
+  maxProducible?: number | null;
+};
+
+function parseDateYmd(v: string | undefined): Date | null {
+  if (!v) return null;
+  const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (!m) return null;
+  return new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3]));
+}
+
+function formatDayMonth(d: Date) {
+  return d.toLocaleDateString("tr-TR", { day: "numeric", month: "short" }).replace(".", "");
+}
+
+function daysBetween(a: Date, b: Date) {
+  return Math.round((b.getTime() - a.getTime()) / 86400000);
+}
+
+function clamp(n: number, min: number, max: number) {
+  return Math.max(min, Math.min(max, n));
+}
+
+function startOfToday() {
+  const now = new Date();
+  return new Date(now.getFullYear(), now.getMonth(), now.getDate());
+}
+
+function taskPct(startDay: number, durationDays: number, totalDays: number) {
+  return {
+    startPct: clamp((startDay / totalDays) * 100, 0, 100),
+    widthPct: clamp((durationDays / totalDays) * 100, 4, 100),
+  };
+}
+
+// POST /api/planning/compute — selected canvas lines -> deterministic digital-twin plan
+router.post("/compute", async (req: Request, res: Response) => {
+  try {
+    const lines = Array.isArray(req.body?.lines) ? req.body.lines as PlanningLineInput[] : [];
+    const normalized = lines
+      .map((line) => {
+        const quantity = Math.max(0, Number(line.quantity ?? 0));
+        const fromWarehouse = Math.max(0, Math.min(quantity, Number(line.fromWarehouse ?? 0)));
+        const toProduce = Math.max(0, Number(line.toProduce ?? quantity - fromWarehouse));
+        return {
+          id: String(line.id ?? ""),
+          customer: String(line.customer ?? "Müşteri"),
+          sku: String(line.sku ?? "").trim(),
+          quantity,
+          deadline: String(line.deadline ?? ""),
+          fromWarehouse,
+          toProduce,
+        };
+      })
+      .filter(line => line.sku && line.quantity > 0);
+
+    if (normalized.length === 0) {
+      return res.status(400).json({ error: "En az bir üretim hattı gerekli" });
+    }
+
+    const today = startOfToday();
+    const capacityBySku = new Map<string, ReturnType<typeof computeProductionCapacity>>();
+    for (const sku of Array.from(new Set(normalized.map(line => line.sku)))) {
+      const bom = await getBomWithStock(sku);
+      if (bom.length > 0) {
+        capacityBySku.set(sku, computeProductionCapacity(bom, sku));
+      }
+    }
+
+    const deadlines = normalized.map(line => parseDateYmd(line.deadline)).filter((d): d is Date => !!d);
+    const latestDeadline = deadlines.length > 0
+      ? new Date(Math.max(...deadlines.map(d => d.getTime())))
+      : new Date(today.getTime() + 30 * 86400000);
+    const horizonEnd = new Date(Math.max(latestDeadline.getTime(), today.getTime() + 30 * 86400000));
+    const totalDays = Math.max(1, daysBetween(today, horizonEnd));
+    const tickMid = new Date(today.getTime() + Math.round(totalDays / 2) * 86400000);
+    const data: Record<string, any>[] = [{
+      kind: "ticks",
+      ticks: [
+        { label: formatDayMonth(today), pct: 0 },
+        { label: formatDayMonth(tickMid), pct: 50 },
+        { label: formatDayMonth(horizonEnd), pct: 100 },
+      ],
+    }];
+    const bullets: string[] = [];
+
+    for (const line of normalized) {
+      const capacity = capacityBySku.get(line.sku);
+      const maxProducible = capacity?.maxProducible ?? line.toProduce;
+      const bottlenecks = capacity?.bottlenecks ?? [];
+      const producibleNow = Math.max(0, Math.min(line.toProduce, maxProducible));
+      const blockedQty = Math.max(0, line.toProduce - producibleNow);
+      const deadline = parseDateYmd(line.deadline) ?? horizonEnd;
+      const daysToDeadline = Math.max(1, daysBetween(today, deadline));
+      const lane = `${line.sku} x${line.quantity}`;
+      const dailyCapacity = Math.max(8, Math.floor(Math.max(producibleNow, maxProducible, 30) / 8));
+      const nowProductionDays = producibleNow > 0
+        ? clamp(Math.ceil(producibleNow / dailyCapacity), 1, Math.max(1, daysToDeadline))
+        : 0;
+      const procurementDays = blockedQty > 0
+        ? clamp(Math.ceil(blockedQty / dailyCapacity) + 7, 7, 21)
+        : 0;
+      const laterProductionDays = blockedQty > 0
+        ? clamp(Math.ceil(blockedQty / dailyCapacity), 1, Math.max(1, daysToDeadline))
+        : 0;
+      const deliveryDay = Math.min(daysToDeadline, totalDays);
+
+      if (line.fromWarehouse > 0) {
+        const pct = taskPct(Math.max(0, deliveryDay - 2), 1, totalDays);
+        data.push({
+          kind: "task",
+          lane,
+          customer: line.customer,
+          label: `x${line.fromWarehouse} depodan`,
+          durationLabel: "hazır",
+          color: PLAN_COLORS.blue,
+          risk: false,
+          note: `${line.sku}: ${line.fromWarehouse} adet bitmiş stoktan teslim edilebilir`,
+          ...pct,
+        });
+      }
+
+      if (producibleNow > 0) {
+        const pct = taskPct(0, nowProductionDays, totalDays);
+        data.push({
+          kind: "task",
+          lane,
+          customer: line.customer,
+          label: `x${producibleNow} üretilebilir`,
+          durationLabel: `${nowProductionDays} gün`,
+          color: PLAN_COLORS.ok,
+          risk: false,
+          note: `${line.sku}: canlı BOM kapasitesiyle hemen üretilebilir miktar`,
+          ...pct,
+        });
+      }
+
+      if (blockedQty > 0) {
+        const critical = bottlenecks[0];
+        const shortageUnits = critical
+          ? Math.max(0, Math.ceil((line.toProduce - critical.maxProducts) * critical.required))
+          : blockedQty;
+        const pct = taskPct(0, procurementDays, totalDays);
+        data.push({
+          kind: "task",
+          lane,
+          customer: line.customer,
+          label: `x${blockedQty} bloke`,
+          durationLabel: `${procurementDays} gün`,
+          color: PLAN_COLORS.err,
+          risk: true,
+          note: critical
+            ? `${critical.code}: ${shortageUnits} adet açık; ${line.toProduce} talep için limit ${critical.maxProducts}`
+            : `${line.sku}: ${blockedQty} adet kapasite dışında`,
+          ...pct,
+        });
+
+        const laterStart = Math.min(procurementDays, Math.max(0, deliveryDay - laterProductionDays - 1));
+        const laterPct = taskPct(laterStart, laterProductionDays, totalDays);
+        data.push({
+          kind: "task",
+          lane,
+          customer: line.customer,
+          label: `x${blockedQty} koşullu üretim`,
+          durationLabel: `${laterProductionDays} gün`,
+          color: PLAN_COLORS.warn,
+          risk: true,
+          note: critical
+            ? `${critical.code} tedariki kapanırsa ikinci üretim fazı açılır`
+            : "Eksik kapasite kapanırsa ikinci üretim fazı açılır",
+          ...laterPct,
+        });
+      }
+
+      data.push({
+        kind: "task",
+        lane,
+        customer: line.customer,
+        label: `teslim ${line.customer}`,
+        startPct: clamp((deliveryDay / totalDays) * 100, 0, 100),
+        widthPct: 3,
+        durationLabel: formatDayMonth(deadline),
+        color: blockedQty > 0 ? PLAN_COLORS.err : PLAN_COLORS.accent,
+        risk: blockedQty > 0,
+        note: blockedQty > 0
+          ? `${line.sku}: ${blockedQty} adet bloke kaldığı için teslim riskli`
+          : `${line.sku}: teslim planı kapasite içinde`,
+      });
+
+      if (blockedQty > 0) {
+        const critical = bottlenecks[0];
+        bullets.push(critical
+          ? `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet ${critical.code} (${critical.name}) nedeniyle bloke. Limit ${critical.maxProducts}, gerekli üretim ${line.toProduce}.`
+          : `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet kapasite dışında.`);
+      } else if (line.toProduce === 0) {
+        bullets.push(`${line.customer} · ${line.sku} x${line.quantity}: talebin tamamı depodan karşılanır.`);
+      } else {
+        bullets.push(`${line.customer} · ${line.sku} x${line.quantity}: ${line.toProduce} adet üretim canlı kapasite içinde.`);
+      }
+    }
+
+    res.json({
+      chartSpec: {
+        type: "timeline",
+        title: "Maksimum Kapasite Üretim Planı",
+        xKey: "day",
+        yLabel: "Hat",
+        series: [],
+        data,
+      },
+      plan: {
+        title: "Digital-Twin Aksiyon Planı",
+        bullets,
+      },
+    });
+  } catch (error: any) {
+    console.error("[planning/compute]", error);
+    res.status(500).json({ error: error?.message ?? "planning compute failed" });
+  }
+});
+
 // ═══════════════════════════════════════════════════════════
 // FORECASTING ENGINE — Aylık Ortalama + Trend + Tahmin
 // ═══════════════════════════════════════════════════════════

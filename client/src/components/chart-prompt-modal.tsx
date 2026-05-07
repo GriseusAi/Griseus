@@ -404,7 +404,18 @@ export default function ChartPromptModal({
     setError(null);
     try {
       if ((context?.productionLines?.length ?? 0) >= 1) {
-        setResponse(buildProductionPlanResponse(context!.productionLines!));
+        const res = await fetch("/api/planning/compute", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ prompt: p, items, lines: context!.productionLines }),
+        });
+        const data = await res.json();
+        if (!res.ok) {
+          setResponse(buildProductionPlanResponse(context!.productionLines!));
+          setError(data?.error ? `Backend plan fallback: ${data.error}` : null);
+        } else {
+          setResponse(data);
+        }
         return;
       }
       const res = await fetch("/api/chart/generate", {
