@@ -303,6 +303,14 @@ type StrategyProductionLinePlan = {
   maxProducible: number | null;
   overCapacity: boolean;
 };
+type StrategySupplyLinePlan = {
+  id: string;
+  componentCode: string;
+  quantity: number | null;
+  eta: string;
+  leadDays: number | null;
+  label: string;
+};
 type XY = { x: number; y: number };
 type PositionOverrides = Record<string, Record<string, XY>>;
 
@@ -5493,6 +5501,27 @@ function CustomersSceneRenderer({
     return lines;
   }, [selectedIds, atomById, atomMeta, sceneFinishedStockBySku, sceneCapacityBySku]);
 
+  const selectedSupplyLinesForChart = useMemo<StrategySupplyLinePlan[]>(() => {
+    const lines: StrategySupplyLinePlan[] = [];
+    for (const id of Array.from(selectedIds)) {
+      const atom = atomById[id];
+      if (!atom || atom.kind !== "supply-bracket") continue;
+      const meta = atomMeta[id] ?? {};
+      const details = parseSupplierAtomDetails(atom, meta);
+      const componentCode = details.product.trim();
+      if (!componentCode || componentCode.includes(" ")) continue;
+      lines.push({
+        id,
+        componentCode,
+        quantity: parseTRNumber(details.quantity),
+        eta: details.deadline,
+        leadDays: parseTRNumber(details.leadDays),
+        label: atom.label,
+      });
+    }
+    return lines;
+  }, [selectedIds, atomById, atomMeta]);
+
   const renderEdge = (e: SceneEdge, i: number, isLive: boolean) => {
     const a = atomById[e.fromId];
     const b = atomById[e.toId];
@@ -6186,7 +6215,7 @@ function CustomersSceneRenderer({
       {chartPromptOpen && (
         <ChartPromptModal
           items={selectedDiagramItems}
-          context={{ productionLines: selectedProductionLinesForChart }}
+          context={{ productionLines: selectedProductionLinesForChart, supplyLines: selectedSupplyLinesForChart }}
           onClose={() => setChartPromptOpen(false)}
         />
       )}

@@ -32,6 +32,15 @@ type PlanningLineInput = {
   maxProducible?: number | null;
 };
 
+type SupplyLineInput = {
+  id?: string;
+  componentCode?: string;
+  quantity?: number | null;
+  eta?: string;
+  leadDays?: number | null;
+  label?: string;
+};
+
 function parseDateYmd(v: string | undefined): Date | null {
   if (!v) return null;
   const m = v.match(/^(\d{4})-(\d{2})-(\d{2})$/);
@@ -63,10 +72,15 @@ function taskPct(startDay: number, durationDays: number, totalDays: number) {
   };
 }
 
+function cleanCode(v: unknown) {
+  return String(v ?? "").trim().toUpperCase();
+}
+
 // POST /api/planning/compute — selected canvas lines -> deterministic digital-twin plan
 router.post("/compute", async (req: Request, res: Response) => {
   try {
     const lines = Array.isArray(req.body?.lines) ? req.body.lines as PlanningLineInput[] : [];
+    const supplyLines = Array.isArray(req.body?.supplyLines) ? req.body.supplyLines as SupplyLineInput[] : [];
     const normalized = lines
       .map((line) => {
         const quantity = Math.max(0, Number(line.quantity ?? 0));
@@ -83,6 +97,16 @@ router.post("/compute", async (req: Request, res: Response) => {
         };
       })
       .filter(line => line.sku && line.quantity > 0);
+    const normalizedSupply = supplyLines
+      .map((line) => ({
+        id: String(line.id ?? ""),
+        componentCode: cleanCode(line.componentCode),
+        quantity: line.quantity === null || line.quantity === undefined ? null : Math.max(0, Number(line.quantity)),
+        eta: String(line.eta ?? ""),
+        leadDays: line.leadDays === null || line.leadDays === undefined ? null : Math.max(0, Number(line.leadDays)),
+        label: String(line.label ?? ""),
+      }))
+      .filter(line => line.componentCode);
 
     if (normalized.length === 0) {
       return res.status(400).json({ error: "En az bir üretim hattı gerekli" });
@@ -146,6 +170,7 @@ router.post("/compute", async (req: Request, res: Response) => {
           color: PLAN_COLORS.blue,
           risk: false,
           note: `${line.sku}: ${line.fromWarehouse} adet bitmiş stoktan teslim edilebilir`,
+          row: 0,
           ...pct,
         });
       }
@@ -161,6 +186,7 @@ router.post("/compute", async (req: Request, res: Response) => {
           color: PLAN_COLORS.ok,
           risk: false,
           note: `${line.sku}: canlı BOM kapasitesiyle hemen üretilebilir miktar`,
+          row: 0,
           ...pct,
         });
       }
@@ -170,36 +196,49 @@ router.post("/compute", async (req: Request, res: Response) => {
         const shortageUnits = critical
           ? Math.max(0, Math.ceil((line.toProduce - critical.maxProducts) * critical.required))
           : blockedQty;
-        const pct = taskPct(0, procurementDays, totalDays);
+        const matchingSupply = critical
+          ? normalizedSupply.find(s => s.componentCode === cleanCode(critical.code) && (s.quantity ?? 0) > 0 && !!parseDateYmd(s.eta))
+          : undefined;
+        const supplyEta = parseDateYmd(matchingSupply?.eta);
+        const supplyReadyDay = supplyEta ? Math.max(0, daysBetween(today, supplyEta) + 1) : null;
+        const supplyCoversShortage = !!matchingSupply && (matchingSupply.quantity ?? 0) >= shortageUnits && supplyReadyDay !== null;
+        const waitDays = supplyReadyDay ?? 0;
+        const pct = taskPct(0, supplyCoversShortage ? Math.max(1, waitDays) : Math.max(1, Math.min(10, daysToDeadline)), totalDays);
         data.push({
           kind: "task",
           lane,
           customer: line.customer,
-          label: `x${blockedQty} bloke`,
-          durationLabel: `${procurementDays} gün`,
+          label: supplyCoversShortage ? `x${blockedQty} tedarik bekliyor` : `x${blockedQty} bloke · PO gerekli`,
+          durationLabel: supplyCoversShortage ? `ETA ${formatDayMonth(supplyEta!)}` : "aksiyon gerekli",
           color: PLAN_COLORS.err,
           risk: true,
           note: critical
-            ? `${critical.code}: ${shortageUnits} adet açık; ${line.toProduce} talep için limit ${critical.maxProducts}`
+            ? supplyCoversShortage
+              ? `${critical.code}: ${shortageUnits} adet açık; seçili PO ${matchingSupply!.quantity} adet, ETA ${matchingSupply!.eta}`
+              : `${critical.code}: ${shortageUnits} adet açık; seçili ve yeterli PO/ETA yok`
             : `${line.sku}: ${blockedQty} adet kapasite dışında`,
+          row: 1,
           ...pct,
         });
 
-        const laterStart = Math.min(procurementDays, Math.max(0, deliveryDay - laterProductionDays - 1));
-        const laterPct = taskPct(laterStart, laterProductionDays, totalDays);
-        data.push({
-          kind: "task",
-          lane,
-          customer: line.customer,
-          label: `x${blockedQty} koşullu üretim`,
-          durationLabel: `${laterProductionDays} gün`,
-          color: PLAN_COLORS.warn,
-          risk: true,
-          note: critical
-            ? `${critical.code} tedariki kapanırsa ikinci üretim fazı açılır`
-            : "Eksik kapasite kapanırsa ikinci üretim fazı açılır",
-          ...laterPct,
-        });
+        if (supplyCoversShortage) {
+          const laterStart = Math.min(waitDays, Math.max(0, deliveryDay - laterProductionDays - 1));
+          const laterPct = taskPct(laterStart, laterProductionDays, totalDays);
+          data.push({
+            kind: "task",
+            lane,
+            customer: line.customer,
+            label: `x${blockedQty} ikinci faz`,
+            durationLabel: `${laterProductionDays} gün`,
+            color: PLAN_COLORS.warn,
+            risk: true,
+            note: critical
+              ? `${critical.code} tedariki ${matchingSupply!.eta} tarihinde kapanırsa üretime açılır`
+              : "Eksik kapasite kapanırsa ikinci üretim fazı açılır",
+            row: 2,
+            ...laterPct,
+          });
+        }
       }
 
       data.push({
@@ -212,6 +251,7 @@ router.post("/compute", async (req: Request, res: Response) => {
         durationLabel: formatDayMonth(deadline),
         color: blockedQty > 0 ? PLAN_COLORS.err : PLAN_COLORS.accent,
         risk: blockedQty > 0,
+        row: blockedQty > 0 ? 2 : 1,
         note: blockedQty > 0
           ? `${line.sku}: ${blockedQty} adet bloke kaldığı için teslim riskli`
           : `${line.sku}: teslim planı kapasite içinde`,

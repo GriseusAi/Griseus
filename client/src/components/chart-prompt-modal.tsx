@@ -57,6 +57,15 @@ type ProductionLinePlan = {
   overCapacity: boolean;
 };
 
+type SupplyLinePlan = {
+  id: string;
+  componentCode: string;
+  quantity: number | null;
+  eta: string;
+  leadDays: number | null;
+  label: string;
+};
+
 const QUICK_PROMPTS = [
   "Önümüzdeki 6 ay için 4 BH cihazının üretim forecast grafiği çiz",
   "Seçili bileşenlerin stok / günlük tüketim oranını bar grafik olarak göster",
@@ -72,7 +81,7 @@ function renderChart(spec: ChartSpec) {
     const lanes = Array.from(new Set(tasks.map(t => String(t.lane))));
     return (
       <div style={{ minHeight: 360, padding: "8px 4px 2px" }}>
-        <div style={{ position: "relative", height: 28, marginLeft: 128, marginRight: 24 }}>
+        <div style={{ position: "relative", height: 28, marginLeft: 128, marginRight: 72 }}>
           {(ticks ?? []).map((t, i) => (
             <div
               key={`${t.label}-${i}`}
@@ -104,7 +113,8 @@ function renderChart(spec: ChartSpec) {
                 <div
                   style={{
                     position: "relative",
-                    height: 52,
+                    height: Math.max(58, 30 + (Math.max(0, ...laneTasks.map(t => Number(t.row ?? 0))) + 1) * 26),
+                    marginRight: 56,
                     borderTop: `1px dashed ${C.borderStrong}`,
                     borderBottom: `1px dashed ${C.border}`,
                   }}
@@ -121,7 +131,9 @@ function renderChart(spec: ChartSpec) {
                       }}
                     />
                   ))}
-                  {laneTasks.map((task, i) => (
+                  {laneTasks.map((task, i) => {
+                    const nearRight = Number(task.startPct ?? 0) > 86;
+                    return (
                     <div
                       key={`${task.label}-${i}`}
                       title={String(task.note ?? task.label)}
@@ -130,7 +142,7 @@ function renderChart(spec: ChartSpec) {
                         left: `${task.startPct}%`,
                         width: `${task.widthPct}%`,
                         minWidth: 42,
-                        top: i % 2 === 0 ? 8 : 28,
+                        top: 8 + Number(task.row ?? i % 2) * 26,
                         height: 16,
                         borderRadius: 999,
                         background: task.color,
@@ -140,7 +152,8 @@ function renderChart(spec: ChartSpec) {
                       <span
                         style={{
                           position: "absolute",
-                          left: 8,
+                          left: nearRight ? "auto" : 8,
+                          right: nearRight ? 0 : "auto",
                           top: -22,
                           color: task.risk ? C.err : C.ink,
                           fontSize: 12,
@@ -163,7 +176,8 @@ function renderChart(spec: ChartSpec) {
                         {task.durationLabel}
                       </span>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </div>
             );
@@ -389,7 +403,7 @@ export default function ChartPromptModal({
   onClose,
 }: {
   items: SelectedItem[];
-  context?: { productionLines?: ProductionLinePlan[] };
+  context?: { productionLines?: ProductionLinePlan[]; supplyLines?: SupplyLinePlan[] };
   onClose: () => void;
 }) {
   const [prompt, setPrompt] = useState("");
@@ -407,7 +421,7 @@ export default function ChartPromptModal({
         const res = await fetch("/api/planning/compute", {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ prompt: p, items, lines: context!.productionLines }),
+          body: JSON.stringify({ prompt: p, items, lines: context!.productionLines, supplyLines: context!.supplyLines ?? [] }),
         });
         const data = await res.json();
         if (!res.ok) {
