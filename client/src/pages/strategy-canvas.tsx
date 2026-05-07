@@ -9300,6 +9300,7 @@ function ScenarioSafetyDashboard({
   onSave,
   onSaveAs,
   onDelete,
+  onNewScenario,
 }: {
   scenarios: ScenarioSnapshot[];
   activeId: string | null;
@@ -9307,6 +9308,7 @@ function ScenarioSafetyDashboard({
   onSave: () => void;
   onSaveAs: () => void;
   onDelete: (id: string) => void;
+  onNewScenario: () => void;
 }) {
   const [panelView, setPanelView] = useState<"home" | "scenarios">("home");
   const latestScenarios = useMemo(
@@ -9333,6 +9335,7 @@ function ScenarioSafetyDashboard({
         border: "1px solid rgba(255,255,255,0.10)",
         boxShadow: "0 14px 34px rgba(15,23,42,0.22)",
         fontFamily: mono,
+        letterSpacing: 0,
         display: "flex",
         flexDirection: "column",
       }}
@@ -9348,8 +9351,8 @@ function ScenarioSafetyDashboard({
         {panelView === "home" ? (
           <>
             <div>
-              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>GRISEUS</div>
-              <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Dashboard</div>
+              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.2, fontWeight: 650 }}>GRISEUS</div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 3 }}>Dashboard</div>
             </div>
             <div style={{
               fontSize: 11,
@@ -9358,7 +9361,7 @@ function ScenarioSafetyDashboard({
               background: "rgba(20,184,104,0.12)",
               padding: "4px 7px",
               borderRadius: 6,
-              fontWeight: 800,
+              fontWeight: 650,
             }}>
               canlı
             </div>
@@ -9378,15 +9381,15 @@ function ScenarioSafetyDashboard({
                 cursor: "pointer",
                 fontFamily: mono,
                 fontSize: 15,
-                fontWeight: 850,
+                fontWeight: 650,
               }}
               title="Dashboard'a dön"
             >
               ‹
             </button>
             <div style={{ flex: 1 }}>
-              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>DASHBOARD / APP</div>
-              <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Senaryolar</div>
+              <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.2, fontWeight: 650 }}>DASHBOARD / APP</div>
+              <div style={{ fontSize: 16, fontWeight: 700, marginTop: 3 }}>Senaryolar</div>
             </div>
             <div style={{
               fontSize: 11,
@@ -9395,7 +9398,7 @@ function ScenarioSafetyDashboard({
               background: "rgba(20,184,104,0.12)",
               padding: "4px 7px",
               borderRadius: 6,
-              fontWeight: 800,
+              fontWeight: 650,
             }}>
               {scenarios.length} aktif
             </div>
@@ -9427,7 +9430,7 @@ function ScenarioSafetyDashboard({
               S
             </div>
             <div style={{ flex: 1, minWidth: 0, textAlign: "left" }}>
-              <div style={{ fontSize: 12, color: "#f8fafc", fontWeight: 850 }}>Senaryolar</div>
+              <div style={{ fontSize: 13, color: "#f8fafc", fontWeight: 650 }}>Senaryolar</div>
               <div style={{ fontSize: 10, color: "#9aa4b5", marginTop: 2 }}>
                 {scenarios.length} kayıt · aç, kopyala, sil
               </div>
@@ -9438,6 +9441,13 @@ function ScenarioSafetyDashboard({
       ) : (
         <>
           <div style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+            <button
+              type="button"
+              onClick={onNewScenario}
+              style={{ ...sidePanelPrimaryBtn, gridColumn: "1 / -1" }}
+            >
+              + senaryo ekle
+            </button>
             <button type="button" onClick={onSave} style={sidePanelPrimaryBtn}>kaydet</button>
             <button type="button" onClick={onSaveAs} style={sidePanelBtn}>kopya kaydet</button>
           </div>
@@ -9461,10 +9471,10 @@ function ScenarioSafetyDashboard({
                 >
                   <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
                     <span style={{ color: isActive ? "#a78bfa" : "#7dd3fc", fontSize: 13 }}>◇</span>
-                    <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                    <div style={{ flex: 1, minWidth: 0, fontSize: 13, fontWeight: 650, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                       {s.name}
                     </div>
-                    {isActive && <span style={{ fontSize: 9, color: "#c4b5fd", fontWeight: 850 }}>AÇIK</span>}
+                    {isActive && <span style={{ fontSize: 9, color: "#c4b5fd", fontWeight: 650 }}>AÇIK</span>}
                   </div>
                   <div style={{ marginTop: 4, fontSize: 10, color: "#aab3c2" }}>
                     {scenarioOrderCount(s)} sipariş · {formatScenarioDate(s.updatedAt)}
@@ -11068,6 +11078,7 @@ export default function StrategyCanvasPage() {
           onSave={handleQuickSave}
           onSaveAs={promptSaveAs}
           onDelete={deleteScenarioById}
+          onNewScenario={newBlankScenario}
         />
 
         {/* ─── Workbench widget'ları — sadece widgetVis bayrağı açıksa render ─── */}
@@ -11318,7 +11329,7 @@ const sidePanelBtn: React.CSSProperties = {
   color: "#e2e8f0",
   fontFamily: mono,
   fontSize: 11,
-  fontWeight: 800,
+  fontWeight: 650,
 };
 const sidePanelPrimaryBtn: React.CSSProperties = {
   ...sidePanelBtn,
@@ -11349,14 +11360,14 @@ const sidePanelMiniBtn: React.CSSProperties = {
   color: "#cbd5e1",
   fontFamily: mono,
   fontSize: 10,
-  fontWeight: 800,
+  fontWeight: 650,
 };
 const sideSectionTitle: React.CSSProperties = {
   margin: "12px 2px 7px",
   fontSize: 9,
   color: "#8792a3",
-  letterSpacing: 1.5,
-  fontWeight: 850,
+  letterSpacing: 1.2,
+  fontWeight: 650,
 };
 const hdrBtnAccent: React.CSSProperties = {
   padding: "9px 16px", borderRadius: 8, cursor: "pointer",
