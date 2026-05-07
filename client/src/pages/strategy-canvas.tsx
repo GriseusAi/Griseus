@@ -359,6 +359,9 @@ const VIEW_KEY = "griseus_strategy_viewport_v2";
 const EXPAND_KEY = "griseus_strategy_expanded_v1";
 const SCENARIOS_KEY = "griseus_scenarios_v1";
 const ACTIVE_SCENARIO_KEY = "griseus_scenario_active_v1";
+const SCENARIO_BACKUPS_KEY = "griseus_scenario_backups_v1";
+const SCENARIO_DELETED_KEY = "griseus_scenario_deleted_v1";
+const PROTECTED_SCENARIO_IDS = new Set(["s_customers_seed_v3"]);
 
 interface WidgetVisibility {
   customers: boolean;
@@ -405,6 +408,14 @@ interface ScenarioSnapshot {
     flaskOpen?: boolean;
     reactionResult?: unknown;
   };
+}
+
+interface ScenarioBackup {
+  id: string;
+  scenarioId: string;
+  reason: "manual" | "save" | "delete" | "restore";
+  createdAt: number;
+  snapshot: ScenarioSnapshot;
 }
 
 interface Customer {
@@ -457,6 +468,12 @@ const safeParse = <T,>(raw: string | null, fallback: T, validate?: (value: unkno
     return validate && !validate(parsed) ? fallback : parsed as T;
   } catch { return fallback; }
 };
+const formatScenarioDate = (ts: number) =>
+  new Date(ts).toLocaleDateString("tr-TR", { day: "numeric", month: "short", year: "2-digit" });
+
+const scenarioOrderCount = (s: ScenarioSnapshot) =>
+  Array.isArray(s.payload?.orders) ? s.payload.orders.length : 0;
+
 const daysBetween = (a: Date, b: Date) => Math.round((b.getTime() - a.getTime()) / 86400000);
 
 function monthSlots(start: Date, end: Date): { label: string; t: number }[] {
@@ -9277,6 +9294,191 @@ function OntologySearchBox({
   );
 }
 
+function ScenarioSafetyDashboard({
+  scenarios,
+  deletedScenarios,
+  backups,
+  activeId,
+  onLoad,
+  onSave,
+  onSaveAs,
+  onBackup,
+  onDelete,
+  onRestoreDeleted,
+  onRestoreBackup,
+}: {
+  scenarios: ScenarioSnapshot[];
+  deletedScenarios: ScenarioSnapshot[];
+  backups: ScenarioBackup[];
+  activeId: string | null;
+  onLoad: (id: string) => void;
+  onSave: () => void;
+  onSaveAs: () => void;
+  onBackup: (scenario: ScenarioSnapshot) => void;
+  onDelete: (id: string) => void;
+  onRestoreDeleted: (scenario: ScenarioSnapshot) => void;
+  onRestoreBackup: (backup: ScenarioBackup) => void;
+}) {
+  const latestScenarios = useMemo(
+    () => [...scenarios].sort((a, b) => b.updatedAt - a.updatedAt),
+    [scenarios],
+  );
+  const latestBackups = useMemo(
+    () => [...backups].sort((a, b) => b.createdAt - a.createdAt).slice(0, 8),
+    [backups],
+  );
+  const activeScenario = scenarios.find(s => s.id === activeId) ?? null;
+
+  const stopCanvas = (e: React.SyntheticEvent) => e.stopPropagation();
+
+  return (
+    <aside
+      onPointerDown={stopCanvas}
+      onWheel={stopCanvas}
+      style={{
+        position: "absolute",
+        top: 14,
+        left: 14,
+        zIndex: 35,
+        width: 292,
+        maxHeight: "calc(100% - 76px)",
+        overflow: "hidden",
+        background: "#222832",
+        color: "#eef2f7",
+        border: "1px solid rgba(255,255,255,0.10)",
+        boxShadow: "0 14px 34px rgba(15,23,42,0.22)",
+        fontFamily: mono,
+        display: "flex",
+        flexDirection: "column",
+      }}
+    >
+      <div style={{
+        padding: "12px 14px",
+        borderBottom: "1px solid rgba(255,255,255,0.08)",
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "space-between",
+        gap: 10,
+      }}>
+        <div>
+          <div style={{ fontSize: 10, color: "#9da7b7", letterSpacing: 1.4 }}>DASHBOARD</div>
+          <div style={{ fontSize: 15, fontWeight: 850, marginTop: 2 }}>Senaryolar</div>
+        </div>
+        <div style={{
+          fontSize: 11,
+          color: "#84f0b4",
+          border: "1px solid rgba(132,240,180,0.35)",
+          background: "rgba(20,184,104,0.12)",
+          padding: "4px 7px",
+          borderRadius: 6,
+          fontWeight: 800,
+        }}>
+          {scenarios.length} aktif
+        </div>
+      </div>
+
+      <div style={{ padding: 10, display: "grid", gridTemplateColumns: "1fr 1fr", gap: 7 }}>
+        <button type="button" onClick={onSave} style={sidePanelPrimaryBtn}>kaydet</button>
+        <button type="button" onClick={onSaveAs} style={sidePanelBtn}>kopya kaydet</button>
+      </div>
+
+      <div style={{ padding: "0 10px 10px", overflowY: "auto" }}>
+        <div style={sideSectionTitle}>KAYITLI SENARYOLAR</div>
+        {latestScenarios.map(s => {
+          const isActive = s.id === activeId;
+          const protectedScenario = PROTECTED_SCENARIO_IDS.has(s.id);
+          return (
+            <div
+              key={s.id}
+              onClick={() => onLoad(s.id)}
+              style={{
+                background: isActive ? "rgba(124,88,238,0.20)" : "rgba(12,16,22,0.58)",
+                border: `1px solid ${isActive ? "rgba(124,88,238,0.48)" : "rgba(255,255,255,0.08)"}`,
+                borderRadius: 7,
+                padding: 9,
+                marginBottom: 7,
+                cursor: "pointer",
+              }}
+            >
+              <div style={{ display: "flex", alignItems: "center", gap: 7 }}>
+                <span style={{ color: isActive ? "#a78bfa" : "#7dd3fc", fontSize: 13 }}>◇</span>
+                <div style={{ flex: 1, minWidth: 0, fontSize: 12, fontWeight: 850, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                  {s.name}
+                </div>
+                {isActive && <span style={{ fontSize: 9, color: "#c4b5fd", fontWeight: 850 }}>AÇIK</span>}
+              </div>
+              <div style={{ marginTop: 4, fontSize: 10, color: "#aab3c2" }}>
+                {scenarioOrderCount(s)} sipariş · {formatScenarioDate(s.updatedAt)}
+              </div>
+              <div style={{ display: "flex", gap: 6, marginTop: 8 }}>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onBackup(s); }} style={sidePanelMiniBtn}>yedek al</button>
+                <button type="button" onClick={(e) => { e.stopPropagation(); onLoad(s.id); }} style={sidePanelMiniBtn}>aç</button>
+                <button
+                  type="button"
+                  disabled={protectedScenario}
+                  title={protectedScenario ? "Varsayılan senaryo arşivlenemez" : "Arşivlemeden önce isim yazdırır"}
+                  onClick={(e) => { e.stopPropagation(); onDelete(s.id); }}
+                  style={{
+                    ...sidePanelMiniBtn,
+                    color: protectedScenario ? "#677183" : "#fca5a5",
+                    cursor: protectedScenario ? "not-allowed" : "pointer",
+                  }}
+                >
+                  arşivle
+                </button>
+              </div>
+            </div>
+          );
+        })}
+
+        <div style={sideSectionTitle}>GÜVENLİK</div>
+        <div style={{
+          background: "rgba(12,16,22,0.58)",
+          border: "1px solid rgba(255,255,255,0.08)",
+          borderRadius: 7,
+          padding: 9,
+          fontSize: 10,
+          color: "#aab3c2",
+          lineHeight: 1.45,
+        }}>
+          Silme artık direkt yok: senaryo önce yedeklenir, arşive taşınır ve geri yüklenebilir.
+          {activeScenario && <div style={{ marginTop: 6, color: "#e2e8f0" }}>Açık: {activeScenario.name}</div>}
+        </div>
+
+        {deletedScenarios.length > 0 && (
+          <>
+            <div style={sideSectionTitle}>ARŞİV</div>
+            {[...deletedScenarios].sort((a, b) => b.updatedAt - a.updatedAt).slice(0, 6).map(s => (
+              <div key={`deleted-${s.id}`} style={sideArchiveRow}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{s.name}</div>
+                  <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{formatScenarioDate(s.updatedAt)}</div>
+                </div>
+                <button type="button" onClick={() => onRestoreDeleted(s)} style={sidePanelMiniBtn}>geri yükle</button>
+              </div>
+            ))}
+          </>
+        )}
+
+        {latestBackups.length > 0 && (
+          <>
+            <div style={sideSectionTitle}>YEDEKLER</div>
+            {latestBackups.map(b => (
+              <div key={b.id} style={sideArchiveRow}>
+                <div style={{ flex: 1, minWidth: 0 }}>
+                  <div style={{ fontSize: 11, color: "#f8fafc", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b.snapshot.name}</div>
+                  <div style={{ fontSize: 9, color: "#94a3b8", marginTop: 2 }}>{b.reason} · {formatScenarioDate(b.createdAt)}</div>
+                </div>
+                <button type="button" onClick={() => onRestoreBackup(b)} style={sidePanelMiniBtn}>aç</button>
+              </div>
+            ))}
+          </>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 /* ════════════════════════════════════════════════════════════════════
    PAGE
    ──────────────────────────────────────────────────────────────────── */
@@ -9688,12 +9890,24 @@ export default function StrategyCanvasPage() {
   const [scenarios, setScenarios] = useState<ScenarioSnapshot[]>(
     () => safeParse<ScenarioSnapshot[]>(localStorage.getItem(SCENARIOS_KEY), [], Array.isArray),
   );
+  const [scenarioBackups, setScenarioBackups] = useState<ScenarioBackup[]>(
+    () => safeParse<ScenarioBackup[]>(localStorage.getItem(SCENARIO_BACKUPS_KEY), [], Array.isArray),
+  );
+  const [deletedScenarios, setDeletedScenarios] = useState<ScenarioSnapshot[]>(
+    () => safeParse<ScenarioSnapshot[]>(localStorage.getItem(SCENARIO_DELETED_KEY), [], Array.isArray),
+  );
   const [activeScenarioId, setActiveScenarioId] = useState<string | null>(
     () => localStorage.getItem(ACTIVE_SCENARIO_KEY),
   );
   useEffect(() => {
     localStorage.setItem(SCENARIOS_KEY, JSON.stringify(scenarios));
   }, [scenarios]);
+  useEffect(() => {
+    localStorage.setItem(SCENARIO_BACKUPS_KEY, JSON.stringify(scenarioBackups.slice(-80)));
+  }, [scenarioBackups]);
+  useEffect(() => {
+    localStorage.setItem(SCENARIO_DELETED_KEY, JSON.stringify(deletedScenarios.slice(-40)));
+  }, [deletedScenarios]);
   useEffect(() => {
     if (activeScenarioId) localStorage.setItem(ACTIVE_SCENARIO_KEY, activeScenarioId);
     else localStorage.removeItem(ACTIVE_SCENARIO_KEY);
@@ -9702,6 +9916,16 @@ export default function StrategyCanvasPage() {
     () => scenarios.find(s => s.id === activeScenarioId) ?? null,
     [scenarios, activeScenarioId],
   );
+  const backupScenarioSnapshot = useCallback((snapshot: ScenarioSnapshot, reason: ScenarioBackup["reason"] = "manual") => {
+    const backup: ScenarioBackup = {
+      id: `b_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      scenarioId: snapshot.id,
+      reason,
+      createdAt: Date.now(),
+      snapshot: JSON.parse(JSON.stringify(snapshot)) as ScenarioSnapshot,
+    };
+    setScenarioBackups(prev => [...prev.slice(-79), backup]);
+  }, []);
 
   // İlk açılışta "Customers Senaryosu" sahne sürümünü garantiye al
   const customersSeedRef = useRef(false);
@@ -10017,20 +10241,22 @@ export default function StrategyCanvasPage() {
     if (!name) return;
     const existing = scenarios.find(s => s.name.toLowerCase() === name.toLowerCase());
     const id = existing?.id ?? `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
+    if (existing) backupScenarioSnapshot(existing, "save");
     const snap = buildSnapshot(id, name, existing);
     setScenarios(prev => {
       const without = prev.filter(s => s.id !== id);
       return [...without, snap];
     });
     setActiveScenarioId(id);
-  }, [scenarios, buildSnapshot]);
+  }, [scenarios, buildSnapshot, backupScenarioSnapshot]);
 
   const overwriteActive = useCallback(() => {
     if (!activeScenario) return false;
+    backupScenarioSnapshot(activeScenario, "save");
     const snap = buildSnapshot(activeScenario.id, activeScenario.name, activeScenario);
     setScenarios(prev => prev.map(s => s.id === activeScenario.id ? snap : s));
     return true;
-  }, [activeScenario, buildSnapshot]);
+  }, [activeScenario, buildSnapshot, backupScenarioSnapshot]);
 
   const promptSaveAs = useCallback(() => {
     const def = activeScenario?.name ?? `Senaryo ${scenarios.length + 1}`;
@@ -10057,9 +10283,7 @@ export default function StrategyCanvasPage() {
     }
   }, [activeScenario, overwriteActive, promptSaveAs, flashSaved]);
 
-  const loadScenario = useCallback((id: string) => {
-    const s = scenarios.find(x => x.id === id);
-    if (!s) return;
+  const applyScenarioSnapshot = useCallback((s: ScenarioSnapshot) => {
     const payload = s.payload ?? {};
     setOrders(Array.isArray(payload.orders) ? payload.orders : []);
     setPosOverrides(isPositionOverrides(payload.posOverrides) ? payload.posOverrides : {});
@@ -10077,15 +10301,59 @@ export default function StrategyCanvasPage() {
     if (isXY(payload.customersPanelPos)) setCustomersPanelPos(payload.customersPanelPos);
     setFlaskOpen(typeof payload.flaskOpen === "boolean" ? payload.flaskOpen : false);
     setReactionResult(isRecord(payload.reactionResult) ? payload.reactionResult as unknown as ReactionResult : null);
-    setActiveScenarioId(id);
     setModalOpen(false);
     setEditing(null);
-  }, [scenarios]);
+  }, []);
+
+  const loadScenario = useCallback((id: string) => {
+    const s = scenarios.find(x => x.id === id);
+    if (!s) return;
+    applyScenarioSnapshot(s);
+    setActiveScenarioId(id);
+  }, [scenarios, applyScenarioSnapshot]);
 
   const deleteScenarioById = useCallback((id: string) => {
+    if (PROTECTED_SCENARIO_IDS.has(id)) {
+      window.alert("Bu varsayılan senaryo arşivlenemez. İstersen 'farklı kaydet' ile kopyasını oluştur.");
+      return;
+    }
+    const scenario = scenarios.find(s => s.id === id);
+    if (!scenario) return;
+    const typed = window.prompt(`Arşivlemek için senaryo adını aynen yaz:\n${scenario.name}`);
+    if (typed !== scenario.name) return;
+    backupScenarioSnapshot(scenario, "delete");
+    setDeletedScenarios(prev => {
+      const without = prev.filter(s => s.id !== scenario.id);
+      return [...without, { ...scenario, updatedAt: Date.now() }];
+    });
     setScenarios(prev => prev.filter(s => s.id !== id));
     if (activeScenarioId === id) setActiveScenarioId(null);
-  }, [activeScenarioId]);
+  }, [activeScenarioId, backupScenarioSnapshot, scenarios]);
+
+  const restoreDeletedScenario = useCallback((scenario: ScenarioSnapshot) => {
+    backupScenarioSnapshot(scenario, "restore");
+    const restored = { ...scenario, updatedAt: Date.now() };
+    setScenarios(prev => {
+      const without = prev.filter(s => s.id !== restored.id);
+      return [...without, restored];
+    });
+    setDeletedScenarios(prev => prev.filter(s => s.id !== scenario.id));
+    applyScenarioSnapshot(restored);
+    setActiveScenarioId(restored.id);
+  }, [applyScenarioSnapshot, backupScenarioSnapshot]);
+
+  const restoreBackupScenario = useCallback((backup: ScenarioBackup) => {
+    const restored: ScenarioSnapshot = {
+      ...backup.snapshot,
+      id: `s_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`,
+      name: `${backup.snapshot.name} (yedekten)`,
+      createdAt: Date.now(),
+      updatedAt: Date.now(),
+    };
+    setScenarios(prev => [...prev, restored]);
+    applyScenarioSnapshot(restored);
+    setActiveScenarioId(restored.id);
+  }, [applyScenarioSnapshot]);
 
   const newBlankScenario = useCallback(() => {
     if (orders.length > 0) {
@@ -10809,6 +11077,20 @@ export default function StrategyCanvasPage() {
           touchAction: "none", userSelect: "none",
         }}
       >
+        <ScenarioSafetyDashboard
+          scenarios={scenarios}
+          deletedScenarios={deletedScenarios}
+          backups={scenarioBackups}
+          activeId={activeScenarioId}
+          onLoad={loadScenario}
+          onSave={handleQuickSave}
+          onSaveAs={promptSaveAs}
+          onBackup={(scenario) => backupScenarioSnapshot(scenario, "manual")}
+          onDelete={deleteScenarioById}
+          onRestoreDeleted={restoreDeletedScenario}
+          onRestoreBackup={restoreBackupScenario}
+        />
+
         {/* ─── Workbench widget'ları — sadece widgetVis bayrağı açıksa render ─── */}
         {!widgetVis.scene && widgetVis.customers && (
           <CustomersPanel
@@ -10984,7 +11266,7 @@ export default function StrategyCanvasPage() {
         )}
 
         <div style={{
-          position: "absolute", bottom: 14, left: 14,
+          position: "absolute", bottom: 14, left: 320,
           background: "rgba(15,23,42,0.78)", color: C.cardInk,
           padding: "6px 10px", borderRadius: 6, fontSize: 10, fontFamily: mono,
           letterSpacing: 0.4, pointerEvents: "none",
@@ -11047,6 +11329,51 @@ const hdrBtnGhost: React.CSSProperties = {
   padding: "9px 14px", borderRadius: 8, cursor: "pointer",
   background: "transparent", border: `1px solid ${C.edgeFaint}`, color: C.mid,
   fontFamily: mono, fontSize: 12,
+};
+const sidePanelBtn: React.CSSProperties = {
+  padding: "8px 9px",
+  borderRadius: 7,
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.12)",
+  color: "#e2e8f0",
+  fontFamily: mono,
+  fontSize: 11,
+  fontWeight: 800,
+};
+const sidePanelPrimaryBtn: React.CSSProperties = {
+  ...sidePanelBtn,
+  background: "#7c58ee",
+  border: "1px solid #7c58ee",
+  color: "#ffffff",
+};
+const sidePanelMiniBtn: React.CSSProperties = {
+  padding: "5px 7px",
+  borderRadius: 6,
+  cursor: "pointer",
+  background: "rgba(255,255,255,0.06)",
+  border: "1px solid rgba(255,255,255,0.10)",
+  color: "#cbd5e1",
+  fontFamily: mono,
+  fontSize: 10,
+  fontWeight: 800,
+};
+const sideSectionTitle: React.CSSProperties = {
+  margin: "12px 2px 7px",
+  fontSize: 9,
+  color: "#8792a3",
+  letterSpacing: 1.5,
+  fontWeight: 850,
+};
+const sideArchiveRow: React.CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  background: "rgba(12,16,22,0.48)",
+  border: "1px solid rgba(255,255,255,0.07)",
+  borderRadius: 7,
+  padding: 8,
+  marginBottom: 6,
 };
 const hdrBtnAccent: React.CSSProperties = {
   padding: "9px 16px", borderRadius: 8, cursor: "pointer",
