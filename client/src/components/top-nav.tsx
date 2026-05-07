@@ -2,53 +2,28 @@ import { useLocation } from "wouter";
 import { useAgentPanel, useGlobalAlerts } from "../App";
 import { useState, useRef, useEffect } from "react";
 import type { ProactiveAlertData } from "../lib/useStockWebSocket";
+import { Bell, Braces, CircleAlert, CircleCheck, CircleHelp, Clock3, Factory, Network, Sigma } from "lucide-react";
+import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 
 const C = {
-  bg: "rgba(5,5,5,0.4)",
-  border: "rgba(255,255,255,0.08)",
-  accent: "#818cf8",
-  accentDim: "rgba(99,102,241,0.08)",
-  borderActive: "rgba(255,255,255,0.12)",
-  white: "#f0f0f5",
-  mid: "#8888a0",
-  dim: "#4a4a60",
-  ok: "#34d399",
-  err: "#ef4444",
-  warn: "#fbbf24",
-  blue: "#60a5fa",
-  errBorder: "rgba(239,68,68,0.3)",
-  warnBorder: "rgba(251,191,36,0.25)",
-  blueBorder: "rgba(96,165,250,0.25)",
+  bg: "rgba(250,249,245,0.88)",
+  panel: "rgba(255,255,255,0.98)",
+  border: CT.border,
+  accent: CT.accent,
+  accentDim: CT.accentSoft,
+  borderActive: CT.borderStrong,
+  white: CT.ink,
+  mid: CT.inkSub,
+  dim: CT.inkMuted,
+  ok: CT.ok,
+  err: CT.err,
+  warn: CT.warn,
+  blue: CT.info,
+  errBorder: "rgba(179,64,55,0.28)",
+  warnBorder: "rgba(184,118,28,0.28)",
+  blueBorder: "rgba(61,111,176,0.28)",
 };
-const mono = "'Outfit', sans-serif";
-
-/* Tatlı ahtapot simgesi — Ontology için özel */
-function OctopusIcon({ size = 16 }: { size?: number }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24"
-      xmlns="http://www.w3.org/2000/svg" style={{ display: "block" }}>
-      {/* Kollar (rounded lines, radiating) */}
-      <g stroke="currentColor" strokeWidth="2.4" strokeLinecap="round" fill="none">
-        <line x1="12" y1="10.5" x2="12" y2="3.5" />
-        <line x1="15.2" y1="10.5" x2="20" y2="6.3" />
-        <line x1="16" y1="13.2" x2="21.2" y2="13.8" />
-        <line x1="15" y1="15.6" x2="17.5" y2="20.5" />
-        <line x1="9"  y1="15.6" x2="6.5"  y2="20.5" />
-        <line x1="8"  y1="13.2" x2="2.8"  y2="13.8" />
-        <line x1="8.8" y1="10.5" x2="4" y2="6.3" />
-      </g>
-      {/* Merkez gövde */}
-      <circle cx="12" cy="12.5" r="3.2" fill="currentColor" />
-      {/* Baş — sağ-üste hafif eğik elips */}
-      <ellipse cx="14" cy="9.2" rx="2.3" ry="2.9" fill="currentColor"
-        transform="rotate(22 14 9.2)" />
-      {/* Gözler (beyaz kesim) */}
-      <ellipse cx="11.8" cy="11.1" rx="0.55" ry="0.85" fill="#ffffff" />
-      <ellipse cx="13.7" cy="10.5" rx="0.55" ry="0.85" fill="#ffffff"
-        transform="rotate(15 13.7 10.5)" />
-    </svg>
-  );
-}
+const mono = CT_MONO;
 
 type NavItem = {
   path: string;
@@ -63,22 +38,11 @@ function useNavItems(): NavItem[] {
     {
       path: "/",
       label: "",
-      iconNode: (
-        <img
-          src="/bomb-favicon-32.png"
-          alt="Griseus"
-          style={{
-            width: 20,
-            height: 20,
-            display: "block",
-            filter:
-              "drop-shadow(2px 2px 0 rgba(194,65,12,0.55)) drop-shadow(4px 4px 0 rgba(124,45,18,0.45)) drop-shadow(6px 6px 0 rgba(67,20,7,0.35))",
-          }}
-        />
-      ),
+      iconNode: <Factory size={18} />,
     },
-    { path: "/ontology", label: "Ontology", iconNode: <OctopusIcon /> },
-    { path: "/lineage", label: "LineAge", icon: "\u21DD" },
+    { path: "/ontology", label: "Ontology", iconNode: <Network size={16} /> },
+    { path: "/ontology/manager", label: "OMA", iconNode: <Braces size={16} /> },
+    { path: "/lineage", label: "LineAge", iconNode: <Sigma size={16} /> },
   ];
 }
 
@@ -121,12 +85,16 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
 
   const isActive = (path: string) => location === path;
 
-  const severityIcon: Record<string, string> = { critical: "\u{1F534}", warning: "\u{1F7E1}", info: "\u{1F535}" };
+  const SeverityIcon = ({ severity }: { severity: string }) => {
+    if (severity === "critical") return <CircleAlert size={14} />;
+    if (severity === "warning") return <CircleHelp size={14} />;
+    return <CircleCheck size={14} />;
+  };
   const severityColor: Record<string, string> = { critical: C.err, warning: C.warn, info: C.blue };
   const severityBg: Record<string, string> = {
-    critical: "rgba(239,68,68,0.08)",
-    warning: "rgba(251,191,36,0.06)",
-    info: "rgba(96,165,250,0.06)",
+    critical: CT.errSoft,
+    warning: CT.warnSoft,
+    info: CT.infoSoft,
   };
   const severityBorder: Record<string, string> = {
     critical: C.errBorder,
@@ -139,6 +107,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
       padding: "0 16px", height: 48, display: "flex", alignItems: "center",
       justifyContent: "space-between", borderBottom: `1px solid ${C.border}`,
       background: C.bg, backdropFilter: "blur(20px)", WebkitBackdropFilter: "blur(20px)",
+      color: C.white, fontFamily: CT_FONT,
       position: "sticky", top: 0, zIndex: 50,
     }}>
       <div style={{ display: "flex", alignItems: "center", gap: 4 }}>
@@ -149,11 +118,11 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
               key={n.path}
               onClick={() => navigate(n.path)}
               style={{
-                padding: "6px 14px", borderRadius: 8, fontSize: 12, fontWeight: 400,
+                padding: n.label ? "6px 14px" : "6px 10px", borderRadius: 8, fontSize: 12, fontWeight: 400,
                 background: active ? C.accentDim : "transparent",
                 border: `1px solid ${active ? C.borderActive : "transparent"}`,
                 color: active ? C.accent : C.dim,
-                cursor: "pointer", fontFamily: "'Outfit', sans-serif",
+                cursor: "pointer", fontFamily: CT_FONT,
                 transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
               }}
             >
@@ -173,7 +142,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
             background: agentOpen ? C.accentDim : "transparent",
             border: `1px solid ${agentOpen ? C.accent : "transparent"}`,
             color: agentOpen ? C.accent : C.dim,
-            cursor: "pointer", fontFamily: "'Outfit', sans-serif",
+            cursor: "pointer", fontFamily: CT_FONT,
             transition: "all 0.15s", display: "flex", alignItems: "center", gap: 6,
           }}
         >
@@ -186,13 +155,14 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
         {/* Türkiye Saati */}
         <div style={{
           display: "flex", alignItems: "center", gap: 8, padding: "4px 12px",
-          borderRadius: 8, background: "rgba(99,102,241,0.06)",
-          border: `1px solid rgba(99,102,241,0.15)`,
+          borderRadius: 8, background: CT.surfaceMuted,
+          border: `1px solid ${C.border}`,
         }}>
+          <Clock3 size={13} color={C.accent} />
           <span style={{ fontSize: 12, fontFamily: mono, color: C.accent, fontWeight: 500, fontVariantNumeric: "tabular-nums" }}>
             {trTime}
           </span>
-          <span style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>
+          <span className="nav-date" style={{ fontSize: 9, fontFamily: mono, color: C.mid }}>
             {trDate}
           </span>
         </div>
@@ -209,7 +179,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
               transition: "all 0.15s", display: "flex", alignItems: "center", gap: 4,
             }}
           >
-            {"\u{1F514}"}
+            <Bell size={15} />
             {unreadCount > 0 && (
               <span style={{
                 position: "absolute", top: 2, right: 2,
@@ -229,9 +199,9 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
             <div style={{
               position: "absolute", top: "calc(100% + 8px)", right: 0,
               width: 400, maxHeight: 520, overflowY: "auto",
-              background: "rgba(12,12,16,0.96)", backdropFilter: "blur(20px)",
+              background: C.panel, backdropFilter: "blur(20px)",
               border: `1px solid ${C.border}`, borderRadius: 14,
-              boxShadow: "0 16px 48px rgba(0,0,0,0.5)",
+              boxShadow: "0 16px 48px rgba(20,20,19,0.12)",
               zIndex: 999,
             }}>
               {/* Header */}
@@ -262,7 +232,9 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
                     }}>
                       {/* Ba\u015Fl\u0131k */}
                       <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: 4 }}>
-                        <span style={{ fontSize: 10 }}>{severityIcon[a.severity] || "\u{1F535}"}</span>
+                        <span style={{ display: "inline-flex", color: severityColor[a.severity] || C.blue }}>
+                          <SeverityIcon severity={a.severity} />
+                        </span>
                         <span style={{
                           fontSize: 10, fontWeight: 400, fontFamily: mono,
                           color: severityColor[a.severity] || C.blue,
@@ -283,8 +255,8 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
                       {a.suggestedAction && (
                         <div style={{
                           fontSize: 9, fontFamily: mono, fontWeight: 400, padding: "3px 8px", borderRadius: 5,
-                          background: "rgba(99,102,241,0.1)", color: C.accent, display: "inline-block",
-                          border: "1px solid rgba(99,102,241,0.2)", marginBottom: a.rootCause ? 6 : 0,
+                          background: CT.accentSoft, color: C.accent, display: "inline-block",
+                          border: `1px solid ${CT.accentEdge}`, marginBottom: a.rootCause ? 6 : 0,
                         }}>
                           \u2192 {a.suggestedAction}
                         </div>
@@ -294,7 +266,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
                       {a.rootCause && a.rootCause.length > 0 && (
                         <div style={{
                           marginTop: 4, padding: "5px 8px", borderRadius: 6,
-                          background: "rgba(255,255,255,0.02)", border: "1px solid rgba(255,255,255,0.05)",
+                          background: CT.surfaceMuted, border: `1px solid ${CT.border}`,
                         }}>
                           <div style={{ fontSize: 8, fontFamily: mono, color: C.dim, marginBottom: 3, letterSpacing: 0.5 }}>
                             SEBEP Z\u0130NC\u0130R\u0130
@@ -317,14 +289,14 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
         {connected !== undefined && (
           <div style={{
             display: "flex", alignItems: "center", gap: 6, padding: "4px 10px",
-            borderRadius: 16, background: connected ? "rgba(52,211,153,0.1)" : "rgba(239,68,68,0.1)",
-            border: `1px solid ${connected ? "rgba(52,211,153,0.25)" : "rgba(239,68,68,0.2)"}`,
+            borderRadius: 16, background: connected ? CT.okSoft : CT.errSoft,
+            border: `1px solid ${connected ? "rgba(63,143,91,0.28)" : C.errBorder}`,
           }}>
             <div style={{
               width: 6, height: 6, borderRadius: "50%",
-              background: connected ? C.ok : "#ef4444",
+              background: connected ? C.ok : C.err,
             }} />
-            <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : "#ef4444", fontWeight: 400 }}>
+            <span style={{ fontSize: 9, fontFamily: mono, color: connected ? C.ok : C.err, fontWeight: 400 }}>
               {connected ? "CANLI" : "KOPUK"}
             </span>
           </div>
@@ -334,6 +306,7 @@ export default function TopNav({ connected, alerts: propAlerts }: { connected?: 
       <style>{`
         @media (max-width: 640px) {
           .nav-label { display: none; }
+          .nav-date { display: none; }
         }
       `}</style>
     </nav>

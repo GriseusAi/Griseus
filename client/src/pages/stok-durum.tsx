@@ -8,6 +8,7 @@ import { useStockWebSocket, type StockUpdateEvent, type ProactiveAlertEvent, typ
 import TopNav from "@/components/top-nav";
 import ProductSelector from "@/components/ProductSelector";
 import { useGlobalAlerts } from "../App";
+import { BrainCircuit, Check, CircleAlert, CircleCheck, CircleHelp, Package, Settings, Truck, X } from "lucide-react";
 
 /* PALETTE — claude.ai aesthetic via shared theme */
 import { CT, CT_FONT } from "@/lib/claude-theme";
@@ -78,9 +79,9 @@ interface Toast { id: number; sku: string; type: string; qty: number; ts: number
 
 /* ── Quick Actions ── */
 const QUICK_ACTIONS = [
-  { type: "produced", label: "Üretim Girişi", icon: "⚙", color: C.ok, bg: C.okDim, border: C.okBorder, desc: "Yeni üretim kaydet" },
-  { type: "to_warehouse", label: "Depoya Transfer", icon: "📦", color: C.blue, bg: C.blueDim, border: C.blueBorder, desc: "Üretimden depoya taşı" },
-  { type: "to_sales", label: "Satış Çıkışı", icon: "🚚", color: C.purple, bg: "rgba(167,139,250,0.12)", border: "rgba(167,139,250,0.25)", desc: "Depodan satışa çıkar" },
+  { type: "produced", label: "Üretim Girişi", icon: Settings, color: C.ok, bg: C.okDim, border: C.okBorder, desc: "Yeni üretim kaydet" },
+  { type: "to_warehouse", label: "Depoya Transfer", icon: Package, color: C.blue, bg: C.blueDim, border: C.blueBorder, desc: "Üretimden depoya taşı" },
+  { type: "to_sales", label: "Satış Çıkışı", icon: Truck, color: C.purple, bg: "rgba(138,114,199,0.12)", border: "rgba(138,114,199,0.25)", desc: "Depodan satışa çıkar" },
 ];
 
 /* ── Helpers ── */
@@ -118,9 +119,9 @@ type OntologyFilter = "all" | "critical" | "warning" | "ok" | "tier1" | "tier2" 
 /* ── Pipeline ── */
 function Pipeline({ product }: { product: StockLevel | null }) {
   const stages = [
-    { label: "ÜRETİMDE", value: product?.inProduction ?? 0, color: C.warn, icon: "⚙" },
-    { label: "DEPODA", value: product?.inWarehouse ?? 0, color: product && product.inWarehouse === 0 ? C.err : C.ok, icon: "📦" },
-    { label: "SATILAN", value: product?.totalSold ?? 0, color: C.purple, icon: "🚚", sub: "toplam" },
+    { label: "ÜRETİMDE", value: product?.inProduction ?? 0, color: C.warn },
+    { label: "DEPODA", value: product?.inWarehouse ?? 0, color: product && product.inWarehouse === 0 ? C.err : C.ok },
+    { label: "SATILAN", value: product?.totalSold ?? 0, color: C.purple, sub: "toplam" },
   ];
   return (
     <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 0 }}>
@@ -133,7 +134,7 @@ function Pipeline({ product }: { product: StockLevel | null }) {
             boxShadow: "inset 0 1px 0 rgba(255,255,255,0.08), 0 8px 32px rgba(0,0,0,0.3)",
           }}>
             <div style={{ fontSize: 10, color: C.dim, fontFamily: mono, fontWeight: 400, letterSpacing: 1, marginBottom: 4 }}>
-              {s.icon} {s.label}
+              {s.label}
             </div>
             <div style={{ fontSize: 32, fontWeight: 400, fontFamily: mono, color: s.color, lineHeight: 1 }}>{s.value}</div>
             {s.sub && <div style={{ fontSize: 9, color: C.dim, marginTop: 4, fontFamily: mono }}>{s.sub}</div>}
@@ -293,14 +294,14 @@ function ComponentCard({ comp, onClick, isFlashing, onStockUpdate, isSaving }: {
                   fontSize: 14, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
                   background: C.ok + "20", border: `1px solid ${C.okBorder}`, color: C.ok,
                 }}
-              >✓</button>
+              ><Check size={12} /></button>
               <button
                 onClick={e => { e.stopPropagation(); setEditing(false); }}
                 style={{
                   fontSize: 14, padding: "2px 6px", borderRadius: 4, cursor: "pointer",
                   background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid,
                 }}
-              >✕</button>
+              ><X size={12} /></button>
             </div>
           ) : (
             <div
@@ -366,7 +367,7 @@ function ChildRow({ child, depth, onStockUpdate, isSaving }: {
   const hasKids = (child.children?.length ?? 0) > 0;
   return (
     <div style={{
-      background: "rgba(255,255,255,0.02)", border: `1px solid ${C.border}`, borderRadius: 8,
+      background: CT.surfaceMuted, border: `1px solid ${C.border}`, borderRadius: 8,
       padding: "8px 10px", marginLeft: depth * 8,
     }}
       onClick={(e) => { e.stopPropagation(); if (hasKids) setOpen(p => !p); }}
@@ -393,7 +394,7 @@ function ChildRow({ child, depth, onStockUpdate, isSaving }: {
               disabled={isSaving}
               style={{
                 width: 55, fontSize: 11, fontFamily: mono, color,
-                background: "rgba(0,0,0,0.4)", border: `1px solid ${color}60`,
+                background: CT.surface, border: `1px solid ${color}60`,
                 borderRadius: 4, padding: "2px 4px", outline: "none",
               }}
             />
@@ -405,11 +406,11 @@ function ChildRow({ child, depth, onStockUpdate, isSaving }: {
                 if (!isNaN(v) && v >= 0) { onStockUpdate(child.code, v, child.unit); setEditing(false); }
               }}
               style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, cursor: "pointer", background: C.ok + "20", border: `1px solid ${C.okBorder}`, color: C.ok }}
-            >✓</button>
+            ><Check size={10} /></button>
             <button
               onClick={e => { e.stopPropagation(); setEditing(false); }}
-              style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, cursor: "pointer", background: "rgba(255,255,255,0.05)", border: `1px solid ${C.border}`, color: C.mid }}
-            >✕</button>
+              style={{ fontSize: 10, padding: "1px 4px", borderRadius: 3, cursor: "pointer", background: CT.surfaceMuted, border: `1px solid ${C.border}`, color: C.mid }}
+            ><X size={10} /></button>
           </div>
         ) : (
           <div
@@ -458,7 +459,7 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: 12 }}>
         <div>
           <div style={{ fontSize: 12, fontWeight: 400, color: (brulor.currentStock + brulor.producibleFromParts) > 0 ? C.ok : C.err, fontFamily: sans }}>
-            ⚙ Brülör (Yerli Malzeme) <span style={{ color: C.dim, fontWeight: 400, fontSize: 11 }}>27.125</span>
+            Brülör (Yerli Malzeme) <span style={{ color: C.dim, fontWeight: 400, fontSize: 11 }}>27.125</span>
           </div>
           <div style={{ fontSize: 10, color: C.dim, marginTop: 2 }}>YARI MAMÜL — stok 0 normaldir, alt bileşenlerden montajlanır</div>
         </div>
@@ -483,7 +484,7 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
           return (
             <div key={p.code} style={{
               flex: "1 1 calc(50% - 3px)", padding: "8px 10px", borderRadius: 8,
-              background: isRealBottleneck ? C.errDim : "rgba(0,0,0,0.2)",
+              background: isRealBottleneck ? C.errDim : CT.surfaceMuted,
               border: `1px solid ${isRealBottleneck ? C.errBorder : C.border}`,
             }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
@@ -512,7 +513,11 @@ function SubAssemblyPanel({ capacity }: { capacity: Capacity | undefined }) {
 /* ── Proactive Alert Panel ── */
 function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData[]; onDismiss: (id: string) => void }) {
   if (alerts.length === 0) return null;
-  const severityIcon: Record<string, string> = { critical: "🔴", warning: "🟡", info: "🔵" };
+  const AlertIcon = ({ severity }: { severity: string }) => {
+    if (severity === "critical") return <CircleAlert size={14} />;
+    if (severity === "warning") return <CircleHelp size={14} />;
+    return <CircleCheck size={14} />;
+  };
   return (
     <motion.div
       initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }}
@@ -530,14 +535,16 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
           exit={{ opacity: 0, x: 20 }}
           style={{
             padding: "12px 14px", borderRadius: 12,
-            background: a.severity === "critical" ? "rgba(239,68,68,0.08)" : a.severity === "warning" ? "rgba(251,191,36,0.06)" : "rgba(96,165,250,0.06)",
+            background: a.severity === "critical" ? CT.errSoft : a.severity === "warning" ? CT.warnSoft : CT.infoSoft,
             border: `1px solid ${a.severity === "critical" ? C.errBorder : a.severity === "warning" ? C.warnBorder : C.blueBorder}`,
             backdropFilter: "blur(16px)",
           }}
         >
           <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 6 }}>
-              <span style={{ fontSize: 12 }}>{severityIcon[a.severity] || "🔵"}</span>
+              <span style={{ display: "inline-flex", color: a.severity === "critical" ? C.err : a.severity === "warning" ? C.warn : C.blue }}>
+                <AlertIcon severity={a.severity} />
+              </span>
               <span style={{
                 fontSize: 11, fontWeight: 400, fontFamily: mono,
                 color: a.severity === "critical" ? C.err : a.severity === "warning" ? C.warn : C.blue,
@@ -547,7 +554,7 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
             </div>
             <button onClick={() => onDismiss(a.id)} style={{
               background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 12, padding: 0,
-            }}>✕</button>
+            }}><X size={14} /></button>
           </div>
           <div style={{ fontSize: 11, color: C.mid, lineHeight: 1.5, marginBottom: a.suggestedAction ? 8 : 0 }}>
             {a.message}
@@ -555,8 +562,8 @@ function ProactiveAlertPanel({ alerts, onDismiss }: { alerts: ProactiveAlertData
           {a.suggestedAction && (
             <div style={{
               fontSize: 10, fontFamily: mono, fontWeight: 400, padding: "4px 10px", borderRadius: 6,
-              background: "rgba(99,102,241,0.1)", color: C.accent, display: "inline-block",
-              border: `1px solid rgba(99,102,241,0.2)`,
+              background: CT.accentSoft, color: C.accent, display: "inline-block",
+              border: `1px solid ${CT.accentEdge}`,
             }}>
               → {a.suggestedAction}
             </div>
@@ -598,9 +605,12 @@ function ImpactInsightPanel({ impact, onDismiss }: { impact: ImpactEventData | n
       <div style={{ padding: "12px 14px" }}>
         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: 6 }}>
           <div style={{ fontSize: 9, fontFamily: mono, color: severityColor, fontWeight: 400, letterSpacing: 1 }}>
-            🧠 IMPACT PROPAGATION
+            <span style={{ display: "inline-flex", verticalAlign: "middle", marginRight: 6 }}>
+              <BrainCircuit size={12} />
+            </span>
+            IMPACT PROPAGATION
           </div>
-          <button onClick={onDismiss} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 11, padding: 0 }}>✕</button>
+          <button onClick={onDismiss} style={{ background: "none", border: "none", color: C.dim, cursor: "pointer", fontSize: 11, padding: 0 }}><X size={14} /></button>
         </div>
         <div style={{ fontSize: 12, fontWeight: 400, color: C.white, lineHeight: 1.5, marginBottom: 8 }}>
           {impact.headline}
@@ -845,14 +855,7 @@ export default function StokDurum() {
       minHeight: "100vh", background: C.bg, color: C.white, fontFamily: sans,
       position: "relative", overflow: "hidden",
     }}>
-      {/* Glassmorphism background orbs */}
-      <div className="glass-bg-orbs">
-        <div className="orb orb-1" />
-        <div className="orb orb-2" />
-        <div className="orb orb-3" />
-      </div>
       <style>{GLOBAL_STYLES}</style>
-      <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700&family=Space+Mono:wght@400;700&display=swap" rel="stylesheet" />
 
       <ToastStack toasts={toasts} />
       <ProactiveAlertPanel
@@ -902,6 +905,7 @@ export default function StokDurum() {
           <div style={{ display: "flex", gap: 8, marginBottom: actionType ? 10 : 0 }}>
             {QUICK_ACTIONS.map(a => {
               const isActive = actionType === a.type;
+              const ActionIcon = a.icon;
               // Her buton her an tıklanabilir — workflow dependency kaldırıldı
               // (user: "üretim girişi yapılmadan depoya transfer edilemiyor
               // - direk her butona her an giriş yapılabilsin")
@@ -913,14 +917,16 @@ export default function StokDurum() {
                   disabled={isDisabled}
                   style={{
                     flex: 1, padding: "12px 8px", borderRadius: 12, cursor: isDisabled ? "default" : "pointer",
-                    background: isActive ? a.bg : "rgba(0,0,0,0.2)",
+                    background: isActive ? a.bg : CT.surfaceMuted,
                     border: `1px solid ${isActive ? a.border : C.border}`,
                     color: isDisabled ? C.dimmer : isActive ? a.color : C.mid,
                     fontFamily: sans, fontSize: 12, fontWeight: 400, textAlign: "center",
                     transition: "all 0.15s", opacity: isDisabled ? 0.4 : 1,
                   }}
                 >
-                  <div style={{ fontSize: 22, marginBottom: 4 }}>{a.icon}</div>
+                  <div style={{ display: "flex", justifyContent: "center", marginBottom: 6 }}>
+                    <ActionIcon size={20} />
+                  </div>
                   {a.label}
                 </button>
               );
@@ -942,7 +948,7 @@ export default function StokDurum() {
                 }}>
                   <div style={{ flex: 1 }}>
                     <div style={{ fontSize: 12, color: activeAction.color, fontWeight: 400, marginBottom: 6 }}>
-                      {activeAction.icon} {activeAction.desc}
+                      {activeAction.desc}
                     </div>
                     <div style={{ display: "flex", gap: 8 }}>
                       <input
@@ -950,7 +956,7 @@ export default function StokDurum() {
                         value={actionQty} onChange={e => setActionQty(e.target.value)} autoFocus
                         style={{
                           width: 120, padding: "10px 12px", borderRadius: 10,
-                          background: "rgba(0,0,0,0.3)", border: `1px solid ${C.border}`,
+                          background: CT.surface, border: `1px solid ${C.border}`,
                           color: C.white, fontFamily: mono, fontSize: 18, fontWeight: 400, textAlign: "center",
                         }}
                       />
@@ -960,7 +966,7 @@ export default function StokDurum() {
                         style={{
                           padding: "10px 24px", borderRadius: 10, border: "none",
                           background: canExecute ? activeAction.color : C.dimmer,
-                          color: canExecute ? "#000" : C.dim,
+                          color: canExecute ? "#fff" : C.dim,
                           fontFamily: mono, fontSize: 13, fontWeight: 400, cursor: canExecute ? "pointer" : "default",
                         }}
                       >
@@ -1015,7 +1021,7 @@ export default function StokDurum() {
                   {f.label}
                   <span style={{
                     fontSize: 9, padding: "1px 5px", borderRadius: 4,
-                    background: isActive ? `${f.color}20` : "rgba(255,255,255,0.03)",
+                    background: isActive ? `${f.color}20` : CT.surfaceMuted,
                     color: isActive ? f.color : C.dim,
                   }}>
                     {count}
@@ -1074,8 +1080,8 @@ export default function StokDurum() {
             ].map(f => (
               <button key={f.v} onClick={() => setFilterType(f.v)} style={{
                 padding: "4px 10px", borderRadius: 6, fontSize: 10, fontWeight: 400,
-                background: filterType === f.v ? "rgba(255,255,255,0.1)" : "rgba(255,255,255,0.02)",
-                border: `1px solid ${filterType === f.v ? "rgba(255,255,255,0.15)" : C.border}`,
+                background: filterType === f.v ? CT.surfaceMuted : "transparent",
+                border: `1px solid ${filterType === f.v ? CT.borderStrong : C.border}`,
                 color: filterType === f.v ? C.white : C.dim, cursor: "pointer", fontFamily: sans,
               }}>
                 {f.l}
