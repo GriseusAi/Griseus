@@ -79,31 +79,40 @@ function renderChart(spec: ChartSpec) {
     const ticks = rows[0]?.ticks as { label: string; pct: number }[] | undefined;
     const tasks = rows.filter(r => r.kind === "task");
     const lanes = Array.from(new Set(tasks.map(t => String(t.lane))));
+    const labelColumn = 112;
+    const laneGap = 16;
+    const rightPad = 72;
+    const rowPitch = 46;
+    const rowTop = 20;
     return (
       <div style={{ minHeight: 360, padding: "8px 4px 2px" }}>
-        <div style={{ position: "relative", height: 28, marginLeft: 128, marginRight: 72 }}>
-          {(ticks ?? []).map((t, i) => (
-            <div
-              key={`${t.label}-${i}`}
-              style={{
-                position: "absolute",
-                left: `${t.pct}%`,
-                top: 0,
-                transform: i === 0 ? "translateX(0)" : i === (ticks?.length ?? 0) - 1 ? "translateX(-100%)" : "translateX(-50%)",
-                color: C.inkDim,
-                fontSize: 12,
-                fontWeight: 600,
-              }}
-            >
-              {t.label}
-            </div>
-          ))}
+        <div style={{ display: "grid", gridTemplateColumns: `${labelColumn}px 1fr`, gap: laneGap, height: 28 }}>
+          <div />
+          <div style={{ position: "relative", marginRight: rightPad }}>
+            {(ticks ?? []).map((t, i) => (
+              <div
+                key={`${t.label}-${i}`}
+                style={{
+                  position: "absolute",
+                  left: `${t.pct}%`,
+                  top: 0,
+                  transform: i === 0 ? "translateX(0)" : i === (ticks?.length ?? 0) - 1 ? "translateX(-100%)" : "translateX(-50%)",
+                  color: C.inkDim,
+                  fontSize: 12,
+                  fontWeight: 600,
+                }}
+              >
+                {t.label}
+              </div>
+            ))}
+          </div>
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
           {lanes.map((lane) => {
             const laneTasks = tasks.filter(t => String(t.lane) === lane);
+            const maxRow = Math.max(0, ...laneTasks.map(t => Number(t.row ?? 0)));
             return (
-              <div key={lane} style={{ display: "grid", gridTemplateColumns: "112px 1fr", gap: 16, alignItems: "center" }}>
+              <div key={lane} style={{ display: "grid", gridTemplateColumns: `${labelColumn}px 1fr`, gap: laneGap, alignItems: "center" }}>
                 <div style={{ color: C.ink, fontWeight: 700, fontSize: 13, lineHeight: 1.25 }}>
                   {lane}
                   <div style={{ color: C.inkFaint, fontWeight: 500, fontSize: 11, marginTop: 3 }}>
@@ -113,8 +122,8 @@ function renderChart(spec: ChartSpec) {
                 <div
                   style={{
                     position: "relative",
-                    height: Math.max(58, 30 + (Math.max(0, ...laneTasks.map(t => Number(t.row ?? 0))) + 1) * 26),
-                    marginRight: 56,
+                    height: Math.max(70, rowTop + (maxRow + 1) * rowPitch + 12),
+                    marginRight: rightPad,
                     borderTop: `1px dashed ${C.borderStrong}`,
                     borderBottom: `1px dashed ${C.border}`,
                   }}
@@ -132,17 +141,21 @@ function renderChart(spec: ChartSpec) {
                     />
                   ))}
                   {laneTasks.map((task, i) => {
-                    const nearRight = Number(task.startPct ?? 0) > 86;
+                    const widthPct = Math.max(3, Math.min(100, Number(task.widthPct ?? 4)));
+                    const startPct = Math.max(0, Math.min(100, Number(task.startPct ?? 0)));
+                    const visualLeftPct = Math.min(startPct, 100 - widthPct);
+                    const nearRight = startPct > 86;
+                    const row = Math.max(0, Number(task.row ?? i));
                     return (
                     <div
                       key={`${task.label}-${i}`}
                       title={String(task.note ?? task.label)}
                       style={{
                         position: "absolute",
-                        left: `${task.startPct}%`,
-                        width: `${task.widthPct}%`,
+                        left: `${visualLeftPct}%`,
+                        width: `${widthPct}%`,
                         minWidth: 42,
-                        top: 8 + Number(task.row ?? i % 2) * 26,
+                        top: rowTop + row * rowPitch,
                         height: 16,
                         borderRadius: 999,
                         background: task.color,
@@ -154,7 +167,7 @@ function renderChart(spec: ChartSpec) {
                           position: "absolute",
                           left: nearRight ? "auto" : 8,
                           right: nearRight ? 0 : "auto",
-                          top: -22,
+                          top: -18,
                           color: task.risk ? C.err : C.ink,
                           fontSize: 12,
                           fontWeight: 700,
@@ -167,7 +180,7 @@ function renderChart(spec: ChartSpec) {
                         style={{
                           position: "absolute",
                           right: 4,
-                          top: 17,
+                          top: 18,
                           color: C.inkDim,
                           fontSize: 11,
                           whiteSpace: "nowrap",
