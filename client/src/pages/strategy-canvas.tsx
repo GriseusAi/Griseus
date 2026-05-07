@@ -9326,7 +9326,7 @@ function ScenarioSafetyDashboard({
         left: 14,
         zIndex: 35,
         width: 292,
-        maxHeight: "calc(100% - 76px)",
+        height: "calc(100% - 28px)",
         overflow: "hidden",
         background: "#222832",
         color: "#eef2f7",
@@ -9434,35 +9434,6 @@ function ScenarioSafetyDashboard({
             </div>
             <div style={{ color: "#8792a3", fontSize: 16, fontWeight: 900 }}>›</div>
           </button>
-
-          <div style={sideSectionTitle}>WORKSPACE</div>
-          {[
-            ["Object explorer", "Atom ve obje keşfi"],
-            ["Lineage", "Veri zinciri ve etki"],
-            ["Reports", "Özet ve çıktı kutuları"],
-          ].map(([label, sub]) => (
-            <div key={label} style={sideDisabledTile}>
-              <div style={{
-                width: 28,
-                height: 28,
-                borderRadius: 6,
-                background: "rgba(148,163,184,0.10)",
-                border: "1px solid rgba(148,163,184,0.14)",
-                color: "#94a3b8",
-                display: "flex",
-                alignItems: "center",
-                justifyContent: "center",
-                fontWeight: 900,
-                flex: "0 0 auto",
-              }}>
-                {label.slice(0, 1)}
-              </div>
-              <div style={{ flex: 1, minWidth: 0 }}>
-                <div style={{ fontSize: 12, color: "#cbd5e1", fontWeight: 800 }}>{label}</div>
-                <div style={{ fontSize: 10, color: "#7f8999", marginTop: 2 }}>{sub}</div>
-              </div>
-            </div>
-          ))}
         </div>
       ) : (
         <>
@@ -11368,20 +11339,6 @@ const sideAppTile: React.CSSProperties = {
   color: "#e2e8f0",
   fontFamily: mono,
   marginBottom: 7,
-};
-const sideDisabledTile: React.CSSProperties = {
-  width: "100%",
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "10px 9px",
-  borderRadius: 7,
-  background: "rgba(12,16,22,0.34)",
-  border: "1px solid rgba(255,255,255,0.06)",
-  color: "#94a3b8",
-  fontFamily: mono,
-  marginBottom: 7,
-  opacity: 0.78,
 };
 const sidePanelMiniBtn: React.CSSProperties = {
   padding: "5px 7px",
