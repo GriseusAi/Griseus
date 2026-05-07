@@ -403,7 +403,7 @@ export default function ChartPromptModal({
     setLoading(true);
     setError(null);
     try {
-      if ((context?.productionLines?.length ?? 0) >= 2) {
+      if ((context?.productionLines?.length ?? 0) >= 1) {
         setResponse(buildProductionPlanResponse(context!.productionLines!));
         return;
       }

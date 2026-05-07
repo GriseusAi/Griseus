@@ -3835,14 +3835,14 @@ const COMMAND_DEFS: CommandDef[] = [
   {
     name: "diyagram-çiz",
     aliases: ["diyagram-ciz", "diyagram", "chart", "compare"],
-    description: "Seçili 2+ atom için diyagram modal'ı açar",
-    minSelected: 2,
+    description: "Seçili atomları ve tedarik zincirini diyagram planına açar",
+    minSelected: 1,
     steps: [],
     apply: ({ ids }, h) => {
       const ok = h.openDiagram();
       return ok
         ? `${ids.length} atom · diyagram modal açıldı`
-        : "diyagram açılamadı (en az 2 atom seç)";
+        : "diyagram açılamadı (en az 1 atom seç)";
     },
   },
 ];
@@ -4697,6 +4697,10 @@ function CustomersSceneRenderer({
     if (a.kind === "production-line") {
       return { code: a.id, label: a.label, kind: "device", usedBy: [] };
     }
+    if (a.kind === "supply-bracket") {
+      const code = a.sub ? `${a.label} · ${a.sub}` : a.label;
+      return { code, label: a.label, kind: "component", usedBy: [] };
+    }
     return null;
   }, []);
 
@@ -5452,6 +5456,15 @@ function CustomersSceneRenderer({
     return () => window.clearTimeout(t);
   }, [procurementToast]);
 
+  const selectedDiagramItems = useMemo<SelectedItem[]>(() => {
+    const mapped = Array.from(selectedIds)
+      .map(id => atomById[id])
+      .filter((atom): atom is SceneAtom => !!atom)
+      .map(atomToSelectedItem)
+      .filter((item): item is SelectedItem => !!item);
+    return mapped.length > 0 ? mapped : globalSel.selected;
+  }, [selectedIds, atomById, atomToSelectedItem, globalSel.selected]);
+
   const selectedProductionLinesForChart = useMemo<StrategyProductionLinePlan[]>(() => {
     const lines: StrategyProductionLinePlan[] = [];
     for (const id of Array.from(selectedIds)) {
@@ -6165,14 +6178,14 @@ function CustomersSceneRenderer({
           return true;
         }}
         onOpenDiagram={() => {
-          if (globalSel.selected.length < 2) return false;
+          if (selectedDiagramItems.length < 1) return false;
           setChartPromptOpen(true);
           return true;
         }}
       />
       {chartPromptOpen && (
         <ChartPromptModal
-          items={globalSel.selected}
+          items={selectedDiagramItems}
           context={{ productionLines: selectedProductionLinesForChart }}
           onClose={() => setChartPromptOpen(false)}
         />
