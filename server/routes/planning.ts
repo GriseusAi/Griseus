@@ -158,6 +158,8 @@ router.post("/compute", async (req: Request, res: Response) => {
         ? clamp(Math.ceil(blockedQty / dailyCapacity), 1, Math.max(1, daysToDeadline))
         : 0;
       const deliveryDay = Math.min(daysToDeadline, totalDays);
+      let blockedResolved = false;
+      let resolutionNote = "";
 
       if (line.fromWarehouse > 0) {
         const pct = taskPct(Math.max(0, deliveryDay - 2), 1, totalDays);
@@ -204,6 +206,12 @@ router.post("/compute", async (req: Request, res: Response) => {
         const supplyCoversShortage = !!matchingSupply && (matchingSupply.quantity ?? 0) >= shortageUnits && supplyReadyDay !== null;
         const waitDays = supplyReadyDay ?? 0;
         const pct = taskPct(0, supplyCoversShortage ? Math.max(1, waitDays) : Math.max(1, Math.min(10, daysToDeadline)), totalDays);
+        blockedResolved = supplyCoversShortage && waitDays + laterProductionDays <= deliveryDay;
+        resolutionNote = supplyCoversShortage
+          ? blockedResolved
+            ? `${critical?.code ?? line.sku} tedariki teslimden önce kapanıyor`
+            : `${critical?.code ?? line.sku} tedariki var ama teslim tarihine yetişmeyebilir`
+          : "";
         data.push({
           kind: "task",
           lane,
@@ -249,18 +257,22 @@ router.post("/compute", async (req: Request, res: Response) => {
         startPct: clamp((deliveryDay / totalDays) * 100, 0, 100),
         widthPct: 3,
         durationLabel: formatDayMonth(deadline),
-        color: blockedQty > 0 ? PLAN_COLORS.err : PLAN_COLORS.accent,
-        risk: blockedQty > 0,
+        color: blockedQty > 0 && !blockedResolved ? PLAN_COLORS.err : PLAN_COLORS.accent,
+        risk: blockedQty > 0 && !blockedResolved,
         row: blockedQty > 0 ? 2 : 1,
-        note: blockedQty > 0
+        note: blockedQty > 0 && !blockedResolved
           ? `${line.sku}: ${blockedQty} adet bloke kaldığı için teslim riskli`
+          : blockedQty > 0
+            ? `${line.sku}: ${resolutionNote}; teslim planı kapasite içinde`
           : `${line.sku}: teslim planı kapasite içinde`,
       });
 
       if (blockedQty > 0) {
         const critical = bottlenecks[0];
         bullets.push(critical
-          ? `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet ${critical.code} (${critical.name}) nedeniyle bloke. Limit ${critical.maxProducts}, gerekli üretim ${line.toProduce}.`
+          ? blockedResolved
+            ? `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet ${critical.code} tedarikiyle ikinci faza alınır. Teslim riski kapandı.`
+            : `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet ${critical.code} (${critical.name}) nedeniyle bloke. Limit ${critical.maxProducts}, gerekli üretim ${line.toProduce}.`
           : `${line.customer} · ${line.sku} x${line.quantity}: ${producibleNow} adet şimdi üretilebilir, ${blockedQty} adet kapasite dışında.`);
       } else if (line.toProduce === 0) {
         bullets.push(`${line.customer} · ${line.sku} x${line.quantity}: talebin tamamı depodan karşılanır.`);
