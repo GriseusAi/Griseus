@@ -285,7 +285,7 @@ export default function PipelineBuilderPage() {
     const transformIndex = nodes.filter(node => node.kind === "transform").length + 1;
     const cleaned = transformRows(source.rows, source.sourceFile ?? source.title);
     const transformId = `transform-${Date.now()}`;
-    const position = findFreePosition(nodes, "transform", Math.max(source.x + 330, 420), source.y);
+    const position = findFreePosition(nodes, "transform", nextNodeX(source, "transform"), alignNodeY(source, "transform"));
 
     const transformNode: PipelineNode = {
       id: transformId,
@@ -334,8 +334,8 @@ export default function PipelineBuilderPage() {
     const position = findFreePosition(
       nodes,
       "union",
-      Math.max(first.x, second.x) + 330,
-      Math.round((first.y + second.y) / 2),
+      Math.max(first.x + nodeWidth(first.kind), second.x + nodeWidth(second.kind)) + 72,
+      centerNodeYBetween(first, second, "union"),
     );
     const columns = Array.from(new Set([...first.columns, ...second.columns]));
     const rows = [first, second].flatMap(input => input.rows.map(row => Object.fromEntries(columns.map(col => [col, row[col] ?? ""]))));
@@ -367,7 +367,7 @@ export default function PipelineBuilderPage() {
     if (!source) return;
 
     const id = `output-${Date.now()}`;
-    const position = findFreePosition(nodes, "output", Math.max(source.x + 330, 420), source.y);
+    const position = findFreePosition(nodes, "output", nextNodeX(source, "output"), alignNodeY(source, "output"));
     const outputNode: PipelineNode = {
       id,
       kind: "output",
@@ -1279,6 +1279,20 @@ function splitDelimitedLine(line: string, delimiter: string) {
   }
   cells.push(current.trim());
   return cells;
+}
+
+function nextNodeX(source: PipelineNode, kind: NodeKind) {
+  return source.x + nodeWidth(source.kind) + 72;
+}
+
+function alignNodeY(source: PipelineNode, kind: NodeKind) {
+  return Math.round(source.y + (nodeHeight(source.kind) - nodeHeight(kind)) / 2);
+}
+
+function centerNodeYBetween(first: PipelineNode, second: PipelineNode, kind: NodeKind) {
+  const firstCenter = first.y + nodeHeight(first.kind) / 2;
+  const secondCenter = second.y + nodeHeight(second.kind) / 2;
+  return Math.round((firstCenter + secondCenter) / 2 - nodeHeight(kind) / 2);
 }
 
 function collectColumns(rows: Array<Record<string, any>>) {
