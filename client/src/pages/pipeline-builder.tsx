@@ -49,6 +49,12 @@ type UploadedDataset = {
   rows: Array<Record<string, any>>;
 };
 
+type TransformResult = {
+  kind: "recipe" | "stock" | "sales" | "generic";
+  rows: Array<Record<string, any>>;
+  columns: string[];
+};
+
 type ActionMenuState = {
   nodeId: string;
   x: number;
@@ -169,7 +175,7 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
     const transformIndex = nodes.filter(node => node.kind === "transform").length + 1;
-    const cleaned = cleanRows(source.rows);
+    const cleaned = transformRows(source.rows, source.sourceFile ?? source.title);
     const transformId = `transform-${Date.now()}`;
     const output = nodes.find(node => node.kind === "output");
     const x = Math.max(source.x + 330, 420);
@@ -179,7 +185,7 @@ export default function PipelineBuilderPage() {
       id: transformId,
       kind: "transform",
       title: `${source.title} - Clean`,
-      subtitle: `${cleaned.columns.length} columns`,
+      subtitle: `${cleaned.kind} · ${cleaned.columns.length} columns`,
       x,
       y,
       rows: cleaned.rows,
@@ -667,6 +673,20 @@ async function parseWorkbookFile(file: File): Promise<UploadedDataset[]> {
   return datasets;
 }
 
+function transformRows(rows: Array<Record<string, any>>, sourceName = ""): TransformResult {
+  const generic = cleanRows(rows);
+  const profile = inferDatasetProfile(generic.rows, generic.columns, sourceName);
+
+  if (profile.kind === "recipe") {
+    return { ...normalizeRecipeDataset(rows), kind: "recipe" };
+  }
+  if (profile.kind === "stock") {
+    return { ...normalizeStockDataset(rows), kind: "stock" };
+  }
+
+  return { ...generic, kind: profile.kind };
+}
+
 function cleanRows(rows: Array<Record<string, any>>) {
   const cleanColumnByRaw = new Map<string, string>();
   const used = new Map<string, number>();
@@ -693,6 +713,156 @@ function cleanRows(rows: Array<Record<string, any>>) {
   return { rows: cleanedRows, columns };
 }
 
+function inferDatasetProfile(rows: Array<Record<string, any>>, columns: string[], sourceName: string) {
+  const normalizedColumns = new Set(columns.map(normalizeCleanColumn));
+  const normalizedName = normalizeCleanColumn(sourceName);
+  const has = (name: string) => normalizedColumns.has(name);
+
+  if (has("stok_kodu") && has("stok_ismi") && has("stok_bakiyesi")) {
+    return { kind: "stock" as const, confidence: 0.96 };
+  }
+  if (has("stok_kodu") && has("stok_ismi") && has("miktar") && (has("sira_no") || has("stok_sevi"))) {
+    return { kind: "recipe" as const, confidence: 0.96 };
+  }
+  if (normalizedName.includes("stok") && rows.some(row => row.stok_bakiyesi !== undefined || row.current_stock !== undefined)) {
+    return { kind: "stock" as const, confidence: 0.75 };
+  }
+  if (normalizedName.includes("recete") || rows.some(row => row.miktar !== undefined && row.stok_kodu !== undefined)) {
+    return { kind: "recipe" as const, confidence: 0.72 };
+  }
+  if (columns.some(col => ["sales", "satis", "quantity_sold", "adet", "aylik_satis"].includes(normalizeCleanColumn(col)))) {
+    return { kind: "sales" as const, confidence: 0.68 };
+  }
+  return { kind: "generic" as const, confidence: 0.35 };
+}
+
+function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
+  const columnsByAlias = buildAliasMap(rows);
+  const codeCol = pickAlias(columnsByAlias, ["stok_kodu", "stock_code", "code", "kod"]);
+  const nameCol = pickAlias(columnsByAlias, ["stok_ismi", "stok_adi", "stock_name", "name", "isim"]);
+  const sequenceCol = pickAlias(columnsByAlias, ["sira_no", "sira", "sequence_no"]);
+  const quantityCol = pickAlias(columnsByAlias, ["miktar", "quantity", "qty", "recete_adedi"]);
+  const unitCol = pickAlias(columnsByAlias, ["br", "birim", "unit"]);
+  const unitCostCol = pickAlias(columnsByAlias, ["br_maliyet", "birim_maliyet", "unit_cost"]);
+  const totalCostCol = pickAlias(columnsByAlias, ["t_maliyet", "toplam_maliyet", "total_cost"]);
+  const stockLevelCol = pickAlias(columnsByAlias, ["stok_sevi", "stok_seviyesi", "stock_level"]);
+
+  const root = rows.find(row => getCell(row, codeCol));
+  const productSku = trimText(getCell(root, codeCol));
+  const productName = trimText(getCell(root, nameCol));
+  const stack: Record<number, string> = {};
+
+  const normalizedRows = rows.map((row, index): Record<string, any> | null => {
+    const rawCode = getRawStockCode(row, codeCol);
+    const code = trimText(getCell(row, codeCol));
+    if (!code) return null;
+    const sequenceNo = trimText(getCell(row, sequenceCol));
+    const rowType = index === 0 || (!sequenceNo && code === productSku) ? "product" : "component";
+    const tier = rowType === "product" ? 0 : inferTier(rawCode, sequenceNo);
+    const parentComponentCode = rowType === "component" && tier > 1 ? stack[tier - 1] ?? null : null;
+    if (rowType === "component") stack[tier] = code;
+
+    return {
+      dataset_type: "recipe",
+      row_type: rowType,
+      product_sku: productSku || code,
+      product_name: productName || trimText(getCell(row, nameCol)),
+      component_code: rowType === "component" ? code : null,
+      component_name: rowType === "component" ? trimText(getCell(row, nameCol)) : null,
+      sequence_no: sequenceNo || null,
+      quantity: toNumberOrNull(getCell(row, quantityCol)),
+      unit: trimText(getCell(row, unitCol)) || null,
+      tier,
+      parent_component_code: parentComponentCode,
+      unit_cost: toNumberOrNull(getCell(row, unitCostCol)),
+      total_cost: toNumberOrNull(getCell(row, totalCostCol)),
+      stock_level: toNumberOrNull(getCell(row, stockLevelCol)),
+    };
+  }).filter((row): row is Record<string, any> => row !== null);
+
+  return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
+}
+
+function normalizeStockDataset(rows: Array<Record<string, any>>) {
+  const columnsByAlias = buildAliasMap(rows);
+  const codeCol = pickAlias(columnsByAlias, ["stok_kodu", "stock_code", "code", "kod"]);
+  const nameCol = pickAlias(columnsByAlias, ["stok_ismi", "stok_adi", "stock_name", "name", "isim"]);
+  const balanceCol = pickAlias(columnsByAlias, ["stok_bakiyesi", "stok_bakiye", "current_stock", "stock", "bakiye"]);
+
+  const root = rows.find(row => getCell(row, codeCol));
+  const productSku = trimText(getCell(root, codeCol));
+  const productName = trimText(getCell(root, nameCol));
+
+  const normalizedRows = rows.map((row, index): Record<string, any> | null => {
+    const rawCode = getRawStockCode(row, codeCol);
+    const code = trimText(getCell(row, codeCol));
+    if (!code) return null;
+    const rowType = index === 0 || code === productSku ? "product" : "component";
+
+    return {
+      dataset_type: "stock",
+      row_type: rowType,
+      product_sku: productSku || code,
+      product_name: productName || trimText(getCell(row, nameCol)),
+      component_code: rowType === "component" ? code : null,
+      component_name: rowType === "component" ? trimText(getCell(row, nameCol)) : null,
+      current_stock: toNumberOrNull(getCell(row, balanceCol)),
+      tier: rowType === "product" ? 0 : inferTier(rawCode, null),
+    };
+  }).filter((row): row is Record<string, any> => row !== null);
+
+  return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
+}
+
+function buildAliasMap(rows: Array<Record<string, any>>) {
+  const aliases = new Map<string, string>();
+  rows.forEach(row => {
+    Object.keys(row).forEach(key => {
+      aliases.set(normalizeCleanColumn(key), key);
+    });
+  });
+  return aliases;
+}
+
+function pickAlias(aliases: Map<string, string>, names: string[]) {
+  for (const name of names) {
+    const found = aliases.get(name);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function getCell(row: Record<string, any> | undefined, key: string | undefined) {
+  if (!row || !key) return "";
+  return row[key];
+}
+
+function getRawStockCode(row: Record<string, any>, codeCol: string | undefined) {
+  const raw = (row as any).__stockCodeRaw;
+  if (raw !== undefined) return String(raw);
+  return String(getCell(row, codeCol) ?? "");
+}
+
+function inferTier(rawCode: string, sequenceNo: string | null) {
+  const indent = rawCode.match(/^\s*/)?.[0].length ?? 0;
+  if (indent > 0) return Math.max(1, Math.round(indent / 5));
+  return sequenceNo ? 1 : 1;
+}
+
+function trimText(value: any) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim().replace(/\s+/g, " ");
+}
+
+function toNumberOrNull(value: any) {
+  if (value === null || value === undefined || value === "") return null;
+  if (typeof value === "number") return Number.isFinite(value) ? value : null;
+  const raw = String(value).trim();
+  const normalized = raw.replace(/\./g, "").replace(",", ".");
+  const parsed = Number(normalized);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
 function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[]) {
   const next = [...nodes];
 
@@ -711,11 +881,11 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
 
       if (node.kind === "transform") {
         const source = inputNodes[0];
-        const cleaned = cleanRows(source.rows);
+        const cleaned = transformRows(source.rows, source.sourceFile ?? source.title);
         next[i] = {
           ...node,
           title: `${source.title} - Clean`,
-          subtitle: source.rows.length > 0 ? `${cleaned.columns.length} columns` : "Data bekleniyor",
+          subtitle: source.rows.length > 0 ? `${cleaned.kind} · ${cleaned.columns.length} columns` : "Data bekleniyor",
           rows: cleaned.rows,
           columns: cleaned.columns,
           sourceFile: source.sourceFile,
@@ -771,10 +941,18 @@ function normalizeCleanColumn(key: string) {
 }
 
 function normalizeParsedRow(row: Record<string, any>) {
-  return Object.fromEntries(Object.entries(row).map(([key, value], index) => [
-    normalizeSourceColumn(key || `column_${index + 1}`),
-    cleanValue(value),
-  ]));
+  const next: Record<string, any> = {};
+  Object.entries(row).forEach(([key, value], index) => {
+    const normalizedKey = normalizeSourceColumn(key || `column_${index + 1}`);
+    next[normalizedKey] = cleanValue(value);
+    if (normalizeCleanColumn(normalizedKey) === "stok_kodu") {
+      Object.defineProperty(next, "__stockCodeRaw", {
+        value: value === null || value === undefined ? "" : String(value),
+        enumerable: false,
+      });
+    }
+  });
+  return next;
 }
 
 function normalizeSourceColumn(key: string) {
@@ -806,7 +984,18 @@ function parseDelimited(text: string, forcedDelimiter?: string): Array<Record<st
 
   return lines.slice(1).map(line => {
     const cells = splitDelimitedLine(line, delimiter);
-    return Object.fromEntries(headers.map((header, index) => [header, cleanValue(cells[index] ?? "")]));
+    const row: Record<string, any> = {};
+    headers.forEach((header, index) => {
+      const value = cells[index] ?? "";
+      row[header] = cleanValue(value);
+      if (normalizeCleanColumn(header) === "stok_kodu") {
+        Object.defineProperty(row, "__stockCodeRaw", {
+          value,
+          enumerable: false,
+        });
+      }
+    });
+    return row;
   });
 }
 
