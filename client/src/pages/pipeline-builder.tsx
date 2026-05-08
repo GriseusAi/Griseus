@@ -1,409 +1,304 @@
-import { useEffect, useMemo, useState } from "react";
+import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 import {
-  AlertTriangle,
+  ArrowDownToLine,
+  Box,
   CheckCircle2,
   Database,
-  FileCode2,
+  FileSpreadsheet,
   GitBranch,
+  Hammer,
+  Layers3,
   Link2,
-  Loader2,
-  PackageCheck,
-  Play,
+  Pencil,
+  Plus,
   Save,
   Search,
-  Settings2,
+  Sparkles,
   Table2,
   UploadCloud,
-  X,
-  Wand2,
 } from "lucide-react";
 
-type SourceId = "recipe" | "component_stock" | "finished_stock" | "sales_average";
-type GraphNodeId = SourceId | "join" | "output";
+type NodeKind = "dataset" | "transform" | "join" | "union" | "output";
+type PortSide = "left" | "right";
+
+type PipelineNode = {
+  id: string;
+  kind: NodeKind;
+  title: string;
+  subtitle: string;
+  x: number;
+  y: number;
+  rows: Array<Record<string, any>>;
+  columns: string[];
+  sourceFile?: string;
+};
 
 type GraphConnection = {
-  from: GraphNodeId;
-  to: GraphNodeId;
-};
-
-type SourceDef = {
-  id: SourceId;
-  label: string;
-  description: string;
-  primaryKey: string;
-  joinsOn: string[];
-};
-
-type ProductDef = {
-  sku: string;
-  name: string;
-  category: string | null;
-  componentCount: number;
-};
-
-type RunResult = {
-  runId: string;
-  sku: string;
-  sources: SourceId[];
-  joins: Array<{ left: string; right: string; enabled: boolean }>;
-  summary: {
-    componentCount: number;
-    criticalCount: number;
-    warningCount: number;
-    maxDeviceBuildable: number;
-    bottleneckComponent: string | null;
-    avgMonthlySales: number;
-  };
-  columns: string[];
-  rows: Array<Record<string, any>>;
+  from: string;
+  to: string;
 };
 
 type UploadedDataset = {
   fileName: string;
+  sheetName: string;
   columns: string[];
   rows: Array<Record<string, any>>;
 };
 
-type WorkbookSheetDataset = UploadedDataset & {
-  sheetName: string;
-};
+type ActionMenuState = {
+  nodeId: string;
+  x: number;
+  y: number;
+} | null;
 
-type WorkbookImport = {
-  fileName: string;
-  sheets: WorkbookSheetDataset[];
-  assignments: Partial<Record<SourceId, string>>;
-};
+const initialDatasetId = "dataset-raw-1";
+const initialOutputId = "output-1";
 
-const defaultSources: SourceId[] = ["recipe", "component_stock", "finished_stock", "sales_average"];
-const defaultConnections: GraphConnection[] = [
-  ...defaultSources.map(sourceId => ({ from: sourceId, to: "join" as const })),
-  { from: "join", to: "output" },
+const initialNodes: PipelineNode[] = [
+  {
+    id: initialDatasetId,
+    kind: "dataset",
+    title: "Data kutusu",
+    subtitle: "XLS, CSV veya JSON yükle",
+    x: 80,
+    y: 146,
+    rows: [],
+    columns: [],
+  },
+  {
+    id: initialOutputId,
+    kind: "output",
+    title: "Clean data output",
+    subtitle: "Transform sonrası çıktı",
+    x: 890,
+    y: 188,
+    rows: [],
+    columns: [],
+  },
 ];
 
-const sourceTone: Record<SourceId, { color: string; bg: string; icon: JSX.Element }> = {
-  recipe: { color: CT.accent, bg: CT.accentSoft, icon: <FileCode2 size={15} /> },
-  component_stock: { color: CT.info, bg: CT.infoSoft, icon: <PackageCheck size={15} /> },
-  finished_stock: { color: CT.ok, bg: CT.okSoft, icon: <Database size={15} /> },
-  sales_average: { color: CT.warn, bg: CT.warnSoft, icon: <Wand2 size={15} /> },
-};
-
-const columnLabels: Record<string, string> = {
-  productSku: "cihaz_sku",
-  productName: "cihaz_adi",
-  componentCode: "komponent_kodu",
-  componentName: "komponent_adi",
-  requiredPerUnit: "recete_adedi",
-  currentStock: "komponent_stok",
-  maxBuildableFromComponent: "uretilebilir_adet",
-  finishedInWarehouse: "bitmis_depo",
-  finishedInProduction: "bitmis_uretim",
-  avgMonthlySales: "aylik_satis_ort",
-  projectedMonthlyComponentDemand: "aylik_komponent_ihtiyac",
-  monthsOfComponentCover: "stok_kac_ay_yeter",
-  status: "durum",
-};
-
-const sourceKeywords: Record<SourceId, string[]> = {
-  recipe: ["recipe", "recete", "reçete", "bom", "urunagaci", "ürün_agacı", "urun_agaci", "cihaz"],
-  component_stock: ["component_stock", "stock", "stok", "bilesen", "bileşen", "komponent", "component"],
-  finished_stock: ["finished", "bitmis", "bitmiş", "mamul", "urun_stok", "ürün_stok", "depo"],
-  sales_average: ["sales", "satis", "satış", "average", "ortalama", "forecast", "talep"],
-};
-
 export default function PipelineBuilderPage() {
-  const [sources, setSources] = useState<SourceDef[]>([]);
-  const [products, setProducts] = useState<ProductDef[]>([]);
-  const [selectedSku, setSelectedSku] = useState("GSS20P");
-  const [enabledSources, setEnabledSources] = useState<SourceId[]>(defaultSources);
-  const [connections, setConnections] = useState<GraphConnection[]>(defaultConnections);
-  const [activeConnector, setActiveConnector] = useState<GraphNodeId | null>(null);
-  const [result, setResult] = useState<RunResult | null>(null);
-  const [selectedNode, setSelectedNode] = useState<SourceId | "output">("recipe");
-  const [uploadedData, setUploadedData] = useState<Partial<Record<SourceId, UploadedDataset>>>({});
-  const [workbookImport, setWorkbookImport] = useState<WorkbookImport | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [bootLoading, setBootLoading] = useState(true);
+  const [nodes, setNodes] = useState<PipelineNode[]>(initialNodes);
+  const [connections, setConnections] = useState<GraphConnection[]>([]);
+  const [selectedNodeId, setSelectedNodeId] = useState(initialDatasetId);
+  const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
   const [error, setError] = useState<string | null>(null);
 
-  useEffect(() => {
-    let alive = true;
-    async function loadSources() {
-      setBootLoading(true);
-      try {
-        const response = await fetch("/api/pipeline-builder/sources");
-        if (!response.ok) throw new Error("Pipeline kaynakları alınamadı");
-        const data = await response.json();
-        if (!alive) return;
-        setSources(data.sources ?? []);
-        setProducts(data.products ?? []);
-        const hasGss = (data.products ?? []).some((p: ProductDef) => p.sku === "GSS20P");
-        setSelectedSku(hasGss ? "GSS20P" : data.products?.[0]?.sku ?? "GSS20P");
-      } catch (err: any) {
-        if (alive) setError(err.message);
-      } finally {
-        if (alive) setBootLoading(false);
-      }
-    }
-    loadSources();
-    return () => { alive = false; };
-  }, []);
+  const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
+  const previewColumns = selectedNode?.columns ?? [];
+  const previewRows = selectedNode?.rows ?? [];
 
-  async function runPipeline() {
-    setLoading(true);
-    setError(null);
-    try {
-      const customData = Object.fromEntries(
-        Object.entries(uploadedData).map(([sourceId, dataset]) => [sourceId, dataset?.rows ?? []]),
-      );
-      const response = await fetch("/api/pipeline-builder/run", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku: selectedSku, sources: enabledSources, customData }),
-      });
-      const data = await response.json();
-      if (!response.ok) throw new Error(data.error || "Pipeline çalıştırılamadı");
-      setResult(data);
-      setSelectedNode("output");
-    } catch (err: any) {
-      setError(err.message);
-    } finally {
-      setLoading(false);
-    }
-  }
+  const outputNode = nodes.find(node => node.kind === "output");
+  const datasetCount = nodes.filter(node => node.kind === "dataset").length;
+  const transformCount = nodes.filter(node => node.kind === "transform").length;
 
-  function isSourceId(nodeId: GraphNodeId): nodeId is SourceId {
-    return nodeId !== "join" && nodeId !== "output";
-  }
-
-  function normalizeConnection(a: GraphNodeId, b: GraphNodeId): GraphConnection | null {
-    if (isSourceId(a) && b === "join") return { from: a, to: b };
-    if (a === "join" && isSourceId(b)) return { from: b, to: a };
-    if (a === "join" && b === "output") return { from: a, to: b };
-    if (a === "output" && b === "join") return { from: b, to: a };
-    return null;
-  }
-
-  function setGraphConnections(updater: (prev: GraphConnection[]) => GraphConnection[]) {
-    setConnections(prev => updater(prev));
-  }
-
-  function toggleSourceConnection(sourceId: SourceId) {
-    setSelectedNode(sourceId);
-    setActiveConnector(null);
-    setGraphConnections(prev => {
-      const exists = prev.some(connection => connection.from === sourceId && connection.to === "join");
-      if (exists) return prev.filter(connection => !(connection.from === sourceId && connection.to === "join"));
-      return [...prev, { from: sourceId, to: "join" }];
-    });
-  }
-
-  function handlePortClick(nodeId: GraphNodeId) {
-    if (!activeConnector) {
-      setActiveConnector(nodeId);
-      if (isSourceId(nodeId)) setSelectedNode(nodeId);
-      if (nodeId === "output") setSelectedNode("output");
-      return;
-    }
-
-    if (activeConnector === nodeId) {
-      setActiveConnector(null);
-      return;
-    }
-
-    const nextConnection = normalizeConnection(activeConnector, nodeId);
-    if (!nextConnection) {
-      setError("Bu iki node doğrudan bağlanamaz");
-      setActiveConnector(nodeId);
-      return;
-    }
-
-    setError(null);
-    setGraphConnections(prev => {
-      const exists = prev.some(connection => connection.from === nextConnection.from && connection.to === nextConnection.to);
-      if (exists) {
-        return prev.filter(connection => !(connection.from === nextConnection.from && connection.to === nextConnection.to));
-      }
-      return [...prev, nextConnection];
-    });
-    setActiveConnector(null);
-  }
-
-  useEffect(() => {
-    if (!bootLoading && sources.length > 0) runPipeline();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [bootLoading, selectedSku]);
-
-  useEffect(() => {
-    const connectedSources = connections
-      .filter(connection => connection.to === "join" && isSourceId(connection.from))
-      .map(connection => connection.from as SourceId);
-    setEnabledSources(Array.from(new Set(connectedSources)));
-  }, [connections]);
-
-  const selectedProduct = products.find(p => p.sku === selectedSku);
-  const visibleColumns = useMemo(() => {
-    const preferred = [
-      "productSku",
-      "productName",
-      "componentCode",
-      "componentName",
-      "requiredPerUnit",
-      "currentStock",
-      "maxBuildableFromComponent",
-      "avgMonthlySales",
-      "projectedMonthlyComponentDemand",
-      "monthsOfComponentCover",
-      "status",
-    ];
-    return preferred.filter(c => result?.columns.includes(c));
-  }, [result]);
-
-  const selectedSource = selectedNode === "output" ? null : sources.find(s => s.id === selectedNode);
-  const selectedDataset = selectedNode === "output" ? undefined : uploadedData[selectedNode];
-  const previewRows = selectedNode === "output" ? (result?.rows ?? []) : (selectedDataset?.rows ?? []);
-  const previewColumns = selectedNode === "output"
-    ? visibleColumns
-    : (selectedDataset?.columns ?? []);
-  const selectedDescription = selectedNode === "output"
-    ? "Seçilen kaynakların join ve aggregate sonucu: cihaz datası."
-    : selectedDataset
-      ? `${selectedDataset.fileName} dosyasından ${selectedDataset.rows.length} satır okundu.`
-      : selectedSource?.description ?? "Kaynak seç.";
-
-  async function handleSourceFile(sourceId: SourceId, file: File) {
-    try {
-      setError(null);
-      const dataset = await parseTabularFile(file);
-      setUploadedData(prev => ({ ...prev, [sourceId]: dataset }));
-      setWorkbookImport(prev => {
-        if (!prev) return prev;
-        const assignments = { ...prev.assignments };
-        delete assignments[sourceId];
-        return { ...prev, assignments };
-      });
-      setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
-      setConnections(prev => prev.some(connection => connection.from === sourceId && connection.to === "join")
-        ? prev
-        : [...prev, { from: sourceId, to: "join" }]);
-      setSelectedNode(sourceId);
-    } catch (err: any) {
-      setError(err.message || "Dosya okunamadı");
-    }
-  }
-
-  async function handleWorkbookFile(file: File) {
-    try {
-      setError(null);
-      const sheets = await parseWorkbookFile(file);
-      const usedSources = new Set<SourceId>();
-      const assignments: Partial<Record<SourceId, string>> = {};
-      const nextUploads: Partial<Record<SourceId, UploadedDataset>> = {};
-
-      for (const sheet of sheets) {
-        const inferred = inferSourceForDataset(sheet, sources);
-        if (!inferred || usedSources.has(inferred)) continue;
-        assignments[inferred] = sheet.sheetName;
-        nextUploads[inferred] = sheet;
-        usedSources.add(inferred);
-      }
-
-      setWorkbookImport({ fileName: file.name, sheets, assignments });
-      setUploadedData(prev => ({ ...prev, ...nextUploads }));
-      setEnabledSources(prev => Array.from(new Set([...prev, ...usedSources])));
-      setConnections(prev => {
-        const next = [...prev];
-        usedSources.forEach(sourceId => {
-          if (!next.some(connection => connection.from === sourceId && connection.to === "join")) {
-            next.push({ from: sourceId, to: "join" });
-          }
-        });
-        return next;
-      });
-      const firstAssigned = Object.keys(assignments)[0] as SourceId | undefined;
-      if (firstAssigned) setSelectedNode(firstAssigned);
-    } catch (err: any) {
-      setError(err.message || "Dosya okunamadı");
-    }
-  }
-
-  function assignWorkbookSheet(sourceId: SourceId, sheetName: string) {
-    if (!workbookImport) return;
-    const nextAssignments = { ...workbookImport.assignments };
-    const sourcePreviouslyUsingSheet = Object.entries(nextAssignments).find(([, assignedSheet]) => assignedSheet === sheetName)?.[0] as SourceId | undefined;
-    if (sourcePreviouslyUsingSheet && sourcePreviouslyUsingSheet !== sourceId) {
-      delete nextAssignments[sourcePreviouslyUsingSheet];
-    }
-
-    const selectedSheet = workbookImport.sheets.find(sheet => sheet.sheetName === sheetName);
-    if (!selectedSheet) {
-      delete nextAssignments[sourceId];
-      setUploadedData(prev => {
-        const next = { ...prev };
-        delete next[sourceId];
-        return next;
-      });
-      setWorkbookImport({ ...workbookImport, assignments: nextAssignments });
-      return;
-    }
-
-    nextAssignments[sourceId] = selectedSheet.sheetName;
-    setWorkbookImport({ ...workbookImport, assignments: nextAssignments });
-    setUploadedData(prev => {
-      const next = { ...prev, [sourceId]: selectedSheet };
-      if (sourcePreviouslyUsingSheet && sourcePreviouslyUsingSheet !== sourceId) {
-        delete next[sourcePreviouslyUsingSheet];
-      }
-      return next;
-    });
-    setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
-    setConnections(prev => prev.some(connection => connection.from === sourceId && connection.to === "join")
-      ? prev
-      : [...prev, { from: sourceId, to: "join" }]);
-    setSelectedNode(sourceId);
-  }
-
-  function clearSourceData(sourceId: SourceId) {
-    setUploadedData(prev => {
-      const next = { ...prev };
-      delete next[sourceId];
-      return next;
-    });
-    setWorkbookImport(prev => {
-      if (!prev) return prev;
-      const assignments = { ...prev.assignments };
-      delete assignments[sourceId];
-      return { ...prev, assignments };
-    });
-  }
-
-  const sourcePositions = useMemo(() => {
-    return Object.fromEntries(sources.map((source, index) => [source.id, {
-      left: 72,
-      top: 92 + index * 78,
-    }])) as Record<SourceId, { left: number; top: number }>;
-  }, [sources]);
-
-  const renderedEdges = connections.map(connection => {
-    if (connection.to === "join" && isSourceId(connection.from)) {
-      const position = sourcePositions[connection.from];
-      if (!position) return null;
+  const renderedEdges = useMemo(() => {
+    const byId = new Map(nodes.map(node => [node.id, node]));
+    return connections.map(connection => {
+      const from = byId.get(connection.from);
+      const to = byId.get(connection.to);
+      if (!from || !to) return null;
       return {
         key: `${connection.from}-${connection.to}`,
-        x1: position.left + 228,
-        y1: position.top + 34,
-        x2: 386,
-        y2: 200,
+        x1: from.x + nodeWidth(from.kind),
+        y1: from.y + nodeHeight(from.kind) / 2,
+        x2: to.x,
+        y2: to.y + nodeHeight(to.kind) / 2,
       };
+    }).filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
+  }, [connections, nodes]);
+
+  async function handleNodeFile(nodeId: string, file: File) {
+    try {
+      setError(null);
+      const [dataset] = await parseWorkbookFile(file);
+      setNodes(prev => prev.map(node => {
+        if (node.id !== nodeId) return node;
+        return {
+          ...node,
+          title: dataset.sheetName === "CSV" || dataset.sheetName === "JSON" ? cleanTitle(file.name) : dataset.sheetName,
+          subtitle: `${dataset.rows.length} rows, ${dataset.columns.length} columns`,
+          rows: dataset.rows,
+          columns: dataset.columns,
+          sourceFile: dataset.fileName,
+        };
+      }));
+      setSelectedNodeId(nodeId);
+    } catch (err: any) {
+      setError(err.message || "Dosya okunamadı");
     }
-    if (connection.from === "join" && connection.to === "output") {
-      return { key: "join-output", x1: 646, y1: 200, x2: 900, y2: 228 };
+  }
+
+  function addDataset() {
+    const index = nodes.filter(node => node.kind === "dataset").length + 1;
+    const id = `dataset-raw-${Date.now()}`;
+    setNodes(prev => [...prev, {
+      id,
+      kind: "dataset",
+      title: `Dataset ${index}`,
+      subtitle: "XLS, CSV veya JSON yükle",
+      x: 80,
+      y: 120 + index * 112,
+      rows: [],
+      columns: [],
+    }]);
+    setSelectedNodeId(id);
+  }
+
+  function openPortMenu(nodeId: string, side: PortSide) {
+    const node = nodes.find(item => item.id === nodeId);
+    if (!node) return;
+    setSelectedNodeId(nodeId);
+    if (side === "left") {
+      setActionMenu(null);
+      return;
     }
-    return null;
-  }).filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
+    setActionMenu({
+      nodeId,
+      x: node.x + nodeWidth(node.kind) + 18,
+      y: node.y - 26,
+    });
+  }
+
+  function createTransform(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source) return;
+    const transformIndex = nodes.filter(node => node.kind === "transform").length + 1;
+    const cleaned = cleanRows(source.rows);
+    const transformId = `transform-${Date.now()}`;
+    const output = nodes.find(node => node.kind === "output");
+    const x = Math.max(source.x + 330, 420);
+    const y = source.y;
+
+    const transformNode: PipelineNode = {
+      id: transformId,
+      kind: "transform",
+      title: `${source.title} - Clean`,
+      subtitle: `${cleaned.columns.length} columns`,
+      x,
+      y,
+      rows: cleaned.rows,
+      columns: cleaned.columns,
+      sourceFile: source.sourceFile,
+    };
+
+    setNodes(prev => prev.map(node => {
+      if (node.kind !== "output") return node;
+      return {
+        ...node,
+        title: `${source.title} data`,
+        subtitle: `${cleaned.rows.length} clean rows`,
+        rows: cleaned.rows,
+        columns: cleaned.columns,
+        x: Math.max(x + 390, node.x),
+        y: node.y,
+      };
+    }).concat(transformNode));
+
+    setConnections(prev => {
+      const withoutOutput = prev.filter(connection => !(connection.from === fromId && connection.to === output?.id));
+      const next = [
+        ...withoutOutput,
+        { from: fromId, to: transformId },
+      ];
+      if (output) next.push({ from: transformId, to: output.id });
+      return dedupeConnections(next);
+    });
+
+    setSelectedNodeId(transformId);
+    setActionMenu(null);
+    setError(cleaned.rows.length === 0 ? "Transform çalıştı ama kaynakta temizlenecek satır yok" : null);
+    void transformIndex;
+  }
+
+  function createJoin(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source) return;
+    const otherInputs = nodes.filter(node => node.kind !== "output" && node.id !== fromId && node.rows.length > 0);
+    const second = otherInputs[0];
+    const joined = second ? joinRows(source, second) : { rows: source.rows, columns: source.columns };
+    const id = `join-${Date.now()}`;
+    const joinNode: PipelineNode = {
+      id,
+      kind: "join",
+      title: second ? `Join ${source.title}` : "Join",
+      subtitle: second ? `${joined.columns.length} columns` : "İkinci dataset bekleniyor",
+      x: Math.max(source.x + 330, 420),
+      y: source.y + 24,
+      rows: joined.rows,
+      columns: joined.columns,
+    };
+    const output = nodes.find(node => node.kind === "output");
+    setNodes(prev => prev.map(node => node.kind === "output" ? {
+      ...node,
+      title: joinNode.title,
+      subtitle: `${joined.rows.length} rows`,
+      rows: joined.rows,
+      columns: joined.columns,
+    } : node).concat(joinNode));
+    setConnections(prev => dedupeConnections([
+      ...prev,
+      { from: fromId, to: id },
+      ...(second ? [{ from: second.id, to: id }] : []),
+      ...(output ? [{ from: id, to: output.id }] : []),
+    ]));
+    setSelectedNodeId(id);
+    setActionMenu(null);
+  }
+
+  function createUnion(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source) return;
+    const siblings = nodes.filter(node => node.kind === "dataset" && node.rows.length > 0);
+    const allColumns = Array.from(new Set(siblings.flatMap(node => node.columns)));
+    const rows = siblings.flatMap(node => node.rows.map(row => Object.fromEntries(allColumns.map(col => [col, row[col] ?? ""]))));
+    const id = `union-${Date.now()}`;
+    const unionNode: PipelineNode = {
+      id,
+      kind: "union",
+      title: "Union",
+      subtitle: `${rows.length} rows`,
+      x: Math.max(source.x + 330, 420),
+      y: source.y + 24,
+      rows,
+      columns: allColumns,
+    };
+    const output = nodes.find(node => node.kind === "output");
+    setNodes(prev => prev.map(node => node.kind === "output" ? {
+      ...node,
+      title: "Union data",
+      subtitle: `${rows.length} rows`,
+      rows,
+      columns: allColumns,
+    } : node).concat(unionNode));
+    setConnections(prev => dedupeConnections([
+      ...prev,
+      ...siblings.map(node => ({ from: node.id, to: id })),
+      ...(output ? [{ from: id, to: output.id }] : []),
+    ]));
+    setSelectedNodeId(id);
+    setActionMenu(null);
+  }
+
+  function createOutputFrom(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    const output = nodes.find(node => node.kind === "output");
+    if (!source || !output) return;
+    setNodes(prev => prev.map(node => node.id === output.id ? {
+      ...node,
+      title: `${source.title} data`,
+      subtitle: `${source.rows.length} rows`,
+      rows: source.rows,
+      columns: source.columns,
+    } : node));
+    setConnections(prev => dedupeConnections([...prev, { from: fromId, to: output.id }]));
+    setSelectedNodeId(output.id);
+    setActionMenu(null);
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
@@ -413,383 +308,249 @@ export default function PipelineBuilderPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 10 }}>
           <GitBranch size={18} color={CT.accent} />
           <div>
-            <div style={{ fontSize: 13, fontWeight: 650 }}>Griseus Pipeline Builder</div>
+            <div style={{ fontSize: 13, fontWeight: 700 }}>Pipeline Builder</div>
             <div style={{ fontSize: 10, color: CT.inkMuted, fontFamily: CT_MONO }}>
-              Reçete + stok + satış ortalaması → cihaz datası
+              Input dataset → Transform → Preview → Output
             </div>
           </div>
         </div>
 
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
-          <select value={selectedSku} onChange={e => setSelectedSku(e.target.value)} style={selectStyle}>
-            {products.map(product => (
-              <option key={product.sku} value={product.sku}>{product.sku} - {product.name}</option>
-            ))}
-          </select>
-          <button style={toolbarButtonStyle}><Save size={14} />Taslak</button>
-          <button onClick={runPipeline} disabled={loading || enabledSources.length === 0} style={deployButtonStyle}>
-            {loading ? <Loader2 size={14} className="animate-spin" /> : <Play size={14} />}
-            Çalıştır
+          <button type="button" onClick={addDataset} style={toolbarButtonStyle}>
+            <Plus size={14} /> Add dataset
+          </button>
+          <button type="button" style={toolbarButtonStyle}>
+            <Save size={14} /> Save
+          </button>
+          <button type="button" style={deployButtonStyle}>
+            <ArrowDownToLine size={14} /> Deliver
           </button>
         </div>
       </header>
 
-      <div style={sourceBarStyle}>
-        {sources.map(source => {
-          const active = enabledSources.includes(source.id);
-          const tone = sourceTone[source.id];
-          const uploaded = uploadedData[source.id];
-          return (
-            <button
-              key={source.id}
-              onClick={() => toggleSourceConnection(source.id)}
-              style={{
-                ...sourceToggleStyle,
-                background: active ? tone.bg : CT.surface,
-                borderColor: active ? tone.color : CT.borderStrong,
-                color: active ? tone.color : CT.inkSub,
-              }}
-            >
-              {tone.icon}
-              {source.label}
-              {uploaded && <span style={{ fontSize: 10, fontFamily: CT_MONO }}>({uploaded.rows.length})</span>}
-            </button>
-          );
-        })}
-        <WorkbookUploadPanel
-          sources={sources}
-          workbook={workbookImport}
-          onFile={handleWorkbookFile}
-          onAssign={assignWorkbookSheet}
-          onClear={() => {
-            if (workbookImport) {
-              setUploadedData(prev => {
-                const next = { ...prev };
-                Object.keys(workbookImport.assignments).forEach(sourceId => delete next[sourceId as SourceId]);
-                return next;
-              });
-            }
-            setWorkbookImport(null);
-          }}
-        />
-      </div>
+      <main style={{ display: "grid", gridTemplateRows: "1fr 310px", minHeight: "calc(100vh - 94px)" }}>
+        <section style={{ position: "relative", overflow: "auto", background: "#eef1f5" }}>
+          <div style={{ position: "relative", width: 1280, height: 610 }}>
+            <LaneLabel left={74} top={28} title="Input" />
+            <LaneLabel left={430} top={28} title="Transform" />
+            <LaneLabel left={900} top={28} title="Output" />
 
-      <main style={{ display: "grid", gridTemplateColumns: "minmax(760px, 1fr) 360px", minHeight: "calc(100vh - 148px)" }}>
-        <section style={{ display: "grid", gridTemplateRows: "1fr 304px", minWidth: 0 }}>
-          <div style={{ position: "relative", overflow: "auto", background: "#eef1f5" }}>
-            <div style={{ position: "relative", width: 1220, height: 560 }}>
-              <svg width="1220" height="560" style={{ position: "absolute", inset: 0 }}>
-                {renderedEdges.map(edge => (
-                  <EdgeLine key={edge.key} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
-                ))}
-              </svg>
+            <svg width="1280" height="610" style={{ position: "absolute", inset: 0 }}>
+              {renderedEdges.map(edge => (
+                <EdgeLine key={edge.key} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
+              ))}
+            </svg>
 
-              {sources.map((source, index) => {
-                const enabled = enabledSources.includes(source.id);
-                return (
-                  <SourceNode
-                    key={source.id}
-                    source={source}
-                    enabled={enabled}
-                    selected={selectedNode === source.id}
-                    uploadedRows={uploadedData[source.id]?.rows.length ?? 0}
-                    left={72}
-                    top={92 + index * 78}
-                    activeConnector={activeConnector === source.id}
-                    onClick={() => setSelectedNode(source.id)}
-                    onPortClick={() => handlePortClick(source.id)}
-                  />
-                );
-              })}
-
-              <TransformNode
-                left={386}
-                top={148}
-                selected={selectedNode !== "output" && enabledSources.includes(selectedNode)}
-                activeConnector={activeConnector === "join"}
-                title="Join + Aggregate"
-                subtitle={`${enabledSources.length} kaynak bağlı`}
-                onPortClick={() => handlePortClick("join")}
+            {nodes.map(node => (
+              <PipelineGraphNode
+                key={node.id}
+                node={node}
+                selected={selectedNodeId === node.id}
+                onSelect={() => {
+                  setSelectedNodeId(node.id);
+                  setActionMenu(null);
+                }}
+                onPortClick={(side) => openPortMenu(node.id, side)}
+                onFile={(file) => handleNodeFile(node.id, file)}
               />
-              <OutputNode
-                left={900}
-                top={190}
-                selected={selectedNode === "output"}
-                activeConnector={activeConnector === "output"}
-                onClick={() => setSelectedNode("output")}
-                onPortClick={() => handlePortClick("output")}
-                count={result?.rows.length ?? 0}
+            ))}
+
+            {actionMenu && (
+              <NodeActionMenu
+                state={actionMenu}
+                canEdit={Boolean(nodes.find(node => node.id === actionMenu.nodeId)?.rows.length)}
+                onTransform={() => createTransform(actionMenu.nodeId)}
+                onJoin={() => createJoin(actionMenu.nodeId)}
+                onUnion={() => createUnion(actionMenu.nodeId)}
+                onNewDataset={() => {
+                  addDataset();
+                  setActionMenu(null);
+                }}
+                onOutput={() => createOutputFrom(actionMenu.nodeId)}
               />
-            </div>
-          </div>
-
-          <div style={{ borderTop: `1px solid ${CT.borderStrong}`, background: CT.surface, overflow: "hidden" }}>
-            <div style={previewHeaderStyle}>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 650 }}>
-                <Table2 size={15} color={CT.accent} />
-                {selectedNode === "output" ? "Cihaz data preview" : `${selectedSource?.label ?? "Kaynak"} verisi`}
-              </div>
-              <div style={{ display: "flex", alignItems: "center", gap: 8, color: CT.inkMuted, fontSize: 11 }}>
-                {error ? <AlertTriangle size={14} color={CT.err} /> : <CheckCircle2 size={14} color={CT.ok} />}
-                {error ?? (selectedNode === "output" ? `${result?.rows.length ?? 0} satır üretildi` : `${previewRows.length} satır okundu`)}
-              </div>
-            </div>
-
-            <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", height: 266 }}>
-              <aside style={{ borderRight: `1px solid ${CT.border}`, padding: 12, overflow: "auto" }}>
-                {selectedNode !== "output" && (
-                  <UploadDropzone
-                    sourceId={selectedNode}
-                    dataset={selectedDataset}
-                    onFile={handleSourceFile}
-                    onClear={clearSourceData}
-                  />
-                )}
-                <div style={searchBoxStyle}>
-                  <Search size={14} color={CT.inkMuted} />
-                  <span style={{ color: CT.inkMuted, fontSize: 12 }}>Kolon ara...</span>
-                </div>
-                {previewColumns.map(col => (
-                  <div key={col} style={columnRowStyle}>
-                    <span>{columnLabels[col] ?? col}</span>
-                    <Settings2 size={12} color={CT.inkMuted} />
-                  </div>
-                ))}
-              </aside>
-
-              <div style={{ overflow: "auto" }}>
-                {loading && <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>Pipeline çalışıyor...</div>}
-                {!loading && selectedNode !== "output" && !selectedDataset && (
-                  <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
-                    Bu input kutusuna CSV, XLSX veya JSON sürükle. Kolonlar otomatik okunacak.
-                  </div>
-                )}
-                {!loading && previewRows.length > 0 && (
-                  <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
-                    <thead>
-                      <tr>
-                        {previewColumns.map(col => <th key={col} style={thStyle}>{columnLabels[col] ?? col}</th>)}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {previewRows.slice(0, 100).map((row, idx) => (
-                        <tr key={idx}>
-                          {previewColumns.map(col => <td key={`${idx}-${col}`} style={tdStyle}>{formatCell(row[col])}</td>)}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                )}
-              </div>
-            </div>
+            )}
           </div>
         </section>
 
-        <aside style={{ borderLeft: `1px solid ${CT.border}`, background: CT.surface, minWidth: 0 }}>
-          <div style={{ padding: 18, borderBottom: `1px solid ${CT.border}` }}>
-            <div style={{ fontSize: 11, color: CT.accent, letterSpacing: 1.2, textTransform: "uppercase", marginBottom: 8 }}>Aktif cihaz</div>
-            <div style={{ fontSize: 20, fontWeight: 700 }}>{selectedSku}</div>
-            <div style={{ color: CT.inkSub, fontSize: 13, marginTop: 5 }}>{selectedProduct?.name ?? "Ürün"}</div>
-          </div>
-
-          <div style={{ padding: 18, borderBottom: `1px solid ${CT.border}` }}>
-            <div style={{ fontSize: 15, fontWeight: 700, marginBottom: 8 }}>{selectedNode === "output" ? "Cihaz Datası" : selectedSource?.label}</div>
-            <p style={{ margin: 0, color: CT.inkSub, fontSize: 13, lineHeight: 1.55 }}>{selectedDescription}</p>
-          </div>
-
-          <div style={{ padding: 18, borderBottom: `1px solid ${CT.border}` }}>
-            <div style={{ fontSize: 13, fontWeight: 700, marginBottom: 12 }}>Pipeline özeti</div>
-            <Metric label="Komponent" value={result?.summary.componentCount ?? 0} />
-            <Metric label="Üretilebilir cihaz" value={result?.summary.maxDeviceBuildable ?? 0} />
-            <Metric label="Aylık satış ort." value={result?.summary.avgMonthlySales ?? 0} />
-            <Metric label="Kritik satır" value={result?.summary.criticalCount ?? 0} tone={CT.err} />
-            <Metric label="Darboğaz" value={result?.summary.bottleneckComponent ?? "-"} compact />
-          </div>
-
-          <div style={{ padding: 18 }}>
-            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700, marginBottom: 12 }}>
-              <Link2 size={14} color={CT.accent} />
-              Join plan
+        <section style={{ borderTop: `1px solid ${CT.borderStrong}`, background: CT.surface, overflow: "hidden" }}>
+          <div style={previewHeaderStyle}>
+            <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
+              <Table2 size={15} color={CT.accent} />
+              Data preview
             </div>
-            {(result?.joins ?? [
-              { left: "recipe.productSku", right: "finished_stock.productSku", enabled: true },
-              { left: "recipe.componentCode", right: "component_stock.componentCode", enabled: true },
-              { left: "recipe.productSku", right: "sales_average.productSku", enabled: true },
-            ]).map(join => (
-              <div key={`${join.left}-${join.right}`} style={{ display: "flex", gap: 8, marginBottom: 10, color: join.enabled ? CT.inkSub : CT.inkFaint, fontSize: 11, fontFamily: CT_MONO }}>
-                {join.enabled ? <CheckCircle2 size={13} color={CT.ok} /> : <AlertTriangle size={13} color={CT.inkFaint} />}
-                <span>{join.left} = {join.right}</span>
-              </div>
-            ))}
+            <div style={{ display: "flex", alignItems: "center", gap: 8, color: error ? CT.err : CT.inkMuted, fontSize: 11 }}>
+              <CheckCircle2 size={14} color={error ? CT.err : CT.ok} />
+              {error ?? `${selectedNode?.title ?? "Dataset"} · ${previewRows.length} rows · ${previewColumns.length} columns`}
+            </div>
           </div>
-        </aside>
-      </main>
-    </div>
-  );
-}
 
-function WorkbookUploadPanel({ sources, workbook, onFile, onAssign, onClear }: {
-  sources: SourceDef[];
-  workbook: WorkbookImport | null;
-  onFile: (file: File) => void;
-  onAssign: (sourceId: SourceId, sheetName: string) => void;
-  onClear: () => void;
-}) {
-  const inputId = "pipeline-workbook-upload";
-  return (
-    <div style={workbookPanelStyle}>
-      <label
-        htmlFor={inputId}
-        onDragOver={(event) => event.preventDefault()}
-        onDrop={(event) => {
-          event.preventDefault();
-          const file = event.dataTransfer.files?.[0];
-          if (file) onFile(file);
-        }}
-        style={workbookDropStyle}
-      >
-        <input
-          id={inputId}
-          type="file"
-          accept=".csv,.tsv,.xlsx,.xls,.json"
-          style={{ display: "none" }}
-          onChange={(event) => {
-            const file = event.currentTarget.files?.[0];
-            if (file) onFile(file);
-            event.currentTarget.value = "";
-          }}
-        />
-        <UploadCloud size={15} color={CT.accent} />
-        <span>{workbook ? workbook.fileName : "Tek XLS / CSV yükle"}</span>
-        {workbook && <small>{workbook.sheets.length} tablo</small>}
-      </label>
-
-      {workbook && (
-        <div style={workbookSheetGridStyle}>
-          {workbook.sheets.map(sheet => {
-            const assignedSource = Object.entries(workbook.assignments).find(([, sheetName]) => sheetName === sheet.sheetName)?.[0] ?? "";
-            return (
-              <div key={sheet.sheetName} style={workbookSheetRowStyle}>
-                <div style={{ minWidth: 0 }}>
-                  <div style={{ fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheet.sheetName}</div>
-                  <div style={{ fontSize: 10, color: CT.inkMuted, fontFamily: CT_MONO }}>{sheet.rows.length}x{sheet.columns.length}</div>
-                </div>
-                <select
-                  value={assignedSource}
-                  onChange={(event) => {
-                    const nextSourceId = event.currentTarget.value as SourceId | "";
-                    if (!nextSourceId && assignedSource) {
-                      onAssign(assignedSource as SourceId, "");
-                      return;
-                    }
-                    if (nextSourceId) onAssign(nextSourceId, sheet.sheetName);
-                  }}
-                  style={sheetSelectStyle}
-                >
-                  <option value="">Kullanma</option>
-                  {sources.map(source => (
-                    <option key={source.id} value={source.id}>{source.label}</option>
-                  ))}
-                </select>
+          <div style={{ display: "grid", gridTemplateColumns: "270px 1fr", height: 272 }}>
+            <aside style={{ borderRight: `1px solid ${CT.border}`, padding: 12, overflow: "auto" }}>
+              {selectedNode?.kind === "dataset" && (
+                <UploadDropzone
+                  node={selectedNode}
+                  onFile={(file) => handleNodeFile(selectedNode.id, file)}
+                />
+              )}
+              <div style={previewNodePillStyle}>
+                {nodeIcon(selectedNode?.kind ?? "dataset", 14)}
+                <span>{selectedNode?.title ?? "Dataset"}</span>
               </div>
-            );
-          })}
-          <button type="button" onClick={onClear} style={workbookClearStyle} title="Workbook verisini kaldır">
-            <X size={14} />
-          </button>
-        </div>
+              <div style={searchBoxStyle}>
+                <Search size={14} color={CT.inkMuted} />
+                <span style={{ color: CT.inkMuted, fontSize: 12 }}>Search {previewColumns.length} columns...</span>
+              </div>
+              {previewColumns.map(col => (
+                <div key={col} style={columnRowStyle}>
+                  <span>{col}</span>
+                  <span style={{ color: CT.inkMuted, fontSize: 10, fontFamily: CT_MONO }}>{inferColumnType(previewRows, col)}</span>
+                </div>
+              ))}
+            </aside>
+
+            <div style={{ overflow: "auto" }}>
+              {previewRows.length === 0 && (
+                <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
+                  Dataset kutusuna dosya yükle, sonra kutunun sağ portuna basıp Transform seç.
+                </div>
+              )}
+              {previewRows.length > 0 && (
+                <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
+                  <thead>
+                    <tr>
+                      <th style={{ ...thStyle, minWidth: 44, width: 44 }}>#</th>
+                      {previewColumns.map(col => <th key={col} style={thStyle}>{col}</th>)}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {previewRows.slice(0, 100).map((row, idx) => (
+                      <tr key={idx}>
+                        <td style={{ ...tdStyle, color: CT.inkMuted, fontFamily: CT_MONO }}>{idx + 1}</td>
+                        {previewColumns.map(col => <td key={`${idx}-${col}`} style={tdStyle}>{formatCell(row[col])}</td>)}
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              )}
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <aside style={summaryPanelStyle}>
+        <Metric label="Datasets" value={datasetCount} />
+        <Metric label="Transforms" value={transformCount} />
+        <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
+      </aside>
+    </div>
+  );
+}
+
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
+  node: PipelineNode;
+  selected: boolean;
+  onSelect: () => void;
+  onPortClick: (side: PortSide) => void;
+  onFile: (file: File) => void;
+}) {
+  const uploadInputId = `pipeline-node-upload-${node.id}`;
+  const isDataset = node.kind === "dataset";
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      style={{
+        ...nodeStyle,
+        left: node.x,
+        top: node.y,
+        width: nodeWidth(node.kind),
+        height: nodeHeight(node.kind),
+        borderColor: selected ? nodeTone(node.kind) : CT.borderStrong,
+        boxShadow: selected ? "0 0 0 3px rgba(73,92,114,0.16), 0 5px 16px rgba(20,20,19,0.12)" : nodeStyle.boxShadow,
+      }}
+    >
+      {node.kind !== "dataset" && <GraphPort side="left" onClick={() => onPortClick("left")} />}
+      <div style={nodeTitleStyle}>
+        {nodeIcon(node.kind, 18)}
+        <span style={{ fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.title}</span>
+      </div>
+      <div style={nodeMetaStyle}>{node.subtitle}</div>
+      {node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
+      {isDataset && (
+        <label htmlFor={uploadInputId} style={nodeUploadStyle} onClick={(event) => event.stopPropagation()}>
+          <input
+            id={uploadInputId}
+            type="file"
+            accept=".csv,.tsv,.xlsx,.xls,.json"
+            style={{ display: "none" }}
+            onChange={(event) => {
+              const file = event.currentTarget.files?.[0];
+              if (file) onFile(file);
+              event.currentTarget.value = "";
+            }}
+          />
+          <UploadCloud size={13} />
+        </label>
       )}
-    </div>
-  );
-}
-
-function SourceNode({ source, enabled, selected, uploadedRows, left, top, activeConnector, onClick, onPortClick }: {
-  source: SourceDef;
-  enabled: boolean;
-  selected: boolean;
-  uploadedRows: number;
-  left: number;
-  top: number;
-  activeConnector: boolean;
-  onClick: () => void;
-  onPortClick: () => void;
-}) {
-  const tone = sourceTone[source.id];
-  return (
-    <button onClick={onClick} style={{
-      ...nodeStyle,
-      left,
-      top,
-      opacity: enabled ? 1 : 0.48,
-      borderColor: selected ? tone.color : CT.borderStrong,
-    }}>
-      <div style={nodeTitleStyle}>
-        <span style={{ color: tone.color, display: "inline-flex" }}>{tone.icon}</span>
-        <span style={{ fontWeight: 700 }}>{source.label}</span>
-      </div>
-      <div style={{ ...nodeMetaStyle, display: "flex", justifyContent: "space-between", gap: 8 }}>
-        <span>{source.primaryKey}</span>
-        {uploadedRows > 0 && <span style={{ color: tone.color, fontFamily: CT_MONO }}>{uploadedRows}</span>}
-      </div>
-      <GraphPort side="right" active={activeConnector} onClick={onPortClick} />
+      <GraphPort side="right" onClick={() => onPortClick("right")} />
     </button>
   );
 }
 
-function TransformNode({ left, top, selected, activeConnector, title, subtitle, onPortClick }: {
-  left: number;
-  top: number;
-  selected: boolean;
-  activeConnector: boolean;
-  title: string;
-  subtitle: string;
-  onPortClick: () => void;
+function NodeActionMenu({ state, canEdit, onTransform, onJoin, onUnion, onNewDataset, onOutput }: {
+  state: NonNullable<ActionMenuState>;
+  canEdit: boolean;
+  onTransform: () => void;
+  onJoin: () => void;
+  onUnion: () => void;
+  onNewDataset: () => void;
+  onOutput: () => void;
 }) {
   return (
-    <div style={{ ...nodeStyle, left, top, width: 260, height: 104, borderColor: selected ? CT.accent : CT.borderStrong }}>
-      <GraphPort side="left" active={activeConnector} onClick={onPortClick} />
-      <div style={nodeTitleStyle}>
-        <Link2 size={15} color="#745fb4" />
-        <span style={{ fontWeight: 700 }}>{title}</span>
-      </div>
-      <div style={nodeMetaStyle}>{subtitle}</div>
-      <div style={{ padding: "0 12px", color: CT.inkMuted, fontSize: 11 }}>productSku ve componentCode üzerinden birleştir</div>
-      <GraphPort side="right" active={activeConnector} onClick={onPortClick} />
+    <div style={{ ...actionMenuStyle, left: state.x, top: state.y }}>
+      <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} disabled={!canEdit} />
+      <ActionItem icon={<Layers3 size={18} />} label="Join" tone="#7b61d1" onClick={onJoin} disabled={!canEdit} />
+      <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} disabled={!canEdit} />
+      <div style={actionDividerStyle} />
+      <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onOutput} disabled={!canEdit} />
+      <ActionItem icon={<Database size={18} />} label="New object type" tone="#cc8a00" onClick={onNewDataset} />
+      <div style={actionDividerStyle} />
+      <ActionItem icon={<Pencil size={18} />} label="Edit" tone={CT.inkMuted} onClick={onTransform} disabled={!canEdit} />
     </div>
   );
 }
 
-function OutputNode({ left, top, selected, activeConnector, count, onClick, onPortClick }: {
-  left: number;
-  top: number;
-  selected: boolean;
-  activeConnector: boolean;
-  count: number;
+function ActionItem({ icon, label, tone, disabled = false, onClick }: {
+  icon: JSX.Element;
+  label: string;
+  tone: string;
+  disabled?: boolean;
   onClick: () => void;
-  onPortClick: () => void;
 }) {
   return (
-    <button onClick={onClick} style={{ ...nodeStyle, left, top, width: 210, height: 76, borderColor: selected ? CT.ok : CT.borderStrong }}>
-      <GraphPort side="left" active={activeConnector} onClick={onPortClick} />
-      <div style={nodeTitleStyle}>
-        <Database size={15} color={CT.ok} />
-        <span style={{ fontWeight: 700 }}>Cihaz datası</span>
-      </div>
-      <div style={nodeMetaStyle}>{count} satır</div>
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      style={{
+        ...actionItemStyle,
+        color: disabled ? CT.inkFaint : tone,
+        opacity: disabled ? 0.46 : 1,
+        cursor: disabled ? "not-allowed" : "pointer",
+      }}
+    >
+      {icon}
+      <span>{label}</span>
     </button>
   );
 }
 
-function GraphPort({ side, active, onClick }: {
-  side: "left" | "right";
-  active: boolean;
-  onClick: () => void;
-}) {
+function GraphPort({ side, onClick }: { side: PortSide; onClick: () => void }) {
   return (
     <span
       role="button"
       tabIndex={0}
-      title="Bağlantı noktası"
+      title={side === "right" ? "Transform menüsü" : "Input port"}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
@@ -800,24 +561,13 @@ function GraphPort({ side, active, onClick }: {
         event.stopPropagation();
         onClick();
       }}
-      style={{
-        ...graphPortStyle,
-        [side]: -8,
-        background: active ? CT.accent : CT.surface,
-        borderColor: active ? CT.accent : "rgba(86,101,119,0.62)",
-        boxShadow: active ? "0 0 0 4px rgba(201,100,66,0.16)" : "0 1px 5px rgba(20,20,19,0.12)",
-      }}
+      style={{ ...graphPortStyle, [side]: -13 }}
     />
   );
 }
 
-function UploadDropzone({ sourceId, dataset, onFile, onClear }: {
-  sourceId: SourceId;
-  dataset: UploadedDataset | undefined;
-  onFile: (sourceId: SourceId, file: File) => void;
-  onClear: (sourceId: SourceId) => void;
-}) {
-  const inputId = `pipeline-upload-${sourceId}`;
+function UploadDropzone({ node, onFile }: { node: PipelineNode; onFile: (file: File) => void }) {
+  const inputId = `pipeline-preview-upload-${node.id}`;
   return (
     <label
       htmlFor={inputId}
@@ -825,19 +575,9 @@ function UploadDropzone({ sourceId, dataset, onFile, onClear }: {
       onDrop={(event) => {
         event.preventDefault();
         const file = event.dataTransfer.files?.[0];
-        if (file) onFile(sourceId, file);
+        if (file) onFile(file);
       }}
-      style={{
-        display: "flex",
-        flexDirection: "column",
-        gap: 7,
-        border: `1px dashed ${dataset ? CT.ok : CT.accentEdge}`,
-        borderRadius: 8,
-        background: dataset ? CT.okSoft : CT.accentSoft,
-        padding: 10,
-        marginBottom: 10,
-        cursor: "pointer",
-      }}
+      style={uploadDropzoneStyle}
     >
       <input
         id={inputId}
@@ -846,53 +586,34 @@ function UploadDropzone({ sourceId, dataset, onFile, onClear }: {
         style={{ display: "none" }}
         onChange={(event) => {
           const file = event.currentTarget.files?.[0];
-          if (file) onFile(sourceId, file);
+          if (file) onFile(file);
           event.currentTarget.value = "";
         }}
       />
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
-        <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, color: dataset ? CT.ok : CT.accent }}>
-          <UploadCloud size={15} />
-          {dataset ? "Yüklü veri" : "Veri yükle"}
-        </span>
-        {dataset && (
-          <button
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              onClear(sourceId);
-            }}
-            style={{ border: 0, background: "transparent", color: CT.inkMuted, cursor: "pointer", display: "inline-flex" }}
-            title="Veriyi kaldır"
-          >
-            <X size={14} />
-          </button>
-        )}
-      </div>
-      <div style={{ fontSize: 10.5, lineHeight: 1.4, color: CT.inkSub }}>
-        {dataset ? `${dataset.fileName} - ${dataset.rows.length} satır, ${dataset.columns.length} kolon` : "CSV, XLSX veya JSON sürükle-bırak"}
-      </div>
+      <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 750, color: CT.accent }}>
+        <UploadCloud size={15} /> Add data
+      </span>
+      <span style={{ fontSize: 10.5, color: CT.inkSub }}>{node.sourceFile ?? "CSV, XLSX, JSON"}</span>
     </label>
   );
+}
+
+function LaneLabel({ left, top, title }: { left: number; top: number; title: string }) {
+  return <div style={{ ...laneLabelStyle, left, top }}>{title}</div>;
 }
 
 function EdgeLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
   const mid = (x1 + x2) / 2;
   return (
     <g>
-      <path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke="rgba(86,101,119,0.55)" strokeWidth="2" />
-      <circle cx={x1} cy={y1} r="5" fill={CT.surface} stroke="rgba(86,101,119,0.55)" strokeWidth="2" />
-      <circle cx={x2} cy={y2} r="5" fill={CT.surface} stroke="rgba(86,101,119,0.55)" strokeWidth="2" />
+      <path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
+      <circle cx={x1} cy={y1} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
+      <circle cx={x2} cy={y2} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
     </g>
   );
 }
 
-async function parseTabularFile(file: File): Promise<UploadedDataset> {
-  const sheets = await parseWorkbookFile(file);
-  return sheets[0];
-}
-
-async function parseWorkbookFile(file: File): Promise<WorkbookSheetDataset[]> {
+async function parseWorkbookFile(file: File): Promise<UploadedDataset[]> {
   const ext = file.name.split(".").pop()?.toLowerCase();
   const sheetEntries: Array<{ sheetName: string; rows: Array<Record<string, any>> }> = [];
 
@@ -909,15 +630,15 @@ async function parseWorkbookFile(file: File): Promise<WorkbookSheetDataset[]> {
     const parsed = JSON.parse(await file.text());
     if (Array.isArray(parsed)) {
       sheetEntries.push({ sheetName: "JSON", rows: parsed });
-    } else if (parsed && typeof parsed === "object" && !Array.isArray(parsed.rows)) {
+    } else if (parsed && typeof parsed === "object" && Array.isArray(parsed.rows)) {
+      sheetEntries.push({ sheetName: "JSON", rows: parsed.rows });
+    } else if (parsed && typeof parsed === "object") {
       const tableKeys = Object.keys(parsed).filter(key => Array.isArray(parsed[key]));
       if (tableKeys.length > 0) {
         tableKeys.forEach(key => sheetEntries.push({ sheetName: key, rows: parsed[key] }));
       } else {
         sheetEntries.push({ sheetName: "JSON", rows: [parsed] });
       }
-    } else {
-      sheetEntries.push({ sheetName: "JSON", rows: Array.isArray(parsed.rows) ? parsed.rows : [parsed] });
     }
   } else {
     sheetEntries.push({ sheetName: ext === "tsv" ? "TSV" : "CSV", rows: parseDelimited(await file.text(), ext === "tsv" ? "\t" : undefined) });
@@ -925,10 +646,7 @@ async function parseWorkbookFile(file: File): Promise<WorkbookSheetDataset[]> {
 
   const datasets = sheetEntries.map(({ sheetName, rows }) => {
     const normalizedRows = rows.map(row => normalizeParsedRow(row)).filter(row => Object.values(row).some(value => value !== ""));
-    const columns = Array.from(normalizedRows.reduce<Set<string>>((set, row) => {
-      Object.keys(row).forEach(key => set.add(key));
-      return set;
-    }, new Set<string>()));
+    const columns = collectColumns(normalizedRows);
     return {
       fileName: file.name,
       sheetName,
@@ -937,33 +655,39 @@ async function parseWorkbookFile(file: File): Promise<WorkbookSheetDataset[]> {
     };
   }).filter(dataset => dataset.rows.length > 0 && dataset.columns.length > 0);
 
-  if (datasets.length === 0) {
-    throw new Error("Dosyada okunabilir tablo verisi bulunamadı");
-  }
-
+  if (datasets.length === 0) throw new Error("Dosyada okunabilir tablo verisi bulunamadı");
   return datasets;
 }
 
-function inferSourceForDataset(dataset: WorkbookSheetDataset, sources: SourceDef[]): SourceId | null {
-  const haystack = normalizeMatchText([
-    dataset.fileName,
-    dataset.sheetName,
-    ...dataset.columns,
-  ].join(" "));
+function cleanRows(rows: Array<Record<string, any>>) {
+  const cleanColumnByRaw = new Map<string, string>();
+  const used = new Map<string, number>();
 
-  const scores = sources.map(source => {
-    const keywords = sourceKeywords[source.id] ?? [];
-    const keywordScore = keywords.reduce((score, keyword) => score + (haystack.includes(normalizeMatchText(keyword)) ? 4 : 0), 0);
-    const joinScore = source.joinsOn.reduce((score, key) => score + (haystack.includes(normalizeMatchText(key)) ? 2 : 0), 0);
-    const primaryScore = haystack.includes(normalizeMatchText(source.primaryKey)) ? 3 : 0;
-    return { sourceId: source.id, score: keywordScore + joinScore + primaryScore };
-  }).sort((a, b) => b.score - a.score);
+  rows.forEach(row => {
+    Object.keys(row).forEach(rawKey => {
+      if (cleanColumnByRaw.has(rawKey)) return;
+      const base = normalizeCleanColumn(rawKey);
+      const count = used.get(base) ?? 0;
+      used.set(base, count + 1);
+      cleanColumnByRaw.set(rawKey, count === 0 ? base : `${base}_${count + 1}`);
+    });
+  });
 
-  return scores[0]?.score > 0 ? scores[0].sourceId : null;
+  const cleanedRows = rows.map(row => {
+    const next: Record<string, any> = {};
+    cleanColumnByRaw.forEach((cleanKey, rawKey) => {
+      next[cleanKey] = cleanValue(row[rawKey]);
+    });
+    return next;
+  }).filter(row => Object.values(row).some(value => value !== ""));
+
+  const columns = collectColumns(cleanedRows);
+  return { rows: cleanedRows, columns };
 }
 
-function normalizeMatchText(value: string) {
-  return value
+function normalizeCleanColumn(key: string) {
+  const normalized = key
+    .trim()
     .toLocaleLowerCase("tr-TR")
     .replace(/ı/g, "i")
     .replace(/ğ/g, "g")
@@ -971,18 +695,48 @@ function normalizeMatchText(value: string) {
     .replace(/ş/g, "s")
     .replace(/ö/g, "o")
     .replace(/ç/g, "c")
-    .replace(/[^a-z0-9]+/g, "_");
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+  return normalized || "column";
+}
+
+function normalizeParsedRow(row: Record<string, any>) {
+  return Object.fromEntries(Object.entries(row).map(([key, value], index) => [
+    normalizeSourceColumn(key || `column_${index + 1}`),
+    cleanValue(value),
+  ]));
+}
+
+function normalizeSourceColumn(key: string) {
+  return key
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\wğüşöçıİĞÜŞÖÇ.-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "column";
+}
+
+function cleanValue(value: any) {
+  if (value === null || value === undefined) return "";
+  if (value instanceof Date) return value.toISOString();
+  if (typeof value === "number") return Number.isFinite(value) ? value : "";
+  const raw = String(value).trim();
+  if (raw === "") return "";
+  const normalizedNumber = raw.replace(/\./g, "").replace(",", ".");
+  if (/^-?\d+([,.]\d+)?$/.test(raw) && Number.isFinite(Number(normalizedNumber))) {
+    return Number(normalizedNumber);
+  }
+  return raw.replace(/\s+/g, " ");
 }
 
 function parseDelimited(text: string, forcedDelimiter?: string): Array<Record<string, any>> {
   const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
   if (lines.length === 0) return [];
   const delimiter = forcedDelimiter ?? detectDelimiter(lines[0]);
-  const headers = splitDelimitedLine(lines[0], delimiter).map((header, index) => normalizeColumnName(header || `column_${index + 1}`));
+  const headers = splitDelimitedLine(lines[0], delimiter).map((header, index) => normalizeSourceColumn(header || `column_${index + 1}`));
 
   return lines.slice(1).map(line => {
     const cells = splitDelimitedLine(line, delimiter);
-    return Object.fromEntries(headers.map((header, index) => [header, coerceCell(cells[index] ?? "")]));
+    return Object.fromEntries(headers.map((header, index) => [header, cleanValue(cells[index] ?? "")]));
   });
 }
 
@@ -1016,46 +770,93 @@ function splitDelimitedLine(line: string, delimiter: string) {
   return cells;
 }
 
-function normalizeParsedRow(row: Record<string, any>) {
-  return Object.fromEntries(Object.entries(row).map(([key, value], index) => [
-    normalizeColumnName(key || `column_${index + 1}`),
-    coerceCell(value),
-  ]));
-}
-
-function normalizeColumnName(key: string) {
-  return key
-    .trim()
-    .replace(/\s+/g, "_")
-    .replace(/[^\wğüşöçıİĞÜŞÖÇ.-]+/g, "_")
-    .replace(/^_+|_+$/g, "") || "column";
-}
-
-function coerceCell(value: any) {
-  if (value === null || value === undefined) return "";
-  if (typeof value === "number") return value;
-  const raw = String(value).trim();
-  if (raw === "") return "";
-  const normalizedNumber = raw.replace(/\./g, "").replace(",", ".");
-  if (/^-?\d+([,.]\d+)?$/.test(raw) && Number.isFinite(Number(normalizedNumber))) {
-    return Number(normalizedNumber);
+function joinRows(left: PipelineNode, right: PipelineNode) {
+  const leftKey = pickJoinKey(left.columns, right.columns);
+  if (!leftKey) {
+    const columns = collectColumns(left.rows);
+    return { rows: left.rows, columns };
   }
-  return raw;
+  const rightMap = new Map(right.rows.map(row => [String(row[leftKey]), row]));
+  const rows = left.rows.map(row => ({ ...row, ...(rightMap.get(String(row[leftKey])) ?? {}) }));
+  return { rows, columns: collectColumns(rows) };
 }
 
-function Metric({ label, value, tone = CT.ink, compact = false }: { label: string; value: string | number; tone?: string; compact?: boolean }) {
-  return (
-    <div style={{ display: "grid", gridTemplateColumns: compact ? "1fr" : "1fr auto", gap: 6, padding: "9px 0", borderBottom: `1px solid ${CT.border}` }}>
-      <div style={{ color: CT.inkMuted, fontSize: 11 }}>{label}</div>
-      <div style={{ color: tone, fontSize: compact ? 12 : 14, fontWeight: 700, textAlign: compact ? "left" : "right" }}>{String(value)}</div>
-    </div>
-  );
+function pickJoinKey(leftColumns: string[], rightColumns: string[]) {
+  const preferred = ["id", "sku", "product_sku", "component_code", "code"];
+  return preferred.find(key => leftColumns.includes(key) && rightColumns.includes(key))
+    ?? leftColumns.find(key => rightColumns.includes(key))
+    ?? null;
+}
+
+function collectColumns(rows: Array<Record<string, any>>) {
+  return Array.from(rows.reduce<Set<string>>((set, row) => {
+    Object.keys(row).forEach(key => set.add(key));
+    return set;
+  }, new Set<string>()));
+}
+
+function dedupeConnections(connections: GraphConnection[]) {
+  const seen = new Set<string>();
+  return connections.filter(connection => {
+    const key = `${connection.from}-${connection.to}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function cleanTitle(fileName: string) {
+  return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+}
+
+function nodeWidth(kind: NodeKind) {
+  if (kind === "output") return 250;
+  if (kind === "join" || kind === "union") return 260;
+  return 300;
+}
+
+function nodeHeight(kind: NodeKind) {
+  if (kind === "output") return 72;
+  if (kind === "join" || kind === "union") return 104;
+  return 92;
+}
+
+function nodeTone(kind: NodeKind) {
+  if (kind === "dataset") return "#6b7a8f";
+  if (kind === "transform") return CT.info;
+  if (kind === "join") return "#7b61d1";
+  if (kind === "union") return "#d92f7d";
+  return CT.ok;
+}
+
+function nodeIcon(kind: NodeKind, size: number) {
+  if (kind === "dataset") return <FileSpreadsheet size={size} color="#6b7a8f" />;
+  if (kind === "transform") return <Hammer size={size} color={CT.info} />;
+  if (kind === "join") return <Layers3 size={size} color="#7b61d1" />;
+  if (kind === "union") return <Box size={size} color="#d92f7d" />;
+  return <Database size={size} color={CT.ok} />;
+}
+
+function inferColumnType(rows: Array<Record<string, any>>, col: string) {
+  const sample = rows.map(row => row[col]).find(value => value !== "" && value !== undefined && value !== null);
+  if (typeof sample === "number") return "Number";
+  if (typeof sample === "boolean") return "Bool";
+  return "String";
 }
 
 function formatCell(value: any) {
-  if (value === null || value === undefined) return "-";
+  if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString("tr-TR") : value.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   return String(value);
+}
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={{ display: "grid", gridTemplateColumns: "1fr auto", gap: 8, padding: "9px 0", borderBottom: `1px solid ${CT.border}` }}>
+      <div style={{ color: CT.inkMuted, fontSize: 11 }}>{label}</div>
+      <div style={{ color: CT.ink, fontSize: 13, fontWeight: 750, fontFamily: CT_MONO }}>{String(value)}</div>
+    </div>
+  );
 }
 
 const headerStyle: CSSProperties = {
@@ -1066,17 +867,6 @@ const headerStyle: CSSProperties = {
   alignItems: "center",
   justifyContent: "space-between",
   padding: "0 18px",
-};
-
-const sourceBarStyle: CSSProperties = {
-  minHeight: 54,
-  borderBottom: `1px solid ${CT.border}`,
-  display: "flex",
-  alignItems: "center",
-  gap: 10,
-  padding: "10px 18px",
-  background: "rgba(250,249,245,0.72)",
-  flexWrap: "wrap",
 };
 
 const toolbarButtonStyle: CSSProperties = {
@@ -1090,7 +880,7 @@ const toolbarButtonStyle: CSSProperties = {
   color: CT.inkSub,
   padding: "0 12px",
   fontSize: 12,
-  fontWeight: 600,
+  fontWeight: 650,
   fontFamily: CT_FONT,
   cursor: "pointer",
 };
@@ -1102,104 +892,16 @@ const deployButtonStyle: CSSProperties = {
   background: CT.okSoft,
 };
 
-const selectStyle: CSSProperties = {
-  height: 32,
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 7,
-  background: CT.surface,
-  color: CT.ink,
-  padding: "0 10px",
-  fontSize: 12,
-  fontFamily: CT_FONT,
-  minWidth: 250,
-};
-
-const sourceToggleStyle: CSSProperties = {
-  height: 34,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 8,
-  padding: "0 12px",
-  fontSize: 12,
-  fontWeight: 650,
-  fontFamily: CT_FONT,
-  cursor: "pointer",
-};
-
-const workbookPanelStyle: CSSProperties = {
-  flexBasis: "100%",
-  display: "flex",
-  alignItems: "stretch",
-  gap: 10,
-  minWidth: 0,
-};
-
-const workbookDropStyle: CSSProperties = {
-  minHeight: 34,
-  display: "inline-flex",
-  alignItems: "center",
-  gap: 8,
-  border: `1px dashed ${CT.accentEdge}`,
-  borderRadius: 8,
-  background: CT.surface,
-  color: CT.accent,
-  padding: "0 12px",
-  fontSize: 12,
-  fontWeight: 700,
-  cursor: "pointer",
-  minWidth: 196,
-};
-
-const workbookSheetGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr)) 32px",
-  gap: 8,
-  flex: 1,
-  minWidth: 0,
-};
-
-const workbookSheetRowStyle: CSSProperties = {
-  minHeight: 34,
-  display: "grid",
-  gridTemplateColumns: "minmax(86px, 1fr) 118px",
-  alignItems: "center",
-  gap: 8,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: "5px 8px",
-};
-
-const sheetSelectStyle: CSSProperties = {
-  minWidth: 0,
-  height: 26,
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 6,
-  background: CT.surface,
-  color: CT.ink,
-  fontSize: 11,
-  fontFamily: CT_FONT,
-};
-
-const workbookClearStyle: CSSProperties = {
-  width: 32,
-  height: 34,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  color: CT.inkMuted,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  cursor: "pointer",
+const laneLabelStyle: CSSProperties = {
+  position: "absolute",
+  color: CT.err,
+  fontSize: 26,
+  fontWeight: 800,
+  letterSpacing: 0,
 };
 
 const nodeStyle: CSSProperties = {
   position: "absolute",
-  width: 228,
-  height: 68,
   borderRadius: 7,
   border: `1px solid ${CT.borderStrong}`,
   background: CT.surface,
@@ -1209,38 +911,93 @@ const nodeStyle: CSSProperties = {
   textAlign: "left",
   cursor: "pointer",
   padding: 0,
-  overflow: "hidden",
 };
 
 const nodeTitleStyle: CSSProperties = {
-  height: 38,
+  height: 44,
   display: "flex",
   alignItems: "center",
-  gap: 8,
-  padding: "0 12px",
-  borderBottom: `1px solid ${CT.border}`,
-  fontSize: 12,
+  gap: 10,
+  padding: "0 14px",
+  borderBottom: `1px solid ${CT.borderStrong}`,
+  fontSize: 14,
 };
 
 const nodeMetaStyle: CSSProperties = {
-  padding: "7px 12px",
+  padding: "10px 14px 4px",
   color: CT.inkMuted,
-  fontSize: 11,
+  fontSize: 12,
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
 };
 
+const nodeCountStyle: CSSProperties = {
+  padding: "0 14px",
+  color: CT.inkMuted,
+  fontSize: 12,
+  fontFamily: CT_MONO,
+};
+
+const nodeUploadStyle: CSSProperties = {
+  position: "absolute",
+  right: 14,
+  bottom: 10,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  width: 26,
+  height: 24,
+  borderRadius: 6,
+  border: `1px dashed ${CT.accentEdge}`,
+  color: CT.accent,
+  background: CT.accentSoft,
+  cursor: "pointer",
+};
+
 const graphPortStyle: CSSProperties = {
   position: "absolute",
   top: "50%",
-  width: 16,
-  height: 16,
+  width: 24,
+  height: 24,
   borderRadius: 999,
-  border: "2px solid rgba(86,101,119,0.62)",
+  border: "4px solid #566577",
+  background: "#eef1f5",
   transform: "translateY(-50%)",
   cursor: "crosshair",
-  zIndex: 3,
+  zIndex: 4,
+};
+
+const actionMenuStyle: CSSProperties = {
+  position: "absolute",
+  zIndex: 10,
+  width: 220,
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  background: CT.surface,
+  boxShadow: "0 8px 24px rgba(20,20,19,0.16)",
+  padding: 8,
+};
+
+const actionItemStyle: CSSProperties = {
+  width: "100%",
+  height: 40,
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  border: 0,
+  borderRadius: 6,
+  background: "transparent",
+  fontFamily: CT_FONT,
+  fontSize: 16,
+  fontWeight: 650,
+  textAlign: "left",
+};
+
+const actionDividerStyle: CSSProperties = {
+  height: 1,
+  background: CT.borderStrong,
+  margin: "6px 0",
 };
 
 const previewHeaderStyle: CSSProperties = {
@@ -1250,6 +1007,31 @@ const previewHeaderStyle: CSSProperties = {
   justifyContent: "space-between",
   padding: "0 14px",
   borderBottom: `1px solid ${CT.border}`,
+};
+
+const uploadDropzoneStyle: CSSProperties = {
+  display: "flex",
+  flexDirection: "column",
+  gap: 7,
+  border: `1px dashed ${CT.accentEdge}`,
+  borderRadius: 8,
+  background: CT.accentSoft,
+  padding: 10,
+  marginBottom: 10,
+  cursor: "pointer",
+};
+
+const previewNodePillStyle: CSSProperties = {
+  height: 34,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  padding: "0 10px",
+  marginBottom: 10,
+  fontSize: 12,
+  fontWeight: 700,
 };
 
 const searchBoxStyle: CSSProperties = {
@@ -1266,7 +1048,8 @@ const columnRowStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  height: 28,
+  gap: 8,
+  minHeight: 30,
   fontSize: 12,
   borderBottom: `1px solid ${CT.border}`,
 };
@@ -1278,7 +1061,7 @@ const thStyle: CSSProperties = {
   borderBottom: `1px solid ${CT.borderStrong}`,
   borderRight: `1px solid ${CT.border}`,
   color: "#657084",
-  fontWeight: 700,
+  fontWeight: 750,
   minWidth: 150,
   whiteSpace: "nowrap",
 };
@@ -1289,7 +1072,19 @@ const tdStyle: CSSProperties = {
   borderRight: `1px solid ${CT.border}`,
   color: CT.ink,
   whiteSpace: "nowrap",
-  maxWidth: 240,
+  maxWidth: 260,
   overflow: "hidden",
   textOverflow: "ellipsis",
+};
+
+const summaryPanelStyle: CSSProperties = {
+  position: "fixed",
+  right: 14,
+  bottom: 324,
+  width: 210,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: "rgba(250,249,245,0.94)",
+  padding: "8px 12px",
+  boxShadow: "0 4px 18px rgba(20,20,19,0.08)",
 };
