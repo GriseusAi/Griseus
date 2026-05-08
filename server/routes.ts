@@ -33,6 +33,7 @@ import sddiRouter from "./routes/sddi";
 import workshopRouter from "./routes/workshop";
 import chartRouter from "./routes/chart";
 import strategyRouter from "./routes/strategy";
+import pipelineBuilderRouter from "./routes/pipeline-builder";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
@@ -64,6 +65,7 @@ export async function registerRoutes(
   app.use("/api/ontology", ontologyTimeseriesRouter);
   app.use("/api/orchestrator", orchestratorRouter);
   app.use("/api/pipeline", simulationPipelineRouter);
+  app.use("/api/pipeline-builder", pipelineBuilderRouter);
   app.use("/api/twin-health", twinHealthRouter);
   app.use("/api/loop", decisionLoopRouter);
   app.use("/api/ops", opsMonitoringRouter);
