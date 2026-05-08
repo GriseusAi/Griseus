@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import TopNav from "@/components/top-nav";
 import { useSKU } from "@/lib/sku-context";
 import { CT, CT_FONT } from "@/lib/claude-theme";
-import { BarChart3, Braces, Factory, Network, UploadCloud } from "lucide-react";
+import { BarChart3, Braces, Factory, GitBranch, Network, UploadCloud } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type Tile = {
@@ -24,6 +24,7 @@ export default function Home() {
     { label: "Ontology Manager", icon: <Braces size={20} />, path: "/ontology/manager", tagline: "BOM, müşteri ve senaryo semantic layer yönetimi" },
     { label: "Sihir", icon: <Network size={20} />, path: "/sihir", tagline: "Palantir-seviye ontology deneyimi" },
     { label: "Veri Yükle", icon: <UploadCloud size={20} />, path: "/veri-yukle", tagline: "ERP/Excel import ve cihaz onboarding" },
+    { label: "Pipeline Builder", icon: <GitBranch size={20} />, path: "/pipeline-builder", tagline: "Input, transform, preview ve deploy akışı" },
   ];
 
   return (
@@ -39,7 +40,7 @@ export default function Home() {
             Nereden başlamak istersin?
           </h1>
           <div style={{ fontSize: 15, color: CT.inkSub, marginTop: 12, lineHeight: 1.6 }}>
-            Dört temel çalışma alanı — tek tıkla aç.
+            Temel çalışma alanları — tek tıkla aç.
           </div>
         </div>
 
