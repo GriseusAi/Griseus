@@ -177,7 +177,6 @@ export default function PipelineBuilderPage() {
     const transformIndex = nodes.filter(node => node.kind === "transform").length + 1;
     const cleaned = transformRows(source.rows, source.sourceFile ?? source.title);
     const transformId = `transform-${Date.now()}`;
-    const output = nodes.find(node => node.kind === "output");
     const x = Math.max(source.x + 330, 420);
     const y = source.y;
 
@@ -193,26 +192,13 @@ export default function PipelineBuilderPage() {
       sourceFile: source.sourceFile,
     };
 
-    setNodes(prev => prev.map(node => {
-      if (node.kind !== "output") return node;
-      return {
-        ...node,
-        title: `${source.title} data`,
-        subtitle: `${cleaned.rows.length} clean rows`,
-        rows: cleaned.rows,
-        columns: cleaned.columns,
-        x: Math.max(x + 390, node.x),
-        y: node.y,
-      };
-    }).concat(transformNode));
+    setNodes(prev => prev.concat(transformNode));
 
     setConnections(prev => {
-      const withoutOutput = prev.filter(connection => !(connection.from === fromId && connection.to === output?.id));
       const next = [
-        ...withoutOutput,
+        ...prev,
         { from: fromId, to: transformId },
       ];
-      if (output) next.push({ from: transformId, to: output.id });
       return dedupeConnections(next);
     });
 
@@ -239,19 +225,11 @@ export default function PipelineBuilderPage() {
       rows: joined.rows,
       columns: joined.columns,
     };
-    const output = nodes.find(node => node.kind === "output");
-    setNodes(prev => prev.map(node => node.kind === "output" ? {
-      ...node,
-      title: joinNode.title,
-      subtitle: `${joined.rows.length} rows`,
-      rows: joined.rows,
-      columns: joined.columns,
-    } : node).concat(joinNode));
+    setNodes(prev => prev.concat(joinNode));
     setConnections(prev => dedupeConnections([
       ...prev,
       { from: fromId, to: id },
       ...(second ? [{ from: second.id, to: id }] : []),
-      ...(output ? [{ from: id, to: output.id }] : []),
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
@@ -275,18 +253,10 @@ export default function PipelineBuilderPage() {
       rows,
       columns: allColumns,
     };
-    const output = nodes.find(node => node.kind === "output");
-    setNodes(prev => prev.map(node => node.kind === "output" ? {
-      ...node,
-      title: "Union data",
-      subtitle: `${rows.length} rows`,
-      rows,
-      columns: allColumns,
-    } : node).concat(unionNode));
+    setNodes(prev => prev.concat(unionNode));
     setConnections(prev => dedupeConnections([
       ...prev,
       ...groupedSources.map(node => ({ from: node.id, to: id })),
-      ...(output ? [{ from: id, to: output.id }] : []),
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
@@ -309,7 +279,10 @@ export default function PipelineBuilderPage() {
       rows: source.rows,
       columns: source.columns,
     } : node));
-    setConnections(prev => dedupeConnections([...prev, { from: fromId, to: output.id }]));
+    setConnections(prev => dedupeConnections([
+      ...prev.filter(connection => connection.to !== output.id),
+      { from: fromId, to: output.id },
+    ]));
     setSelectedNodeId(output.id);
     setActionMenu(null);
   }
@@ -527,7 +500,7 @@ function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onO
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onNewDataset} />
-      <ActionItem icon={<Database size={18} />} label="New object type" tone="#cc8a00" onClick={onOutput} />
+      <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<Pencil size={18} />} label="Edit" tone={CT.inkMuted} onClick={onEdit} />
     </div>
