@@ -34,7 +34,6 @@ const AgentPanel = lazy(() => import("@/components/AgentPanel"));
 const StokDurum = lazy(() => import("@/pages/stok-durum"));
 const UrunIstihbarat = lazy(() => import("@/pages/urun-istihbarat"));
 const AdminPage = lazy(() => import("@/pages/admin/index"));
-const PalantirPage = lazy(() => import("@/pages/palantir"));
 const LineAgePage = lazy(() => import("@/pages/ontology"));
 const BhOntologyPage = lazy(() => import("@/pages/bh-ontology"));
 const OntologySimulatePage = lazy(() => import("@/pages/ontology-simulate"));
@@ -115,7 +114,6 @@ function App() {
             <Route path="/home" component={Home} />
             <Route path="/stok/durum" component={StokDurum} />
             <Route path="/stok/urun/:sku" component={UrunIstihbarat} />
-            <Route path="/sihir" component={PalantirPage} />
             <Route path="/lineage" component={LineAgePage} />
             <Route path="/ontology" component={StrategyCanvasGuarded} />
             <Route path="/ontology/bh" component={BhOntologyRoute} />
