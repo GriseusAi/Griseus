@@ -116,7 +116,7 @@ export default function PipelineBuilderPage() {
     try {
       setError(null);
       const [dataset] = await parseWorkbookFile(file);
-      setNodes(prev => prev.map(node => {
+      setNodes(prev => recalculateGraph(prev.map(node => {
         if (node.id !== nodeId) return node;
         return {
           ...node,
@@ -126,7 +126,7 @@ export default function PipelineBuilderPage() {
           columns: dataset.columns,
           sourceFile: dataset.fileName,
         };
-      }));
+      }), connections));
       setSelectedNodeId(nodeId);
     } catch (err: any) {
       setError(err.message || "Dosya okunamadı");
@@ -147,6 +147,7 @@ export default function PipelineBuilderPage() {
       columns: [],
     }]);
     setSelectedNodeId(id);
+    setActionMenu(null);
   }
 
   function openPortMenu(nodeId: string, side: PortSide) {
@@ -211,7 +212,7 @@ export default function PipelineBuilderPage() {
 
     setSelectedNodeId(transformId);
     setActionMenu(null);
-    setError(cleaned.rows.length === 0 ? "Transform çalıştı ama kaynakta temizlenecek satır yok" : null);
+    setError(cleaned.rows.length === 0 ? "Transform node'u hazır. Data kutusuna dosya yüklenince clean data buraya akacak." : null);
     void transformIndex;
   }
 
@@ -254,8 +255,9 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
     const siblings = nodes.filter(node => node.kind === "dataset" && node.rows.length > 0);
-    const allColumns = Array.from(new Set(siblings.flatMap(node => node.columns)));
-    const rows = siblings.flatMap(node => node.rows.map(row => Object.fromEntries(allColumns.map(col => [col, row[col] ?? ""]))));
+    const groupedSources = siblings.length > 0 ? siblings : nodes.filter(node => node.kind === "dataset");
+    const allColumns = Array.from(new Set(groupedSources.flatMap(node => node.columns)));
+    const rows = groupedSources.flatMap(node => node.rows.map(row => Object.fromEntries(allColumns.map(col => [col, row[col] ?? ""]))));
     const id = `union-${Date.now()}`;
     const unionNode: PipelineNode = {
       id,
@@ -277,11 +279,17 @@ export default function PipelineBuilderPage() {
     } : node).concat(unionNode));
     setConnections(prev => dedupeConnections([
       ...prev,
-      ...siblings.map(node => ({ from: node.id, to: id })),
+      ...groupedSources.map(node => ({ from: node.id, to: id })),
       ...(output ? [{ from: id, to: output.id }] : []),
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
+  }
+
+  function editNodeData(nodeId: string) {
+    setSelectedNodeId(nodeId);
+    setActionMenu(null);
+    setError("Edit modu: alttaki Data preview üzerinden dosya yükleyip datayı yenileyebilirsin.");
   }
 
   function createOutputFrom(fromId: string) {
@@ -358,7 +366,6 @@ export default function PipelineBuilderPage() {
             {actionMenu && (
               <NodeActionMenu
                 state={actionMenu}
-                canEdit={Boolean(nodes.find(node => node.id === actionMenu.nodeId)?.rows.length)}
                 onTransform={() => createTransform(actionMenu.nodeId)}
                 onJoin={() => createJoin(actionMenu.nodeId)}
                 onUnion={() => createUnion(actionMenu.nodeId)}
@@ -367,6 +374,7 @@ export default function PipelineBuilderPage() {
                   setActionMenu(null);
                 }}
                 onOutput={() => createOutputFrom(actionMenu.nodeId)}
+                onEdit={() => editNodeData(actionMenu.nodeId)}
               />
             )}
           </div>
@@ -497,25 +505,25 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
   );
 }
 
-function NodeActionMenu({ state, canEdit, onTransform, onJoin, onUnion, onNewDataset, onOutput }: {
+function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onOutput, onEdit }: {
   state: NonNullable<ActionMenuState>;
-  canEdit: boolean;
   onTransform: () => void;
   onJoin: () => void;
   onUnion: () => void;
   onNewDataset: () => void;
   onOutput: () => void;
+  onEdit: () => void;
 }) {
   return (
     <div style={{ ...actionMenuStyle, left: state.x, top: state.y }}>
-      <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} disabled={!canEdit} />
-      <ActionItem icon={<Layers3 size={18} />} label="Join" tone="#7b61d1" onClick={onJoin} disabled={!canEdit} />
-      <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} disabled={!canEdit} />
+      <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
+      <ActionItem icon={<Layers3 size={18} />} label="Join" tone="#7b61d1" onClick={onJoin} />
+      <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <div style={actionDividerStyle} />
-      <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onOutput} disabled={!canEdit} />
-      <ActionItem icon={<Database size={18} />} label="New object type" tone="#cc8a00" onClick={onNewDataset} />
+      <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onNewDataset} />
+      <ActionItem icon={<Database size={18} />} label="New object type" tone="#cc8a00" onClick={onOutput} />
       <div style={actionDividerStyle} />
-      <ActionItem icon={<Pencil size={18} />} label="Edit" tone={CT.inkMuted} onClick={onTransform} disabled={!canEdit} />
+      <ActionItem icon={<Pencil size={18} />} label="Edit" tone={CT.inkMuted} onClick={onEdit} />
     </div>
   );
 }
@@ -683,6 +691,68 @@ function cleanRows(rows: Array<Record<string, any>>) {
 
   const columns = collectColumns(cleanedRows);
   return { rows: cleanedRows, columns };
+}
+
+function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[]) {
+  const next = [...nodes];
+
+  for (let pass = 0; pass < 3; pass++) {
+    const byId = new Map(next.map(node => [node.id, node]));
+    for (let i = 0; i < next.length; i++) {
+      const node = next[i];
+      if (node.kind === "dataset") continue;
+
+      const inputNodes = connections
+        .filter(connection => connection.to === node.id)
+        .map(connection => byId.get(connection.from))
+        .filter((input): input is PipelineNode => Boolean(input));
+
+      if (inputNodes.length === 0) continue;
+
+      if (node.kind === "transform") {
+        const source = inputNodes[0];
+        const cleaned = cleanRows(source.rows);
+        next[i] = {
+          ...node,
+          title: `${source.title} - Clean`,
+          subtitle: source.rows.length > 0 ? `${cleaned.columns.length} columns` : "Data bekleniyor",
+          rows: cleaned.rows,
+          columns: cleaned.columns,
+          sourceFile: source.sourceFile,
+        };
+      } else if (node.kind === "join") {
+        const [left, right] = inputNodes;
+        const joined = right ? joinRows(left, right) : { rows: left.rows, columns: left.columns };
+        next[i] = {
+          ...node,
+          title: right ? `Join ${left.title}` : "Join",
+          subtitle: right ? `${joined.columns.length} columns` : "İkinci dataset bekleniyor",
+          rows: joined.rows,
+          columns: joined.columns,
+        };
+      } else if (node.kind === "union") {
+        const columns = Array.from(new Set(inputNodes.flatMap(input => input.columns)));
+        const rows = inputNodes.flatMap(input => input.rows.map(row => Object.fromEntries(columns.map(col => [col, row[col] ?? ""]))));
+        next[i] = {
+          ...node,
+          subtitle: inputNodes.some(input => input.rows.length > 0) ? `${rows.length} rows` : "Data bekleniyor",
+          rows,
+          columns,
+        };
+      } else if (node.kind === "output") {
+        const source = inputNodes[inputNodes.length - 1];
+        next[i] = {
+          ...node,
+          title: `${source.title} data`,
+          subtitle: `${source.rows.length} rows`,
+          rows: source.rows,
+          columns: source.columns,
+        };
+      }
+    }
+  }
+
+  return next;
 }
 
 function normalizeCleanColumn(key: string) {
