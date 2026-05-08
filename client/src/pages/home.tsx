@@ -3,7 +3,7 @@ import type { ReactNode } from "react";
 import TopNav from "@/components/top-nav";
 import { useSKU } from "@/lib/sku-context";
 import { CT, CT_FONT } from "@/lib/claude-theme";
-import { BarChart3, Braces, Factory, GitBranch, Network, UploadCloud } from "lucide-react";
+import { BarChart3, Factory, GitBranch, Network, UploadCloud } from "lucide-react";
 import { useIsMobile } from "@/hooks/use-mobile";
 
 type Tile = {
@@ -21,7 +21,6 @@ export default function Home() {
   const tiles: Tile[] = [
     { label: "Stok Durumu", icon: <Factory size={20} />, path: "/stok/durum", tagline: "Tüm bileşenlerin canlı stok ve durum paneli" },
     { label: "Ürün İstihbaratı", icon: <BarChart3 size={20} />, path: `/stok/urun/${selectedSku}`, tagline: "SKU bazlı derin analiz ve üretim zekası" },
-    { label: "Ontology Manager", icon: <Braces size={20} />, path: "/ontology/manager", tagline: "BOM, müşteri ve senaryo semantic layer yönetimi" },
     { label: "Sihir", icon: <Network size={20} />, path: "/sihir", tagline: "Palantir-seviye ontology deneyimi" },
     { label: "Veri Yükle", icon: <UploadCloud size={20} />, path: "/veri-yukle", tagline: "ERP/Excel import ve cihaz onboarding" },
     { label: "Pipeline Builder", icon: <GitBranch size={20} />, path: "/pipeline-builder", tagline: "Input, transform, preview ve deploy akışı" },

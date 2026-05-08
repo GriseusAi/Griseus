@@ -38,7 +38,6 @@ const PalantirPage = lazy(() => import("@/pages/palantir"));
 const LineAgePage = lazy(() => import("@/pages/ontology"));
 const BhOntologyPage = lazy(() => import("@/pages/bh-ontology"));
 const OntologySimulatePage = lazy(() => import("@/pages/ontology-simulate"));
-const OntologyManagerPage = lazy(() => import("@/pages/ontology-manager"));
 const VeriYukle = lazy(() => import("@/pages/veri-yukle"));
 const PipelineRunsPage = lazy(() => import("@/pages/pipeline-runs"));
 const PipelineBuilderPage = lazy(() => import("@/pages/pipeline-builder"));
@@ -119,7 +118,6 @@ function App() {
             <Route path="/sihir" component={PalantirPage} />
             <Route path="/lineage" component={LineAgePage} />
             <Route path="/ontology" component={StrategyCanvasGuarded} />
-            <Route path="/ontology/manager" component={OntologyManagerPage} />
             <Route path="/ontology/bh" component={BhOntologyRoute} />
             <Route path="/ontology/simulate" component={OntologySimulatePage} />
             <Route path="/ontology/senaryo"><Redirect to="/ontology" /></Route>
