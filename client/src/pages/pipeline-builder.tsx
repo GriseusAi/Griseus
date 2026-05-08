@@ -13,10 +13,12 @@ import {
   Layers3,
   Pencil,
   Plus,
+  RotateCcw,
   Save,
   Search,
   Sparkles,
   Table2,
+  Trash2,
   UploadCloud,
 } from "lucide-react";
 
@@ -101,6 +103,8 @@ export default function PipelineBuilderPage() {
   const deliverableNode = getDeliverableNode(nodes, connections, selectedNodeId);
   const datasetCount = nodes.filter(node => node.kind === "dataset").length;
   const transformCount = nodes.filter(node => node.kind === "transform").length;
+  const canUndo = history.length > 0;
+  const canDelete = Boolean(selectedNode);
 
   const renderedEdges = useMemo(() => {
     const byId = new Map(nodes.map(node => [node.id, node]));
@@ -400,6 +404,26 @@ export default function PipelineBuilderPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button type="button" onClick={addDataset} style={toolbarButtonStyle}>
             <Plus size={14} /> Add dataset
+          </button>
+          <button
+            type="button"
+            aria-label="Undo"
+            title="Undo"
+            onClick={restorePreviousGraph}
+            disabled={!canUndo}
+            style={iconToolbarButtonStyle(!canUndo)}
+          >
+            <RotateCcw size={15} />
+          </button>
+          <button
+            type="button"
+            aria-label="Delete"
+            title="Delete"
+            onClick={deleteSelectedNode}
+            disabled={!canDelete}
+            style={iconToolbarButtonStyle(!canDelete)}
+          >
+            <Trash2 size={15} />
           </button>
           <button type="button" style={toolbarButtonStyle}>
             <Save size={14} /> Save
@@ -1309,6 +1333,18 @@ const toolbarButtonStyle: CSSProperties = {
   fontFamily: CT_FONT,
   cursor: "pointer",
 };
+
+function iconToolbarButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    ...toolbarButtonStyle,
+    width: 32,
+    justifyContent: "center",
+    padding: 0,
+    color: disabled ? CT.inkFaint : CT.inkSub,
+    opacity: disabled ? 0.48 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
 
 const deployButtonStyle: CSSProperties = {
   ...toolbarButtonStyle,
