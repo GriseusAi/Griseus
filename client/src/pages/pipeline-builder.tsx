@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
+import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 import {
@@ -16,6 +17,8 @@ import {
   Search,
   Settings2,
   Table2,
+  UploadCloud,
+  X,
   Wand2,
 } from "lucide-react";
 
@@ -53,6 +56,12 @@ type RunResult = {
   rows: Array<Record<string, any>>;
 };
 
+type UploadedDataset = {
+  fileName: string;
+  columns: string[];
+  rows: Array<Record<string, any>>;
+};
+
 const defaultSources: SourceId[] = ["recipe", "component_stock", "finished_stock", "sales_average"];
 
 const sourceTone: Record<SourceId, { color: string; bg: string; icon: JSX.Element }> = {
@@ -85,6 +94,7 @@ export default function PipelineBuilderPage() {
   const [enabledSources, setEnabledSources] = useState<SourceId[]>(defaultSources);
   const [result, setResult] = useState<RunResult | null>(null);
   const [selectedNode, setSelectedNode] = useState<SourceId | "output">("recipe");
+  const [uploadedData, setUploadedData] = useState<Partial<Record<SourceId, UploadedDataset>>>({});
   const [loading, setLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -116,10 +126,13 @@ export default function PipelineBuilderPage() {
     setLoading(true);
     setError(null);
     try {
+      const customData = Object.fromEntries(
+        Object.entries(uploadedData).map(([sourceId, dataset]) => [sourceId, dataset?.rows ?? []]),
+      );
       const response = await fetch("/api/pipeline-builder/run", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ sku: selectedSku, sources: enabledSources }),
+        body: JSON.stringify({ sku: selectedSku, sources: enabledSources, customData }),
       });
       const data = await response.json();
       if (!response.ok) throw new Error(data.error || "Pipeline çalıştırılamadı");
@@ -156,9 +169,28 @@ export default function PipelineBuilderPage() {
   }, [result]);
 
   const selectedSource = selectedNode === "output" ? null : sources.find(s => s.id === selectedNode);
+  const selectedDataset = selectedNode === "output" ? undefined : uploadedData[selectedNode];
+  const previewRows = selectedNode === "output" ? (result?.rows ?? []) : (selectedDataset?.rows ?? []);
+  const previewColumns = selectedNode === "output"
+    ? visibleColumns
+    : (selectedDataset?.columns ?? []);
   const selectedDescription = selectedNode === "output"
     ? "Seçilen kaynakların join ve aggregate sonucu: cihaz datası."
-    : selectedSource?.description ?? "Kaynak seç.";
+    : selectedDataset
+      ? `${selectedDataset.fileName} dosyasından ${selectedDataset.rows.length} satır okundu.`
+      : selectedSource?.description ?? "Kaynak seç.";
+
+  async function handleSourceFile(sourceId: SourceId, file: File) {
+    try {
+      setError(null);
+      const dataset = await parseTabularFile(file);
+      setUploadedData(prev => ({ ...prev, [sourceId]: dataset }));
+      setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
+      setSelectedNode(sourceId);
+    } catch (err: any) {
+      setError(err.message || "Dosya okunamadı");
+    }
+  }
 
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
@@ -193,6 +225,7 @@ export default function PipelineBuilderPage() {
         {sources.map(source => {
           const active = enabledSources.includes(source.id);
           const tone = sourceTone[source.id];
+          const uploaded = uploadedData[source.id];
           return (
             <button
               key={source.id}
@@ -209,6 +242,7 @@ export default function PipelineBuilderPage() {
             >
               {tone.icon}
               {source.label}
+              {uploaded && <span style={{ fontSize: 10, fontFamily: CT_MONO }}>({uploaded.rows.length})</span>}
             </button>
           );
         })}
@@ -237,6 +271,7 @@ export default function PipelineBuilderPage() {
                     source={source}
                     enabled={enabled}
                     selected={selectedNode === source.id}
+                    uploadedRows={uploadedData[source.id]?.rows.length ?? 0}
                     left={72}
                     top={92 + index * 78}
                     onClick={() => setSelectedNode(source.id)}
@@ -265,21 +300,33 @@ export default function PipelineBuilderPage() {
             <div style={previewHeaderStyle}>
               <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 650 }}>
                 <Table2 size={15} color={CT.accent} />
-                Cihaz data preview
+                {selectedNode === "output" ? "Cihaz data preview" : `${selectedSource?.label ?? "Kaynak"} verisi`}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 8, color: CT.inkMuted, fontSize: 11 }}>
                 {error ? <AlertTriangle size={14} color={CT.err} /> : <CheckCircle2 size={14} color={CT.ok} />}
-                {error ?? `${result?.rows.length ?? 0} satır üretildi`}
+                {error ?? (selectedNode === "output" ? `${result?.rows.length ?? 0} satır üretildi` : `${previewRows.length} satır okundu`)}
               </div>
             </div>
 
             <div style={{ display: "grid", gridTemplateColumns: "260px 1fr", height: 266 }}>
               <aside style={{ borderRight: `1px solid ${CT.border}`, padding: 12, overflow: "auto" }}>
+                {selectedNode !== "output" && (
+                  <UploadDropzone
+                    sourceId={selectedNode}
+                    dataset={selectedDataset}
+                    onFile={handleSourceFile}
+                    onClear={(sourceId) => setUploadedData(prev => {
+                      const next = { ...prev };
+                      delete next[sourceId];
+                      return next;
+                    })}
+                  />
+                )}
                 <div style={searchBoxStyle}>
                   <Search size={14} color={CT.inkMuted} />
                   <span style={{ color: CT.inkMuted, fontSize: 12 }}>Kolon ara...</span>
                 </div>
-                {visibleColumns.map(col => (
+                {previewColumns.map(col => (
                   <div key={col} style={columnRowStyle}>
                     <span>{columnLabels[col] ?? col}</span>
                     <Settings2 size={12} color={CT.inkMuted} />
@@ -289,17 +336,22 @@ export default function PipelineBuilderPage() {
 
               <div style={{ overflow: "auto" }}>
                 {loading && <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>Pipeline çalışıyor...</div>}
-                {!loading && result && (
+                {!loading && selectedNode !== "output" && !selectedDataset && (
+                  <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
+                    Bu input kutusuna CSV, XLSX veya JSON sürükle. Kolonlar otomatik okunacak.
+                  </div>
+                )}
+                {!loading && previewRows.length > 0 && (
                   <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                     <thead>
                       <tr>
-                        {visibleColumns.map(col => <th key={col} style={thStyle}>{columnLabels[col] ?? col}</th>)}
+                        {previewColumns.map(col => <th key={col} style={thStyle}>{columnLabels[col] ?? col}</th>)}
                       </tr>
                     </thead>
                     <tbody>
-                      {result.rows.slice(0, 100).map((row, idx) => (
+                      {previewRows.slice(0, 100).map((row, idx) => (
                         <tr key={idx}>
-                          {visibleColumns.map(col => <td key={`${idx}-${col}`} style={tdStyle}>{formatCell(row[col])}</td>)}
+                          {previewColumns.map(col => <td key={`${idx}-${col}`} style={tdStyle}>{formatCell(row[col])}</td>)}
                         </tr>
                       ))}
                     </tbody>
@@ -353,10 +405,11 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function SourceNode({ source, enabled, selected, left, top, onClick }: {
+function SourceNode({ source, enabled, selected, uploadedRows, left, top, onClick }: {
   source: SourceDef;
   enabled: boolean;
   selected: boolean;
+  uploadedRows: number;
   left: number;
   top: number;
   onClick: () => void;
@@ -374,7 +427,10 @@ function SourceNode({ source, enabled, selected, left, top, onClick }: {
         <span style={{ color: tone.color, display: "inline-flex" }}>{tone.icon}</span>
         <span style={{ fontWeight: 700 }}>{source.label}</span>
       </div>
-      <div style={nodeMetaStyle}>{source.primaryKey}</div>
+      <div style={{ ...nodeMetaStyle, display: "flex", justifyContent: "space-between", gap: 8 }}>
+        <span>{source.primaryKey}</span>
+        {uploadedRows > 0 && <span style={{ color: tone.color, fontFamily: CT_MONO }}>{uploadedRows}</span>}
+      </div>
     </button>
   );
 }
@@ -416,6 +472,71 @@ function OutputNode({ left, top, selected, count, onClick }: {
   );
 }
 
+function UploadDropzone({ sourceId, dataset, onFile, onClear }: {
+  sourceId: SourceId;
+  dataset: UploadedDataset | undefined;
+  onFile: (sourceId: SourceId, file: File) => void;
+  onClear: (sourceId: SourceId) => void;
+}) {
+  const inputId = `pipeline-upload-${sourceId}`;
+  return (
+    <label
+      htmlFor={inputId}
+      onDragOver={(event) => event.preventDefault()}
+      onDrop={(event) => {
+        event.preventDefault();
+        const file = event.dataTransfer.files?.[0];
+        if (file) onFile(sourceId, file);
+      }}
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        gap: 7,
+        border: `1px dashed ${dataset ? CT.ok : CT.accentEdge}`,
+        borderRadius: 8,
+        background: dataset ? CT.okSoft : CT.accentSoft,
+        padding: 10,
+        marginBottom: 10,
+        cursor: "pointer",
+      }}
+    >
+      <input
+        id={inputId}
+        type="file"
+        accept=".csv,.tsv,.xlsx,.xls,.json"
+        style={{ display: "none" }}
+        onChange={(event) => {
+          const file = event.currentTarget.files?.[0];
+          if (file) onFile(sourceId, file);
+          event.currentTarget.value = "";
+        }}
+      />
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 8 }}>
+        <span style={{ display: "flex", alignItems: "center", gap: 7, fontSize: 12, fontWeight: 700, color: dataset ? CT.ok : CT.accent }}>
+          <UploadCloud size={15} />
+          {dataset ? "Yüklü veri" : "Veri yükle"}
+        </span>
+        {dataset && (
+          <button
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              onClear(sourceId);
+            }}
+            style={{ border: 0, background: "transparent", color: CT.inkMuted, cursor: "pointer", display: "inline-flex" }}
+            title="Veriyi kaldır"
+          >
+            <X size={14} />
+          </button>
+        )}
+      </div>
+      <div style={{ fontSize: 10.5, lineHeight: 1.4, color: CT.inkSub }}>
+        {dataset ? `${dataset.fileName} - ${dataset.rows.length} satır, ${dataset.columns.length} kolon` : "CSV, XLSX veya JSON sürükle-bırak"}
+      </div>
+    </label>
+  );
+}
+
 function EdgeLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
   const mid = (x1 + x2) / 2;
   return (
@@ -447,6 +568,103 @@ function StageLabel({ text, left, top, width, height }: { text: string; left: nu
       {text}
     </div>
   );
+}
+
+async function parseTabularFile(file: File): Promise<UploadedDataset> {
+  const ext = file.name.split(".").pop()?.toLowerCase();
+  let rows: Array<Record<string, any>> = [];
+
+  if (ext === "xlsx" || ext === "xls") {
+    const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+  } else if (ext === "json") {
+    const parsed = JSON.parse(await file.text());
+    rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed.rows) ? parsed.rows : [parsed];
+  } else {
+    rows = parseDelimited(await file.text(), ext === "tsv" ? "\t" : undefined);
+  }
+
+  rows = rows.map(row => normalizeParsedRow(row)).filter(row => Object.values(row).some(value => value !== ""));
+  const columns = Array.from(rows.reduce<Set<string>>((set, row) => {
+    Object.keys(row).forEach(key => set.add(key));
+    return set;
+  }, new Set<string>()));
+
+  if (rows.length === 0 || columns.length === 0) {
+    throw new Error("Dosyada okunabilir tablo verisi bulunamadı");
+  }
+
+  return { fileName: file.name, columns, rows };
+}
+
+function parseDelimited(text: string, forcedDelimiter?: string): Array<Record<string, any>> {
+  const lines = text.split(/\r?\n/).filter(line => line.trim().length > 0);
+  if (lines.length === 0) return [];
+  const delimiter = forcedDelimiter ?? detectDelimiter(lines[0]);
+  const headers = splitDelimitedLine(lines[0], delimiter).map((header, index) => normalizeColumnName(header || `column_${index + 1}`));
+
+  return lines.slice(1).map(line => {
+    const cells = splitDelimitedLine(line, delimiter);
+    return Object.fromEntries(headers.map((header, index) => [header, coerceCell(cells[index] ?? "")]));
+  });
+}
+
+function detectDelimiter(headerLine: string) {
+  const candidates = [",", ";", "\t", "|"];
+  return candidates
+    .map(delimiter => ({ delimiter, count: splitDelimitedLine(headerLine, delimiter).length }))
+    .sort((a, b) => b.count - a.count)[0]?.delimiter ?? ",";
+}
+
+function splitDelimitedLine(line: string, delimiter: string) {
+  const cells: string[] = [];
+  let current = "";
+  let inQuotes = false;
+  for (let i = 0; i < line.length; i++) {
+    const char = line[i];
+    const next = line[i + 1];
+    if (char === '"' && next === '"') {
+      current += '"';
+      i++;
+    } else if (char === '"') {
+      inQuotes = !inQuotes;
+    } else if (char === delimiter && !inQuotes) {
+      cells.push(current.trim());
+      current = "";
+    } else {
+      current += char;
+    }
+  }
+  cells.push(current.trim());
+  return cells;
+}
+
+function normalizeParsedRow(row: Record<string, any>) {
+  return Object.fromEntries(Object.entries(row).map(([key, value], index) => [
+    normalizeColumnName(key || `column_${index + 1}`),
+    coerceCell(value),
+  ]));
+}
+
+function normalizeColumnName(key: string) {
+  return key
+    .trim()
+    .replace(/\s+/g, "_")
+    .replace(/[^\wğüşöçıİĞÜŞÖÇ.-]+/g, "_")
+    .replace(/^_+|_+$/g, "") || "column";
+}
+
+function coerceCell(value: any) {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "number") return value;
+  const raw = String(value).trim();
+  if (raw === "") return "";
+  const normalizedNumber = raw.replace(/\./g, "").replace(",", ".");
+  if (/^-?\d+([,.]\d+)?$/.test(raw) && Number.isFinite(Number(normalizedNumber))) {
+    return Number(normalizedNumber);
+  }
+  return raw;
 }
 
 function Metric({ label, value, tone = CT.ink, compact = false }: { label: string; value: string | number; tone?: string; compact?: boolean }) {
