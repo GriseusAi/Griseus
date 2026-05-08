@@ -66,6 +66,30 @@ type DatasetProfile = {
   productFamily?: string;
 };
 
+type ImportPlanAction = {
+  id: string;
+  label: string;
+  targetTable: "bom_items" | "component_stock" | "sales_history" | "manual_review";
+  mode: "replace" | "upsert" | "review";
+  endpoint?: string;
+  scope?: string;
+  rowCount: number;
+  confidence: number;
+  warnings: string[];
+  errors: string[];
+  sample: Array<Record<string, any>>;
+};
+
+type ImportPlan = {
+  id: string;
+  sourceNodeTitle: string;
+  totalRows: number;
+  actions: ImportPlanAction[];
+  warnings: string[];
+  errors: string[];
+  createdAt: string;
+};
+
 type ActionMenuState = {
   nodeId: string;
   x: number;
@@ -106,6 +130,7 @@ export default function PipelineBuilderPage() {
   const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
   const [history, setHistory] = useState<GraphSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
+  const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -116,6 +141,7 @@ export default function PipelineBuilderPage() {
   const transformCount = nodes.filter(node => node.kind === "transform").length;
   const canUndo = history.length > 0;
   const canDelete = Boolean(selectedNode);
+  const canDeliver = Boolean(outputNode && outputNode.rows.length > 0);
 
   const renderedEdges = useMemo(() => {
     const byId = new Map(nodes.map(node => [node.id, node]));
@@ -209,6 +235,7 @@ export default function PipelineBuilderPage() {
   async function handleNodeFile(nodeId: string, file: File) {
     try {
       setError(null);
+      setImportPlan(null);
       const [dataset] = await parseWorkbookFile(file);
       pushHistory();
       setNodes(prev => recalculateGraph(prev.map(node => {
@@ -245,6 +272,17 @@ export default function PipelineBuilderPage() {
     setSelectedNodeId(id);
     setActionMenu(null);
     setPendingConnection(null);
+  }
+
+  function deliverOutput() {
+    if (!outputNode || outputNode.rows.length === 0) {
+      setError("Deliver için önce Output node oluştur ve içinde data olduğundan emin ol.");
+      return;
+    }
+    const plan = buildImportPlan(outputNode);
+    setImportPlan(plan);
+    setSelectedNodeId(outputNode.id);
+    setError(plan.errors.length > 0 ? `Import plan ${plan.errors.length} kritik hata ile üretildi.` : `Import plan hazır: ${plan.actions.length} aksiyon.`);
   }
 
   function openPortMenu(nodeId: string, side: PortSide) {
@@ -440,7 +478,7 @@ export default function PipelineBuilderPage() {
           <button type="button" style={toolbarButtonStyle}>
             <Save size={14} /> Save
           </button>
-          <button type="button" style={deployButtonStyle}>
+          <button type="button" onClick={deliverOutput} disabled={!canDeliver} style={deployButtonStyle(!canDeliver)}>
             <ArrowDownToLine size={14} /> Deliver
           </button>
         </div>
@@ -506,6 +544,9 @@ export default function PipelineBuilderPage() {
                 {nodeIcon(selectedNode?.kind ?? "dataset", 14)}
                 <span>{selectedNode?.title ?? "Dataset"}</span>
               </div>
+              {importPlan && (
+                <ImportPlanPanel plan={importPlan} />
+              )}
               <div style={searchBoxStyle}>
                 <Search size={14} color={CT.inkMuted} />
                 <span style={{ color: CT.inkMuted, fontSize: 12 }}>Search {previewColumns.length} columns...</span>
@@ -551,6 +592,7 @@ export default function PipelineBuilderPage() {
         <Metric label="Datasets" value={datasetCount} />
         <Metric label="Transforms" value={transformCount} />
         <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
+        <Metric label="Import actions" value={importPlan?.actions.length ?? 0} />
       </aside>
     </div>
   );
@@ -949,6 +991,152 @@ function normalizeSalesDataset(rows: Array<Record<string, any>>, columns: string
     });
   });
   return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
+}
+
+function buildImportPlan(outputNode: PipelineNode): ImportPlan {
+  const rows = outputNode.rows;
+  const actions: ImportPlanAction[] = [];
+  const rowKey = (row: Record<string, any>) => `${row.dataset_type ?? ""}:${row.row_type ?? ""}:${row.product_sku ?? ""}:${row.component_code ?? ""}:${row.month ?? ""}`;
+  const consumed = new Set<string>();
+
+  const recipeRows = rows.filter(row => row.dataset_type === "recipe" && row.row_type === "component" && row.component_code);
+  const recipeGroups = groupRowsBy(recipeRows, row => normalizeIdentifier(row.product_sku) || "UNKNOWN");
+  recipeGroups.forEach((groupRows, sku) => {
+    groupRows.forEach(row => consumed.add(rowKey(row)));
+    const warnings = [
+      groupRows.some(row => toNumberOrNull(row.quantity) === null) ? "Bazı reçete satırlarında miktar eksik." : "",
+      groupRows.some(row => !trimText(row.unit)) ? "Bazı reçete satırlarında birim eksik." : "",
+    ].filter(Boolean);
+    const errors = sku === "UNKNOWN" ? ["Ürün SKU okunamadı, BOM yazımı kilitlendi."] : [];
+    actions.push({
+      id: `bom-${sku}`,
+      label: `BOM reçete: ${sku}`,
+      targetTable: "bom_items",
+      mode: "replace",
+      endpoint: "/api/import/bulk/bom",
+      scope: sku,
+      rowCount: groupRows.length,
+      confidence: averageConfidence(groupRows),
+      warnings,
+      errors,
+      sample: groupRows.slice(0, 3).map(row => ({
+        code: row.component_code,
+        name: row.component_name,
+        qty: row.quantity,
+        unit: row.unit,
+        tier: row.tier,
+        parentCode: row.parent_component_code,
+      })),
+    });
+  });
+
+  const stockRows = rows.filter(row => {
+    if (!row.component_code) return false;
+    if (row.dataset_type === "stock" && toNumberOrNull(row.current_stock) !== null) return true;
+    if (row.dataset_type === "recipe" && toNumberOrNull(row.stock_level) !== null) return true;
+    return false;
+  });
+  const uniqueStockRows = uniqueRowsBy(stockRows, row => normalizeIdentifier(row.component_code));
+  uniqueStockRows.forEach(row => consumed.add(rowKey(row)));
+  if (uniqueStockRows.length > 0) {
+    actions.push({
+      id: "component-stock",
+      label: "Bileşen stok havuzu",
+      targetTable: "component_stock",
+      mode: "upsert",
+      endpoint: "/api/import/bulk/stock",
+      rowCount: uniqueStockRows.length,
+      confidence: averageConfidence(uniqueStockRows),
+      warnings: uniqueStockRows.some(row => !trimText(row.unit)) ? ["Birim gelmeyen stok satırları AD varsayımı isteyebilir."] : [],
+      errors: [],
+      sample: uniqueStockRows.slice(0, 3).map(row => ({
+        code: row.component_code,
+        name: row.component_name,
+        stock: toNumberOrNull(row.current_stock) ?? toNumberOrNull(row.stock_level),
+        unit: row.unit ?? "AD",
+      })),
+    });
+  }
+
+  const salesRows = rows.filter(row => (
+    row.dataset_type === "sales"
+    && row.product_sku
+    && toNumberOrNull(row.month) !== null
+    && toNumberOrNull(row.quantity_sold) !== null
+  ));
+  const salesGroups = groupRowsBy(salesRows, row => normalizeIdentifier(row.product_sku) || "UNKNOWN");
+  salesGroups.forEach((groupRows, sku) => {
+    groupRows.forEach(row => consumed.add(rowKey(row)));
+    actions.push({
+      id: `sales-${sku}`,
+      label: `Satış geçmişi: ${sku}`,
+      targetTable: "sales_history",
+      mode: "upsert",
+      endpoint: "/api/import/bulk/sales",
+      scope: sku,
+      rowCount: groupRows.length,
+      confidence: averageConfidence(groupRows),
+      warnings: groupRows.some(row => !row.year) ? ["Yıl kolonu yoksa import anındaki yıl varsayılır."] : [],
+      errors: sku === "UNKNOWN" ? ["Satış datasında SKU okunamadı."] : [],
+      sample: groupRows.slice(0, 3).map(row => ({
+        sku,
+        year: row.year ?? new Date().getFullYear(),
+        month: row.month,
+        qty: row.quantity_sold,
+      })),
+    });
+  });
+
+  const unknownRows = rows.filter(row => !consumed.has(rowKey(row)));
+  if (unknownRows.length > 0) {
+    actions.push({
+      id: "manual-review",
+      label: "Manuel eşleme gerekir",
+      targetTable: "manual_review",
+      mode: "review",
+      rowCount: unknownRows.length,
+      confidence: Math.min(averageConfidence(unknownRows), 0.4),
+      warnings: ["Bu satırlar otomatik olarak BOM/stok/satış şemasına bağlanamadı."],
+      errors: [],
+      sample: unknownRows.slice(0, 3),
+    });
+  }
+
+  const errors = actions.flatMap(action => action.errors);
+  const warnings = actions.flatMap(action => action.warnings);
+  return {
+    id: `import-plan-${Date.now()}`,
+    sourceNodeTitle: outputNode.title,
+    totalRows: rows.length,
+    actions,
+    warnings,
+    errors,
+    createdAt: new Date().toISOString(),
+  };
+}
+
+function groupRowsBy(rows: Array<Record<string, any>>, keyFor: (row: Record<string, any>) => string) {
+  return rows.reduce<Map<string, Array<Record<string, any>>>>((groups, row) => {
+    const key = keyFor(row);
+    groups.set(key, [...(groups.get(key) ?? []), row]);
+    return groups;
+  }, new Map());
+}
+
+function uniqueRowsBy(rows: Array<Record<string, any>>, keyFor: (row: Record<string, any>) => string) {
+  const seen = new Set<string>();
+  return rows.filter(row => {
+    const key = keyFor(row);
+    if (!key || seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+}
+
+function averageConfidence(rows: Array<Record<string, any>>) {
+  if (rows.length === 0) return 0;
+  const total = rows.reduce((sum, row) => sum + (toNumberOrNull(row.source_confidence) ?? 0.5), 0);
+  return Math.max(0, Math.min(1, total / rows.length));
 }
 
 function buildAliasMap(rows: Array<Record<string, any>>) {
@@ -1399,6 +1587,33 @@ function Metric({ label, value }: { label: string; value: string | number }) {
   );
 }
 
+function ImportPlanPanel({ plan }: { plan: ImportPlan }) {
+  return (
+    <div style={importPlanPanelStyle}>
+      <div style={{ fontSize: 11, fontWeight: 800, color: CT.ink, marginBottom: 8 }}>Import plan</div>
+      <div style={{ display: "grid", gap: 8 }}>
+        {plan.actions.map(action => (
+          <div key={action.id} style={importPlanActionStyle}>
+            <div style={{ display: "flex", justifyContent: "space-between", gap: 8, alignItems: "center" }}>
+              <span style={{ fontSize: 11, fontWeight: 800, color: CT.ink }}>{action.label}</span>
+              <span style={{ fontSize: 10, color: action.errors.length > 0 ? CT.err : CT.ok, fontFamily: CT_MONO }}>
+                {Math.round(action.confidence * 100)}%
+              </span>
+            </div>
+            <div style={{ color: CT.inkMuted, fontSize: 10.5, marginTop: 3 }}>
+              {action.mode} {"->"} {action.targetTable} · {action.rowCount} rows
+            </div>
+            {action.endpoint && <div style={{ color: CT.inkFaint, fontSize: 10, fontFamily: CT_MONO, marginTop: 3 }}>{action.endpoint}</div>}
+            {[...action.errors, ...action.warnings].slice(0, 2).map(item => (
+              <div key={item} style={{ color: action.errors.includes(item) ? CT.err : "#a96f00", fontSize: 10.5, marginTop: 4 }}>{item}</div>
+            ))}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 const headerStyle: CSSProperties = {
   height: 46,
   borderBottom: `1px solid ${CT.border}`,
@@ -1437,11 +1652,30 @@ function iconToolbarButtonStyle(disabled: boolean): CSSProperties {
   };
 }
 
-const deployButtonStyle: CSSProperties = {
-  ...toolbarButtonStyle,
-  color: CT.ok,
-  borderColor: "rgba(63,143,91,0.28)",
-  background: CT.okSoft,
+function deployButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    ...toolbarButtonStyle,
+    color: disabled ? CT.inkFaint : CT.ok,
+    borderColor: disabled ? CT.border : "rgba(63,143,91,0.28)",
+    background: disabled ? "#f2f2ef" : CT.okSoft,
+    opacity: disabled ? 0.54 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
+const importPlanPanelStyle: CSSProperties = {
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  padding: 10,
+  marginBottom: 12,
+  background: "#fffdf7",
+};
+
+const importPlanActionStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  padding: 8,
+  background: CT.surface,
 };
 
 const canvasViewportStyle: CSSProperties = {
