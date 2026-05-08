@@ -704,7 +704,7 @@ function cleanRows(rows: Array<Record<string, any>>) {
   const cleanedRows = rows.map(row => {
     const next: Record<string, any> = {};
     cleanColumnByRaw.forEach((cleanKey, rawKey) => {
-      next[cleanKey] = cleanValue(row[rawKey]);
+      next[cleanKey] = coerceValueForColumn(row[rawKey], cleanKey);
     });
     return next;
   }).filter(row => Object.values(row).some(value => value !== ""));
@@ -748,13 +748,13 @@ function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
   const stockLevelCol = pickAlias(columnsByAlias, ["stok_sevi", "stok_seviyesi", "stock_level"]);
 
   const root = rows.find(row => getCell(row, codeCol));
-  const productSku = trimText(getCell(root, codeCol));
+  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol));
   const productName = trimText(getCell(root, nameCol));
   const stack: Record<number, string> = {};
 
   const normalizedRows = rows.map((row, index): Record<string, any> | null => {
     const rawCode = getRawStockCode(row, codeCol);
-    const code = trimText(getCell(row, codeCol));
+    const code = normalizeIdentifier(rawCode);
     if (!code) return null;
     const sequenceNo = trimText(getCell(row, sequenceCol));
     const rowType = index === 0 || (!sequenceNo && code === productSku) ? "product" : "component";
@@ -790,12 +790,12 @@ function normalizeStockDataset(rows: Array<Record<string, any>>) {
   const balanceCol = pickAlias(columnsByAlias, ["stok_bakiyesi", "stok_bakiye", "current_stock", "stock", "bakiye"]);
 
   const root = rows.find(row => getCell(row, codeCol));
-  const productSku = trimText(getCell(root, codeCol));
+  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol));
   const productName = trimText(getCell(root, nameCol));
 
   const normalizedRows = rows.map((row, index): Record<string, any> | null => {
     const rawCode = getRawStockCode(row, codeCol);
-    const code = trimText(getCell(row, codeCol));
+    const code = normalizeIdentifier(rawCode);
     if (!code) return null;
     const rowType = index === 0 || code === productSku ? "product" : "component";
 
@@ -854,6 +854,11 @@ function trimText(value: any) {
   return String(value).trim().replace(/\s+/g, " ");
 }
 
+function normalizeIdentifier(value: any) {
+  if (value === null || value === undefined) return "";
+  return String(value).trim().replace(/\s+/g, "");
+}
+
 function toNumberOrNull(value: any) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
@@ -861,6 +866,74 @@ function toNumberOrNull(value: any) {
   const normalized = raw.replace(/\./g, "").replace(",", ".");
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
+}
+
+function coerceValueForColumn(value: any, columnName: string) {
+  const normalized = normalizeCleanColumn(columnName);
+  if (isIdentifierColumn(normalized)) return normalizeIdentifier(value);
+  if (isTextColumn(normalized)) return trimText(value);
+  if (isNumericColumn(normalized)) return toNumberOrNull(value) ?? "";
+  return cleanValue(value);
+}
+
+function isIdentifierColumn(columnName: string) {
+  return [
+    "stok_kodu",
+    "stock_code",
+    "component_code",
+    "component_kodu",
+    "komponent_kodu",
+    "product_sku",
+    "cihaz_sku",
+    "sku",
+    "code",
+    "kod",
+  ].includes(columnName);
+}
+
+function isTextColumn(columnName: string) {
+  return [
+    "stok_ismi",
+    "stok_adi",
+    "stock_name",
+    "component_name",
+    "component_adi",
+    "komponent_adi",
+    "product_name",
+    "cihaz_adi",
+    "name",
+    "isim",
+    "br",
+    "birim",
+    "unit",
+  ].includes(columnName);
+}
+
+function isNumericColumn(columnName: string) {
+  return [
+    "miktar",
+    "quantity",
+    "qty",
+    "recete_adedi",
+    "stok_sevi",
+    "stok_seviyesi",
+    "stok_bakiyesi",
+    "stok_bakiye",
+    "stock_level",
+    "current_stock",
+    "stock",
+    "bakiye",
+    "br_maliyet",
+    "birim_maliyet",
+    "unit_cost",
+    "t_maliyet",
+    "toplam_maliyet",
+    "total_cost",
+    "sales",
+    "satis",
+    "quantity_sold",
+    "adet",
+  ].includes(columnName);
 }
 
 function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[]) {
@@ -944,7 +1017,7 @@ function normalizeParsedRow(row: Record<string, any>) {
   const next: Record<string, any> = {};
   Object.entries(row).forEach(([key, value], index) => {
     const normalizedKey = normalizeSourceColumn(key || `column_${index + 1}`);
-    next[normalizedKey] = cleanValue(value);
+    next[normalizedKey] = coerceValueForColumn(value, normalizedKey);
     if (normalizeCleanColumn(normalizedKey) === "stok_kodu") {
       Object.defineProperty(next, "__stockCodeRaw", {
         value: value === null || value === undefined ? "" : String(value),
@@ -987,7 +1060,7 @@ function parseDelimited(text: string, forcedDelimiter?: string): Array<Record<st
     const row: Record<string, any> = {};
     headers.forEach((header, index) => {
       const value = cells[index] ?? "";
-      row[header] = cleanValue(value);
+      row[header] = coerceValueForColumn(value, header);
       if (normalizeCleanColumn(header) === "stok_kodu") {
         Object.defineProperty(row, "__stockCodeRaw", {
           value,
