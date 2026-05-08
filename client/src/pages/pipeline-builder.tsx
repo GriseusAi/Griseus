@@ -23,6 +23,12 @@ import {
 } from "lucide-react";
 
 type SourceId = "recipe" | "component_stock" | "finished_stock" | "sales_average";
+type GraphNodeId = SourceId | "join" | "output";
+
+type GraphConnection = {
+  from: GraphNodeId;
+  to: GraphNodeId;
+};
 
 type SourceDef = {
   id: SourceId;
@@ -73,6 +79,10 @@ type WorkbookImport = {
 };
 
 const defaultSources: SourceId[] = ["recipe", "component_stock", "finished_stock", "sales_average"];
+const defaultConnections: GraphConnection[] = [
+  ...defaultSources.map(sourceId => ({ from: sourceId, to: "join" as const })),
+  { from: "join", to: "output" },
+];
 
 const sourceTone: Record<SourceId, { color: string; bg: string; icon: JSX.Element }> = {
   recipe: { color: CT.accent, bg: CT.accentSoft, icon: <FileCode2 size={15} /> },
@@ -109,6 +119,8 @@ export default function PipelineBuilderPage() {
   const [products, setProducts] = useState<ProductDef[]>([]);
   const [selectedSku, setSelectedSku] = useState("GSS20P");
   const [enabledSources, setEnabledSources] = useState<SourceId[]>(defaultSources);
+  const [connections, setConnections] = useState<GraphConnection[]>(defaultConnections);
+  const [activeConnector, setActiveConnector] = useState<GraphNodeId | null>(null);
   const [result, setResult] = useState<RunResult | null>(null);
   const [selectedNode, setSelectedNode] = useState<SourceId | "output">("recipe");
   const [uploadedData, setUploadedData] = useState<Partial<Record<SourceId, UploadedDataset>>>({});
@@ -163,10 +175,74 @@ export default function PipelineBuilderPage() {
     }
   }
 
+  function isSourceId(nodeId: GraphNodeId): nodeId is SourceId {
+    return nodeId !== "join" && nodeId !== "output";
+  }
+
+  function normalizeConnection(a: GraphNodeId, b: GraphNodeId): GraphConnection | null {
+    if (isSourceId(a) && b === "join") return { from: a, to: b };
+    if (a === "join" && isSourceId(b)) return { from: b, to: a };
+    if (a === "join" && b === "output") return { from: a, to: b };
+    if (a === "output" && b === "join") return { from: b, to: a };
+    return null;
+  }
+
+  function setGraphConnections(updater: (prev: GraphConnection[]) => GraphConnection[]) {
+    setConnections(prev => updater(prev));
+  }
+
+  function toggleSourceConnection(sourceId: SourceId) {
+    setSelectedNode(sourceId);
+    setActiveConnector(null);
+    setGraphConnections(prev => {
+      const exists = prev.some(connection => connection.from === sourceId && connection.to === "join");
+      if (exists) return prev.filter(connection => !(connection.from === sourceId && connection.to === "join"));
+      return [...prev, { from: sourceId, to: "join" }];
+    });
+  }
+
+  function handlePortClick(nodeId: GraphNodeId) {
+    if (!activeConnector) {
+      setActiveConnector(nodeId);
+      if (isSourceId(nodeId)) setSelectedNode(nodeId);
+      if (nodeId === "output") setSelectedNode("output");
+      return;
+    }
+
+    if (activeConnector === nodeId) {
+      setActiveConnector(null);
+      return;
+    }
+
+    const nextConnection = normalizeConnection(activeConnector, nodeId);
+    if (!nextConnection) {
+      setError("Bu iki node doğrudan bağlanamaz");
+      setActiveConnector(nodeId);
+      return;
+    }
+
+    setError(null);
+    setGraphConnections(prev => {
+      const exists = prev.some(connection => connection.from === nextConnection.from && connection.to === nextConnection.to);
+      if (exists) {
+        return prev.filter(connection => !(connection.from === nextConnection.from && connection.to === nextConnection.to));
+      }
+      return [...prev, nextConnection];
+    });
+    setActiveConnector(null);
+  }
+
   useEffect(() => {
     if (!bootLoading && sources.length > 0) runPipeline();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [bootLoading, selectedSku]);
+
+  useEffect(() => {
+    const connectedSources = connections
+      .filter(connection => connection.to === "join" && isSourceId(connection.from))
+      .map(connection => connection.from as SourceId);
+    setEnabledSources(Array.from(new Set(connectedSources)));
+  }, [connections]);
 
   const selectedProduct = products.find(p => p.sku === selectedSku);
   const visibleColumns = useMemo(() => {
@@ -210,6 +286,9 @@ export default function PipelineBuilderPage() {
         return { ...prev, assignments };
       });
       setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
+      setConnections(prev => prev.some(connection => connection.from === sourceId && connection.to === "join")
+        ? prev
+        : [...prev, { from: sourceId, to: "join" }]);
       setSelectedNode(sourceId);
     } catch (err: any) {
       setError(err.message || "Dosya okunamadı");
@@ -235,6 +314,15 @@ export default function PipelineBuilderPage() {
       setWorkbookImport({ fileName: file.name, sheets, assignments });
       setUploadedData(prev => ({ ...prev, ...nextUploads }));
       setEnabledSources(prev => Array.from(new Set([...prev, ...usedSources])));
+      setConnections(prev => {
+        const next = [...prev];
+        usedSources.forEach(sourceId => {
+          if (!next.some(connection => connection.from === sourceId && connection.to === "join")) {
+            next.push({ from: sourceId, to: "join" });
+          }
+        });
+        return next;
+      });
       const firstAssigned = Object.keys(assignments)[0] as SourceId | undefined;
       if (firstAssigned) setSelectedNode(firstAssigned);
     } catch (err: any) {
@@ -272,6 +360,9 @@ export default function PipelineBuilderPage() {
       return next;
     });
     setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
+    setConnections(prev => prev.some(connection => connection.from === sourceId && connection.to === "join")
+      ? prev
+      : [...prev, { from: sourceId, to: "join" }]);
     setSelectedNode(sourceId);
   }
 
@@ -288,6 +379,31 @@ export default function PipelineBuilderPage() {
       return { ...prev, assignments };
     });
   }
+
+  const sourcePositions = useMemo(() => {
+    return Object.fromEntries(sources.map((source, index) => [source.id, {
+      left: 72,
+      top: 92 + index * 78,
+    }])) as Record<SourceId, { left: number; top: number }>;
+  }, [sources]);
+
+  const renderedEdges = connections.map(connection => {
+    if (connection.to === "join" && isSourceId(connection.from)) {
+      const position = sourcePositions[connection.from];
+      if (!position) return null;
+      return {
+        key: `${connection.from}-${connection.to}`,
+        x1: position.left + 228,
+        y1: position.top + 34,
+        x2: 386,
+        y2: 200,
+      };
+    }
+    if (connection.from === "join" && connection.to === "output") {
+      return { key: "join-output", x1: 646, y1: 200, x2: 900, y2: 228 };
+    }
+    return null;
+  }).filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
 
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
@@ -326,10 +442,7 @@ export default function PipelineBuilderPage() {
           return (
             <button
               key={source.id}
-              onClick={() => {
-                setEnabledSources(prev => active ? prev.filter(id => id !== source.id) : [...prev, source.id]);
-                setSelectedNode(source.id);
-              }}
+              onClick={() => toggleSourceConnection(source.id)}
               style={{
                 ...sourceToggleStyle,
                 background: active ? tone.bg : CT.surface,
@@ -365,15 +478,10 @@ export default function PipelineBuilderPage() {
         <section style={{ display: "grid", gridTemplateRows: "1fr 304px", minWidth: 0 }}>
           <div style={{ position: "relative", overflow: "auto", background: "#eef1f5" }}>
             <div style={{ position: "relative", width: 1220, height: 560 }}>
-              <StageLabel text="Input" left={44} top={34} width={256} height={386} />
-              <StageLabel text="Transform" left={340} top={34} width={480} height={386} />
-              <StageLabel text="Output" left={868} top={124} width={236} height={204} />
-
               <svg width="1220" height="560" style={{ position: "absolute", inset: 0 }}>
-                {enabledSources.map((id, index) => (
-                  <EdgeLine key={id} x1={300} y1={120 + index * 78} x2={340} y2={202} />
+                {renderedEdges.map(edge => (
+                  <EdgeLine key={edge.key} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
                 ))}
-                {enabledSources.length > 0 && <EdgeLine x1={820} y1={202} x2={868} y2={226} />}
               </svg>
 
               {sources.map((source, index) => {
@@ -387,7 +495,9 @@ export default function PipelineBuilderPage() {
                     uploadedRows={uploadedData[source.id]?.rows.length ?? 0}
                     left={72}
                     top={92 + index * 78}
+                    activeConnector={activeConnector === source.id}
                     onClick={() => setSelectedNode(source.id)}
+                    onPortClick={() => handlePortClick(source.id)}
                   />
                 );
               })}
@@ -396,14 +506,18 @@ export default function PipelineBuilderPage() {
                 left={386}
                 top={148}
                 selected={selectedNode !== "output" && enabledSources.includes(selectedNode)}
+                activeConnector={activeConnector === "join"}
                 title="Join + Aggregate"
                 subtitle={`${enabledSources.length} kaynak bağlı`}
+                onPortClick={() => handlePortClick("join")}
               />
               <OutputNode
                 left={900}
                 top={190}
                 selected={selectedNode === "output"}
+                activeConnector={activeConnector === "output"}
                 onClick={() => setSelectedNode("output")}
+                onPortClick={() => handlePortClick("output")}
                 count={result?.rows.length ?? 0}
               />
             </div>
@@ -589,14 +703,16 @@ function WorkbookUploadPanel({ sources, workbook, onFile, onAssign, onClear }: {
   );
 }
 
-function SourceNode({ source, enabled, selected, uploadedRows, left, top, onClick }: {
+function SourceNode({ source, enabled, selected, uploadedRows, left, top, activeConnector, onClick, onPortClick }: {
   source: SourceDef;
   enabled: boolean;
   selected: boolean;
   uploadedRows: number;
   left: number;
   top: number;
+  activeConnector: boolean;
   onClick: () => void;
+  onPortClick: () => void;
 }) {
   const tone = sourceTone[source.id];
   return (
@@ -615,44 +731,83 @@ function SourceNode({ source, enabled, selected, uploadedRows, left, top, onClic
         <span>{source.primaryKey}</span>
         {uploadedRows > 0 && <span style={{ color: tone.color, fontFamily: CT_MONO }}>{uploadedRows}</span>}
       </div>
+      <GraphPort side="right" active={activeConnector} onClick={onPortClick} />
     </button>
   );
 }
 
-function TransformNode({ left, top, selected, title, subtitle }: {
+function TransformNode({ left, top, selected, activeConnector, title, subtitle, onPortClick }: {
   left: number;
   top: number;
   selected: boolean;
+  activeConnector: boolean;
   title: string;
   subtitle: string;
+  onPortClick: () => void;
 }) {
   return (
     <div style={{ ...nodeStyle, left, top, width: 260, height: 104, borderColor: selected ? CT.accent : CT.borderStrong }}>
+      <GraphPort side="left" active={activeConnector} onClick={onPortClick} />
       <div style={nodeTitleStyle}>
         <Link2 size={15} color="#745fb4" />
         <span style={{ fontWeight: 700 }}>{title}</span>
       </div>
       <div style={nodeMetaStyle}>{subtitle}</div>
       <div style={{ padding: "0 12px", color: CT.inkMuted, fontSize: 11 }}>productSku ve componentCode üzerinden birleştir</div>
+      <GraphPort side="right" active={activeConnector} onClick={onPortClick} />
     </div>
   );
 }
 
-function OutputNode({ left, top, selected, count, onClick }: {
+function OutputNode({ left, top, selected, activeConnector, count, onClick, onPortClick }: {
   left: number;
   top: number;
   selected: boolean;
+  activeConnector: boolean;
   count: number;
   onClick: () => void;
+  onPortClick: () => void;
 }) {
   return (
     <button onClick={onClick} style={{ ...nodeStyle, left, top, width: 210, height: 76, borderColor: selected ? CT.ok : CT.borderStrong }}>
+      <GraphPort side="left" active={activeConnector} onClick={onPortClick} />
       <div style={nodeTitleStyle}>
         <Database size={15} color={CT.ok} />
         <span style={{ fontWeight: 700 }}>Cihaz datası</span>
       </div>
       <div style={nodeMetaStyle}>{count} satır</div>
     </button>
+  );
+}
+
+function GraphPort({ side, active, onClick }: {
+  side: "left" | "right";
+  active: boolean;
+  onClick: () => void;
+}) {
+  return (
+    <span
+      role="button"
+      tabIndex={0}
+      title="Bağlantı noktası"
+      onClick={(event) => {
+        event.stopPropagation();
+        onClick();
+      }}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        event.stopPropagation();
+        onClick();
+      }}
+      style={{
+        ...graphPortStyle,
+        [side]: -8,
+        background: active ? CT.accent : CT.surface,
+        borderColor: active ? CT.accent : "rgba(86,101,119,0.62)",
+        boxShadow: active ? "0 0 0 4px rgba(201,100,66,0.16)" : "0 1px 5px rgba(20,20,19,0.12)",
+      }}
+    />
   );
 }
 
@@ -729,28 +884,6 @@ function EdgeLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: 
       <circle cx={x1} cy={y1} r="5" fill={CT.surface} stroke="rgba(86,101,119,0.55)" strokeWidth="2" />
       <circle cx={x2} cy={y2} r="5" fill={CT.surface} stroke="rgba(86,101,119,0.55)" strokeWidth="2" />
     </g>
-  );
-}
-
-function StageLabel({ text, left, top, width, height }: { text: string; left: number; top: number; width: number; height: number }) {
-  return (
-    <div style={{
-      position: "absolute",
-      left,
-      top,
-      width,
-      height,
-      border: `2px solid rgba(201,100,66,0.38)`,
-      color: "#ff5a4f",
-      fontSize: 26,
-      fontWeight: 800,
-      display: "flex",
-      justifyContent: "center",
-      paddingTop: 22,
-      pointerEvents: "none",
-    }}>
-      {text}
-    </div>
   );
 }
 
@@ -1096,6 +1229,18 @@ const nodeMetaStyle: CSSProperties = {
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
+};
+
+const graphPortStyle: CSSProperties = {
+  position: "absolute",
+  top: "50%",
+  width: 16,
+  height: 16,
+  borderRadius: 999,
+  border: "2px solid rgba(86,101,119,0.62)",
+  transform: "translateY(-50%)",
+  cursor: "crosshair",
+  zIndex: 3,
 };
 
 const previewHeaderStyle: CSSProperties = {
