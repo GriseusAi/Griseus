@@ -54,6 +54,17 @@ type TransformResult = {
   kind: "recipe" | "stock" | "sales" | "generic";
   rows: Array<Record<string, any>>;
   columns: string[];
+  profileLabel?: string;
+  productSku?: string;
+  productFamily?: string;
+};
+
+type DatasetProfile = {
+  kind: TransformResult["kind"];
+  label: string;
+  confidence: number;
+  productSku?: string;
+  productFamily?: string;
 };
 
 type ActionMenuState = {
@@ -301,7 +312,7 @@ export default function PipelineBuilderPage() {
       id: transformId,
       kind: "transform",
       title: `${source.title} - Clean`,
-      subtitle: `${cleaned.kind} · ${cleaned.columns.length} columns`,
+      subtitle: describeTransform(cleaned),
       x: position.x,
       y: position.y,
       rows: cleaned.rows,
@@ -794,13 +805,21 @@ function transformRows(rows: Array<Record<string, any>>, sourceName = ""): Trans
   const profile = inferDatasetProfile(generic.rows, generic.columns, sourceName);
 
   if (profile.kind === "recipe") {
-    return { ...normalizeRecipeDataset(rows), kind: "recipe" };
+    return { ...normalizeRecipeDataset(rows, profile), kind: "recipe", profileLabel: profile.label, productSku: profile.productSku, productFamily: profile.productFamily };
   }
   if (profile.kind === "stock") {
-    return { ...normalizeStockDataset(rows), kind: "stock" };
+    return { ...normalizeStockDataset(rows, profile), kind: "stock", profileLabel: profile.label, productSku: profile.productSku, productFamily: profile.productFamily };
+  }
+  if (profile.kind === "sales") {
+    return { ...normalizeSalesDataset(generic.rows, generic.columns, profile), kind: "sales", profileLabel: profile.label, productSku: profile.productSku, productFamily: profile.productFamily };
   }
 
-  return { ...generic, kind: profile.kind };
+  return { ...generic, kind: profile.kind, profileLabel: profile.label, productSku: profile.productSku, productFamily: profile.productFamily };
+}
+
+function describeTransform(result: TransformResult) {
+  const identity = result.productSku || result.productFamily || result.profileLabel || result.kind;
+  return `${result.kind} · ${identity} · ${result.columns.length} columns`;
 }
 
 function cleanRows(rows: Array<Record<string, any>>) {
@@ -829,30 +848,33 @@ function cleanRows(rows: Array<Record<string, any>>) {
   return { rows: cleanedRows, columns };
 }
 
-function inferDatasetProfile(rows: Array<Record<string, any>>, columns: string[], sourceName: string) {
+function inferDatasetProfile(rows: Array<Record<string, any>>, columns: string[], sourceName: string): DatasetProfile {
   const normalizedColumns = new Set(columns.map(normalizeCleanColumn));
   const normalizedName = normalizeCleanColumn(sourceName);
   const has = (name: string) => normalizedColumns.has(name);
+  const firstCode = rows.map(row => row.stok_kodu ?? row.stock_code ?? row.code ?? row.kod).find(Boolean);
+  const productSku = normalizeIdentifier(firstCode ?? inferSkuFromSourceName(sourceName));
+  const productFamily = inferProductFamily(productSku || sourceName);
 
   if (has("stok_kodu") && has("stok_ismi") && has("stok_bakiyesi")) {
-    return { kind: "stock" as const, confidence: 0.96 };
+    return { kind: "stock", label: "component_stock", confidence: 0.96, productSku, productFamily };
   }
   if (has("stok_kodu") && has("stok_ismi") && has("miktar") && (has("sira_no") || has("stok_sevi"))) {
-    return { kind: "recipe" as const, confidence: 0.96 };
+    return { kind: "recipe", label: "bom_recipe", confidence: 0.96, productSku, productFamily };
   }
   if (normalizedName.includes("stok") && rows.some(row => row.stok_bakiyesi !== undefined || row.current_stock !== undefined)) {
-    return { kind: "stock" as const, confidence: 0.75 };
+    return { kind: "stock", label: "component_stock", confidence: 0.75, productSku, productFamily };
   }
   if (normalizedName.includes("recete") || rows.some(row => row.miktar !== undefined && row.stok_kodu !== undefined)) {
-    return { kind: "recipe" as const, confidence: 0.72 };
+    return { kind: "recipe", label: "bom_recipe", confidence: 0.72, productSku, productFamily };
   }
-  if (columns.some(col => ["sales", "satis", "quantity_sold", "adet", "aylik_satis"].includes(normalizeCleanColumn(col)))) {
-    return { kind: "sales" as const, confidence: 0.68 };
+  if (looksLikeSalesMatrix(rows, columns) || columns.some(col => ["sales", "satis", "cikis", "cikis_adedi", "quantity_sold", "adet", "aylik_satis"].includes(normalizeCleanColumn(col)))) {
+    return { kind: "sales", label: "sales_matrix", confidence: 0.82, productSku, productFamily };
   }
-  return { kind: "generic" as const, confidence: 0.35 };
+  return { kind: "generic", label: "generic_table", confidence: 0.35, productSku, productFamily };
 }
 
-function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
+function normalizeRecipeDataset(rows: Array<Record<string, any>>, profile: DatasetProfile) {
   const columnsByAlias = buildAliasMap(rows);
   const codeCol = pickAlias(columnsByAlias, ["stok_kodu", "stock_code", "code", "kod"]);
   const nameCol = pickAlias(columnsByAlias, ["stok_ismi", "stok_adi", "stock_name", "name", "isim"]);
@@ -864,8 +886,9 @@ function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
   const stockLevelCol = pickAlias(columnsByAlias, ["stok_sevi", "stok_seviyesi", "stock_level"]);
 
   const root = rows.find(row => getCell(row, codeCol));
-  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol));
+  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol)) || profile.productSku || "";
   const productName = trimText(getCell(root, nameCol));
+  const productFamily = inferProductFamily(productSku || profile.productFamily || "");
   const stack: Record<number, string> = {};
 
   const normalizedRows = rows.map((row, index): Record<string, any> | null => {
@@ -880,6 +903,8 @@ function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
 
     return {
       dataset_type: "recipe",
+      dataset_profile: profile.label,
+      product_family: productFamily,
       row_type: rowType,
       product_sku: productSku || code,
       product_name: productName || trimText(getCell(row, nameCol)),
@@ -893,21 +918,23 @@ function normalizeRecipeDataset(rows: Array<Record<string, any>>) {
       unit_cost: toNumberOrNull(getCell(row, unitCostCol)),
       total_cost: toNumberOrNull(getCell(row, totalCostCol)),
       stock_level: toNumberOrNull(getCell(row, stockLevelCol)),
+      source_confidence: profile.confidence,
     };
   }).filter((row): row is Record<string, any> => row !== null);
 
   return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
 }
 
-function normalizeStockDataset(rows: Array<Record<string, any>>) {
+function normalizeStockDataset(rows: Array<Record<string, any>>, profile: DatasetProfile) {
   const columnsByAlias = buildAliasMap(rows);
   const codeCol = pickAlias(columnsByAlias, ["stok_kodu", "stock_code", "code", "kod"]);
   const nameCol = pickAlias(columnsByAlias, ["stok_ismi", "stok_adi", "stock_name", "name", "isim"]);
   const balanceCol = pickAlias(columnsByAlias, ["stok_bakiyesi", "stok_bakiye", "current_stock", "stock", "bakiye"]);
 
   const root = rows.find(row => getCell(row, codeCol));
-  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol));
+  const productSku = normalizeIdentifier(getRawStockCode(root ?? {}, codeCol)) || profile.productSku || "";
   const productName = trimText(getCell(root, nameCol));
+  const productFamily = inferProductFamily(productSku || profile.productFamily || "");
 
   const normalizedRows = rows.map((row, index): Record<string, any> | null => {
     const rawCode = getRawStockCode(row, codeCol);
@@ -917,6 +944,8 @@ function normalizeStockDataset(rows: Array<Record<string, any>>) {
 
     return {
       dataset_type: "stock",
+      dataset_profile: profile.label,
+      product_family: productFamily,
       row_type: rowType,
       product_sku: productSku || code,
       product_name: productName || trimText(getCell(row, nameCol)),
@@ -924,9 +953,34 @@ function normalizeStockDataset(rows: Array<Record<string, any>>) {
       component_name: rowType === "component" ? trimText(getCell(row, nameCol)) : null,
       current_stock: toNumberOrNull(getCell(row, balanceCol)),
       tier: rowType === "product" ? 0 : inferTier(rawCode, null),
+      source_confidence: profile.confidence,
     };
   }).filter((row): row is Record<string, any> => row !== null);
 
+  return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
+}
+
+function normalizeSalesDataset(rows: Array<Record<string, any>>, columns: string[], profile: DatasetProfile) {
+  const monthColumn = columns.find(col => ["ay", "month", "donem", "period"].includes(normalizeCleanColumn(col))) ?? columns[0];
+  const productColumns = columns.filter(col => col !== monthColumn && !String(col).startsWith("__"));
+  const normalizedRows = rows.flatMap(row => {
+    const monthValue = getCell(row, monthColumn);
+    const month = toNumberOrNull(monthValue);
+    if (month === null) return [];
+    return productColumns.map(col => {
+      const sku = normalizeIdentifier(col);
+      return {
+        dataset_type: "sales",
+        dataset_profile: profile.label,
+        product_family: inferProductFamily(sku),
+        row_type: "monthly_sale",
+        product_sku: sku,
+        month,
+        quantity_sold: toNumberOrNull(getCell(row, col)) ?? 0,
+        source_confidence: profile.confidence,
+      };
+    });
+  });
   return { rows: normalizedRows, columns: collectColumns(normalizedRows) };
 }
 
@@ -959,6 +1013,32 @@ function getRawStockCode(row: Record<string, any>, codeCol: string | undefined) 
   return String(getCell(row, codeCol) ?? "");
 }
 
+function looksLikeSalesMatrix(rows: Array<Record<string, any>>, columns: string[]) {
+  if (columns.length < 2 || rows.length < 2) return false;
+  const firstColumn = normalizeCleanColumn(columns[0]);
+  const hasMonthColumn = ["ay", "month", "donem", "period", "empty"].includes(firstColumn) || columns[0].startsWith("__");
+  const firstRow = rows[0] ?? {};
+  const firstRowLooksLikeHeader = Object.values(firstRow).some(value => normalizeCleanColumn(String(value)).includes("cikis"));
+  const laterRowsHaveMonthNumbers = rows.slice(1, 6).filter(row => toNumberOrNull(getCell(row, columns[0])) !== null).length >= 2;
+  return hasMonthColumn && firstRowLooksLikeHeader && laterRowsHaveMonthNumbers;
+}
+
+function inferSkuFromSourceName(sourceName: string) {
+  const decoded = sourceName.normalize("NFC");
+  const match = decoded.match(/[A-ZÇĞİÖŞÜ]{2,}\.?[A-ZÇĞİÖŞÜ0-9.-]*\d[A-ZÇĞİÖŞÜ0-9.-]*/i);
+  return match?.[0] ?? "";
+}
+
+function inferProductFamily(value: string) {
+  const normalized = normalizeIdentifier(value).toLocaleUpperCase("tr-TR");
+  if (normalized.startsWith("BH.")) return "BH";
+  if (normalized.startsWith("ELT.")) return "ELT";
+  if (normalized.startsWith("GSA")) return "GSA";
+  if (normalized.startsWith("GSS")) return "GSS";
+  const prefix = normalized.match(/^[A-ZÇĞİÖŞÜ]+/)?.[0];
+  return prefix || "UNKNOWN";
+}
+
 function inferTier(rawCode: string, sequenceNo: string | null) {
   const indent = rawCode.match(/^\s*/)?.[0].length ?? 0;
   if (indent > 0) return Math.max(1, Math.round(indent / 5));
@@ -978,8 +1058,24 @@ function normalizeIdentifier(value: any) {
 function toNumberOrNull(value: any) {
   if (value === null || value === undefined || value === "") return null;
   if (typeof value === "number") return Number.isFinite(value) ? value : null;
-  const raw = String(value).trim();
-  const normalized = raw.replace(/\./g, "").replace(",", ".");
+  const raw = String(value).trim().replace(/\s/g, "");
+  const numeric = raw.replace(/[^\d,.-]/g, "");
+  if (!numeric || numeric === "-" || numeric === "." || numeric === ",") return null;
+  const withoutTrailingDot = numeric.endsWith(".") && !numeric.includes(",") ? numeric.slice(0, -1) : numeric;
+  let normalized = withoutTrailingDot;
+  if (withoutTrailingDot.includes(",") && withoutTrailingDot.includes(".")) {
+    const lastComma = withoutTrailingDot.lastIndexOf(",");
+    const lastDot = withoutTrailingDot.lastIndexOf(".");
+    normalized = lastComma > lastDot
+      ? withoutTrailingDot.replace(/\./g, "").replace(",", ".")
+      : withoutTrailingDot.replace(/,/g, "");
+  } else if (withoutTrailingDot.includes(",")) {
+    const parts = withoutTrailingDot.split(",");
+    normalized = parts[1]?.length === 3 ? parts.join("") : withoutTrailingDot.replace(",", ".");
+  } else if (withoutTrailingDot.includes(".")) {
+    const parts = withoutTrailingDot.split(".");
+    normalized = parts.length > 2 || parts[1]?.length === 3 ? parts.join("") : withoutTrailingDot;
+  }
   const parsed = Number(normalized);
   return Number.isFinite(parsed) ? parsed : null;
 }
@@ -1074,7 +1170,7 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
         next[i] = {
           ...node,
           title: `${source.title} - Clean`,
-          subtitle: source.rows.length > 0 ? `${cleaned.kind} · ${cleaned.columns.length} columns` : "Data bekleniyor",
+          subtitle: source.rows.length > 0 ? describeTransform(cleaned) : "Data bekleniyor",
           rows: cleaned.rows,
           columns: cleaned.columns,
           sourceFile: source.sourceFile,
