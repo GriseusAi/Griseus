@@ -62,6 +62,16 @@ type UploadedDataset = {
   rows: Array<Record<string, any>>;
 };
 
+type WorkbookSheetDataset = UploadedDataset & {
+  sheetName: string;
+};
+
+type WorkbookImport = {
+  fileName: string;
+  sheets: WorkbookSheetDataset[];
+  assignments: Partial<Record<SourceId, string>>;
+};
+
 const defaultSources: SourceId[] = ["recipe", "component_stock", "finished_stock", "sales_average"];
 
 const sourceTone: Record<SourceId, { color: string; bg: string; icon: JSX.Element }> = {
@@ -87,6 +97,13 @@ const columnLabels: Record<string, string> = {
   status: "durum",
 };
 
+const sourceKeywords: Record<SourceId, string[]> = {
+  recipe: ["recipe", "recete", "reçete", "bom", "urunagaci", "ürün_agacı", "urun_agaci", "cihaz"],
+  component_stock: ["component_stock", "stock", "stok", "bilesen", "bileşen", "komponent", "component"],
+  finished_stock: ["finished", "bitmis", "bitmiş", "mamul", "urun_stok", "ürün_stok", "depo"],
+  sales_average: ["sales", "satis", "satış", "average", "ortalama", "forecast", "talep"],
+};
+
 export default function PipelineBuilderPage() {
   const [sources, setSources] = useState<SourceDef[]>([]);
   const [products, setProducts] = useState<ProductDef[]>([]);
@@ -95,6 +112,7 @@ export default function PipelineBuilderPage() {
   const [result, setResult] = useState<RunResult | null>(null);
   const [selectedNode, setSelectedNode] = useState<SourceId | "output">("recipe");
   const [uploadedData, setUploadedData] = useState<Partial<Record<SourceId, UploadedDataset>>>({});
+  const [workbookImport, setWorkbookImport] = useState<WorkbookImport | null>(null);
   const [loading, setLoading] = useState(false);
   const [bootLoading, setBootLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -185,11 +203,90 @@ export default function PipelineBuilderPage() {
       setError(null);
       const dataset = await parseTabularFile(file);
       setUploadedData(prev => ({ ...prev, [sourceId]: dataset }));
+      setWorkbookImport(prev => {
+        if (!prev) return prev;
+        const assignments = { ...prev.assignments };
+        delete assignments[sourceId];
+        return { ...prev, assignments };
+      });
       setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
       setSelectedNode(sourceId);
     } catch (err: any) {
       setError(err.message || "Dosya okunamadı");
     }
+  }
+
+  async function handleWorkbookFile(file: File) {
+    try {
+      setError(null);
+      const sheets = await parseWorkbookFile(file);
+      const usedSources = new Set<SourceId>();
+      const assignments: Partial<Record<SourceId, string>> = {};
+      const nextUploads: Partial<Record<SourceId, UploadedDataset>> = {};
+
+      for (const sheet of sheets) {
+        const inferred = inferSourceForDataset(sheet, sources);
+        if (!inferred || usedSources.has(inferred)) continue;
+        assignments[inferred] = sheet.sheetName;
+        nextUploads[inferred] = sheet;
+        usedSources.add(inferred);
+      }
+
+      setWorkbookImport({ fileName: file.name, sheets, assignments });
+      setUploadedData(prev => ({ ...prev, ...nextUploads }));
+      setEnabledSources(prev => Array.from(new Set([...prev, ...usedSources])));
+      const firstAssigned = Object.keys(assignments)[0] as SourceId | undefined;
+      if (firstAssigned) setSelectedNode(firstAssigned);
+    } catch (err: any) {
+      setError(err.message || "Dosya okunamadı");
+    }
+  }
+
+  function assignWorkbookSheet(sourceId: SourceId, sheetName: string) {
+    if (!workbookImport) return;
+    const nextAssignments = { ...workbookImport.assignments };
+    const sourcePreviouslyUsingSheet = Object.entries(nextAssignments).find(([, assignedSheet]) => assignedSheet === sheetName)?.[0] as SourceId | undefined;
+    if (sourcePreviouslyUsingSheet && sourcePreviouslyUsingSheet !== sourceId) {
+      delete nextAssignments[sourcePreviouslyUsingSheet];
+    }
+
+    const selectedSheet = workbookImport.sheets.find(sheet => sheet.sheetName === sheetName);
+    if (!selectedSheet) {
+      delete nextAssignments[sourceId];
+      setUploadedData(prev => {
+        const next = { ...prev };
+        delete next[sourceId];
+        return next;
+      });
+      setWorkbookImport({ ...workbookImport, assignments: nextAssignments });
+      return;
+    }
+
+    nextAssignments[sourceId] = selectedSheet.sheetName;
+    setWorkbookImport({ ...workbookImport, assignments: nextAssignments });
+    setUploadedData(prev => {
+      const next = { ...prev, [sourceId]: selectedSheet };
+      if (sourcePreviouslyUsingSheet && sourcePreviouslyUsingSheet !== sourceId) {
+        delete next[sourcePreviouslyUsingSheet];
+      }
+      return next;
+    });
+    setEnabledSources(prev => prev.includes(sourceId) ? prev : [...prev, sourceId]);
+    setSelectedNode(sourceId);
+  }
+
+  function clearSourceData(sourceId: SourceId) {
+    setUploadedData(prev => {
+      const next = { ...prev };
+      delete next[sourceId];
+      return next;
+    });
+    setWorkbookImport(prev => {
+      if (!prev) return prev;
+      const assignments = { ...prev.assignments };
+      delete assignments[sourceId];
+      return { ...prev, assignments };
+    });
   }
 
   return (
@@ -246,6 +343,22 @@ export default function PipelineBuilderPage() {
             </button>
           );
         })}
+        <WorkbookUploadPanel
+          sources={sources}
+          workbook={workbookImport}
+          onFile={handleWorkbookFile}
+          onAssign={assignWorkbookSheet}
+          onClear={() => {
+            if (workbookImport) {
+              setUploadedData(prev => {
+                const next = { ...prev };
+                Object.keys(workbookImport.assignments).forEach(sourceId => delete next[sourceId as SourceId]);
+                return next;
+              });
+            }
+            setWorkbookImport(null);
+          }}
+        />
       </div>
 
       <main style={{ display: "grid", gridTemplateColumns: "minmax(760px, 1fr) 360px", minHeight: "calc(100vh - 148px)" }}>
@@ -315,11 +428,7 @@ export default function PipelineBuilderPage() {
                     sourceId={selectedNode}
                     dataset={selectedDataset}
                     onFile={handleSourceFile}
-                    onClear={(sourceId) => setUploadedData(prev => {
-                      const next = { ...prev };
-                      delete next[sourceId];
-                      return next;
-                    })}
+                    onClear={clearSourceData}
                   />
                 )}
                 <div style={searchBoxStyle}>
@@ -401,6 +510,81 @@ export default function PipelineBuilderPage() {
           </div>
         </aside>
       </main>
+    </div>
+  );
+}
+
+function WorkbookUploadPanel({ sources, workbook, onFile, onAssign, onClear }: {
+  sources: SourceDef[];
+  workbook: WorkbookImport | null;
+  onFile: (file: File) => void;
+  onAssign: (sourceId: SourceId, sheetName: string) => void;
+  onClear: () => void;
+}) {
+  const inputId = "pipeline-workbook-upload";
+  return (
+    <div style={workbookPanelStyle}>
+      <label
+        htmlFor={inputId}
+        onDragOver={(event) => event.preventDefault()}
+        onDrop={(event) => {
+          event.preventDefault();
+          const file = event.dataTransfer.files?.[0];
+          if (file) onFile(file);
+        }}
+        style={workbookDropStyle}
+      >
+        <input
+          id={inputId}
+          type="file"
+          accept=".csv,.tsv,.xlsx,.xls,.json"
+          style={{ display: "none" }}
+          onChange={(event) => {
+            const file = event.currentTarget.files?.[0];
+            if (file) onFile(file);
+            event.currentTarget.value = "";
+          }}
+        />
+        <UploadCloud size={15} color={CT.accent} />
+        <span>{workbook ? workbook.fileName : "Tek XLS / CSV yükle"}</span>
+        {workbook && <small>{workbook.sheets.length} tablo</small>}
+      </label>
+
+      {workbook && (
+        <div style={workbookSheetGridStyle}>
+          {workbook.sheets.map(sheet => {
+            const assignedSource = Object.entries(workbook.assignments).find(([, sheetName]) => sheetName === sheet.sheetName)?.[0] ?? "";
+            return (
+              <div key={sheet.sheetName} style={workbookSheetRowStyle}>
+                <div style={{ minWidth: 0 }}>
+                  <div style={{ fontSize: 11, fontWeight: 700, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{sheet.sheetName}</div>
+                  <div style={{ fontSize: 10, color: CT.inkMuted, fontFamily: CT_MONO }}>{sheet.rows.length}x{sheet.columns.length}</div>
+                </div>
+                <select
+                  value={assignedSource}
+                  onChange={(event) => {
+                    const nextSourceId = event.currentTarget.value as SourceId | "";
+                    if (!nextSourceId && assignedSource) {
+                      onAssign(assignedSource as SourceId, "");
+                      return;
+                    }
+                    if (nextSourceId) onAssign(nextSourceId, sheet.sheetName);
+                  }}
+                  style={sheetSelectStyle}
+                >
+                  <option value="">Kullanma</option>
+                  {sources.map(source => (
+                    <option key={source.id} value={source.id}>{source.label}</option>
+                  ))}
+                </select>
+              </div>
+            );
+          })}
+          <button type="button" onClick={onClear} style={workbookClearStyle} title="Workbook verisini kaldır">
+            <X size={14} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -571,31 +755,90 @@ function StageLabel({ text, left, top, width, height }: { text: string; left: nu
 }
 
 async function parseTabularFile(file: File): Promise<UploadedDataset> {
+  const sheets = await parseWorkbookFile(file);
+  return sheets[0];
+}
+
+async function parseWorkbookFile(file: File): Promise<WorkbookSheetDataset[]> {
   const ext = file.name.split(".").pop()?.toLowerCase();
-  let rows: Array<Record<string, any>> = [];
+  const sheetEntries: Array<{ sheetName: string; rows: Array<Record<string, any>> }> = [];
 
   if (ext === "xlsx" || ext === "xls") {
     const workbook = XLSX.read(await file.arrayBuffer(), { type: "array" });
-    const sheet = workbook.Sheets[workbook.SheetNames[0]];
-    rows = XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" });
+    for (const sheetName of workbook.SheetNames) {
+      const sheet = workbook.Sheets[sheetName];
+      sheetEntries.push({
+        sheetName,
+        rows: XLSX.utils.sheet_to_json<Record<string, any>>(sheet, { defval: "" }),
+      });
+    }
   } else if (ext === "json") {
     const parsed = JSON.parse(await file.text());
-    rows = Array.isArray(parsed) ? parsed : Array.isArray(parsed.rows) ? parsed.rows : [parsed];
+    if (Array.isArray(parsed)) {
+      sheetEntries.push({ sheetName: "JSON", rows: parsed });
+    } else if (parsed && typeof parsed === "object" && !Array.isArray(parsed.rows)) {
+      const tableKeys = Object.keys(parsed).filter(key => Array.isArray(parsed[key]));
+      if (tableKeys.length > 0) {
+        tableKeys.forEach(key => sheetEntries.push({ sheetName: key, rows: parsed[key] }));
+      } else {
+        sheetEntries.push({ sheetName: "JSON", rows: [parsed] });
+      }
+    } else {
+      sheetEntries.push({ sheetName: "JSON", rows: Array.isArray(parsed.rows) ? parsed.rows : [parsed] });
+    }
   } else {
-    rows = parseDelimited(await file.text(), ext === "tsv" ? "\t" : undefined);
+    sheetEntries.push({ sheetName: ext === "tsv" ? "TSV" : "CSV", rows: parseDelimited(await file.text(), ext === "tsv" ? "\t" : undefined) });
   }
 
-  rows = rows.map(row => normalizeParsedRow(row)).filter(row => Object.values(row).some(value => value !== ""));
-  const columns = Array.from(rows.reduce<Set<string>>((set, row) => {
-    Object.keys(row).forEach(key => set.add(key));
-    return set;
-  }, new Set<string>()));
+  const datasets = sheetEntries.map(({ sheetName, rows }) => {
+    const normalizedRows = rows.map(row => normalizeParsedRow(row)).filter(row => Object.values(row).some(value => value !== ""));
+    const columns = Array.from(normalizedRows.reduce<Set<string>>((set, row) => {
+      Object.keys(row).forEach(key => set.add(key));
+      return set;
+    }, new Set<string>()));
+    return {
+      fileName: file.name,
+      sheetName,
+      columns,
+      rows: normalizedRows,
+    };
+  }).filter(dataset => dataset.rows.length > 0 && dataset.columns.length > 0);
 
-  if (rows.length === 0 || columns.length === 0) {
+  if (datasets.length === 0) {
     throw new Error("Dosyada okunabilir tablo verisi bulunamadı");
   }
 
-  return { fileName: file.name, columns, rows };
+  return datasets;
+}
+
+function inferSourceForDataset(dataset: WorkbookSheetDataset, sources: SourceDef[]): SourceId | null {
+  const haystack = normalizeMatchText([
+    dataset.fileName,
+    dataset.sheetName,
+    ...dataset.columns,
+  ].join(" "));
+
+  const scores = sources.map(source => {
+    const keywords = sourceKeywords[source.id] ?? [];
+    const keywordScore = keywords.reduce((score, keyword) => score + (haystack.includes(normalizeMatchText(keyword)) ? 4 : 0), 0);
+    const joinScore = source.joinsOn.reduce((score, key) => score + (haystack.includes(normalizeMatchText(key)) ? 2 : 0), 0);
+    const primaryScore = haystack.includes(normalizeMatchText(source.primaryKey)) ? 3 : 0;
+    return { sourceId: source.id, score: keywordScore + joinScore + primaryScore };
+  }).sort((a, b) => b.score - a.score);
+
+  return scores[0]?.score > 0 ? scores[0].sourceId : null;
+}
+
+function normalizeMatchText(value: string) {
+  return value
+    .toLocaleLowerCase("tr-TR")
+    .replace(/ı/g, "i")
+    .replace(/ğ/g, "g")
+    .replace(/ü/g, "u")
+    .replace(/ş/g, "s")
+    .replace(/ö/g, "o")
+    .replace(/ç/g, "c")
+    .replace(/[^a-z0-9]+/g, "_");
 }
 
 function parseDelimited(text: string, forcedDelimiter?: string): Array<Record<string, any>> {
@@ -749,6 +992,74 @@ const sourceToggleStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 650,
   fontFamily: CT_FONT,
+  cursor: "pointer",
+};
+
+const workbookPanelStyle: CSSProperties = {
+  flexBasis: "100%",
+  display: "flex",
+  alignItems: "stretch",
+  gap: 10,
+  minWidth: 0,
+};
+
+const workbookDropStyle: CSSProperties = {
+  minHeight: 34,
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px dashed ${CT.accentEdge}`,
+  borderRadius: 8,
+  background: CT.surface,
+  color: CT.accent,
+  padding: "0 12px",
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+  minWidth: 196,
+};
+
+const workbookSheetGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(auto-fit, minmax(220px, 1fr)) 32px",
+  gap: 8,
+  flex: 1,
+  minWidth: 0,
+};
+
+const workbookSheetRowStyle: CSSProperties = {
+  minHeight: 34,
+  display: "grid",
+  gridTemplateColumns: "minmax(86px, 1fr) 118px",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  padding: "5px 8px",
+};
+
+const sheetSelectStyle: CSSProperties = {
+  minWidth: 0,
+  height: 26,
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 6,
+  background: CT.surface,
+  color: CT.ink,
+  fontSize: 11,
+  fontFamily: CT_FONT,
+};
+
+const workbookClearStyle: CSSProperties = {
+  width: 32,
+  height: 34,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  color: CT.inkMuted,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
   cursor: "pointer",
 };
 
