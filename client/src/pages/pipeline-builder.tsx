@@ -7,12 +7,10 @@ import {
   ArrowDownToLine,
   Box,
   CheckCircle2,
-  Database,
   FileSpreadsheet,
   GitBranch,
   Hammer,
   Layers3,
-  Link2,
   Pencil,
   Plus,
   Save,
@@ -22,7 +20,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-type NodeKind = "dataset" | "transform" | "join" | "union" | "output";
+type NodeKind = "dataset" | "transform" | "join" | "union";
 type PortSide = "left" | "right";
 
 type PipelineNode = {
@@ -73,7 +71,6 @@ type GraphSnapshot = {
 };
 
 const initialDatasetId = "dataset-raw-1";
-const initialOutputId = "output-1";
 
 const initialNodes: PipelineNode[] = [
   {
@@ -83,16 +80,6 @@ const initialNodes: PipelineNode[] = [
     subtitle: "XLS, CSV veya JSON yükle",
     x: 80,
     y: 146,
-    rows: [],
-    columns: [],
-  },
-  {
-    id: initialOutputId,
-    kind: "output",
-    title: "Clean data output",
-    subtitle: "Transform sonrası çıktı",
-    x: 890,
-    y: 188,
     rows: [],
     columns: [],
   },
@@ -111,7 +98,7 @@ export default function PipelineBuilderPage() {
   const previewColumns = selectedNode?.columns ?? [];
   const previewRows = selectedNode?.rows ?? [];
 
-  const outputNode = nodes.find(node => node.kind === "output");
+  const deliverableNode = getDeliverableNode(nodes, connections, selectedNodeId);
   const datasetCount = nodes.filter(node => node.kind === "dataset").length;
   const transformCount = nodes.filter(node => node.kind === "transform").length;
 
@@ -170,13 +157,13 @@ export default function PipelineBuilderPage() {
 
   function deleteSelectedNode() {
     const selected = nodes.find(node => node.id === selectedNodeId);
-    if (!selected || selected.kind === "output") return;
+    if (!selected) return;
     pushHistory();
     const nextConnections = connections.filter(connection => connection.from !== selected.id && connection.to !== selected.id);
     const nextNodes = nodes.filter(node => node.id !== selected.id);
     setConnections(nextConnections);
     setNodes(recalculateGraph(nextNodes, nextConnections));
-    setSelectedNodeId(nextNodes.find(node => node.kind !== "output")?.id ?? initialOutputId);
+    setSelectedNodeId(nextNodes[0]?.id ?? initialDatasetId);
     setActionMenu(null);
     setPendingConnection(null);
   }
@@ -250,7 +237,7 @@ export default function PipelineBuilderPage() {
     if (!node) return;
     setSelectedNodeId(nodeId);
 
-    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId && node.kind !== "output") {
+    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId) {
       pushHistory();
       const nextConnections = dedupeConnections([
         ...connections,
@@ -278,7 +265,7 @@ export default function PipelineBuilderPage() {
 
   function selectGraphNode(nodeId: string) {
     const node = nodes.find(item => item.id === nodeId);
-    if (pendingConnection && nodeId !== pendingConnection.targetId && node?.kind !== "output") {
+    if (pendingConnection && nodeId !== pendingConnection.targetId && node) {
       pushHistory();
       const nextConnections = dedupeConnections([
         ...connections,
@@ -395,27 +382,6 @@ export default function PipelineBuilderPage() {
     setError("Edit modu: alttaki Data preview üzerinden dosya yükleyip datayı yenileyebilirsin.");
   }
 
-  function createOutputFrom(fromId: string) {
-    const source = nodes.find(node => node.id === fromId);
-    const output = nodes.find(node => node.kind === "output");
-    if (!source || !output) return;
-    pushHistory();
-    setNodes(prev => prev.map(node => node.id === output.id ? {
-      ...node,
-      title: `${source.title} data`,
-      subtitle: `${source.rows.length} rows`,
-      rows: source.rows,
-      columns: source.columns,
-    } : node));
-    setConnections(prev => dedupeConnections([
-      ...prev.filter(connection => connection.to !== output.id),
-      { from: fromId, to: output.id },
-    ]));
-    setSelectedNodeId(output.id);
-    setActionMenu(null);
-    setPendingConnection(null);
-  }
-
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
       <TopNav />
@@ -426,7 +392,7 @@ export default function PipelineBuilderPage() {
           <div>
             <div style={{ fontSize: 13, fontWeight: 700 }}>Pipeline Builder</div>
             <div style={{ fontSize: 10, color: CT.inkMuted, fontFamily: CT_MONO }}>
-              Input dataset → Transform → Preview → Output
+              Input dataset → Transform → Preview → Deliver
             </div>
           </div>
         </div>
@@ -474,7 +440,6 @@ export default function PipelineBuilderPage() {
                   addDataset();
                   setActionMenu(null);
                 }}
-                onOutput={() => createOutputFrom(actionMenu.nodeId)}
                 onEdit={() => editNodeData(actionMenu.nodeId)}
               />
             )}
@@ -549,7 +514,7 @@ export default function PipelineBuilderPage() {
       <aside style={summaryPanelStyle}>
         <Metric label="Datasets" value={datasetCount} />
         <Metric label="Transforms" value={transformCount} />
-        <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
+        <Metric label="Output rows" value={deliverableNode?.rows.length ?? 0} />
       </aside>
     </div>
   );
@@ -606,13 +571,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
   );
 }
 
-function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onOutput, onEdit }: {
+function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
   onTransform: () => void;
   onJoin: () => void;
   onUnion: () => void;
   onNewDataset: () => void;
-  onOutput: () => void;
   onEdit: () => void;
 }) {
   return (
@@ -622,7 +586,6 @@ function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onO
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onNewDataset} />
-      <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<Pencil size={18} />} label="Edit" tone={CT.inkMuted} onClick={onEdit} />
     </div>
@@ -1077,20 +1040,24 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
           rows,
           columns,
         };
-      } else if (node.kind === "output") {
-        const source = inputNodes[inputNodes.length - 1];
-        next[i] = {
-          ...node,
-          title: `${source.title} data`,
-          subtitle: `${source.rows.length} rows`,
-          rows: source.rows,
-          columns: source.columns,
-        };
       }
     }
   }
 
   return next;
+}
+
+function getDeliverableNode(nodes: PipelineNode[], connections: GraphConnection[], selectedNodeId: string) {
+  const selected = nodes.find(node => node.id === selectedNodeId);
+  if (selected && isDeliverableNode(selected)) return selected;
+
+  const sourceIds = new Set(connections.map(connection => connection.from));
+  const terminalDeliverables = nodes.filter(node => isDeliverableNode(node) && !sourceIds.has(node.id));
+  return terminalDeliverables.at(-1) ?? nodes.filter(isDeliverableNode).at(-1) ?? null;
+}
+
+function isDeliverableNode(node: PipelineNode) {
+  return node.kind === "transform" || node.kind === "union";
 }
 
 function normalizeCleanColumn(key: string) {
@@ -1272,13 +1239,11 @@ function rectanglesOverlap(
 }
 
 function nodeWidth(kind: NodeKind) {
-  if (kind === "output") return 250;
   if (kind === "join" || kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
-  if (kind === "output") return 72;
   if (kind === "join" || kind === "union") return 104;
   return 92;
 }
@@ -1287,16 +1252,14 @@ function nodeTone(kind: NodeKind) {
   if (kind === "dataset") return "#6b7a8f";
   if (kind === "transform") return CT.info;
   if (kind === "join") return "#7b61d1";
-  if (kind === "union") return "#d92f7d";
-  return CT.ok;
+  return "#d92f7d";
 }
 
 function nodeIcon(kind: NodeKind, size: number) {
   if (kind === "dataset") return <FileSpreadsheet size={size} color="#6b7a8f" />;
   if (kind === "transform") return <Hammer size={size} color={CT.info} />;
   if (kind === "join") return <Layers3 size={size} color="#7b61d1" />;
-  if (kind === "union") return <Box size={size} color="#d92f7d" />;
-  return <Database size={size} color={CT.ok} />;
+  return <Box size={size} color="#d92f7d" />;
 }
 
 function inferColumnType(rows: Array<Record<string, any>>, col: string) {
