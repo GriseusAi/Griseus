@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
@@ -61,6 +61,17 @@ type ActionMenuState = {
   y: number;
 } | null;
 
+type PendingConnection = {
+  kind: "union";
+  targetId: string;
+} | null;
+
+type GraphSnapshot = {
+  nodes: PipelineNode[];
+  connections: GraphConnection[];
+  selectedNodeId: string;
+};
+
 const initialDatasetId = "dataset-raw-1";
 const initialOutputId = "output-1";
 
@@ -92,6 +103,8 @@ export default function PipelineBuilderPage() {
   const [connections, setConnections] = useState<GraphConnection[]>([]);
   const [selectedNodeId, setSelectedNodeId] = useState(initialDatasetId);
   const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
+  const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
+  const [history, setHistory] = useState<GraphSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
@@ -133,10 +146,69 @@ export default function PipelineBuilderPage() {
     };
   }
 
+  function pushHistory() {
+    setHistory(prev => [...prev.slice(-39), {
+      nodes,
+      connections,
+      selectedNodeId,
+    }]);
+  }
+
+  function restorePreviousGraph() {
+    setHistory(prev => {
+      const snapshot = prev[prev.length - 1];
+      if (!snapshot) return prev;
+      setNodes(snapshot.nodes);
+      setConnections(snapshot.connections);
+      setSelectedNodeId(snapshot.selectedNodeId);
+      setActionMenu(null);
+      setPendingConnection(null);
+      setError(null);
+      return prev.slice(0, -1);
+    });
+  }
+
+  function deleteSelectedNode() {
+    const selected = nodes.find(node => node.id === selectedNodeId);
+    if (!selected || selected.kind === "output") return;
+    pushHistory();
+    const nextConnections = connections.filter(connection => connection.from !== selected.id && connection.to !== selected.id);
+    const nextNodes = nodes.filter(node => node.id !== selected.id);
+    setConnections(nextConnections);
+    setNodes(recalculateGraph(nextNodes, nextConnections));
+    setSelectedNodeId(nextNodes.find(node => node.kind !== "output")?.id ?? initialOutputId);
+    setActionMenu(null);
+    setPendingConnection(null);
+  }
+
+  useEffect(() => {
+    function onKeyDown(event: KeyboardEvent) {
+      const target = event.target as HTMLElement | null;
+      const tagName = target?.tagName?.toLowerCase();
+      const isEditable = tagName === "input" || tagName === "textarea" || target?.isContentEditable;
+      if (isEditable) return;
+
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "z") {
+        event.preventDefault();
+        restorePreviousGraph();
+        return;
+      }
+
+      if (event.key === "Delete" || event.key === "Backspace") {
+        event.preventDefault();
+        deleteSelectedNode();
+      }
+    }
+
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [nodes, connections, selectedNodeId, history]);
+
   async function handleNodeFile(nodeId: string, file: File) {
     try {
       setError(null);
       const [dataset] = await parseWorkbookFile(file);
+      pushHistory();
       setNodes(prev => recalculateGraph(prev.map(node => {
         if (node.id !== nodeId) return node;
         return {
@@ -157,6 +229,7 @@ export default function PipelineBuilderPage() {
   function addDataset() {
     const index = nodes.filter(node => node.kind === "dataset").length + 1;
     const id = `dataset-raw-${Date.now()}`;
+    pushHistory();
     setNodes(prev => [...prev, {
       id,
       kind: "dataset",
@@ -169,12 +242,29 @@ export default function PipelineBuilderPage() {
     }]);
     setSelectedNodeId(id);
     setActionMenu(null);
+    setPendingConnection(null);
   }
 
   function openPortMenu(nodeId: string, side: PortSide) {
     const node = nodes.find(item => item.id === nodeId);
     if (!node) return;
     setSelectedNodeId(nodeId);
+
+    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId && node.kind !== "output") {
+      pushHistory();
+      const nextConnections = dedupeConnections([
+        ...connections,
+        { from: nodeId, to: pendingConnection.targetId },
+      ]);
+      setConnections(nextConnections);
+      setNodes(prev => recalculateGraph(prev, nextConnections));
+      setSelectedNodeId(pendingConnection.targetId);
+      setActionMenu(null);
+      setPendingConnection(null);
+      setError("Union bağlantısı eklendi. Başka node eklemek için onun sağ portuna basabilirsin.");
+      return;
+    }
+
     if (side === "left") {
       setActionMenu(null);
       return;
@@ -186,27 +276,48 @@ export default function PipelineBuilderPage() {
     });
   }
 
+  function selectGraphNode(nodeId: string) {
+    const node = nodes.find(item => item.id === nodeId);
+    if (pendingConnection && nodeId !== pendingConnection.targetId && node?.kind !== "output") {
+      pushHistory();
+      const nextConnections = dedupeConnections([
+        ...connections,
+        { from: nodeId, to: pendingConnection.targetId },
+      ]);
+      setConnections(nextConnections);
+      setNodes(prev => recalculateGraph(prev, nextConnections));
+      setSelectedNodeId(pendingConnection.targetId);
+      setActionMenu(null);
+      setPendingConnection(null);
+      setError("Union bağlantısı eklendi.");
+      return;
+    }
+
+    setSelectedNodeId(nodeId);
+    setActionMenu(null);
+  }
+
   function createTransform(fromId: string) {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
     const transformIndex = nodes.filter(node => node.kind === "transform").length + 1;
     const cleaned = transformRows(source.rows, source.sourceFile ?? source.title);
     const transformId = `transform-${Date.now()}`;
-    const x = Math.max(source.x + 330, 420);
-    const y = source.y;
+    const position = findFreePosition(nodes, "transform", Math.max(source.x + 330, 420), source.y);
 
     const transformNode: PipelineNode = {
       id: transformId,
       kind: "transform",
       title: `${source.title} - Clean`,
       subtitle: `${cleaned.kind} · ${cleaned.columns.length} columns`,
-      x,
-      y,
+      x: position.x,
+      y: position.y,
       rows: cleaned.rows,
       columns: cleaned.columns,
       sourceFile: source.sourceFile,
     };
 
+    pushHistory();
     setNodes(prev => prev.concat(transformNode));
 
     setConnections(prev => {
@@ -219,6 +330,7 @@ export default function PipelineBuilderPage() {
 
     setSelectedNodeId(transformId);
     setActionMenu(null);
+    setPendingConnection(null);
     setError(cleaned.rows.length === 0 ? "Transform node'u hazır. Data kutusuna dosya yüklenince clean data buraya akacak." : null);
     void transformIndex;
   }
@@ -226,55 +338,55 @@ export default function PipelineBuilderPage() {
   function createJoin(fromId: string) {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
-    const otherInputs = nodes.filter(node => node.kind !== "output" && node.id !== fromId && node.rows.length > 0);
-    const second = otherInputs[0];
-    const joined = second ? joinRows(source, second) : { rows: source.rows, columns: source.columns };
+    const joined = { rows: source.rows, columns: source.columns };
     const id = `join-${Date.now()}`;
+    const position = findFreePosition(nodes, "join", Math.max(source.x + 330, 420), source.y + 24);
     const joinNode: PipelineNode = {
       id,
       kind: "join",
-      title: second ? `Join ${source.title}` : "Join",
-      subtitle: second ? `${joined.columns.length} columns` : "İkinci dataset bekleniyor",
-      x: Math.max(source.x + 330, 420),
-      y: source.y + 24,
+      title: `Join ${source.title}`,
+      subtitle: "İkinci dataset bekleniyor",
+      x: position.x,
+      y: position.y,
       rows: joined.rows,
       columns: joined.columns,
     };
+    pushHistory();
     setNodes(prev => prev.concat(joinNode));
     setConnections(prev => dedupeConnections([
       ...prev,
       { from: fromId, to: id },
-      ...(second ? [{ from: second.id, to: id }] : []),
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
+    setPendingConnection(null);
   }
 
   function createUnion(fromId: string) {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
-    const siblings = nodes.filter(node => node.kind === "dataset" && node.rows.length > 0);
-    const groupedSources = siblings.length > 0 ? siblings : nodes.filter(node => node.kind === "dataset");
-    const allColumns = Array.from(new Set(groupedSources.flatMap(node => node.columns)));
-    const rows = groupedSources.flatMap(node => node.rows.map(row => Object.fromEntries(allColumns.map(col => [col, row[col] ?? ""]))));
     const id = `union-${Date.now()}`;
+    const position = findFreePosition(nodes, "union", Math.max(source.x + 330, 420), source.y + 32);
     const unionNode: PipelineNode = {
       id,
       kind: "union",
       title: "Union",
-      subtitle: `${rows.length} rows`,
-      x: Math.max(source.x + 330, 420),
-      y: source.y + 24,
-      rows,
-      columns: allColumns,
+      subtitle: "İkinci dataset bekleniyor",
+      x: position.x,
+      y: position.y,
+      rows: source.rows,
+      columns: source.columns,
     };
+    pushHistory();
     setNodes(prev => prev.concat(unionNode));
     setConnections(prev => dedupeConnections([
       ...prev,
-      ...groupedSources.map(node => ({ from: node.id, to: id })),
+      { from: fromId, to: id },
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
+    setPendingConnection({ kind: "union", targetId: id });
+    setError("Union hazır. Birleştirmek istediğin diğer node'un sağ (+) portuna bas.");
   }
 
   function editNodeData(nodeId: string) {
@@ -287,6 +399,7 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     const output = nodes.find(node => node.kind === "output");
     if (!source || !output) return;
+    pushHistory();
     setNodes(prev => prev.map(node => node.id === output.id ? {
       ...node,
       title: `${source.title} data`,
@@ -300,6 +413,7 @@ export default function PipelineBuilderPage() {
     ]));
     setSelectedNodeId(output.id);
     setActionMenu(null);
+    setPendingConnection(null);
   }
 
   return (
@@ -344,10 +458,7 @@ export default function PipelineBuilderPage() {
                 key={node.id}
                 node={node}
                 selected={selectedNodeId === node.id}
-                onSelect={() => {
-                  setSelectedNodeId(node.id);
-                  setActionMenu(null);
-                }}
+                onSelect={() => selectGraphNode(node.id)}
                 onPortClick={(side) => openPortMenu(node.id, side)}
                 onFile={(file) => handleNodeFile(node.id, file)}
               />
@@ -1123,6 +1234,41 @@ function dedupeConnections(connections: GraphConnection[]) {
 
 function cleanTitle(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+}
+
+function findFreePosition(nodes: PipelineNode[], kind: NodeKind, preferredX: number, preferredY: number) {
+  let x = preferredX;
+  let y = Math.max(60, preferredY);
+  const width = nodeWidth(kind);
+  const height = nodeHeight(kind);
+
+  for (let attempt = 0; attempt < 24; attempt++) {
+    const overlaps = nodes.some(node => rectanglesOverlap(
+      { x, y, width, height },
+      { x: node.x, y: node.y, width: nodeWidth(node.kind), height: nodeHeight(node.kind) },
+    ));
+    if (!overlaps) return { x, y };
+    y += 132;
+    if (y > 760) {
+      y = 80 + (attempt % 3) * 40;
+      x += 340;
+    }
+  }
+
+  return { x, y };
+}
+
+function rectanglesOverlap(
+  a: { x: number; y: number; width: number; height: number },
+  b: { x: number; y: number; width: number; height: number },
+) {
+  const gap = 30;
+  return !(
+    a.x + a.width + gap < b.x
+    || b.x + b.width + gap < a.x
+    || a.y + a.height + gap < b.y
+    || b.y + b.height + gap < a.y
+  );
 }
 
 function nodeWidth(kind: NodeKind) {
