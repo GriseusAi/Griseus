@@ -110,13 +110,28 @@ export default function PipelineBuilderPage() {
       if (!from || !to) return null;
       return {
         key: `${connection.from}-${connection.to}`,
-        x1: from.x + nodeWidth(from.kind),
-        y1: from.y + nodeHeight(from.kind) / 2,
-        x2: to.x,
-        y2: to.y + nodeHeight(to.kind) / 2,
+        x1: getPortPosition(from, "right").x,
+        y1: getPortPosition(from, "right").y,
+        x2: getPortPosition(to, "left").x,
+        y2: getPortPosition(to, "left").y,
       };
     }).filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
   }, [connections, nodes]);
+
+  const canvasSize = useMemo(() => {
+    const maxX = Math.max(...nodes.map(node => node.x + nodeWidth(node.kind)), 1800);
+    const maxY = Math.max(...nodes.map(node => node.y + nodeHeight(node.kind)), 900);
+    return { width: maxX + 520, height: maxY + 320 };
+  }, [nodes]);
+
+  function getPortPosition(node: PipelineNode, side: PortSide) {
+    const nodeW = nodeWidth(node.kind);
+    const nodeH = nodeHeight(node.kind);
+    return {
+      x: side === "right" ? node.x + nodeW : node.x,
+      y: node.y + nodeH / 2,
+    };
+  }
 
   async function handleNodeFile(nodeId: string, file: File) {
     try {
@@ -315,14 +330,10 @@ export default function PipelineBuilderPage() {
         </div>
       </header>
 
-      <main style={{ display: "grid", gridTemplateRows: "1fr 310px", minHeight: "calc(100vh - 94px)" }}>
-        <section style={{ position: "relative", overflow: "auto", background: "#eef1f5" }}>
-          <div style={{ position: "relative", width: 1280, height: 610 }}>
-            <LaneLabel left={74} top={28} title="Input" />
-            <LaneLabel left={430} top={28} title="Transform" />
-            <LaneLabel left={900} top={28} title="Output" />
-
-            <svg width="1280" height="610" style={{ position: "absolute", inset: 0 }}>
+      <main style={{ display: "grid", gridTemplateRows: "1fr 310px", height: "calc(100vh - 94px)", minHeight: 680 }}>
+        <section style={canvasViewportStyle}>
+          <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height }}>
+            <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
               {renderedEdges.map(edge => (
                 <EdgeLine key={edge.key} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
               ))}
@@ -456,7 +467,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
         boxShadow: selected ? "0 0 0 3px rgba(73,92,114,0.16), 0 5px 16px rgba(20,20,19,0.12)" : nodeStyle.boxShadow,
       }}
     >
-      {node.kind !== "dataset" && <GraphPort side="left" onClick={() => onPortClick("left")} />}
+      <GraphPort side="left" onClick={() => onPortClick("left")} />
       <div style={nodeTitleStyle}>
         {nodeIcon(node.kind, 18)}
         <span style={{ fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.title}</span>
@@ -537,7 +548,7 @@ function GraphPort({ side, onClick }: { side: PortSide; onClick: () => void }) {
     <span
       role="button"
       tabIndex={0}
-      title={side === "right" ? "Transform menüsü" : "Input port"}
+      title={side === "right" ? "Output (+)" : "Input (-)"}
       onClick={(event) => {
         event.stopPropagation();
         onClick();
@@ -548,7 +559,11 @@ function GraphPort({ side, onClick }: { side: PortSide; onClick: () => void }) {
         event.stopPropagation();
         onClick();
       }}
-      style={{ ...graphPortStyle, [side]: -13 }}
+      style={{
+        ...graphPortStyle,
+        ...(side === "right" ? outputPortStyle : inputPortStyle),
+        [side]: -13,
+      }}
     />
   );
 }
@@ -583,10 +598,6 @@ function UploadDropzone({ node, onFile }: { node: PipelineNode; onFile: (file: F
       <span style={{ fontSize: 10.5, color: CT.inkSub }}>{node.sourceFile ?? "CSV, XLSX, JSON"}</span>
     </label>
   );
-}
-
-function LaneLabel({ left, top, title }: { left: number; top: number; title: string }) {
-  return <div style={{ ...laneLabelStyle, left, top }}>{title}</div>;
 }
 
 function EdgeLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
@@ -1197,12 +1208,11 @@ const deployButtonStyle: CSSProperties = {
   background: CT.okSoft,
 };
 
-const laneLabelStyle: CSSProperties = {
-  position: "absolute",
-  color: CT.err,
-  fontSize: 26,
-  fontWeight: 800,
-  letterSpacing: 0,
+const canvasViewportStyle: CSSProperties = {
+  position: "relative",
+  overflow: "auto",
+  background: "#eef1f5",
+  cursor: "default",
 };
 
 const nodeStyle: CSSProperties = {
@@ -1267,10 +1277,19 @@ const graphPortStyle: CSSProperties = {
   height: 24,
   borderRadius: 999,
   border: "4px solid #566577",
-  background: "#eef1f5",
   transform: "translateY(-50%)",
   cursor: "crosshair",
   zIndex: 4,
+};
+
+const inputPortStyle: CSSProperties = {
+  background: "#eef1f5",
+  boxShadow: "inset 0 0 0 3px rgba(86,101,119,0.12)",
+};
+
+const outputPortStyle: CSSProperties = {
+  background: CT.surface,
+  boxShadow: "0 0 0 4px rgba(63,143,91,0.12)",
 };
 
 const actionMenuStyle: CSSProperties = {
