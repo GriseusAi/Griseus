@@ -7,6 +7,7 @@ import {
   ArrowDownToLine,
   Box,
   CheckCircle2,
+  Database,
   FileSpreadsheet,
   GitBranch,
   Hammer,
@@ -22,7 +23,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-type NodeKind = "dataset" | "transform" | "join" | "union";
+type NodeKind = "dataset" | "transform" | "join" | "union" | "output";
 type PortSide = "left" | "right";
 
 type PipelineNode = {
@@ -100,7 +101,7 @@ export default function PipelineBuilderPage() {
   const previewColumns = selectedNode?.columns ?? [];
   const previewRows = selectedNode?.rows ?? [];
 
-  const deliverableNode = getDeliverableNode(nodes, connections, selectedNodeId);
+  const outputNode = getOutputNode(nodes, connections, selectedNodeId);
   const datasetCount = nodes.filter(node => node.kind === "dataset").length;
   const transformCount = nodes.filter(node => node.kind === "transform").length;
   const canUndo = history.length > 0;
@@ -241,7 +242,7 @@ export default function PipelineBuilderPage() {
     if (!node) return;
     setSelectedNodeId(nodeId);
 
-    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId) {
+    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId && node.kind !== "output") {
       pushHistory();
       const nextConnections = dedupeConnections([
         ...connections,
@@ -269,7 +270,7 @@ export default function PipelineBuilderPage() {
 
   function selectGraphNode(nodeId: string) {
     const node = nodes.find(item => item.id === nodeId);
-    if (pendingConnection && nodeId !== pendingConnection.targetId && node) {
+    if (pendingConnection && nodeId !== pendingConnection.targetId && node && node.kind !== "output") {
       pushHistory();
       const nextConnections = dedupeConnections([
         ...connections,
@@ -380,6 +381,36 @@ export default function PipelineBuilderPage() {
     setError("Union hazır. Birleştirmek istediğin diğer node'un sağ (+) portuna bas.");
   }
 
+  function createOutputFrom(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source) return;
+
+    const id = `output-${Date.now()}`;
+    const position = findFreePosition(nodes, "output", Math.max(source.x + 330, 420), source.y);
+    const outputNode: PipelineNode = {
+      id,
+      kind: "output",
+      title: `${source.title} data`,
+      subtitle: `${source.rows.length} rows`,
+      x: position.x,
+      y: position.y,
+      rows: source.rows,
+      columns: source.columns,
+      sourceFile: source.sourceFile,
+    };
+
+    pushHistory();
+    setNodes(prev => prev.concat(outputNode));
+    setConnections(prev => dedupeConnections([
+      ...prev,
+      { from: fromId, to: id },
+    ]));
+    setSelectedNodeId(id);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(null);
+  }
+
   function editNodeData(nodeId: string) {
     setSelectedNodeId(nodeId);
     setActionMenu(null);
@@ -396,7 +427,7 @@ export default function PipelineBuilderPage() {
           <div>
             <div style={{ fontSize: 13, fontWeight: 700 }}>Pipeline Builder</div>
             <div style={{ fontSize: 10, color: CT.inkMuted, fontFamily: CT_MONO }}>
-              Input dataset → Transform → Preview → Deliver
+              Input dataset → Transform → Preview → Output
             </div>
           </div>
         </div>
@@ -460,6 +491,7 @@ export default function PipelineBuilderPage() {
                 onTransform={() => createTransform(actionMenu.nodeId)}
                 onJoin={() => createJoin(actionMenu.nodeId)}
                 onUnion={() => createUnion(actionMenu.nodeId)}
+                onOutput={() => createOutputFrom(actionMenu.nodeId)}
                 onNewDataset={() => {
                   addDataset();
                   setActionMenu(null);
@@ -538,7 +570,7 @@ export default function PipelineBuilderPage() {
       <aside style={summaryPanelStyle}>
         <Metric label="Datasets" value={datasetCount} />
         <Metric label="Transforms" value={transformCount} />
-        <Metric label="Output rows" value={deliverableNode?.rows.length ?? 0} />
+        <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
       </aside>
     </div>
   );
@@ -590,16 +622,17 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
           <UploadCloud size={13} />
         </label>
       )}
-      <GraphPort side="right" onClick={() => onPortClick("right")} />
+      {node.kind !== "output" && <GraphPort side="right" onClick={() => onPortClick("right")} />}
     </button>
   );
 }
 
-function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onEdit }: {
+function NodeActionMenu({ state, onTransform, onJoin, onUnion, onOutput, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
   onTransform: () => void;
   onJoin: () => void;
   onUnion: () => void;
+  onOutput: () => void;
   onNewDataset: () => void;
   onEdit: () => void;
 }) {
@@ -608,6 +641,7 @@ function NodeActionMenu({ state, onTransform, onJoin, onUnion, onNewDataset, onE
       <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
       <ActionItem icon={<Layers3 size={18} />} label="Join" tone="#7b61d1" onClick={onJoin} />
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
+      <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onNewDataset} />
       <div style={actionDividerStyle} />
@@ -1064,6 +1098,16 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
           rows,
           columns,
         };
+      } else if (node.kind === "output") {
+        const source = inputNodes[inputNodes.length - 1];
+        next[i] = {
+          ...node,
+          title: `${source.title} data`,
+          subtitle: `${source.rows.length} rows`,
+          rows: source.rows,
+          columns: source.columns,
+          sourceFile: source.sourceFile,
+        };
       }
     }
   }
@@ -1071,17 +1115,13 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
   return next;
 }
 
-function getDeliverableNode(nodes: PipelineNode[], connections: GraphConnection[], selectedNodeId: string) {
+function getOutputNode(nodes: PipelineNode[], connections: GraphConnection[], selectedNodeId: string) {
   const selected = nodes.find(node => node.id === selectedNodeId);
-  if (selected && isDeliverableNode(selected)) return selected;
+  if (selected?.kind === "output") return selected;
 
   const sourceIds = new Set(connections.map(connection => connection.from));
-  const terminalDeliverables = nodes.filter(node => isDeliverableNode(node) && !sourceIds.has(node.id));
-  return terminalDeliverables.at(-1) ?? nodes.filter(isDeliverableNode).at(-1) ?? null;
-}
-
-function isDeliverableNode(node: PipelineNode) {
-  return node.kind === "transform" || node.kind === "union";
+  const terminalOutputs = nodes.filter(node => node.kind === "output" && !sourceIds.has(node.id));
+  return terminalOutputs.at(-1) ?? nodes.filter(node => node.kind === "output").at(-1) ?? null;
 }
 
 function normalizeCleanColumn(key: string) {
@@ -1263,11 +1303,13 @@ function rectanglesOverlap(
 }
 
 function nodeWidth(kind: NodeKind) {
+  if (kind === "output") return 250;
   if (kind === "join" || kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
+  if (kind === "output") return 72;
   if (kind === "join" || kind === "union") return 104;
   return 92;
 }
@@ -1276,14 +1318,16 @@ function nodeTone(kind: NodeKind) {
   if (kind === "dataset") return "#6b7a8f";
   if (kind === "transform") return CT.info;
   if (kind === "join") return "#7b61d1";
-  return "#d92f7d";
+  if (kind === "union") return "#d92f7d";
+  return CT.ok;
 }
 
 function nodeIcon(kind: NodeKind, size: number) {
   if (kind === "dataset") return <FileSpreadsheet size={size} color="#6b7a8f" />;
   if (kind === "transform") return <Hammer size={size} color={CT.info} />;
   if (kind === "join") return <Layers3 size={size} color="#7b61d1" />;
-  return <Box size={size} color="#d92f7d" />;
+  if (kind === "union") return <Box size={size} color="#d92f7d" />;
+  return <Database size={size} color={CT.ok} />;
 }
 
 function inferColumnType(rows: Array<Record<string, any>>, col: string) {
