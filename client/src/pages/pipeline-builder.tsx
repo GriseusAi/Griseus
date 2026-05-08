@@ -11,7 +11,6 @@ import {
   FileSpreadsheet,
   GitBranch,
   Hammer,
-  Layers3,
   Pencil,
   Plus,
   RotateCcw,
@@ -23,7 +22,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-type NodeKind = "dataset" | "transform" | "join" | "union" | "output";
+type NodeKind = "dataset" | "transform" | "union" | "output";
 type PortSide = "left" | "right";
 
 type PipelineNode = {
@@ -75,7 +74,7 @@ type ActionMenuState = {
 
 type PendingConnection = {
   kind: "union";
-  targetId: string;
+  sourceId: string;
 } | null;
 
 type GraphSnapshot = {
@@ -253,18 +252,8 @@ export default function PipelineBuilderPage() {
     if (!node) return;
     setSelectedNodeId(nodeId);
 
-    if (pendingConnection && side === "right" && nodeId !== pendingConnection.targetId && node.kind !== "output") {
-      pushHistory();
-      const nextConnections = dedupeConnections([
-        ...connections,
-        { from: nodeId, to: pendingConnection.targetId },
-      ]);
-      setConnections(nextConnections);
-      setNodes(prev => recalculateGraph(prev, nextConnections));
-      setSelectedNodeId(pendingConnection.targetId);
-      setActionMenu(null);
-      setPendingConnection(null);
-      setError("Union bağlantısı eklendi. Başka node eklemek için onun sağ portuna basabilirsin.");
+    if (pendingConnection && side === "right" && nodeId !== pendingConnection.sourceId && node.kind !== "output") {
+      completeUnion(pendingConnection.sourceId, nodeId);
       return;
     }
 
@@ -281,18 +270,8 @@ export default function PipelineBuilderPage() {
 
   function selectGraphNode(nodeId: string) {
     const node = nodes.find(item => item.id === nodeId);
-    if (pendingConnection && nodeId !== pendingConnection.targetId && node && node.kind !== "output") {
-      pushHistory();
-      const nextConnections = dedupeConnections([
-        ...connections,
-        { from: nodeId, to: pendingConnection.targetId },
-      ]);
-      setConnections(nextConnections);
-      setNodes(prev => recalculateGraph(prev, nextConnections));
-      setSelectedNodeId(pendingConnection.targetId);
-      setActionMenu(null);
-      setPendingConnection(null);
-      setError("Union bağlantısı eklendi.");
+    if (pendingConnection && nodeId !== pendingConnection.sourceId && node && node.kind !== "output") {
+      completeUnion(pendingConnection.sourceId, nodeId);
       return;
     }
 
@@ -338,58 +317,49 @@ export default function PipelineBuilderPage() {
     void transformIndex;
   }
 
-  function createJoin(fromId: string) {
-    const source = nodes.find(node => node.id === fromId);
-    if (!source) return;
-    const joined = { rows: source.rows, columns: source.columns };
-    const id = `join-${Date.now()}`;
-    const position = findFreePosition(nodes, "join", Math.max(source.x + 330, 420), source.y + 24);
-    const joinNode: PipelineNode = {
-      id,
-      kind: "join",
-      title: `Join ${source.title}`,
-      subtitle: "İkinci dataset bekleniyor",
-      x: position.x,
-      y: position.y,
-      rows: joined.rows,
-      columns: joined.columns,
-    };
-    pushHistory();
-    setNodes(prev => prev.concat(joinNode));
-    setConnections(prev => dedupeConnections([
-      ...prev,
-      { from: fromId, to: id },
-    ]));
-    setSelectedNodeId(id);
-    setActionMenu(null);
-    setPendingConnection(null);
-  }
-
   function createUnion(fromId: string) {
     const source = nodes.find(node => node.id === fromId);
     if (!source) return;
+    setSelectedNodeId(fromId);
+    setActionMenu(null);
+    setPendingConnection({ kind: "union", sourceId: fromId });
+    setError("Union için ikinci node'u seç.");
+  }
+
+  function completeUnion(firstId: string, secondId: string) {
+    const first = nodes.find(node => node.id === firstId);
+    const second = nodes.find(node => node.id === secondId);
+    if (!first || !second || first.kind === "output" || second.kind === "output") return;
     const id = `union-${Date.now()}`;
-    const position = findFreePosition(nodes, "union", Math.max(source.x + 330, 420), source.y + 32);
+    const position = findFreePosition(
+      nodes,
+      "union",
+      Math.max(first.x, second.x) + 330,
+      Math.round((first.y + second.y) / 2),
+    );
+    const columns = Array.from(new Set([...first.columns, ...second.columns]));
+    const rows = [first, second].flatMap(input => input.rows.map(row => Object.fromEntries(columns.map(col => [col, row[col] ?? ""]))));
     const unionNode: PipelineNode = {
       id,
       kind: "union",
       title: "Union",
-      subtitle: "İkinci dataset bekleniyor",
+      subtitle: rows.length > 0 ? `${rows.length} rows` : "Data bekleniyor",
       x: position.x,
       y: position.y,
-      rows: source.rows,
-      columns: source.columns,
+      rows,
+      columns,
     };
     pushHistory();
     setNodes(prev => prev.concat(unionNode));
     setConnections(prev => dedupeConnections([
       ...prev,
-      { from: fromId, to: id },
+      { from: firstId, to: id },
+      { from: secondId, to: id },
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
-    setPendingConnection({ kind: "union", targetId: id });
-    setError("Union hazır. Birleştirmek istediğin diğer node'un sağ (+) portuna bas.");
+    setPendingConnection(null);
+    setError("Union oluşturuldu.");
   }
 
   function createOutputFrom(fromId: string) {
@@ -500,7 +470,6 @@ export default function PipelineBuilderPage() {
               <NodeActionMenu
                 state={actionMenu}
                 onTransform={() => createTransform(actionMenu.nodeId)}
-                onJoin={() => createJoin(actionMenu.nodeId)}
                 onUnion={() => createUnion(actionMenu.nodeId)}
                 onOutput={() => createOutputFrom(actionMenu.nodeId)}
                 onNewDataset={() => {
@@ -638,10 +607,9 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
   );
 }
 
-function NodeActionMenu({ state, onTransform, onJoin, onUnion, onOutput, onNewDataset, onEdit }: {
+function NodeActionMenu({ state, onTransform, onUnion, onOutput, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
   onTransform: () => void;
-  onJoin: () => void;
   onUnion: () => void;
   onOutput: () => void;
   onNewDataset: () => void;
@@ -650,7 +618,6 @@ function NodeActionMenu({ state, onTransform, onJoin, onUnion, onOutput, onNewDa
   return (
     <div style={{ ...actionMenuStyle, left: state.x, top: state.y }}>
       <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
-      <ActionItem icon={<Layers3 size={18} />} label="Join" tone="#7b61d1" onClick={onJoin} />
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
       <div style={actionDividerStyle} />
@@ -1175,16 +1142,6 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
           columns: cleaned.columns,
           sourceFile: source.sourceFile,
         };
-      } else if (node.kind === "join") {
-        const [left, right] = inputNodes;
-        const joined = right ? joinRows(left, right) : { rows: left.rows, columns: left.columns };
-        next[i] = {
-          ...node,
-          title: right ? `Join ${left.title}` : "Join",
-          subtitle: right ? `${joined.columns.length} columns` : "İkinci dataset bekleniyor",
-          rows: joined.rows,
-          columns: joined.columns,
-        };
       } else if (node.kind === "union") {
         const columns = Array.from(new Set(inputNodes.flatMap(input => input.columns)));
         const rows = inputNodes.flatMap(input => input.rows.map(row => Object.fromEntries(columns.map(col => [col, row[col] ?? ""]))));
@@ -1324,24 +1281,6 @@ function splitDelimitedLine(line: string, delimiter: string) {
   return cells;
 }
 
-function joinRows(left: PipelineNode, right: PipelineNode) {
-  const leftKey = pickJoinKey(left.columns, right.columns);
-  if (!leftKey) {
-    const columns = collectColumns(left.rows);
-    return { rows: left.rows, columns };
-  }
-  const rightMap = new Map(right.rows.map(row => [String(row[leftKey]), row]));
-  const rows = left.rows.map(row => ({ ...row, ...(rightMap.get(String(row[leftKey])) ?? {}) }));
-  return { rows, columns: collectColumns(rows) };
-}
-
-function pickJoinKey(leftColumns: string[], rightColumns: string[]) {
-  const preferred = ["id", "sku", "product_sku", "component_code", "code"];
-  return preferred.find(key => leftColumns.includes(key) && rightColumns.includes(key))
-    ?? leftColumns.find(key => rightColumns.includes(key))
-    ?? null;
-}
-
 function collectColumns(rows: Array<Record<string, any>>) {
   return Array.from(rows.reduce<Set<string>>((set, row) => {
     Object.keys(row).forEach(key => set.add(key));
@@ -1400,20 +1339,19 @@ function rectanglesOverlap(
 
 function nodeWidth(kind: NodeKind) {
   if (kind === "output") return 250;
-  if (kind === "join" || kind === "union") return 260;
+  if (kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
   if (kind === "output") return 72;
-  if (kind === "join" || kind === "union") return 104;
+  if (kind === "union") return 104;
   return 92;
 }
 
 function nodeTone(kind: NodeKind) {
   if (kind === "dataset") return "#6b7a8f";
   if (kind === "transform") return CT.info;
-  if (kind === "join") return "#7b61d1";
   if (kind === "union") return "#d92f7d";
   return CT.ok;
 }
@@ -1421,7 +1359,6 @@ function nodeTone(kind: NodeKind) {
 function nodeIcon(kind: NodeKind, size: number) {
   if (kind === "dataset") return <FileSpreadsheet size={size} color="#6b7a8f" />;
   if (kind === "transform") return <Hammer size={size} color={CT.info} />;
-  if (kind === "join") return <Layers3 size={size} color="#7b61d1" />;
   if (kind === "union") return <Box size={size} color="#d92f7d" />;
   return <Database size={size} color={CT.ok} />;
 }
