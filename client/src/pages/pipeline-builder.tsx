@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import type { CSSProperties } from "react";
+import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
@@ -107,6 +107,19 @@ type PendingConnection = {
   sourceId: string;
 } | null;
 
+type DragState = {
+  nodeId: string;
+  pointerId: number;
+  startClientX: number;
+  startClientY: number;
+  originX: number;
+  originY: number;
+  initialNodes: PipelineNode[];
+  initialConnections: GraphConnection[];
+  initialSelectedNodeId: string;
+  historyPushed: boolean;
+};
+
 type GraphSnapshot = {
   nodes: PipelineNode[];
   connections: GraphConnection[];
@@ -134,6 +147,7 @@ export default function PipelineBuilderPage() {
   const [selectedNodeId, setSelectedNodeId] = useState(initialDatasetId);
   const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
+  const [dragState, setDragState] = useState<DragState | null>(null);
   const [history, setHistory] = useState<GraphSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
@@ -202,6 +216,52 @@ export default function PipelineBuilderPage() {
     });
   }
 
+  useEffect(() => {
+    if (!dragState) return;
+    const activeDrag = dragState;
+
+    function onPointerMove(event: PointerEvent) {
+      if (event.pointerId !== activeDrag.pointerId) return;
+      const dx = event.clientX - activeDrag.startClientX;
+      const dy = event.clientY - activeDrag.startClientY;
+      const moved = Math.abs(dx) + Math.abs(dy) > 3;
+
+      if (moved && !activeDrag.historyPushed) {
+        setHistory(prev => [...prev.slice(-39), {
+          nodes: activeDrag.initialNodes,
+          connections: activeDrag.initialConnections,
+          selectedNodeId: activeDrag.initialSelectedNodeId,
+        }]);
+        setDragState(prev => prev ? { ...prev, historyPushed: true } : prev);
+      }
+
+      if (!moved && !activeDrag.historyPushed) return;
+      setNodes(prev => prev.map(node => {
+        if (node.id !== activeDrag.nodeId) return node;
+        return {
+          ...node,
+          x: Math.max(20, Math.round(activeDrag.originX + dx)),
+          y: Math.max(40, Math.round(activeDrag.originY + dy)),
+        };
+      }));
+      setActionMenu(null);
+    }
+
+    function onPointerUp(event: PointerEvent) {
+      if (event.pointerId !== activeDrag.pointerId) return;
+      setDragState(null);
+    }
+
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
+    return () => {
+      window.removeEventListener("pointermove", onPointerMove);
+      window.removeEventListener("pointerup", onPointerUp);
+      window.removeEventListener("pointercancel", onPointerUp);
+    };
+  }, [dragState]);
+
   function deleteSelectedNode() {
     const selected = nodes.find(node => node.id === selectedNodeId);
     if (!selected) return;
@@ -266,14 +326,18 @@ export default function PipelineBuilderPage() {
   function addDataset() {
     const index = nodes.filter(node => node.kind === "dataset").length + 1;
     const id = `dataset-raw-${Date.now()}`;
+    const anchor = selectedNode ?? nodes.at(-1);
+    const preferredX = anchor ? anchor.x + nodeWidth(anchor.kind) + 86 : 80;
+    const preferredY = anchor ? anchor.y + 28 : 120 + index * 112;
+    const position = findFreePosition(nodes, "dataset", preferredX, preferredY);
     pushHistory();
     setNodes(prev => [...prev, {
       id,
       kind: "dataset",
       title: `Dataset ${index}`,
       subtitle: "XLS, CSV veya JSON yükle",
-      x: 80,
-      y: 120 + index * 112,
+      x: position.x,
+      y: position.y,
       rows: [],
       columns: [],
     }]);
@@ -323,6 +387,27 @@ export default function PipelineBuilderPage() {
 
     setSelectedNodeId(nodeId);
     setActionMenu(null);
+  }
+
+  function startNodeDrag(nodeId: string, event: ReactPointerEvent<HTMLDivElement>) {
+    if (isInteractiveDragTarget(event.target)) return;
+    if (event.button !== 0) return;
+    const node = nodes.find(item => item.id === nodeId);
+    if (!node) return;
+    setSelectedNodeId(nodeId);
+    setActionMenu(null);
+    setDragState({
+      nodeId,
+      pointerId: event.pointerId,
+      startClientX: event.clientX,
+      startClientY: event.clientY,
+      originX: node.x,
+      originY: node.y,
+      initialNodes: nodes,
+      initialConnections: connections,
+      initialSelectedNodeId: selectedNodeId,
+      historyPushed: false,
+    });
   }
 
   function createTransform(fromId: string) {
@@ -557,6 +642,7 @@ export default function PipelineBuilderPage() {
                 onFile={(file) => handleNodeFile(node.id, file)}
                 onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
+                onDragStart={(event) => startNodeDrag(node.id, event)}
               />
             ))}
 
@@ -654,7 +740,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -662,6 +748,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onFile: (file: File) => void;
   onFunctionSelect: (functionKind: NodeFunctionKind) => void;
   onTitleChange: (title: string) => void;
+  onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
@@ -675,6 +762,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
     <div
       role="button"
       tabIndex={0}
+      onPointerDown={onDragStart}
       onClick={onSelect}
       onKeyDown={(event) => {
         if (event.key !== "Enter" && event.key !== " ") return;
@@ -712,7 +800,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         />
       </div>
       {isDataset && (
-        <div style={nodeFunctionBarStyle} onClick={(event) => event.stopPropagation()}>
+        <div data-no-drag="true" style={nodeFunctionBarStyle} onClick={(event) => event.stopPropagation()}>
           <span style={nodeFunctionPrefixStyle}>f(x)</span>
           <select
             aria-label="Node function"
@@ -803,6 +891,7 @@ function GraphPort({ side, onClick }: { side: PortSide; onClick: () => void }) {
     <span
       role="button"
       tabIndex={0}
+      data-no-drag="true"
       title={side === "right" ? "Output (+)" : "Input (-)"}
       onClick={(event) => {
         event.stopPropagation();
@@ -1622,6 +1711,11 @@ function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRol
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   return "Sipariş";
+}
+
+function isInteractiveDragTarget(target: EventTarget | null) {
+  const element = target instanceof HTMLElement ? target : null;
+  return Boolean(element?.closest("input, select, textarea, button, label, [data-no-drag='true']"));
 }
 
 function findFreePosition(nodes: PipelineNode[], kind: NodeKind, preferredX: number, preferredY: number) {
