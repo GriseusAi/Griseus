@@ -134,6 +134,11 @@ type GraphSnapshot = {
   selectedNodeId: string;
 };
 
+type SavedPipelineGraph = GraphSnapshot & {
+  savedAt: string;
+};
+
+const pipelineBuilderStorageKey = "griseus_pipeline_builder_graph_v1";
 const initialDatasetId = "dataset-raw-1";
 
 const initialNodes: PipelineNode[] = [
@@ -150,15 +155,17 @@ const initialNodes: PipelineNode[] = [
 ];
 
 export default function PipelineBuilderPage() {
-  const [nodes, setNodes] = useState<PipelineNode[]>(initialNodes);
-  const [connections, setConnections] = useState<GraphConnection[]>([]);
-  const [selectedNodeId, setSelectedNodeId] = useState(initialDatasetId);
+  const initialGraph = useMemo(() => loadSavedPipelineGraph(), []);
+  const [nodes, setNodes] = useState<PipelineNode[]>(initialGraph?.nodes ?? initialNodes);
+  const [connections, setConnections] = useState<GraphConnection[]>(initialGraph?.connections ?? []);
+  const [selectedNodeId, setSelectedNodeId] = useState(initialGraph?.selectedNodeId ?? initialDatasetId);
   const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [history, setHistory] = useState<GraphSnapshot[]>([]);
   const [error, setError] = useState<string | null>(null);
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
+  const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialGraph?.savedAt ?? null);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -222,6 +229,23 @@ export default function PipelineBuilderPage() {
       setError(null);
       return prev.slice(0, -1);
     });
+  }
+
+  function saveGraph() {
+    const savedAt = new Date().toISOString();
+    const snapshot: SavedPipelineGraph = {
+      nodes,
+      connections,
+      selectedNodeId,
+      savedAt,
+    };
+    try {
+      localStorage.setItem(pipelineBuilderStorageKey, JSON.stringify(snapshot));
+      setLastSavedAt(savedAt);
+      setError(`Pipeline kaydedildi · ${formatSavedAt(savedAt)}`);
+    } catch (err: any) {
+      setError(`Pipeline kaydedilemedi: ${err?.message || "browser storage dolu olabilir"}`);
+    }
   }
 
   useEffect(() => {
@@ -670,7 +694,10 @@ export default function PipelineBuilderPage() {
           >
             <Trash2 size={15} />
           </button>
-          <button type="button" style={toolbarButtonStyle}>
+          {lastSavedAt && (
+            <span style={saveStatusStyle}>Saved {formatSavedAt(lastSavedAt)}</span>
+          )}
+          <button type="button" onClick={saveGraph} style={toolbarButtonStyle}>
             <Save size={14} /> Save
           </button>
           <button type="button" onClick={deliverOutput} disabled={!canDeliver} style={deployButtonStyle(!canDeliver)}>
@@ -1808,6 +1835,34 @@ function cleanTitle(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
 }
 
+function loadSavedPipelineGraph(): SavedPipelineGraph | null {
+  try {
+    if (typeof localStorage === "undefined") return null;
+    const raw = localStorage.getItem(pipelineBuilderStorageKey);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<SavedPipelineGraph>;
+    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.connections) || !parsed.savedAt) return null;
+    const nodeIds = new Set(parsed.nodes.map(node => node.id));
+    const selectedNodeId = parsed.selectedNodeId && nodeIds.has(parsed.selectedNodeId)
+      ? parsed.selectedNodeId
+      : parsed.nodes[0]?.id ?? initialDatasetId;
+    return {
+      nodes: parsed.nodes,
+      connections: parsed.connections.filter(connection => nodeIds.has(connection.from) && nodeIds.has(connection.to)),
+      selectedNodeId,
+      savedAt: parsed.savedAt,
+    };
+  } catch {
+    return null;
+  }
+}
+
+function formatSavedAt(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "";
+  return date.toLocaleTimeString("tr-TR", { hour: "2-digit", minute: "2-digit" });
+}
+
 function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRole {
   return functionKind;
 }
@@ -1995,6 +2050,13 @@ const toolbarButtonStyle: CSSProperties = {
   fontWeight: 650,
   fontFamily: CT_FONT,
   cursor: "pointer",
+};
+
+const saveStatusStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontFamily: CT_MONO,
+  marginRight: 2,
 };
 
 function iconToolbarButtonStyle(disabled: boolean): CSSProperties {
