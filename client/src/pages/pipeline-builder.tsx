@@ -34,6 +34,13 @@ type OrderFields = {
   deadline: string;
 };
 
+type ProductOption = {
+  id?: number;
+  sku?: string;
+  name: string;
+  category?: string;
+};
+
 type PipelineNode = {
   id: string;
   kind: NodeKind;
@@ -140,6 +147,14 @@ type SavedPipelineGraph = GraphSnapshot & {
 
 const pipelineBuilderStorageKey = "griseus_pipeline_builder_graph_v1";
 const initialDatasetId = "dataset-raw-1";
+const fallbackProductOptions: ProductOption[] = [
+  { sku: "GSS20P", name: "GSS20P" },
+  { sku: "ELT.7-11", name: "ELT.7-11" },
+  { sku: "BH.50ST.SV", name: "BH.50ST.SV" },
+  { sku: "BH.50UT.SV", name: "BH.50UT.SV" },
+  { sku: "BH.55ST.SV", name: "BH.55ST.SV" },
+  { sku: "BH.55UT.SV", name: "BH.55UT.SV" },
+];
 
 const initialNodes: PipelineNode[] = [
   {
@@ -166,6 +181,7 @@ export default function PipelineBuilderPage() {
   const [error, setError] = useState<string | null>(null);
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialGraph?.savedAt ?? null);
+  const [productOptions, setProductOptions] = useState<ProductOption[]>(fallbackProductOptions);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -216,6 +232,23 @@ export default function PipelineBuilderPage() {
       selectedNodeId,
     }]);
   }
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/products")
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("products unavailable")))
+      .then((items: ProductOption[]) => {
+        if (!alive || !Array.isArray(items)) return;
+        const valid = items.filter(item => item && (item.sku || item.name));
+        if (valid.length > 0) setProductOptions(valid);
+      })
+      .catch(() => {
+        if (alive) setProductOptions(fallbackProductOptions);
+      });
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   function restorePreviousGraph() {
     setHistory(prev => {
@@ -727,6 +760,7 @@ export default function PipelineBuilderPage() {
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
                 onDragStart={(event) => startNodeDrag(node.id, event)}
                 onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
+                productOptions={productOptions}
               />
             ))}
 
@@ -825,7 +859,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -835,6 +869,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
+  productOptions: ProductOption[];
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
@@ -908,6 +943,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
           onChange={onOrderFieldChange}
+          productOptions={productOptions}
         />
       )}
       {node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
@@ -981,31 +1017,66 @@ function ActionItem({ icon, label, tone, disabled = false, onClick }: {
   );
 }
 
-function OrderFieldsEditor({ fields, onChange }: {
+function OrderFieldsEditor({ fields, onChange, productOptions }: {
   fields: OrderFields;
   onChange: (field: keyof OrderFields, value: string) => void;
+  productOptions: ProductOption[];
 }) {
   return (
     <div data-no-drag="true" style={orderFieldsGridStyle}>
       <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
-      <OrderField label="Cihaz tipi" value={fields.deviceType} onChange={(value) => onChange("deviceType", value)} />
+      <OrderDeviceField
+        value={fields.deviceType}
+        products={productOptions}
+        onChange={(value) => onChange("deviceType", value)}
+      />
       <OrderField label="Adet" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
-      <OrderField label="Teslim" value={fields.deadline} placeholder="YYYY-MM-DD" onChange={(value) => onChange("deadline", value)} />
+      <OrderField label="Teslim" value={fields.deadline} type="date" onChange={(value) => onChange("deadline", value)} />
     </div>
   );
 }
 
-function OrderField({ label, value, placeholder, inputMode, onChange }: {
+function OrderDeviceField({ value, products, onChange }: {
+  value: string;
+  products: ProductOption[];
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={orderFieldStyle}>
+      <span style={orderFieldLabelStyle}>Cihaz tipi</span>
+      <select
+        value={value}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        style={orderFieldSelectStyle}
+      >
+        <option value="">Cihaz seç</option>
+        {products.map(product => {
+          const valueKey = product.sku || product.name;
+          return (
+            <option key={`${valueKey}-${product.id ?? product.name}`} value={valueKey}>
+              {product.sku ? `${product.sku} · ${product.name}` : product.name}
+            </option>
+          );
+        })}
+      </select>
+    </label>
+  );
+}
+
+function OrderField({ label, value, placeholder, inputMode, type = "text", onChange }: {
   label: string;
   value: string;
   placeholder?: string;
   inputMode?: "numeric";
+  type?: "text" | "date";
   onChange: (value: string) => void;
 }) {
   return (
     <label style={orderFieldStyle}>
       <span style={orderFieldLabelStyle}>{label}</span>
       <input
+        type={type}
         value={value}
         placeholder={placeholder}
         inputMode={inputMode}
@@ -2209,6 +2280,11 @@ const orderFieldInputStyle: CSSProperties = {
   fontWeight: 650,
   padding: "0 7px",
   outline: 0,
+};
+
+const orderFieldSelectStyle: CSSProperties = {
+  ...orderFieldInputStyle,
+  cursor: "pointer",
 };
 
 const nodeMetaStyle: CSSProperties = {
