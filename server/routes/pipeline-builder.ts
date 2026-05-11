@@ -35,14 +35,18 @@ const semanticValidateSchema = z.object({
     semanticRole: z.string().optional(),
     semanticLabel: z.string().optional(),
     orderFields: z.record(z.any()).optional(),
+    orderLineFields: z.record(z.any()).optional(),
+    deviceQuantity: z.string().optional(),
   }),
   target: z.object({
     id: z.string(),
     title: z.string(),
     semanticRole: z.string().optional(),
     orderFields: z.record(z.any()).optional(),
+    orderLineFields: z.record(z.any()).optional(),
     semanticLabel: z.string().optional(),
     deviceSku: z.string().optional(),
+    deviceQuantity: z.string().optional(),
   }),
 });
 
@@ -421,6 +425,44 @@ router.post("/semantic/validate", async (req, res) => {
         context: contract.context,
         fieldMap: contract.fieldMap,
         message: `${source.title} → ${target.title}: backend semantic contract doğrulandı.`,
+      });
+    }
+
+    if (contract.relation === "order_order_line") {
+      if (source.semanticRole !== "order" || target.semanticRole !== "orderLine") {
+        return res.status(422).json({ ok: false, error: "order_order_line için source=order ve target=orderLine olmalı" });
+      }
+      const customer = contract.context.customer || String((source as any).orderFields?.customer || "");
+      return res.json({
+        ok: true,
+        relation: "order_order_line",
+        validatedAt: new Date().toISOString(),
+        context: { ...contract.context, customer },
+        fieldMap: contract.fieldMap,
+        message: `${source.title} → ${target.title}: backend sipariş kalemi contract doğrulandı.`,
+      });
+    }
+
+    if (contract.relation === "order_line_device") {
+      if (source.semanticRole !== "orderLine" || target.semanticRole !== "device") {
+        return res.status(422).json({ ok: false, error: "order_line_device için source=orderLine ve target=device olmalı" });
+      }
+      const lineDevice = typeof source.orderLineFields?.deviceType === "string" ? source.orderLineFields.deviceType : "";
+      const lineQuantity = typeof source.orderLineFields?.quantity === "string" ? source.orderLineFields.quantity : "";
+      const device = contract.context.device || target.semanticLabel || target.deviceSku || target.title;
+      if (!device) {
+        return res.status(422).json({ ok: false, error: "device context eksik" });
+      }
+      if (lineDevice && device !== "Cihaz" && lineDevice !== device) {
+        return res.status(422).json({ ok: false, error: "sipariş kalemi cihaz tipi ile cihaz node'u eşleşmiyor" });
+      }
+      return res.json({
+        ok: true,
+        relation: "order_line_device",
+        validatedAt: new Date().toISOString(),
+        context: { ...contract.context, device: lineDevice || device, quantity: lineQuantity || contract.context.quantity || "" },
+        fieldMap: contract.fieldMap,
+        message: `${source.title} → ${target.title}: backend kalem-cihaz contract doğrulandı.`,
       });
     }
 

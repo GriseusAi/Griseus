@@ -23,11 +23,16 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output";
-type NodeFunctionKind = "customer" | "order" | "device";
-type SemanticRole = "customer" | "order" | "device";
+type NodeFunctionKind = "customer" | "order" | "orderLine" | "device";
+type SemanticRole = "customer" | "order" | "orderLine" | "device";
 type PortSide = "left" | "right";
 
 type OrderFields = {
+  customer: string;
+  deadline: string;
+};
+
+type OrderLineFields = {
   customer: string;
   deviceType: string;
   quantity: string;
@@ -56,13 +61,15 @@ type PipelineNode = {
   semanticLabel?: string;
   backendKey?: SemanticRole;
   orderFields?: OrderFields;
+  orderLineFields?: OrderLineFields;
   deviceSku?: string;
+  deviceQuantity?: string;
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart";
 
 type SemanticConnectionContract = {
-  relation: "customer_order" | "order_device" | "generic";
+  relation: "customer_order" | "order_order_line" | "order_line_device" | "order_device" | "generic";
   fromRole?: SemanticRole;
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
@@ -781,7 +788,9 @@ export default function PipelineBuilderPage() {
         semanticLabel: label,
         backendKey: semanticRole,
         orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
+        orderLineFields: semanticRole === "orderLine" ? node.orderLineFields ?? emptyOrderLineFields(node.orderFields) : node.orderLineFields,
         deviceSku: semanticRole === "device" ? node.deviceSku ?? "" : node.deviceSku,
+        deviceQuantity: semanticRole === "device" ? node.deviceQuantity ?? "" : node.deviceQuantity,
       };
     }));
     setSelectedNodeId(nodeId);
@@ -820,6 +829,20 @@ export default function PipelineBuilderPage() {
     }));
   }
 
+  function updateOrderLineField(nodeId: string, field: keyof OrderLineFields, value: string) {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      return {
+        ...node,
+        orderLineFields: {
+          ...emptyOrderLineFields(node.orderFields),
+          ...node.orderLineFields,
+          [field]: value,
+        },
+      };
+    }));
+  }
+
   function updateDeviceSelection(nodeId: string, value: string) {
     const label = value || "Cihaz";
     setNodes(prev => prev.map(node => {
@@ -832,6 +855,10 @@ export default function PipelineBuilderPage() {
         deviceSku: value,
       };
     }));
+  }
+
+  function updateDeviceQuantity(nodeId: string, value: string) {
+    setNodes(prev => prev.map(node => node.id === nodeId ? { ...node, deviceQuantity: value } : node));
   }
 
   return (
@@ -912,7 +939,9 @@ export default function PipelineBuilderPage() {
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
                 onDragStart={(event) => startNodeDrag(node.id, event)}
                 onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
+                onOrderLineFieldChange={(field, value) => updateOrderLineField(node.id, field, value)}
                 onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
+                onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
                 productOptions={productOptions}
               />
             ))}
@@ -1020,7 +1049,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onOrderLineFieldChange, onDeviceSelect, onDeviceQuantityChange, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1030,7 +1059,9 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
+  onOrderLineFieldChange: (field: keyof OrderLineFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
+  onDeviceQuantityChange: (value: string) => void;
   productOptions: ProductOption[];
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
@@ -1097,6 +1128,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="">Fonksiyon seç</option>
             <option value="customer">Müşteri</option>
             <option value="order">Sipariş</option>
+            <option value="orderLine">Sipariş kalemi</option>
             <option value="device">Cihaz</option>
           </select>
         </div>
@@ -1106,6 +1138,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
           onChange={onOrderFieldChange}
+        />
+      )}
+      {node.semanticRole === "orderLine" && (
+        <OrderLineFieldsEditor
+          fields={node.orderLineFields ?? emptyOrderLineFields(node.orderFields)}
+          onChange={onOrderLineFieldChange}
           productOptions={productOptions}
         />
       )}
@@ -1113,6 +1151,8 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         <DeviceSelector
           value={node.deviceSku ?? (node.semanticLabel !== "Cihaz" ? node.semanticLabel ?? "" : "")}
           onChange={onDeviceSelect}
+          quantity={node.deviceQuantity ?? ""}
+          onQuantityChange={onDeviceQuantityChange}
           productOptions={productOptions}
         />
       )}
@@ -1187,9 +1227,21 @@ function ActionItem({ icon, label, tone, disabled = false, onClick }: {
   );
 }
 
-function OrderFieldsEditor({ fields, onChange, productOptions }: {
+function OrderFieldsEditor({ fields, onChange }: {
   fields: OrderFields;
   onChange: (field: keyof OrderFields, value: string) => void;
+}) {
+  return (
+    <div data-no-drag="true" style={orderFieldsGridStyle}>
+      <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
+      <OrderField label="Teslim" value={fields.deadline} type="date" onChange={(value) => onChange("deadline", value)} />
+    </div>
+  );
+}
+
+function OrderLineFieldsEditor({ fields, onChange, productOptions }: {
+  fields: OrderLineFields;
+  onChange: (field: keyof OrderLineFields, value: string) => void;
   productOptions: ProductOption[];
 }) {
   return (
@@ -1234,13 +1286,15 @@ function OrderDeviceField({ value, products, onChange }: {
   );
 }
 
-function DeviceSelector({ value, onChange, productOptions }: {
+function DeviceSelector({ value, quantity, onChange, onQuantityChange, productOptions }: {
   value: string;
+  quantity: string;
   onChange: (value: string) => void;
+  onQuantityChange: (value: string) => void;
   productOptions: ProductOption[];
 }) {
   return (
-    <div data-no-drag="true" style={deviceSelectorWrapStyle}>
+    <div data-no-drag="true" style={deviceFieldsGridStyle}>
       <label style={orderFieldStyle}>
         <span style={orderFieldLabelStyle}>Cihaz</span>
         <select
@@ -1260,6 +1314,7 @@ function DeviceSelector({ value, onChange, productOptions }: {
           })}
         </select>
       </label>
+      <OrderField label="Adet" value={quantity} inputMode="numeric" onChange={onQuantityChange} />
     </div>
   );
 }
@@ -2193,15 +2248,23 @@ function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRol
 function emptyOrderFields(): OrderFields {
   return {
     customer: "",
+    deadline: "",
+  };
+}
+
+function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
+  return {
+    customer: orderFields?.customer ?? "",
     deviceType: "",
     quantity: "",
-    deadline: "",
+    deadline: orderFields?.deadline ?? "",
   };
 }
 
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   if (role === "order") return "Sipariş";
+  if (role === "orderLine") return "Sipariş kalemi";
   return "Cihaz";
 }
 
@@ -2209,19 +2272,43 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
   const relation =
     source.semanticRole === "customer" && target.semanticRole === "order"
       ? "customer_order"
-      : source.semanticRole === "order" && target.semanticRole === "device"
-        ? "order_device"
-        : "generic";
+      : source.semanticRole === "order" && target.semanticRole === "orderLine"
+        ? "order_order_line"
+        : source.semanticRole === "orderLine" && target.semanticRole === "device"
+          ? "order_line_device"
+          : source.semanticRole === "order" && target.semanticRole === "device"
+            ? "order_device"
+            : "generic";
   const context: Record<string, string> = {};
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
+  if (relation === "order_order_line") {
+    if (source.orderFields?.customer) context.customer = source.orderFields.customer;
+    if (source.orderFields?.deadline) context.deadline = source.orderFields.deadline;
+  }
+  if (relation === "order_line_device") {
+    if (source.orderLineFields?.customer) context.customer = source.orderLineFields.customer;
+    if (source.orderLineFields?.deadline) context.deadline = source.orderLineFields.deadline;
+    if (source.orderLineFields?.quantity) context.quantity = source.orderLineFields.quantity;
+    context.device = source.orderLineFields?.deviceType || target.semanticLabel || target.title;
+  }
   if (relation === "order_device") {
     if (source.orderFields?.customer) context.customer = source.orderFields.customer;
-    context.device = source.orderFields?.deviceType || target.semanticLabel || target.title;
+    context.device = target.semanticLabel || target.title;
   }
   const fieldMap = relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
-    : relation === "order_device"
-      ? [{ from: "orderFields.deviceType", to: "semanticLabel" }]
+    : relation === "order_order_line"
+      ? [
+          { from: "orderFields.customer", to: "orderLineFields.customer" },
+          { from: "orderFields.deadline", to: "orderLineFields.deadline" },
+        ]
+      : relation === "order_line_device"
+        ? [
+            { from: "orderLineFields.deviceType", to: "semanticLabel" },
+            { from: "orderLineFields.quantity", to: "deviceQuantity" },
+          ]
+        : relation === "order_device"
+          ? [{ from: "semanticLabel", to: "semanticLabel" }]
       : [];
   return {
     from: source.id,
@@ -2236,9 +2323,13 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
       status: "local",
       message: relation === "customer_order"
         ? "Customer context mapped into order.customer"
-        : relation === "order_device"
-          ? "Order device context mapped into device node"
-          : "Generic smart connection",
+        : relation === "order_order_line"
+          ? "Order context mapped into order line"
+          : relation === "order_line_device"
+            ? "Order line device and quantity mapped into device node"
+            : relation === "order_device"
+              ? "Order context linked to device node"
+              : "Generic smart connection",
     },
   };
 }
@@ -2256,14 +2347,29 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
     };
   }
   if (source.semanticRole === "order" && target.semanticRole === "device") {
-    const device = source.orderFields?.deviceType;
-    if (!device) return node;
+    return node;
+  }
+  if (source.semanticRole === "order" && target.semanticRole === "orderLine") {
     return {
       ...node,
-      title: device,
-      subtitle: `${device} cihaz entity`,
-      semanticLabel: device,
-      deviceSku: device,
+      orderLineFields: {
+        ...emptyOrderLineFields(source.orderFields),
+        ...node.orderLineFields,
+        customer: source.orderFields?.customer || node.orderLineFields?.customer || "",
+        deadline: source.orderFields?.deadline || node.orderLineFields?.deadline || "",
+      },
+    };
+  }
+  if (source.semanticRole === "orderLine" && target.semanticRole === "device") {
+    const device = source.orderLineFields?.deviceType;
+    const quantity = source.orderLineFields?.quantity;
+    return {
+      ...node,
+      title: device || node.title,
+      subtitle: device ? `${device} cihaz entity` : node.subtitle,
+      semanticLabel: device || node.semanticLabel,
+      deviceSku: device || node.deviceSku,
+      deviceQuantity: quantity || node.deviceQuantity,
     };
   }
   return node;
@@ -2273,7 +2379,10 @@ function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
   if (source.semanticRole === "customer" && target.semanticRole === "order") {
     return `${source.title} → ${target.title}: müşteri alanı siparişe aktarıldı.`;
   }
-  if (source.semanticRole === "order" && target.semanticRole === "device") {
+  if (source.semanticRole === "order" && target.semanticRole === "orderLine") {
+    return `${source.title} → ${target.title}: sipariş bağlamı kaleme aktarıldı.`;
+  }
+  if (source.semanticRole === "orderLine" && target.semanticRole === "device") {
     return `${source.title} → ${target.title}: cihaz tipi cihaz node'una aktarıldı.`;
   }
   const left = source.semanticRole ? semanticRoleLabel(source.semanticRole) : source.title;
@@ -2335,8 +2444,9 @@ function nodeHeight(kind: NodeKind) {
 }
 
 function effectiveNodeHeight(node: PipelineNode) {
-  if (node.semanticRole === "order") return 238;
-  if (node.semanticRole === "device") return 162;
+  if (node.semanticRole === "order") return 164;
+  if (node.semanticRole === "orderLine") return 238;
+  if (node.semanticRole === "device") return 176;
   return nodeHeight(node.kind);
 }
 
@@ -2663,7 +2773,10 @@ const orderFieldsGridStyle: CSSProperties = {
   padding: "6px 12px 0",
 };
 
-const deviceSelectorWrapStyle: CSSProperties = {
+const deviceFieldsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 78px",
+  gap: 7,
   padding: "6px 12px 0",
 };
 
