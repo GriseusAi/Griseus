@@ -58,9 +58,24 @@ type PipelineNode = {
   orderFields?: OrderFields;
 };
 
+type ConnectionKind = "transform" | "union" | "output" | "smart";
+
+type SemanticConnectionContract = {
+  relation: "customer_order" | "generic";
+  fromRole?: SemanticRole;
+  toRole?: SemanticRole;
+  fieldMap: Array<{ from: string; to: string }>;
+  context: Record<string, string>;
+  status: "local" | "validated" | "invalid";
+  backendValidatedAt?: string;
+  message?: string;
+};
+
 type GraphConnection = {
   from: string;
   to: string;
+  kind?: ConnectionKind;
+  contract?: SemanticConnectionContract;
 };
 
 type UploadedDataset = {
@@ -539,7 +554,7 @@ export default function PipelineBuilderPage() {
     setConnections(prev => {
       const next = [
         ...prev,
-        { from: fromId, to: transformId },
+        { from: fromId, to: transformId, kind: "transform" as const },
       ];
       return dedupeConnections(next);
     });
@@ -573,16 +588,57 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     const target = nodes.find(node => node.id === toId);
     if (!source || !target || source.kind === "output" || target.kind === "output") return;
+    const connection = buildSmartConnection(source, target);
     pushHistory();
     setConnections(prev => dedupeConnections([
       ...prev,
-      { from: fromId, to: toId },
+      connection,
     ]));
     setNodes(prev => prev.map(node => applySmartNodeContext(source, target, node)));
     setSelectedNodeId(toId);
     setActionMenu(null);
     setPendingConnection(null);
     setError(describeSmartConnection(source, target));
+    validateSemanticConnection(connection, source, target);
+  }
+
+  async function validateSemanticConnection(connection: GraphConnection, source: PipelineNode, target: PipelineNode) {
+    if (!connection.contract) return;
+    try {
+      const res = await fetch("/api/pipeline-builder/semantic/validate", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ connection, source, target }),
+      });
+      const payload = await res.json();
+      if (!res.ok || !payload?.ok) throw new Error(payload?.error || "semantic validation failed");
+      setConnections(prev => prev.map(item => {
+        if (connectionKey(item) !== connectionKey(connection)) return item;
+        return {
+          ...item,
+          contract: {
+            ...item.contract!,
+            status: "validated",
+            backendValidatedAt: payload.validatedAt,
+            message: payload.message,
+          },
+        };
+      }));
+      setError(payload.message || describeSmartConnection(source, target));
+    } catch (err: any) {
+      setConnections(prev => prev.map(item => {
+        if (connectionKey(item) !== connectionKey(connection) || !item.contract) return item;
+        return {
+          ...item,
+          contract: {
+            ...item.contract,
+            status: "invalid",
+            message: err?.message || "Backend semantic validation failed",
+          },
+        };
+      }));
+      setError(`Semantic bağlantı local kaldı: ${err?.message || "backend doğrulaması başarısız"}`);
+    }
   }
 
   function completeUnion(firstId: string, secondId: string) {
@@ -612,8 +668,8 @@ export default function PipelineBuilderPage() {
     setNodes(prev => prev.concat(unionNode));
     setConnections(prev => dedupeConnections([
       ...prev,
-      { from: firstId, to: id },
-      { from: secondId, to: id },
+      { from: firstId, to: id, kind: "union" },
+      { from: secondId, to: id, kind: "union" },
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
@@ -647,7 +703,7 @@ export default function PipelineBuilderPage() {
     setNodes(prev => prev.concat(outputNode));
     setConnections(prev => dedupeConnections([
       ...prev,
-      { from: fromId, to: id },
+      { from: fromId, to: id, kind: "output" },
     ]));
     setSelectedNodeId(id);
     setActionMenu(null);
@@ -1935,11 +1991,15 @@ function collectColumns(rows: Array<Record<string, any>>) {
 function dedupeConnections(connections: GraphConnection[]) {
   const seen = new Set<string>();
   return connections.filter(connection => {
-    const key = `${connection.from}-${connection.to}`;
+    const key = connectionKey(connection);
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
   });
+}
+
+function connectionKey(connection: GraphConnection) {
+  return `${connection.from}-${connection.to}`;
 }
 
 function cleanTitle(fileName: string) {
@@ -2030,6 +2090,30 @@ function emptyOrderFields(): OrderFields {
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   return "Sipariş";
+}
+
+function buildSmartConnection(source: PipelineNode, target: PipelineNode): GraphConnection {
+  const relation = source.semanticRole === "customer" && target.semanticRole === "order" ? "customer_order" : "generic";
+  const context: Record<string, string> = relation === "customer_order"
+    ? { customer: source.semanticLabel || source.title }
+    : {};
+  const fieldMap = relation === "customer_order"
+    ? [{ from: "semanticLabel", to: "orderFields.customer" }]
+    : [];
+  return {
+    from: source.id,
+    to: target.id,
+    kind: "smart",
+    contract: {
+      relation,
+      fromRole: source.semanticRole,
+      toRole: target.semanticRole,
+      fieldMap,
+      context,
+      status: "local",
+      message: relation === "customer_order" ? "Customer context mapped into order.customer" : "Generic smart connection",
+    },
+  };
 }
 
 function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node: PipelineNode): PipelineNode {

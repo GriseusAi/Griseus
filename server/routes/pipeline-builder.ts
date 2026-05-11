@@ -14,6 +14,35 @@ const runSchema = z.object({
   customData: z.record(z.enum(sourceIds), z.array(z.record(z.any()))).optional(),
 });
 
+const semanticValidateSchema = z.object({
+  connection: z.object({
+    from: z.string().min(1),
+    to: z.string().min(1),
+    kind: z.string().optional(),
+    contract: z.object({
+      relation: z.string().min(1),
+      fromRole: z.string().optional(),
+      toRole: z.string().optional(),
+      fieldMap: z.array(z.object({ from: z.string(), to: z.string() })).default([]),
+      context: z.record(z.string()).default({}),
+      status: z.string().optional(),
+      message: z.string().optional(),
+    }).optional(),
+  }),
+  source: z.object({
+    id: z.string(),
+    title: z.string(),
+    semanticRole: z.string().optional(),
+    semanticLabel: z.string().optional(),
+  }),
+  target: z.object({
+    id: z.string(),
+    title: z.string(),
+    semanticRole: z.string().optional(),
+    orderFields: z.record(z.any()).optional(),
+  }),
+});
+
 const sourceCatalog: Array<{
   id: SourceId;
   label: string;
@@ -269,6 +298,46 @@ router.get("/preview/:sourceId", async (req, res) => {
     res.json({ source: sourceCatalog.find(s => s.id === sourceId), rows: result.rows });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/semantic/validate", async (req, res) => {
+  try {
+    const parsed = semanticValidateSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ ok: false, error: parsed.error.errors.map(e => e.message).join(", ") });
+    }
+    const { connection, source, target } = parsed.data;
+    const contract = connection.contract;
+    if (!contract) return res.status(400).json({ ok: false, error: "semantic contract gerekli" });
+
+    if (contract.relation === "customer_order") {
+      if (source.semanticRole !== "customer" || target.semanticRole !== "order") {
+        return res.status(422).json({ ok: false, error: "customer_order için source=customer ve target=order olmalı" });
+      }
+      if (!contract.context.customer) {
+        return res.status(422).json({ ok: false, error: "customer context eksik" });
+      }
+      return res.json({
+        ok: true,
+        relation: "customer_order",
+        validatedAt: new Date().toISOString(),
+        context: contract.context,
+        fieldMap: contract.fieldMap,
+        message: `${source.title} → ${target.title}: backend semantic contract doğrulandı.`,
+      });
+    }
+
+    return res.json({
+      ok: true,
+      relation: contract.relation,
+      validatedAt: new Date().toISOString(),
+      context: contract.context,
+      fieldMap: contract.fieldMap,
+      message: `${source.title} → ${target.title}: generic semantic contract doğrulandı.`,
+    });
+  } catch (err: any) {
+    res.status(500).json({ ok: false, error: err.message });
   }
 });
 
