@@ -184,6 +184,25 @@ export async function ensureTables() {
         created_at TIMESTAMP DEFAULT NOW()
       );
     `);
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS pipeline_definitions (
+        id SERIAL PRIMARY KEY,
+        name VARCHAR(100) NOT NULL,
+        description TEXT,
+        pipeline_type VARCHAR(30) NOT NULL,
+        cron_expression VARCHAR(50),
+        enabled BOOLEAN NOT NULL DEFAULT true,
+        config JSONB,
+        last_run_at TIMESTAMP,
+        last_status VARCHAR(20),
+        created_at TIMESTAMP DEFAULT NOW(),
+        updated_at TIMESTAMP DEFAULT NOW()
+      );
+    `);
+    await pool.query(`
+      CREATE INDEX IF NOT EXISTS idx_pipeline_definitions_updated
+      ON pipeline_definitions(updated_at DESC);
+    `);
     // Seed default tenant profile
     await pool.query(`
       INSERT INTO tenant_profiles (tenant_id, company_name)
@@ -195,7 +214,7 @@ export async function ensureTables() {
     // ayni bilesen ayni cihazin farkli tier'larinda da gecebiliyor (or. 91409408). Unique
     // yok, (parent_product_sku, component_code) index'i yeterli.
     await pool.query(`ALTER TABLE bom_items DROP CONSTRAINT IF EXISTS bom_items_component_code_unique`);
-    console.log("[db] validation_alerts + custom_rules + audit_log + outcome_tracking + token_metrics + tenant_profiles + alert_interactions tabloları hazır");
+    console.log("[db] validation_alerts + custom_rules + audit_log + outcome_tracking + token_metrics + tenant_profiles + alert_interactions + pipeline_definitions tabloları hazır");
   } catch (err) {
     console.error("[db] Tablo oluşturma hatası:", err);
   }

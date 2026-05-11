@@ -43,6 +43,15 @@ const semanticValidateSchema = z.object({
   }),
 });
 
+const pipelineDefinitionSchema = z.object({
+  id: z.union([z.string(), z.number()]).optional(),
+  name: z.string().min(1).max(100),
+  nodes: z.array(z.record(z.any())),
+  connections: z.array(z.record(z.any())),
+  selectedNodeId: z.string().min(1),
+  savedAt: z.string().optional(),
+});
+
 const sourceCatalog: Array<{
   id: SourceId;
   label: string;
@@ -301,6 +310,90 @@ router.get("/preview/:sourceId", async (req, res) => {
   }
 });
 
+router.get("/definitions", async (_req, res) => {
+  try {
+    const result = await db.execute(sql`
+      SELECT id, name, config, updated_at AS "updatedAt"
+      FROM pipeline_definitions
+      WHERE pipeline_type = 'builder_graph'
+      ORDER BY updated_at DESC NULLS LAST, id DESC
+      LIMIT 30
+    `);
+
+    res.json({
+      pipelines: result.rows.map(row => toSavedPipeline(row)).filter(Boolean),
+    });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.get("/definitions/:id", async (req, res) => {
+  try {
+    const id = Number(req.params.id);
+    if (!Number.isInteger(id) || id <= 0) return res.status(400).json({ error: "Geçersiz pipeline id" });
+
+    const result = await db.execute(sql`
+      SELECT id, name, config, updated_at AS "updatedAt"
+      FROM pipeline_definitions
+      WHERE id = ${id} AND pipeline_type = 'builder_graph'
+      LIMIT 1
+    `);
+    const pipeline = toSavedPipeline(result.rows[0]);
+    if (!pipeline) return res.status(404).json({ error: "Pipeline bulunamadı" });
+    res.json({ pipeline });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/definitions", async (req, res) => {
+  try {
+    const parsed = pipelineDefinitionSchema.safeParse(req.body);
+    if (!parsed.success) {
+      return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
+    }
+
+    const input = parsed.data;
+    const semanticContracts = input.connections
+      .map(connection => connection.contract)
+      .filter(Boolean);
+    const config = {
+      version: 1,
+      graph: {
+        nodes: input.nodes,
+        connections: input.connections,
+        selectedNodeId: input.selectedNodeId,
+      },
+      semanticContracts,
+      savedAt: input.savedAt ?? new Date().toISOString(),
+    };
+    const numericId = Number(input.id);
+    const shouldUpdate = Number.isInteger(numericId) && numericId > 0;
+
+    const result = shouldUpdate
+      ? await db.execute(sql`
+          UPDATE pipeline_definitions
+          SET name = ${input.name},
+              config = ${JSON.stringify(config)}::jsonb,
+              updated_at = NOW()
+          WHERE id = ${numericId} AND pipeline_type = 'builder_graph'
+          RETURNING id, name, config, updated_at AS "updatedAt"
+        `)
+      : await db.execute(sql`
+          INSERT INTO pipeline_definitions (name, description, pipeline_type, enabled, config, last_status, created_at, updated_at)
+          VALUES (${input.name}, ${"Pipeline Builder canvas graph"}, 'builder_graph', true, ${JSON.stringify(config)}::jsonb, 'draft', NOW(), NOW())
+          RETURNING id, name, config, updated_at AS "updatedAt"
+        `);
+
+    const pipeline = toSavedPipeline(result.rows[0]);
+    if (!pipeline) return res.status(500).json({ error: "Pipeline kaydedildi ama okunamadı" });
+    res.json({ pipeline });
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 router.post("/semantic/validate", async (req, res) => {
   try {
     const parsed = semanticValidateSchema.safeParse(req.body);
@@ -340,6 +433,22 @@ router.post("/semantic/validate", async (req, res) => {
     res.status(500).json({ ok: false, error: err.message });
   }
 });
+
+function toSavedPipeline(row: any) {
+  if (!row) return null;
+  const config = row.config ?? {};
+  const graph = config.graph ?? {};
+  if (!Array.isArray(graph.nodes) || !Array.isArray(graph.connections)) return null;
+  return {
+    id: String(row.id),
+    name: row.name,
+    nodes: graph.nodes,
+    connections: graph.connections,
+    selectedNodeId: typeof graph.selectedNodeId === "string" ? graph.selectedNodeId : graph.nodes[0]?.id,
+    savedAt: config.savedAt ?? row.updatedAt ?? new Date().toISOString(),
+    backendStored: true,
+  };
+}
 
 router.post("/run", async (req, res) => {
   try {

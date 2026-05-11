@@ -160,6 +160,7 @@ type SavedPipelineGraph = GraphSnapshot & {
   id: string;
   name: string;
   savedAt: string;
+  backendStored?: boolean;
 };
 
 const pipelineBuilderStorageKey = "griseus_pipeline_builder_graph_v1";
@@ -271,6 +272,32 @@ export default function PipelineBuilderPage() {
     };
   }, []);
 
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/pipeline-builder/definitions")
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("pipeline definitions unavailable")))
+      .then((data: { pipelines?: SavedPipelineGraph[] }) => {
+        if (!alive || !Array.isArray(data.pipelines)) return;
+        const normalized = data.pipelines
+          .map(normalizeSavedPipeline)
+          .filter((item): item is SavedPipelineGraph => Boolean(item));
+        setSavedPipelines(prev => mergeSavedPipelines(normalized, prev));
+        if (!initialGraph && normalized[0]) {
+          setNodes(normalized[0].nodes);
+          setConnections(normalized[0].connections);
+          setSelectedNodeId(normalized[0].selectedNodeId);
+          setActiveSavedId(normalized[0].id);
+          setLastSavedAt(normalized[0].savedAt);
+        }
+      })
+      .catch(() => {
+        // Browser storage remains the offline fallback.
+      });
+    return () => {
+      alive = false;
+    };
+  }, [initialGraph]);
+
   function restorePreviousGraph() {
     setHistory(prev => {
       const snapshot = prev[prev.length - 1];
@@ -285,7 +312,7 @@ export default function PipelineBuilderPage() {
     });
   }
 
-  function saveGraph() {
+  async function saveGraph() {
     const savedAt = new Date().toISOString();
     const id = activeSavedId ?? `pipeline-${Date.now()}`;
     const snapshot: SavedPipelineGraph = {
@@ -306,6 +333,27 @@ export default function PipelineBuilderPage() {
       setError(`Pipeline kaydedildi · ${formatSavedAt(savedAt)}`);
     } catch (err: any) {
       setError(`Pipeline kaydedilemedi: ${err?.message || "browser storage dolu olabilir"}`);
+    }
+
+    try {
+      const res = await fetch("/api/pipeline-builder/definitions", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(snapshot),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || !data.pipeline) throw new Error(data.error || "backend kayıt başarısız");
+      const backendSnapshot = normalizeSavedPipeline(data.pipeline);
+      if (!backendSnapshot) throw new Error("backend kayıt formatı okunamadı");
+      const nextSaved = upsertSavedPipeline(savedPipelines, backendSnapshot);
+      localStorage.setItem(pipelineBuilderStorageKey, JSON.stringify(backendSnapshot));
+      localStorage.setItem(pipelineBuilderHistoryStorageKey, JSON.stringify(nextSaved));
+      setSavedPipelines(nextSaved);
+      setActiveSavedId(backendSnapshot.id);
+      setLastSavedAt(backendSnapshot.savedAt);
+      setError(`Pipeline DB'ye kaydedildi · ${formatSavedAt(backendSnapshot.savedAt)}`);
+    } catch (err: any) {
+      setError(`Pipeline browser'a kaydedildi; DB kaydı başarısız: ${err?.message || "backend unavailable"}`);
     }
   }
 
@@ -2055,6 +2103,14 @@ function normalizeSavedPipeline(raw: any): SavedPipelineGraph | null {
 
 function upsertSavedPipeline(items: SavedPipelineGraph[], snapshot: SavedPipelineGraph) {
   return [snapshot, ...items.filter(item => item.id !== snapshot.id)]
+    .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+    .slice(0, 30);
+}
+
+function mergeSavedPipelines(primary: SavedPipelineGraph[], fallback: SavedPipelineGraph[]) {
+  const byId = new Map<string, SavedPipelineGraph>();
+  [...fallback, ...primary].forEach(item => byId.set(item.id, item));
+  return Array.from(byId.values())
     .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
     .slice(0, 30);
 }
