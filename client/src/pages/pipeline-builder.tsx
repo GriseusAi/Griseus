@@ -644,6 +644,10 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     const target = nodes.find(node => node.id === toId);
     if (!source || !target || source.kind === "output" || target.kind === "output") return;
+    if (source.semanticRole === "order" && target.semanticRole === "device") {
+      completeOrderToDeviceConnection(source, target);
+      return;
+    }
     const connection = buildSmartConnection(source, target);
     pushHistory();
     setConnections(prev => dedupeConnections([
@@ -656,6 +660,53 @@ export default function PipelineBuilderPage() {
     setPendingConnection(null);
     setError(describeSmartConnection(source, target));
     validateSemanticConnection(connection, source, target);
+  }
+
+  function completeOrderToDeviceConnection(order: PipelineNode, device: PipelineNode) {
+    const deviceValue = device.deviceSku || (device.semanticLabel !== "Cihaz" ? device.semanticLabel : "") || device.title;
+    const quantityValue = device.deviceQuantity || "";
+    const linePosition = findFreePosition(
+      nodes,
+      "dataset",
+      Math.round(order.x + nodeWidth(order.kind) + 84),
+      alignNodeY(order, "dataset"),
+    );
+    const orderLine: PipelineNode = {
+      id: `order-line-${Date.now()}`,
+      kind: "dataset",
+      title: deviceValue && deviceValue !== "Cihaz" ? `${deviceValue} kalemi` : "Sipariş kalemi",
+      subtitle: "Sipariş kalemi entity node",
+      x: linePosition.x,
+      y: linePosition.y,
+      rows: [],
+      columns: [],
+      functionKind: "orderLine",
+      semanticRole: "orderLine",
+      semanticLabel: "Sipariş kalemi",
+      backendKey: "orderLine",
+      orderLineFields: {
+        customer: order.orderFields?.customer ?? "",
+        deadline: order.orderFields?.deadline ?? "",
+        deviceType: deviceValue !== "Cihaz" ? deviceValue : "",
+        quantity: quantityValue,
+      },
+    };
+    const orderToLine = buildSmartConnection(order, orderLine);
+    const lineToDevice = buildSmartConnection(orderLine, device);
+
+    pushHistory();
+    setNodes(prev => prev.concat(orderLine).map(node => applySmartNodeContext(orderLine, device, node)));
+    setConnections(prev => dedupeConnections([
+      ...prev.filter(connection => !(connection.from === order.id && connection.to === device.id)),
+      orderToLine,
+      lineToDevice,
+    ]));
+    setSelectedNodeId(orderLine.id);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(`${order.title} → ${orderLine.title} → ${device.title}: sipariş kalemi otomatik eklendi.`);
+    validateSemanticConnection(orderToLine, order, orderLine);
+    validateSemanticConnection(lineToDevice, orderLine, device);
   }
 
   async function validateSemanticConnection(connection: GraphConnection, source: PipelineNode, target: PipelineNode) {
