@@ -25,6 +25,14 @@ const semanticValidateSchema = z.object({
       toRole: z.string().optional(),
       fieldMap: z.array(z.object({ from: z.string(), to: z.string() })).default([]),
       context: z.record(z.string()).default({}),
+      internal: z.object({
+        entity: z.literal("orderLine"),
+        fields: z.record(z.any()),
+        contracts: z.array(z.object({
+          relation: z.string(),
+          fieldMap: z.array(z.object({ from: z.string(), to: z.string() })).default([]),
+        })).default([]),
+      }).optional(),
       status: z.string().optional(),
       message: z.string().optional(),
     }).optional(),
@@ -470,21 +478,37 @@ router.post("/semantic/validate", async (req, res) => {
       if (source.semanticRole !== "order" || target.semanticRole !== "device") {
         return res.status(422).json({ ok: false, error: "order_device için source=order ve target=device olmalı" });
       }
-      const orderDevice = typeof (source as any).orderFields?.deviceType === "string" ? (source as any).orderFields.deviceType : "";
-      const device = contract.context.device || target.semanticLabel || target.deviceSku || target.title;
+      const internalContract = contract.internal?.entity === "orderLine" ? contract.internal : null;
+      const internalLine = internalContract?.fields;
+      if (!internalContract || !internalLine) {
+        return res.status(422).json({ ok: false, error: "order_device için internal orderLine contract gerekli" });
+      }
+      const lineDevice = typeof internalLine.deviceType === "string" ? internalLine.deviceType : "";
+      const lineQuantity = typeof internalLine.quantity === "string" ? internalLine.quantity : "";
+      const device = contract.context.device || target.deviceSku || target.semanticLabel || target.title;
       if (!device) {
         return res.status(422).json({ ok: false, error: "device context eksik" });
       }
-      if (orderDevice && device !== "Cihaz" && orderDevice !== device) {
-        return res.status(422).json({ ok: false, error: "sipariş cihaz tipi ile cihaz node'u eşleşmiyor" });
+      if (lineDevice && device !== "Cihaz" && lineDevice !== device) {
+        return res.status(422).json({ ok: false, error: "internal sipariş kalemi cihaz tipi ile cihaz node'u eşleşmiyor" });
       }
       return res.json({
         ok: true,
         relation: "order_device",
         validatedAt: new Date().toISOString(),
-        context: { ...contract.context, device: orderDevice || device },
+        context: { ...contract.context, device: lineDevice || device, quantity: lineQuantity || contract.context.quantity || "" },
         fieldMap: contract.fieldMap,
-        message: `${source.title} → ${target.title}: backend cihaz contract doğrulandı.`,
+        internal: {
+          entity: "orderLine",
+          fields: {
+            customer: String(internalLine.customer || contract.context.customer || ""),
+            deadline: String(internalLine.deadline || contract.context.deadline || ""),
+            deviceType: lineDevice || device,
+            quantity: lineQuantity || contract.context.quantity || "",
+          },
+          contracts: internalContract.contracts,
+        },
+        message: `${source.title} → ${target.title}: backend hidden sipariş kalemi contract doğrulandı.`,
       });
     }
 

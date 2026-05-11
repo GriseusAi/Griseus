@@ -74,6 +74,14 @@ type SemanticConnectionContract = {
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
   context: Record<string, string>;
+  internal?: {
+    entity: "orderLine";
+    fields: OrderLineFields;
+    contracts: Array<{
+      relation: "order_order_line" | "order_line_device";
+      fieldMap: Array<{ from: string; to: string }>;
+    }>;
+  };
   status: "local" | "validated" | "invalid";
   backendValidatedAt?: string;
   message?: string;
@@ -644,10 +652,6 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     const target = nodes.find(node => node.id === toId);
     if (!source || !target || source.kind === "output" || target.kind === "output") return;
-    if (source.semanticRole === "order" && target.semanticRole === "device") {
-      completeOrderToDeviceConnection(source, target);
-      return;
-    }
     const connection = buildSmartConnection(source, target);
     pushHistory();
     setConnections(prev => dedupeConnections([
@@ -660,53 +664,6 @@ export default function PipelineBuilderPage() {
     setPendingConnection(null);
     setError(describeSmartConnection(source, target));
     validateSemanticConnection(connection, source, target);
-  }
-
-  function completeOrderToDeviceConnection(order: PipelineNode, device: PipelineNode) {
-    const deviceValue = device.deviceSku || (device.semanticLabel !== "Cihaz" ? device.semanticLabel : "") || device.title;
-    const quantityValue = device.deviceQuantity || "";
-    const linePosition = findFreePosition(
-      nodes,
-      "dataset",
-      Math.round(order.x + nodeWidth(order.kind) + 84),
-      alignNodeY(order, "dataset"),
-    );
-    const orderLine: PipelineNode = {
-      id: `order-line-${Date.now()}`,
-      kind: "dataset",
-      title: deviceValue && deviceValue !== "Cihaz" ? `${deviceValue} kalemi` : "Sipariş kalemi",
-      subtitle: "Sipariş kalemi entity node",
-      x: linePosition.x,
-      y: linePosition.y,
-      rows: [],
-      columns: [],
-      functionKind: "orderLine",
-      semanticRole: "orderLine",
-      semanticLabel: "Sipariş kalemi",
-      backendKey: "orderLine",
-      orderLineFields: {
-        customer: order.orderFields?.customer ?? "",
-        deadline: order.orderFields?.deadline ?? "",
-        deviceType: deviceValue !== "Cihaz" ? deviceValue : "",
-        quantity: quantityValue,
-      },
-    };
-    const orderToLine = buildSmartConnection(order, orderLine);
-    const lineToDevice = buildSmartConnection(orderLine, device);
-
-    pushHistory();
-    setNodes(prev => prev.concat(orderLine).map(node => applySmartNodeContext(orderLine, device, node)));
-    setConnections(prev => dedupeConnections([
-      ...prev.filter(connection => !(connection.from === order.id && connection.to === device.id)),
-      orderToLine,
-      lineToDevice,
-    ]));
-    setSelectedNodeId(orderLine.id);
-    setActionMenu(null);
-    setPendingConnection(null);
-    setError(`${order.title} → ${orderLine.title} → ${device.title}: sipariş kalemi otomatik eklendi.`);
-    validateSemanticConnection(orderToLine, order, orderLine);
-    validateSemanticConnection(lineToDevice, orderLine, device);
   }
 
   async function validateSemanticConnection(connection: GraphConnection, source: PipelineNode, target: PipelineNode) {
@@ -727,6 +684,8 @@ export default function PipelineBuilderPage() {
             ...item.contract!,
             status: "validated",
             backendValidatedAt: payload.validatedAt,
+            context: payload.context ?? item.contract!.context,
+            internal: payload.internal ?? item.contract!.internal,
             message: payload.message,
           },
         };
@@ -839,7 +798,6 @@ export default function PipelineBuilderPage() {
         semanticLabel: label,
         backendKey: semanticRole,
         orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
-        orderLineFields: semanticRole === "orderLine" ? node.orderLineFields ?? emptyOrderLineFields(node.orderFields) : node.orderLineFields,
         deviceSku: semanticRole === "device" ? node.deviceSku ?? "" : node.deviceSku,
         deviceQuantity: semanticRole === "device" ? node.deviceQuantity ?? "" : node.deviceQuantity,
       };
@@ -874,20 +832,6 @@ export default function PipelineBuilderPage() {
         orderFields: {
           ...emptyOrderFields(),
           ...node.orderFields,
-          [field]: value,
-        },
-      };
-    }));
-  }
-
-  function updateOrderLineField(nodeId: string, field: keyof OrderLineFields, value: string) {
-    setNodes(prev => prev.map(node => {
-      if (node.id !== nodeId) return node;
-      return {
-        ...node,
-        orderLineFields: {
-          ...emptyOrderLineFields(node.orderFields),
-          ...node.orderLineFields,
           [field]: value,
         },
       };
@@ -990,7 +934,6 @@ export default function PipelineBuilderPage() {
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
                 onDragStart={(event) => startNodeDrag(node.id, event)}
                 onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
-                onOrderLineFieldChange={(field, value) => updateOrderLineField(node.id, field, value)}
                 onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                 onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
                 productOptions={productOptions}
@@ -1100,7 +1043,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onOrderLineFieldChange, onDeviceSelect, onDeviceQuantityChange, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1110,7 +1053,6 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
-  onOrderLineFieldChange: (field: keyof OrderLineFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
   productOptions: ProductOption[];
@@ -1179,7 +1121,6 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="">Fonksiyon seç</option>
             <option value="customer">Müşteri</option>
             <option value="order">Sipariş</option>
-            <option value="orderLine">Sipariş kalemi</option>
             <option value="device">Cihaz</option>
           </select>
         </div>
@@ -1189,13 +1130,6 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
           onChange={onOrderFieldChange}
-        />
-      )}
-      {node.semanticRole === "orderLine" && (
-        <OrderLineFieldsEditor
-          fields={node.orderLineFields ?? emptyOrderLineFields(node.orderFields)}
-          onChange={onOrderLineFieldChange}
-          productOptions={productOptions}
         />
       )}
       {node.semanticRole === "device" && (
@@ -1285,25 +1219,6 @@ function OrderFieldsEditor({ fields, onChange }: {
   return (
     <div data-no-drag="true" style={orderFieldsGridStyle}>
       <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
-      <OrderField label="Teslim" value={fields.deadline} type="date" onChange={(value) => onChange("deadline", value)} />
-    </div>
-  );
-}
-
-function OrderLineFieldsEditor({ fields, onChange, productOptions }: {
-  fields: OrderLineFields;
-  onChange: (field: keyof OrderLineFields, value: string) => void;
-  productOptions: ProductOption[];
-}) {
-  return (
-    <div data-no-drag="true" style={orderFieldsGridStyle}>
-      <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
-      <OrderDeviceField
-        value={fields.deviceType}
-        products={productOptions}
-        onChange={(value) => onChange("deviceType", value)}
-      />
-      <OrderField label="Adet" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
       <OrderField label="Teslim" value={fields.deadline} type="date" onChange={(value) => onChange("deadline", value)} />
     </div>
   );
@@ -2315,7 +2230,6 @@ function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   if (role === "order") return "Sipariş";
-  if (role === "orderLine") return "Sipariş kalemi";
   return "Cihaz";
 }
 
@@ -2323,43 +2237,28 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
   const relation =
     source.semanticRole === "customer" && target.semanticRole === "order"
       ? "customer_order"
-      : source.semanticRole === "order" && target.semanticRole === "orderLine"
-        ? "order_order_line"
-        : source.semanticRole === "orderLine" && target.semanticRole === "device"
-          ? "order_line_device"
-          : source.semanticRole === "order" && target.semanticRole === "device"
-            ? "order_device"
-            : "generic";
+      : source.semanticRole === "order" && target.semanticRole === "device"
+        ? "order_device"
+        : "generic";
   const context: Record<string, string> = {};
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
-  if (relation === "order_order_line") {
-    if (source.orderFields?.customer) context.customer = source.orderFields.customer;
-    if (source.orderFields?.deadline) context.deadline = source.orderFields.deadline;
-  }
-  if (relation === "order_line_device") {
-    if (source.orderLineFields?.customer) context.customer = source.orderLineFields.customer;
-    if (source.orderLineFields?.deadline) context.deadline = source.orderLineFields.deadline;
-    if (source.orderLineFields?.quantity) context.quantity = source.orderLineFields.quantity;
-    context.device = source.orderLineFields?.deviceType || target.semanticLabel || target.title;
-  }
   if (relation === "order_device") {
     if (source.orderFields?.customer) context.customer = source.orderFields.customer;
-    context.device = target.semanticLabel || target.title;
+    if (source.orderFields?.deadline) context.deadline = source.orderFields.deadline;
+    context.device = target.deviceSku || target.semanticLabel || target.title;
+    if (target.deviceQuantity) context.quantity = target.deviceQuantity;
   }
+  const internalOrderLine = relation === "order_device" ? buildInternalOrderLine(source, target) : undefined;
   const fieldMap = relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
-    : relation === "order_order_line"
+    : relation === "order_device"
       ? [
-          { from: "orderFields.customer", to: "orderLineFields.customer" },
-          { from: "orderFields.deadline", to: "orderLineFields.deadline" },
+          { from: "orderFields.customer", to: "internal.orderLine.customer" },
+          { from: "orderFields.deadline", to: "internal.orderLine.deadline" },
+          { from: "deviceSku", to: "internal.orderLine.deviceType" },
+          { from: "deviceQuantity", to: "internal.orderLine.quantity" },
+          { from: "internal.orderLine.deviceType", to: "semanticLabel" },
         ]
-      : relation === "order_line_device"
-        ? [
-            { from: "orderLineFields.deviceType", to: "semanticLabel" },
-            { from: "orderLineFields.quantity", to: "deviceQuantity" },
-          ]
-        : relation === "order_device"
-          ? [{ from: "semanticLabel", to: "semanticLabel" }]
       : [];
   return {
     from: source.id,
@@ -2371,17 +2270,43 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
       toRole: target.semanticRole,
       fieldMap,
       context,
+      internal: internalOrderLine,
       status: "local",
       message: relation === "customer_order"
         ? "Customer context mapped into order.customer"
-        : relation === "order_order_line"
-          ? "Order context mapped into order line"
-          : relation === "order_line_device"
-            ? "Order line device and quantity mapped into device node"
-            : relation === "order_device"
-              ? "Order context linked to device node"
-              : "Generic smart connection",
+        : relation === "order_device"
+          ? "Order linked to device through hidden orderLine semantic entity"
+          : "Generic smart connection",
     },
+  };
+}
+
+function buildInternalOrderLine(order: PipelineNode, device: PipelineNode): SemanticConnectionContract["internal"] {
+  const deviceValue = device.deviceSku || (device.semanticLabel !== "Cihaz" ? device.semanticLabel : "") || device.title;
+  return {
+    entity: "orderLine",
+    fields: {
+      customer: order.orderFields?.customer ?? "",
+      deadline: order.orderFields?.deadline ?? "",
+      deviceType: deviceValue !== "Cihaz" ? deviceValue : "",
+      quantity: device.deviceQuantity ?? "",
+    },
+    contracts: [
+      {
+        relation: "order_order_line",
+        fieldMap: [
+          { from: "orderFields.customer", to: "orderLineFields.customer" },
+          { from: "orderFields.deadline", to: "orderLineFields.deadline" },
+        ],
+      },
+      {
+        relation: "order_line_device",
+        fieldMap: [
+          { from: "orderLineFields.deviceType", to: "semanticLabel" },
+          { from: "orderLineFields.quantity", to: "deviceQuantity" },
+        ],
+      },
+    ],
   };
 }
 
@@ -2496,7 +2421,6 @@ function nodeHeight(kind: NodeKind) {
 
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
-  if (node.semanticRole === "orderLine") return 238;
   if (node.semanticRole === "device") return 176;
   return nodeHeight(node.kind);
 }
