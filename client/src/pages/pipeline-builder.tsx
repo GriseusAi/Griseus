@@ -23,6 +23,7 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output";
+type NodeFunctionKind = "customer";
 type PortSide = "left" | "right";
 
 type PipelineNode = {
@@ -35,6 +36,10 @@ type PipelineNode = {
   rows: Array<Record<string, any>>;
   columns: string[];
   sourceFile?: string;
+  functionKind?: NodeFunctionKind;
+  semanticRole?: "customer";
+  semanticLabel?: string;
+  backendKey?: "customer";
 };
 
 type GraphConnection = {
@@ -242,8 +247,10 @@ export default function PipelineBuilderPage() {
         if (node.id !== nodeId) return node;
         return {
           ...node,
-          title: dataset.sheetName === "CSV" || dataset.sheetName === "JSON" ? cleanTitle(file.name) : dataset.sheetName,
-          subtitle: `${dataset.rows.length} rows, ${dataset.columns.length} columns`,
+          title: node.semanticRole === "customer" ? "Müşteri" : dataset.sheetName === "CSV" || dataset.sheetName === "JSON" ? cleanTitle(file.name) : dataset.sheetName,
+          subtitle: node.semanticRole === "customer"
+            ? `${dataset.rows.length} rows · müşteri entity`
+            : `${dataset.rows.length} rows, ${dataset.columns.length} columns`,
           rows: dataset.rows,
           columns: dataset.columns,
           sourceFile: dataset.fileName,
@@ -335,6 +342,10 @@ export default function PipelineBuilderPage() {
       rows: cleaned.rows,
       columns: cleaned.columns,
       sourceFile: source.sourceFile,
+      functionKind: source.functionKind,
+      semanticRole: source.semanticRole,
+      semanticLabel: source.semanticLabel,
+      backendKey: source.backendKey,
     };
 
     pushHistory();
@@ -416,6 +427,10 @@ export default function PipelineBuilderPage() {
       rows: source.rows,
       columns: source.columns,
       sourceFile: source.sourceFile,
+      functionKind: source.functionKind,
+      semanticRole: source.semanticRole,
+      semanticLabel: source.semanticLabel,
+      backendKey: source.backendKey,
     };
 
     pushHistory();
@@ -434,6 +449,28 @@ export default function PipelineBuilderPage() {
     setSelectedNodeId(nodeId);
     setActionMenu(null);
     setError("Edit modu: alttaki Data preview üzerinden dosya yükleyip datayı yenileyebilirsin.");
+  }
+
+  function updateNodeFunction(nodeId: string, functionKind: NodeFunctionKind) {
+    pushHistory();
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      if (functionKind === "customer") {
+        return {
+          ...node,
+          title: "Müşteri",
+          subtitle: node.rows.length > 0 ? `${node.rows.length} rows · müşteri entity` : "Müşteri entity node",
+          functionKind,
+          semanticRole: "customer",
+          semanticLabel: "Müşteri",
+          backendKey: "customer",
+        };
+      }
+      return node;
+    }));
+    setSelectedNodeId(nodeId);
+    setActionMenu(null);
+    setError("Müşteri fonksiyonu seçildi. Bu kutu artık pipeline içinde müşteri entity olarak davranır.");
   }
 
   return (
@@ -501,6 +538,7 @@ export default function PipelineBuilderPage() {
                 onSelect={() => selectGraphNode(node.id)}
                 onPortClick={(side) => openPortMenu(node.id, side)}
                 onFile={(file) => handleNodeFile(node.id, file)}
+                onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
               />
             ))}
 
@@ -598,19 +636,26 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
   onPortClick: (side: PortSide) => void;
   onFile: (file: File) => void;
+  onFunctionSelect: (functionKind: NodeFunctionKind) => void;
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
   return (
-    <button
-      type="button"
+    <div
+      role="button"
+      tabIndex={0}
       onClick={onSelect}
+      onKeyDown={(event) => {
+        if (event.key !== "Enter" && event.key !== " ") return;
+        event.preventDefault();
+        onSelect();
+      }}
       style={{
         ...nodeStyle,
         left: node.x,
@@ -626,6 +671,23 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
         {nodeIcon(node.kind, 18)}
         <span style={{ fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.title}</span>
       </div>
+      {isDataset && (
+        <div style={nodeFunctionBarStyle} onClick={(event) => event.stopPropagation()}>
+          <span style={nodeFunctionPrefixStyle}>f(x)</span>
+          <select
+            aria-label="Node function"
+            value={node.functionKind ?? ""}
+            onChange={(event) => {
+              const next = event.currentTarget.value as NodeFunctionKind;
+              if (next) onFunctionSelect(next);
+            }}
+            style={nodeFunctionSelectStyle}
+          >
+            <option value="">Fonksiyon seç</option>
+            <option value="customer">Müşteri</option>
+          </select>
+        </div>
+      )}
       <div style={nodeMetaStyle}>{node.subtitle}</div>
       {node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
       {isDataset && (
@@ -645,7 +707,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile }: {
         </label>
       )}
       {node.kind !== "output" && <GraphPort side="right" onClick={() => onPortClick("right")} />}
-    </button>
+    </div>
   );
 }
 
@@ -1329,6 +1391,10 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
           rows: cleaned.rows,
           columns: cleaned.columns,
           sourceFile: source.sourceFile,
+          functionKind: source.functionKind,
+          semanticRole: source.semanticRole,
+          semanticLabel: source.semanticLabel,
+          backendKey: source.backendKey,
         };
       } else if (node.kind === "union") {
         const columns = Array.from(new Set(inputNodes.flatMap(input => input.columns)));
@@ -1348,6 +1414,10 @@ function recalculateGraph(nodes: PipelineNode[], connections: GraphConnection[])
           rows: source.rows,
           columns: source.columns,
           sourceFile: source.sourceFile,
+          functionKind: source.functionKind,
+          semanticRole: source.semanticRole,
+          semanticLabel: source.semanticLabel,
+          backendKey: source.backendKey,
         };
       }
     }
@@ -1548,6 +1618,7 @@ function nodeWidth(kind: NodeKind) {
 function nodeHeight(kind: NodeKind) {
   if (kind === "output") return 72;
   if (kind === "union") return 104;
+  if (kind === "dataset") return 122;
   return 92;
 }
 
@@ -1708,8 +1779,47 @@ const nodeTitleStyle: CSSProperties = {
   fontSize: 14,
 };
 
+const nodeFunctionBarStyle: CSSProperties = {
+  height: 34,
+  display: "grid",
+  gridTemplateColumns: "48px 1fr",
+  alignItems: "center",
+  gap: 8,
+  margin: "9px 12px 0",
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 6,
+  background: "#fbfbf8",
+  overflow: "hidden",
+};
+
+const nodeFunctionPrefixStyle: CSSProperties = {
+  height: "100%",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRight: `1px solid ${CT.borderStrong}`,
+  color: CT.inkSub,
+  fontFamily: CT_MONO,
+  fontSize: 12,
+  fontWeight: 800,
+  background: "#f3f4f6",
+};
+
+const nodeFunctionSelectStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 0,
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 12,
+  fontWeight: 700,
+  cursor: "pointer",
+};
+
 const nodeMetaStyle: CSSProperties = {
-  padding: "10px 14px 4px",
+  padding: "8px 14px 4px",
   color: CT.inkMuted,
   fontSize: 12,
   whiteSpace: "nowrap",
