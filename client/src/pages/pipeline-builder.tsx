@@ -27,6 +27,13 @@ type NodeFunctionKind = "customer" | "order";
 type SemanticRole = "customer" | "order";
 type PortSide = "left" | "right";
 
+type OrderFields = {
+  customer: string;
+  deviceType: string;
+  quantity: string;
+  deadline: string;
+};
+
 type PipelineNode = {
   id: string;
   kind: NodeKind;
@@ -41,6 +48,7 @@ type PipelineNode = {
   semanticRole?: SemanticRole;
   semanticLabel?: string;
   backendKey?: SemanticRole;
+  orderFields?: OrderFields;
 };
 
 type GraphConnection = {
@@ -103,7 +111,7 @@ type ActionMenuState = {
 } | null;
 
 type PendingConnection = {
-  kind: "union";
+  kind: "union" | "smart";
   sourceId: string;
 } | null;
 
@@ -181,13 +189,13 @@ export default function PipelineBuilderPage() {
 
   const canvasSize = useMemo(() => {
     const maxX = Math.max(...nodes.map(node => node.x + nodeWidth(node.kind)), 1800);
-    const maxY = Math.max(...nodes.map(node => node.y + nodeHeight(node.kind)), 900);
+    const maxY = Math.max(...nodes.map(node => node.y + effectiveNodeHeight(node)), 900);
     return { width: maxX + 520, height: maxY + 320 };
   }, [nodes]);
 
   function getPortPosition(node: PipelineNode, side: PortSide) {
     const nodeW = nodeWidth(node.kind);
-    const nodeH = nodeHeight(node.kind);
+    const nodeH = effectiveNodeHeight(node);
     return {
       x: side === "right" ? node.x + nodeW : node.x,
       y: node.y + nodeH / 2,
@@ -362,8 +370,12 @@ export default function PipelineBuilderPage() {
     if (!node) return;
     setSelectedNodeId(nodeId);
 
-    if (pendingConnection && side === "right" && nodeId !== pendingConnection.sourceId && node.kind !== "output") {
-      completeUnion(pendingConnection.sourceId, nodeId);
+    if (pendingConnection && nodeId !== pendingConnection.sourceId && node.kind !== "output") {
+      if (pendingConnection.kind === "union") {
+        completeUnion(pendingConnection.sourceId, nodeId);
+      } else {
+        completeSmartConnection(pendingConnection.sourceId, nodeId);
+      }
       return;
     }
 
@@ -381,7 +393,11 @@ export default function PipelineBuilderPage() {
   function selectGraphNode(nodeId: string) {
     const node = nodes.find(item => item.id === nodeId);
     if (pendingConnection && nodeId !== pendingConnection.sourceId && node && node.kind !== "output") {
-      completeUnion(pendingConnection.sourceId, nodeId);
+      if (pendingConnection.kind === "union") {
+        completeUnion(pendingConnection.sourceId, nodeId);
+      } else {
+        completeSmartConnection(pendingConnection.sourceId, nodeId);
+      }
       return;
     }
 
@@ -459,6 +475,31 @@ export default function PipelineBuilderPage() {
     setActionMenu(null);
     setPendingConnection({ kind: "union", sourceId: fromId });
     setError("Union için ikinci node'u seç.");
+  }
+
+  function createSmartConnection(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source) return;
+    setSelectedNodeId(fromId);
+    setActionMenu(null);
+    setPendingConnection({ kind: "smart", sourceId: fromId });
+    setError("Connect için hedef node'u seç. Müşteri → Sipariş bağlanırsa sipariş müşteri alanı otomatik dolar.");
+  }
+
+  function completeSmartConnection(fromId: string, toId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    const target = nodes.find(node => node.id === toId);
+    if (!source || !target || source.kind === "output" || target.kind === "output") return;
+    pushHistory();
+    setConnections(prev => dedupeConnections([
+      ...prev,
+      { from: fromId, to: toId },
+    ]));
+    setNodes(prev => prev.map(node => applySmartNodeContext(source, target, node)));
+    setSelectedNodeId(toId);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(describeSmartConnection(source, target));
   }
 
   function completeUnion(firstId: string, secondId: string) {
@@ -551,6 +592,7 @@ export default function PipelineBuilderPage() {
         semanticRole,
         semanticLabel: label,
         backendKey: semanticRole,
+        orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
       };
     }));
     setSelectedNodeId(nodeId);
@@ -571,6 +613,20 @@ export default function PipelineBuilderPage() {
         ...node,
         title: cleaned,
         semanticLabel: node.semanticRole ? cleaned : node.semanticLabel,
+      };
+    }));
+  }
+
+  function updateOrderField(nodeId: string, field: keyof OrderFields, value: string) {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      return {
+        ...node,
+        orderFields: {
+          ...emptyOrderFields(),
+          ...node.orderFields,
+          [field]: value,
+        },
       };
     }));
   }
@@ -643,6 +699,7 @@ export default function PipelineBuilderPage() {
                 onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
                 onDragStart={(event) => startNodeDrag(node.id, event)}
+                onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
               />
             ))}
 
@@ -651,6 +708,7 @@ export default function PipelineBuilderPage() {
                 state={actionMenu}
                 onTransform={() => createTransform(actionMenu.nodeId)}
                 onUnion={() => createUnion(actionMenu.nodeId)}
+                onConnect={() => createSmartConnection(actionMenu.nodeId)}
                 onOutput={() => createOutputFrom(actionMenu.nodeId)}
                 onNewDataset={() => {
                   addDataset();
@@ -740,7 +798,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -749,6 +807,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onFunctionSelect: (functionKind: NodeFunctionKind) => void;
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
+  onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
@@ -774,7 +833,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         left: node.x,
         top: node.y,
         width: nodeWidth(node.kind),
-        height: nodeHeight(node.kind),
+        height: effectiveNodeHeight(node),
         borderColor: selected ? nodeTone(node.kind) : CT.borderStrong,
         boxShadow: selected ? "0 0 0 3px rgba(73,92,114,0.16), 0 5px 16px rgba(20,20,19,0.12)" : nodeStyle.boxShadow,
       }}
@@ -818,6 +877,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         </div>
       )}
       <div style={nodeMetaStyle}>{node.subtitle}</div>
+      {node.semanticRole === "order" && (
+        <OrderFieldsEditor
+          fields={node.orderFields ?? emptyOrderFields()}
+          onChange={onOrderFieldChange}
+        />
+      )}
       {node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
       {isDataset && (
         <label htmlFor={uploadInputId} style={nodeUploadStyle} onClick={(event) => event.stopPropagation()}>
@@ -840,16 +905,19 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   );
 }
 
-function NodeActionMenu({ state, onTransform, onUnion, onOutput, onNewDataset, onEdit }: {
+function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
   onTransform: () => void;
   onUnion: () => void;
+  onConnect: () => void;
   onOutput: () => void;
   onNewDataset: () => void;
   onEdit: () => void;
 }) {
   return (
     <div style={{ ...actionMenuStyle, left: state.x, top: state.y }}>
+      <ActionItem icon={<GitBranch size={18} />} label="Connect" tone={CT.accent} onClick={onConnect} />
+      <div style={actionDividerStyle} />
       <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
@@ -883,6 +951,42 @@ function ActionItem({ icon, label, tone, disabled = false, onClick }: {
       {icon}
       <span>{label}</span>
     </button>
+  );
+}
+
+function OrderFieldsEditor({ fields, onChange }: {
+  fields: OrderFields;
+  onChange: (field: keyof OrderFields, value: string) => void;
+}) {
+  return (
+    <div data-no-drag="true" style={orderFieldsGridStyle}>
+      <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
+      <OrderField label="Cihaz tipi" value={fields.deviceType} onChange={(value) => onChange("deviceType", value)} />
+      <OrderField label="Adet" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
+      <OrderField label="Teslim" value={fields.deadline} placeholder="YYYY-MM-DD" onChange={(value) => onChange("deadline", value)} />
+    </div>
+  );
+}
+
+function OrderField({ label, value, placeholder, inputMode, onChange }: {
+  label: string;
+  value: string;
+  placeholder?: string;
+  inputMode?: "numeric";
+  onChange: (value: string) => void;
+}) {
+  return (
+    <label style={orderFieldStyle}>
+      <span style={orderFieldLabelStyle}>{label}</span>
+      <input
+        value={value}
+        placeholder={placeholder}
+        inputMode={inputMode}
+        onClick={(event) => event.stopPropagation()}
+        onChange={(event) => onChange(event.currentTarget.value)}
+        style={orderFieldInputStyle}
+      />
+    </label>
   );
 }
 
@@ -1708,9 +1812,42 @@ function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRol
   return functionKind;
 }
 
+function emptyOrderFields(): OrderFields {
+  return {
+    customer: "",
+    deviceType: "",
+    quantity: "",
+    deadline: "",
+  };
+}
+
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   return "Sipariş";
+}
+
+function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node: PipelineNode): PipelineNode {
+  if (node.id !== target.id) return node;
+  if (source.semanticRole === "customer" && target.semanticRole === "order") {
+    return {
+      ...node,
+      orderFields: {
+        ...emptyOrderFields(),
+        ...node.orderFields,
+        customer: source.semanticLabel || source.title,
+      },
+    };
+  }
+  return node;
+}
+
+function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
+  if (source.semanticRole === "customer" && target.semanticRole === "order") {
+    return `${source.title} → ${target.title}: müşteri alanı siparişe aktarıldı.`;
+  }
+  const left = source.semanticRole ? semanticRoleLabel(source.semanticRole) : source.title;
+  const right = target.semanticRole ? semanticRoleLabel(target.semanticRole) : target.title;
+  return `${left} → ${right} bağlantısı kuruldu.`;
 }
 
 function isInteractiveDragTarget(target: EventTarget | null) {
@@ -1727,7 +1864,7 @@ function findFreePosition(nodes: PipelineNode[], kind: NodeKind, preferredX: num
   for (let attempt = 0; attempt < 24; attempt++) {
     const overlaps = nodes.some(node => rectanglesOverlap(
       { x, y, width, height },
-      { x: node.x, y: node.y, width: nodeWidth(node.kind), height: nodeHeight(node.kind) },
+      { x: node.x, y: node.y, width: nodeWidth(node.kind), height: effectiveNodeHeight(node) },
     ));
     if (!overlaps) return { x, y };
     y += 132;
@@ -1764,6 +1901,11 @@ function nodeHeight(kind: NodeKind) {
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
   return 92;
+}
+
+function effectiveNodeHeight(node: PipelineNode) {
+  if (node.semanticRole === "order") return 238;
+  return nodeHeight(node.kind);
 }
 
 function nodeTone(kind: NodeKind) {
@@ -1972,6 +2114,39 @@ const nodeFunctionSelectStyle: CSSProperties = {
   fontSize: 12,
   fontWeight: 700,
   cursor: "pointer",
+};
+
+const orderFieldsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 7,
+  padding: "6px 12px 0",
+};
+
+const orderFieldStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 3,
+};
+
+const orderFieldLabelStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 9.5,
+  fontWeight: 750,
+};
+
+const orderFieldInputStyle: CSSProperties = {
+  minWidth: 0,
+  height: 26,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 6,
+  background: "#fbfbf8",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  fontWeight: 650,
+  padding: "0 7px",
+  outline: 0,
 };
 
 const nodeMetaStyle: CSSProperties = {
