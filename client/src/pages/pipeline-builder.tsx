@@ -473,6 +473,22 @@ export default function PipelineBuilderPage() {
     setError("Müşteri fonksiyonu seçildi. Bu kutu artık pipeline içinde müşteri entity olarak davranır.");
   }
 
+  function updateNodeTitle(nodeId: string, title: string) {
+    const cleaned = title.trim();
+    if (!cleaned) return;
+    const current = nodes.find(node => node.id === nodeId);
+    if (!current || current.title === cleaned) return;
+    pushHistory();
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      return {
+        ...node,
+        title: cleaned,
+        semanticLabel: node.semanticRole === "customer" ? cleaned : node.semanticLabel,
+      };
+    }));
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
       <TopNav />
@@ -539,6 +555,7 @@ export default function PipelineBuilderPage() {
                 onPortClick={(side) => openPortMenu(node.id, side)}
                 onFile={(file) => handleNodeFile(node.id, file)}
                 onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
+                onTitleChange={(title) => updateNodeTitle(node.id, title)}
               />
             ))}
 
@@ -636,16 +653,23 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
   onPortClick: (side: PortSide) => void;
   onFile: (file: File) => void;
   onFunctionSelect: (functionKind: NodeFunctionKind) => void;
+  onTitleChange: (title: string) => void;
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
+  const [draftTitle, setDraftTitle] = useState(node.title);
+
+  useEffect(() => {
+    setDraftTitle(node.title);
+  }, [node.title]);
+
   return (
     <div
       role="button"
@@ -669,7 +693,22 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
       <GraphPort side="left" onClick={() => onPortClick("left")} />
       <div style={nodeTitleStyle}>
         {nodeIcon(node.kind, 18)}
-        <span style={{ fontWeight: 750, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{node.title}</span>
+        <input
+          aria-label="Node name"
+          value={draftTitle}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => setDraftTitle(event.currentTarget.value)}
+          onBlur={() => onTitleChange(draftTitle)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter") {
+              event.currentTarget.blur();
+            } else if (event.key === "Escape") {
+              setDraftTitle(node.title);
+              event.currentTarget.blur();
+            }
+          }}
+          style={nodeTitleInputStyle}
+        />
       </div>
       {isDataset && (
         <div style={nodeFunctionBarStyle} onClick={(event) => event.stopPropagation()}>
@@ -1777,6 +1816,18 @@ const nodeTitleStyle: CSSProperties = {
   padding: "0 14px",
   borderBottom: `1px solid ${CT.borderStrong}`,
   fontSize: 14,
+};
+
+const nodeTitleInputStyle: CSSProperties = {
+  minWidth: 0,
+  flex: 1,
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 14,
+  fontWeight: 750,
 };
 
 const nodeFunctionBarStyle: CSSProperties = {
