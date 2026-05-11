@@ -142,10 +142,13 @@ type GraphSnapshot = {
 };
 
 type SavedPipelineGraph = GraphSnapshot & {
+  id: string;
+  name: string;
   savedAt: string;
 };
 
 const pipelineBuilderStorageKey = "griseus_pipeline_builder_graph_v1";
+const pipelineBuilderHistoryStorageKey = "griseus_pipeline_builder_history_v1";
 const initialDatasetId = "dataset-raw-1";
 const fallbackProductOptions: ProductOption[] = [
   { sku: "GSS20P", name: "GSS20P" },
@@ -171,6 +174,7 @@ const initialNodes: PipelineNode[] = [
 
 export default function PipelineBuilderPage() {
   const initialGraph = useMemo(() => loadSavedPipelineGraph(), []);
+  const initialSavedPipelines = useMemo(() => loadSavedPipelineHistory(), []);
   const [nodes, setNodes] = useState<PipelineNode[]>(initialGraph?.nodes ?? initialNodes);
   const [connections, setConnections] = useState<GraphConnection[]>(initialGraph?.connections ?? []);
   const [selectedNodeId, setSelectedNodeId] = useState(initialGraph?.selectedNodeId ?? initialDatasetId);
@@ -182,6 +186,9 @@ export default function PipelineBuilderPage() {
   const [importPlan, setImportPlan] = useState<ImportPlan | null>(null);
   const [lastSavedAt, setLastSavedAt] = useState<string | null>(initialGraph?.savedAt ?? null);
   const [productOptions, setProductOptions] = useState<ProductOption[]>(fallbackProductOptions);
+  const [savedPipelines, setSavedPipelines] = useState<SavedPipelineGraph[]>(initialSavedPipelines);
+  const [activeSavedId, setActiveSavedId] = useState<string | null>(initialGraph?.id ?? null);
+  const [savedPanelOpen, setSavedPanelOpen] = useState(false);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -192,7 +199,6 @@ export default function PipelineBuilderPage() {
   const transformCount = nodes.filter(node => node.kind === "transform").length;
   const canUndo = history.length > 0;
   const canDelete = Boolean(selectedNode);
-  const canDeliver = Boolean(outputNode && outputNode.rows.length > 0);
 
   const renderedEdges = useMemo(() => {
     const byId = new Map(nodes.map(node => [node.id, node]));
@@ -266,7 +272,10 @@ export default function PipelineBuilderPage() {
 
   function saveGraph() {
     const savedAt = new Date().toISOString();
+    const id = activeSavedId ?? `pipeline-${Date.now()}`;
     const snapshot: SavedPipelineGraph = {
+      id,
+      name: inferPipelineName(nodes),
       nodes,
       connections,
       selectedNodeId,
@@ -274,11 +283,28 @@ export default function PipelineBuilderPage() {
     };
     try {
       localStorage.setItem(pipelineBuilderStorageKey, JSON.stringify(snapshot));
+      const nextSaved = upsertSavedPipeline(savedPipelines, snapshot);
+      localStorage.setItem(pipelineBuilderHistoryStorageKey, JSON.stringify(nextSaved));
+      setSavedPipelines(nextSaved);
+      setActiveSavedId(id);
       setLastSavedAt(savedAt);
       setError(`Pipeline kaydedildi · ${formatSavedAt(savedAt)}`);
     } catch (err: any) {
       setError(`Pipeline kaydedilemedi: ${err?.message || "browser storage dolu olabilir"}`);
     }
+  }
+
+  function loadSavedPipeline(pipeline: SavedPipelineGraph) {
+    pushHistory();
+    setNodes(pipeline.nodes);
+    setConnections(pipeline.connections);
+    setSelectedNodeId(pipeline.selectedNodeId);
+    setActiveSavedId(pipeline.id);
+    setLastSavedAt(pipeline.savedAt);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setSavedPanelOpen(false);
+    setError(`${pipeline.name} açıldı · ${formatSavedAt(pipeline.savedAt)}`);
   }
 
   useEffect(() => {
@@ -733,8 +759,14 @@ export default function PipelineBuilderPage() {
           <button type="button" onClick={saveGraph} style={toolbarButtonStyle}>
             <Save size={14} /> Save
           </button>
-          <button type="button" onClick={deliverOutput} disabled={!canDeliver} style={deployButtonStyle(!canDeliver)}>
-            <ArrowDownToLine size={14} /> Deliver
+          <button
+            type="button"
+            aria-label="Saved pipelines"
+            title="Saved pipelines"
+            onClick={() => setSavedPanelOpen(prev => !prev)}
+            style={iconToolbarButtonStyle(false)}
+          >
+            <Database size={15} />
           </button>
         </div>
       </header>
@@ -855,6 +887,14 @@ export default function PipelineBuilderPage() {
         <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
         <Metric label="Import actions" value={importPlan?.actions.length ?? 0} />
       </aside>
+
+      {savedPanelOpen && (
+        <SavedPipelinesPanel
+          pipelines={savedPipelines}
+          activeId={activeSavedId}
+          onLoad={loadSavedPipeline}
+        />
+      )}
     </div>
   );
 }
@@ -1907,25 +1947,65 @@ function cleanTitle(fileName: string) {
 }
 
 function loadSavedPipelineGraph(): SavedPipelineGraph | null {
+  return loadSavedPipelineHistory()[0] ?? loadLegacySavedPipelineGraph();
+}
+
+function loadSavedPipelineHistory(): SavedPipelineGraph[] {
+  try {
+    if (typeof localStorage === "undefined") return [];
+    const raw = localStorage.getItem(pipelineBuilderHistoryStorageKey);
+    const parsed = raw ? JSON.parse(raw) : [];
+    const history = Array.isArray(parsed)
+      ? parsed.map(normalizeSavedPipeline).filter((item): item is SavedPipelineGraph => Boolean(item))
+      : [];
+    const legacy = loadLegacySavedPipelineGraph();
+    const merged = legacy ? upsertSavedPipeline(history, legacy) : history;
+    return merged.sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt)).slice(0, 30);
+  } catch {
+    return [];
+  }
+}
+
+function loadLegacySavedPipelineGraph(): SavedPipelineGraph | null {
   try {
     if (typeof localStorage === "undefined") return null;
     const raw = localStorage.getItem(pipelineBuilderStorageKey);
     if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<SavedPipelineGraph>;
-    if (!Array.isArray(parsed.nodes) || !Array.isArray(parsed.connections) || !parsed.savedAt) return null;
-    const nodeIds = new Set(parsed.nodes.map(node => node.id));
-    const selectedNodeId = parsed.selectedNodeId && nodeIds.has(parsed.selectedNodeId)
-      ? parsed.selectedNodeId
-      : parsed.nodes[0]?.id ?? initialDatasetId;
-    return {
-      nodes: parsed.nodes,
-      connections: parsed.connections.filter(connection => nodeIds.has(connection.from) && nodeIds.has(connection.to)),
-      selectedNodeId,
-      savedAt: parsed.savedAt,
-    };
+    return normalizeSavedPipeline(JSON.parse(raw));
   } catch {
     return null;
   }
+}
+
+function normalizeSavedPipeline(raw: any): SavedPipelineGraph | null {
+  if (!raw || !Array.isArray(raw.nodes) || !Array.isArray(raw.connections) || !raw.savedAt) return null;
+  const nodeIds = new Set(raw.nodes.map((node: PipelineNode) => node.id));
+  const selectedNodeId = raw.selectedNodeId && nodeIds.has(raw.selectedNodeId)
+    ? raw.selectedNodeId
+    : raw.nodes[0]?.id ?? initialDatasetId;
+  return {
+    id: typeof raw.id === "string" ? raw.id : `pipeline-${Date.parse(raw.savedAt) || Date.now()}`,
+    name: typeof raw.name === "string" && raw.name.trim() ? raw.name : inferPipelineName(raw.nodes),
+    nodes: raw.nodes,
+    connections: raw.connections.filter((connection: GraphConnection) => nodeIds.has(connection.from) && nodeIds.has(connection.to)),
+    selectedNodeId,
+    savedAt: raw.savedAt,
+  };
+}
+
+function upsertSavedPipeline(items: SavedPipelineGraph[], snapshot: SavedPipelineGraph) {
+  return [snapshot, ...items.filter(item => item.id !== snapshot.id)]
+    .sort((a, b) => Date.parse(b.savedAt) - Date.parse(a.savedAt))
+    .slice(0, 30);
+}
+
+function inferPipelineName(nodes: PipelineNode[]) {
+  const semanticNames = nodes
+    .filter(node => node.semanticRole)
+    .map(node => node.semanticLabel || node.title)
+    .filter(Boolean);
+  if (semanticNames.length > 0) return semanticNames.slice(0, 3).join(" → ");
+  return nodes[0]?.title || "Pipeline";
 }
 
 function formatSavedAt(value: string) {
@@ -2097,6 +2177,39 @@ function ImportPlanPanel({ plan }: { plan: ImportPlan }) {
   );
 }
 
+function SavedPipelinesPanel({ pipelines, activeId, onLoad }: {
+  pipelines: SavedPipelineGraph[];
+  activeId: string | null;
+  onLoad: (pipeline: SavedPipelineGraph) => void;
+}) {
+  return (
+    <aside style={savedPipelinesPanelStyle}>
+      <div style={savedPipelinesHeaderStyle}>
+        <span>Kaydedilen pipeline'lar</span>
+        <span style={{ color: CT.inkMuted, fontFamily: CT_MONO }}>{pipelines.length}</span>
+      </div>
+      <div style={savedPipelinesListStyle}>
+        {pipelines.length === 0 && (
+          <div style={savedPipelineEmptyStyle}>Henüz kayıt yok.</div>
+        )}
+        {pipelines.map(pipeline => (
+          <button
+            key={pipeline.id}
+            type="button"
+            onClick={() => onLoad(pipeline)}
+            style={savedPipelineItemStyle(activeId === pipeline.id)}
+          >
+            <span style={savedPipelineNameStyle}>{pipeline.name}</span>
+            <span style={savedPipelineMetaStyle}>
+              {pipeline.nodes.length} node · {pipeline.connections.length} bağ · {formatSavedAt(pipeline.savedAt)}
+            </span>
+          </button>
+        ))}
+      </div>
+    </aside>
+  );
+}
+
 const headerStyle: CSSProperties = {
   height: 46,
   borderBottom: `1px solid ${CT.border}`,
@@ -2166,6 +2279,74 @@ const importPlanActionStyle: CSSProperties = {
   borderRadius: 7,
   padding: 8,
   background: CT.surface,
+};
+
+const savedPipelinesPanelStyle: CSSProperties = {
+  position: "fixed",
+  top: 118,
+  right: 14,
+  zIndex: 30,
+  width: 286,
+  maxHeight: "calc(100vh - 154px)",
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 8,
+  background: "rgba(250,249,245,0.98)",
+  boxShadow: "0 12px 34px rgba(20,20,19,0.18)",
+  overflow: "hidden",
+};
+
+const savedPipelinesHeaderStyle: CSSProperties = {
+  height: 42,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  padding: "0 12px",
+  borderBottom: `1px solid ${CT.borderStrong}`,
+  fontSize: 12,
+  fontWeight: 800,
+};
+
+const savedPipelinesListStyle: CSSProperties = {
+  maxHeight: "calc(100vh - 198px)",
+  overflowY: "auto",
+  padding: 8,
+};
+
+const savedPipelineEmptyStyle: CSSProperties = {
+  padding: 12,
+  color: CT.inkMuted,
+  fontSize: 12,
+};
+
+function savedPipelineItemStyle(active: boolean): CSSProperties {
+  return {
+    width: "100%",
+    display: "grid",
+    gap: 4,
+    border: `1px solid ${active ? CT.accentEdge : CT.border}`,
+    borderRadius: 7,
+    background: active ? CT.accentSoft : CT.surface,
+    color: CT.ink,
+    padding: "9px 10px",
+    marginBottom: 7,
+    textAlign: "left",
+    fontFamily: CT_FONT,
+    cursor: "pointer",
+  };
+}
+
+const savedPipelineNameStyle: CSSProperties = {
+  fontSize: 12,
+  fontWeight: 800,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const savedPipelineMetaStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 10,
+  fontFamily: CT_MONO,
 };
 
 const canvasViewportStyle: CSSProperties = {
