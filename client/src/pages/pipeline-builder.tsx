@@ -23,7 +23,8 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output";
-type NodeFunctionKind = "customer";
+type NodeFunctionKind = "customer" | "order";
+type SemanticRole = "customer" | "order";
 type PortSide = "left" | "right";
 
 type PipelineNode = {
@@ -37,9 +38,9 @@ type PipelineNode = {
   columns: string[];
   sourceFile?: string;
   functionKind?: NodeFunctionKind;
-  semanticRole?: "customer";
+  semanticRole?: SemanticRole;
   semanticLabel?: string;
-  backendKey?: "customer";
+  backendKey?: SemanticRole;
 };
 
 type GraphConnection = {
@@ -247,9 +248,9 @@ export default function PipelineBuilderPage() {
         if (node.id !== nodeId) return node;
         return {
           ...node,
-          title: node.semanticRole === "customer" ? "Müşteri" : dataset.sheetName === "CSV" || dataset.sheetName === "JSON" ? cleanTitle(file.name) : dataset.sheetName,
-          subtitle: node.semanticRole === "customer"
-            ? `${dataset.rows.length} rows · müşteri entity`
+          title: node.semanticRole ? semanticRoleLabel(node.semanticRole) : dataset.sheetName === "CSV" || dataset.sheetName === "JSON" ? cleanTitle(file.name) : dataset.sheetName,
+          subtitle: node.semanticRole
+            ? `${dataset.rows.length} rows · ${semanticRoleLabel(node.semanticRole).toLocaleLowerCase("tr-TR")} entity`
             : `${dataset.rows.length} rows, ${dataset.columns.length} columns`,
           rows: dataset.rows,
           columns: dataset.columns,
@@ -455,22 +456,22 @@ export default function PipelineBuilderPage() {
     pushHistory();
     setNodes(prev => prev.map(node => {
       if (node.id !== nodeId) return node;
-      if (functionKind === "customer") {
-        return {
-          ...node,
-          title: "Müşteri",
-          subtitle: node.rows.length > 0 ? `${node.rows.length} rows · müşteri entity` : "Müşteri entity node",
-          functionKind,
-          semanticRole: "customer",
-          semanticLabel: "Müşteri",
-          backendKey: "customer",
-        };
-      }
-      return node;
+      const semanticRole = nodeFunctionToSemanticRole(functionKind);
+      const label = semanticRoleLabel(semanticRole);
+      return {
+        ...node,
+        title: label,
+        subtitle: node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
+        functionKind,
+        semanticRole,
+        semanticLabel: label,
+        backendKey: semanticRole,
+      };
     }));
     setSelectedNodeId(nodeId);
     setActionMenu(null);
-    setError("Müşteri fonksiyonu seçildi. Bu kutu artık pipeline içinde müşteri entity olarak davranır.");
+    const label = semanticRoleLabel(nodeFunctionToSemanticRole(functionKind));
+    setError(`${label} fonksiyonu seçildi. Bu kutu artık pipeline içinde ${label.toLocaleLowerCase("tr-TR")} entity olarak davranır.`);
   }
 
   function updateNodeTitle(nodeId: string, title: string) {
@@ -484,7 +485,7 @@ export default function PipelineBuilderPage() {
       return {
         ...node,
         title: cleaned,
-        semanticLabel: node.semanticRole === "customer" ? cleaned : node.semanticLabel,
+        semanticLabel: node.semanticRole ? cleaned : node.semanticLabel,
       };
     }));
   }
@@ -724,6 +725,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           >
             <option value="">Fonksiyon seç</option>
             <option value="customer">Müşteri</option>
+            <option value="order">Sipariş</option>
           </select>
         </div>
       )}
@@ -1611,6 +1613,15 @@ function dedupeConnections(connections: GraphConnection[]) {
 
 function cleanTitle(fileName: string) {
   return fileName.replace(/\.[^.]+$/, "").replace(/[_-]+/g, " ");
+}
+
+function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRole {
+  return functionKind;
+}
+
+function semanticRoleLabel(role: SemanticRole) {
+  if (role === "customer") return "Müşteri";
+  return "Sipariş";
 }
 
 function findFreePosition(nodes: PipelineNode[], kind: NodeKind, preferredX: number, preferredY: number) {
