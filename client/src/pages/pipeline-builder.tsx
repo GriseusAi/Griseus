@@ -23,8 +23,8 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output";
-type NodeFunctionKind = "customer" | "order";
-type SemanticRole = "customer" | "order";
+type NodeFunctionKind = "customer" | "order" | "device";
+type SemanticRole = "customer" | "order" | "device";
 type PortSide = "left" | "right";
 
 type OrderFields = {
@@ -56,12 +56,13 @@ type PipelineNode = {
   semanticLabel?: string;
   backendKey?: SemanticRole;
   orderFields?: OrderFields;
+  deviceSku?: string;
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart";
 
 type SemanticConnectionContract = {
-  relation: "customer_order" | "generic";
+  relation: "customer_order" | "order_device" | "generic";
   fromRole?: SemanticRole;
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
@@ -629,7 +630,7 @@ export default function PipelineBuilderPage() {
     setSelectedNodeId(fromId);
     setActionMenu(null);
     setPendingConnection({ kind: "smart", sourceId: fromId });
-    setError("Connect için hedef node'u seç. Müşteri → Sipariş bağlanırsa sipariş müşteri alanı otomatik dolar.");
+    setError("Connect için hedef node'u seç. Müşteri → Sipariş veya Sipariş → Cihaz zinciri semantic olarak bağlanır.");
   }
 
   function completeSmartConnection(fromId: string, toId: string) {
@@ -780,6 +781,7 @@ export default function PipelineBuilderPage() {
         semanticLabel: label,
         backendKey: semanticRole,
         orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
+        deviceSku: semanticRole === "device" ? node.deviceSku ?? "" : node.deviceSku,
       };
     }));
     setSelectedNodeId(nodeId);
@@ -814,6 +816,20 @@ export default function PipelineBuilderPage() {
           ...node.orderFields,
           [field]: value,
         },
+      };
+    }));
+  }
+
+  function updateDeviceSelection(nodeId: string, value: string) {
+    const label = value || "Cihaz";
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      return {
+        ...node,
+        title: label,
+        subtitle: value ? `${value} cihaz entity` : "Cihaz entity node",
+        semanticLabel: label,
+        deviceSku: value,
       };
     }));
   }
@@ -896,6 +912,7 @@ export default function PipelineBuilderPage() {
                 onTitleChange={(title) => updateNodeTitle(node.id, title)}
                 onDragStart={(event) => startNodeDrag(node.id, event)}
                 onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
+                onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                 productOptions={productOptions}
               />
             ))}
@@ -1003,7 +1020,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1013,6 +1030,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
+  onDeviceSelect: (value: string) => void;
   productOptions: ProductOption[];
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
@@ -1079,6 +1097,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="">Fonksiyon seç</option>
             <option value="customer">Müşteri</option>
             <option value="order">Sipariş</option>
+            <option value="device">Cihaz</option>
           </select>
         </div>
       )}
@@ -1087,6 +1106,13 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
           onChange={onOrderFieldChange}
+          productOptions={productOptions}
+        />
+      )}
+      {node.semanticRole === "device" && (
+        <DeviceSelector
+          value={node.deviceSku ?? (node.semanticLabel !== "Cihaz" ? node.semanticLabel ?? "" : "")}
+          onChange={onDeviceSelect}
           productOptions={productOptions}
         />
       )}
@@ -1205,6 +1231,36 @@ function OrderDeviceField({ value, products, onChange }: {
         })}
       </select>
     </label>
+  );
+}
+
+function DeviceSelector({ value, onChange, productOptions }: {
+  value: string;
+  onChange: (value: string) => void;
+  productOptions: ProductOption[];
+}) {
+  return (
+    <div data-no-drag="true" style={deviceSelectorWrapStyle}>
+      <label style={orderFieldStyle}>
+        <span style={orderFieldLabelStyle}>Cihaz</span>
+        <select
+          value={value}
+          onClick={(event) => event.stopPropagation()}
+          onChange={(event) => onChange(event.currentTarget.value)}
+          style={orderFieldSelectStyle}
+        >
+          <option value="">Cihaz seç</option>
+          {productOptions.map(product => {
+            const valueKey = product.sku || product.name;
+            return (
+              <option key={`${valueKey}-${product.id ?? product.name}`} value={valueKey}>
+                {product.sku ? `${product.sku} · ${product.name}` : product.name}
+              </option>
+            );
+          })}
+        </select>
+      </label>
+    </div>
   );
 }
 
@@ -2145,17 +2201,28 @@ function emptyOrderFields(): OrderFields {
 
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
-  return "Sipariş";
+  if (role === "order") return "Sipariş";
+  return "Cihaz";
 }
 
 function buildSmartConnection(source: PipelineNode, target: PipelineNode): GraphConnection {
-  const relation = source.semanticRole === "customer" && target.semanticRole === "order" ? "customer_order" : "generic";
-  const context: Record<string, string> = relation === "customer_order"
-    ? { customer: source.semanticLabel || source.title }
-    : {};
+  const relation =
+    source.semanticRole === "customer" && target.semanticRole === "order"
+      ? "customer_order"
+      : source.semanticRole === "order" && target.semanticRole === "device"
+        ? "order_device"
+        : "generic";
+  const context: Record<string, string> = {};
+  if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
+  if (relation === "order_device") {
+    if (source.orderFields?.customer) context.customer = source.orderFields.customer;
+    context.device = source.orderFields?.deviceType || target.semanticLabel || target.title;
+  }
   const fieldMap = relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
-    : [];
+    : relation === "order_device"
+      ? [{ from: "orderFields.deviceType", to: "semanticLabel" }]
+      : [];
   return {
     from: source.id,
     to: target.id,
@@ -2167,7 +2234,11 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
       fieldMap,
       context,
       status: "local",
-      message: relation === "customer_order" ? "Customer context mapped into order.customer" : "Generic smart connection",
+      message: relation === "customer_order"
+        ? "Customer context mapped into order.customer"
+        : relation === "order_device"
+          ? "Order device context mapped into device node"
+          : "Generic smart connection",
     },
   };
 }
@@ -2184,12 +2255,26 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
       },
     };
   }
+  if (source.semanticRole === "order" && target.semanticRole === "device") {
+    const device = source.orderFields?.deviceType;
+    if (!device) return node;
+    return {
+      ...node,
+      title: device,
+      subtitle: `${device} cihaz entity`,
+      semanticLabel: device,
+      deviceSku: device,
+    };
+  }
   return node;
 }
 
 function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
   if (source.semanticRole === "customer" && target.semanticRole === "order") {
     return `${source.title} → ${target.title}: müşteri alanı siparişe aktarıldı.`;
+  }
+  if (source.semanticRole === "order" && target.semanticRole === "device") {
+    return `${source.title} → ${target.title}: cihaz tipi cihaz node'una aktarıldı.`;
   }
   const left = source.semanticRole ? semanticRoleLabel(source.semanticRole) : source.title;
   const right = target.semanticRole ? semanticRoleLabel(target.semanticRole) : target.title;
@@ -2251,6 +2336,7 @@ function nodeHeight(kind: NodeKind) {
 
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 238;
+  if (node.semanticRole === "device") return 162;
   return nodeHeight(node.kind);
 }
 
@@ -2574,6 +2660,10 @@ const orderFieldsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 7,
+  padding: "6px 12px 0",
+};
+
+const deviceSelectorWrapStyle: CSSProperties = {
   padding: "6px 12px 0",
 };
 

@@ -34,12 +34,15 @@ const semanticValidateSchema = z.object({
     title: z.string(),
     semanticRole: z.string().optional(),
     semanticLabel: z.string().optional(),
+    orderFields: z.record(z.any()).optional(),
   }),
   target: z.object({
     id: z.string(),
     title: z.string(),
     semanticRole: z.string().optional(),
     orderFields: z.record(z.any()).optional(),
+    semanticLabel: z.string().optional(),
+    deviceSku: z.string().optional(),
   }),
 });
 
@@ -418,6 +421,28 @@ router.post("/semantic/validate", async (req, res) => {
         context: contract.context,
         fieldMap: contract.fieldMap,
         message: `${source.title} → ${target.title}: backend semantic contract doğrulandı.`,
+      });
+    }
+
+    if (contract.relation === "order_device") {
+      if (source.semanticRole !== "order" || target.semanticRole !== "device") {
+        return res.status(422).json({ ok: false, error: "order_device için source=order ve target=device olmalı" });
+      }
+      const orderDevice = typeof (source as any).orderFields?.deviceType === "string" ? (source as any).orderFields.deviceType : "";
+      const device = contract.context.device || target.semanticLabel || target.deviceSku || target.title;
+      if (!device) {
+        return res.status(422).json({ ok: false, error: "device context eksik" });
+      }
+      if (orderDevice && device !== "Cihaz" && orderDevice !== device) {
+        return res.status(422).json({ ok: false, error: "sipariş cihaz tipi ile cihaz node'u eşleşmiyor" });
+      }
+      return res.json({
+        ok: true,
+        relation: "order_device",
+        validatedAt: new Date().toISOString(),
+        context: { ...contract.context, device: orderDevice || device },
+        fieldMap: contract.fieldMap,
+        message: `${source.title} → ${target.title}: backend cihaz contract doğrulandı.`,
       });
     }
 
