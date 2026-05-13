@@ -945,19 +945,32 @@ export default function PipelineBuilderPage() {
 
       if (opts.pushSnapshot) pushHistory();
       setNodes(prev => {
-        const staleIds = collectDrilldownDescendantIds(prev, nodeId);
+        const staleIds = collectAllDrilldownNodeIds(prev);
         const base = prev.filter(node => !staleIds.has(node.id));
-        return base.map(node => node.id === nodeId ? {
-          ...node,
-          title: cleanSku,
-          subtitle: `${cleanSku} cihaz entity · DB bağlı · ${generated.nodes.length} direkt BOM`,
-          semanticLabel: cleanSku,
-          deviceSku: cleanSku,
-          dbLinkedSku: cleanSku,
-        } : node).concat(generated.nodes);
+        return base.map(node => {
+          if (node.id === nodeId) {
+            return {
+              ...node,
+              title: cleanSku,
+              subtitle: `${cleanSku} cihaz entity · DB bağlı · ${generated.nodes.length} direkt BOM`,
+              semanticLabel: cleanSku,
+              deviceSku: cleanSku,
+              dbLinkedSku: cleanSku,
+            };
+          }
+          if (node.semanticRole === "device" && node.dbLinkedSku) {
+            const label = node.deviceSku || node.semanticLabel || node.title;
+            return {
+              ...node,
+              subtitle: `${label} cihaz entity`,
+              dbLinkedSku: undefined,
+            };
+          }
+          return node;
+        }).concat(generated.nodes);
       });
       setConnections(prev => {
-        const staleIds = collectDrilldownDescendantIds(nodes, nodeId);
+        const staleIds = collectAllDrilldownNodeIds(nodes);
         const base = prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
         return dedupeConnections(base.concat(generated.connections));
       });
@@ -2537,6 +2550,10 @@ function collectDrilldownDescendantIds(nodes: PipelineNode[], rootId: string) {
     stack.push(...(childIdsByParent.get(id) ?? []));
   }
   return stale;
+}
+
+function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
+  return new Set(nodes.filter(node => node.drilldownParentId).map(node => node.id));
 }
 
 function nextNodeX(source: PipelineNode, kind: NodeKind) {
