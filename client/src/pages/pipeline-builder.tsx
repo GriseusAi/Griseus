@@ -11,6 +11,7 @@ import {
   FileSpreadsheet,
   GitBranch,
   Hammer,
+  ListTree,
   Pencil,
   Plus,
   RotateCcw,
@@ -22,7 +23,7 @@ import {
   UploadCloud,
 } from "lucide-react";
 
-type NodeKind = "dataset" | "transform" | "union" | "output";
+type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
 type NodeFunctionKind = "customer" | "order" | "orderLine" | "device";
 type SemanticRole = "customer" | "order" | "orderLine" | "device";
 type PortSide = "left" | "right";
@@ -64,9 +65,45 @@ type PipelineNode = {
   orderLineFields?: OrderLineFields;
   deviceSku?: string;
   deviceQuantity?: string;
+  drilldownParentId?: string;
+  bomComponent?: BomComponentNodeMeta;
 };
 
-type ConnectionKind = "transform" | "union" | "output" | "smart";
+type ConnectionKind = "transform" | "union" | "output" | "smart" | "drilldown";
+
+type BomComponentNodeMeta = {
+  sku: string;
+  code: string;
+  name: string;
+  requiredPerUnit: number | null;
+  unit: string;
+  tier: number;
+  currentStock: number | null;
+  maxProducts: number | null;
+  status: string;
+  isSubAssembly: boolean;
+  parentComponentCode: string | null;
+};
+
+type BomStockComponent = {
+  code: string;
+  name: string;
+  requiredPerUnit: number;
+  unit: string;
+  tier: number;
+  parentComponentCode: string | null;
+  currentStock: number;
+  rawStock?: number;
+  maxProducts: number | null;
+  status: string;
+  isSubAssembly?: boolean;
+  children?: BomStockComponent[];
+};
+
+type BomStockResponse = {
+  product: string;
+  components: BomStockComponent[];
+};
 
 type SemanticConnectionContract = {
   relation: "customer_order" | "order_order_line" | "order_line_device" | "order_device" | "generic";
@@ -856,6 +893,49 @@ export default function PipelineBuilderPage() {
     setNodes(prev => prev.map(node => node.id === nodeId ? { ...node, deviceQuantity: value } : node));
   }
 
+  async function drillDownDeviceNode(nodeId: string) {
+    const source = nodes.find(node => node.id === nodeId);
+    const sku = source?.deviceSku || (source?.semanticLabel !== "Cihaz" ? source?.semanticLabel : "") || source?.title || "";
+    const cleanSku = sku.trim();
+    if (!source || source.semanticRole !== "device" || !cleanSku || cleanSku === "Cihaz") {
+      setError("Drill-down için önce cihaz SKU seç.");
+      return;
+    }
+
+    try {
+      setError(`${cleanSku} BOM drill-down yükleniyor...`);
+      const res = await fetch(`/api/bom/${encodeURIComponent(cleanSku)}/stock`);
+      const data: BomStockResponse | { error?: string } = await res.json().catch(() => ({}));
+      if (!res.ok || !Array.isArray((data as BomStockResponse).components)) {
+        throw new Error((data as { error?: string }).error || "BOM okunamadı");
+      }
+
+      const generated = buildBomDrilldownNodes(source, cleanSku, (data as BomStockResponse).components);
+      if (generated.nodes.length === 0) {
+        setError(`${cleanSku} için gösterilecek alt bileşen bulunamadı.`);
+        return;
+      }
+
+      pushHistory();
+      setNodes(prev => {
+        const staleIds = collectDrilldownDescendantIds(prev, nodeId);
+        const base = prev.filter(node => !staleIds.has(node.id));
+        return base.concat(generated.nodes);
+      });
+      setConnections(prev => {
+        const staleIds = collectDrilldownDescendantIds(nodes, nodeId);
+        const base = prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
+        return dedupeConnections(base.concat(generated.connections));
+      });
+      setSelectedNodeId(generated.nodes[0]?.id ?? nodeId);
+      setActionMenu(null);
+      setPendingConnection(null);
+      setError(`${cleanSku}: ${generated.nodes.length} BOM node'u açıldı.`);
+    } catch (err: any) {
+      setError(`Drill-down başarısız: ${err?.message || "BOM endpoint unavailable"}`);
+    }
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
       <TopNav />
@@ -936,6 +1016,7 @@ export default function PipelineBuilderPage() {
                 onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
                 onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                 onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
+                onDrillDown={() => drillDownDeviceNode(node.id)}
                 productOptions={productOptions}
               />
             ))}
@@ -1043,7 +1124,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1055,10 +1136,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
+  onDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
+  const isComponent = node.kind === "component";
   const [draftTitle, setDraftTitle] = useState(node.title);
 
   useEffect(() => {
@@ -1126,6 +1209,9 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         </div>
       )}
       <div style={nodeMetaStyle}>{node.subtitle}</div>
+      {isComponent && node.bomComponent && (
+        <BomComponentMeta meta={node.bomComponent} />
+      )}
       {node.semanticRole === "order" && (
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
@@ -1138,6 +1224,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           onChange={onDeviceSelect}
           quantity={node.deviceQuantity ?? ""}
           onQuantityChange={onDeviceQuantityChange}
+          onDrillDown={onDrillDown}
           productOptions={productOptions}
         />
       )}
@@ -1252,35 +1339,62 @@ function OrderDeviceField({ value, products, onChange }: {
   );
 }
 
-function DeviceSelector({ value, quantity, onChange, onQuantityChange, productOptions }: {
+function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDown, productOptions }: {
   value: string;
   quantity: string;
   onChange: (value: string) => void;
   onQuantityChange: (value: string) => void;
+  onDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
   return (
-    <div data-no-drag="true" style={deviceFieldsGridStyle}>
-      <label style={orderFieldStyle}>
-        <span style={orderFieldLabelStyle}>Cihaz</span>
-        <select
-          value={value}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => onChange(event.currentTarget.value)}
-          style={orderFieldSelectStyle}
-        >
-          <option value="">Cihaz seç</option>
-          {productOptions.map(product => {
-            const valueKey = product.sku || product.name;
-            return (
-              <option key={`${valueKey}-${product.id ?? product.name}`} value={valueKey}>
-                {product.sku ? `${product.sku} · ${product.name}` : product.name}
-              </option>
-            );
-          })}
-        </select>
-      </label>
-      <OrderField label="Adet" value={quantity} inputMode="numeric" onChange={onQuantityChange} />
+    <div data-no-drag="true" style={deviceEditorStyle}>
+      <div style={deviceFieldsGridStyle}>
+        <label style={orderFieldStyle}>
+          <span style={orderFieldLabelStyle}>Cihaz</span>
+          <select
+            value={value}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => onChange(event.currentTarget.value)}
+            style={orderFieldSelectStyle}
+          >
+            <option value="">Cihaz seç</option>
+            {productOptions.map(product => {
+              const valueKey = product.sku || product.name;
+              return (
+                <option key={`${valueKey}-${product.id ?? product.name}`} value={valueKey}>
+                  {product.sku ? `${product.sku} · ${product.name}` : product.name}
+                </option>
+              );
+            })}
+          </select>
+        </label>
+        <OrderField label="Adet" value={quantity} inputMode="numeric" onChange={onQuantityChange} />
+      </div>
+      <button
+        type="button"
+        onClick={(event) => {
+          event.preventDefault();
+          event.stopPropagation();
+          onDrillDown();
+        }}
+        disabled={!value}
+        style={drilldownButtonStyle(!value)}
+      >
+        <ListTree size={13} />
+        Drill-down
+      </button>
+    </div>
+  );
+}
+
+function BomComponentMeta({ meta }: { meta: BomComponentNodeMeta }) {
+  return (
+    <div style={bomMetaGridStyle}>
+      <span>Tier {meta.tier}</span>
+      <span>{formatCell(meta.requiredPerUnit)} {meta.unit}</span>
+      <span>{meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}</span>
+      <span>{meta.maxProducts === null ? "N/A" : `${formatCell(meta.maxProducts)} üretim`}</span>
     </div>
   );
 }
@@ -2092,6 +2206,164 @@ function splitDelimitedLine(line: string, delimiter: string) {
   return cells;
 }
 
+function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: BomStockComponent[]) {
+  const nodes: PipelineNode[] = [];
+  const connections: GraphConnection[] = [];
+  const rootX = source.x + nodeWidth(source.kind) + 76;
+  const rootY = Math.max(70, source.y - Math.max(0, components.length - 1) * 52);
+  const siblingStep = 116;
+  const childStep = 96;
+  const childXStep = 286;
+
+  components.forEach((component, index) => {
+    const node = buildBomComponentNode({
+      source,
+      sku,
+      component,
+      x: rootX,
+      y: rootY + index * siblingStep,
+      parentId: source.id,
+      order: `${index + 1}`,
+    });
+    nodes.push(node);
+    connections.push({ from: source.id, to: node.id, kind: "drilldown" });
+    addBomChildren({
+      source,
+      sku,
+      parentNode: node,
+      children: component.children ?? [],
+      depth: 1,
+      baseX: rootX + childXStep,
+      baseY: node.y,
+      childStep,
+      childXStep,
+      nodes,
+      connections,
+    });
+  });
+
+  return { nodes, connections };
+}
+
+function addBomChildren(args: {
+  source: PipelineNode;
+  sku: string;
+  parentNode: PipelineNode;
+  children: BomStockComponent[];
+  depth: number;
+  baseX: number;
+  baseY: number;
+  childStep: number;
+  childXStep: number;
+  nodes: PipelineNode[];
+  connections: GraphConnection[];
+}) {
+  const { source, sku, parentNode, children, depth, baseX, baseY, childStep, childXStep, nodes, connections } = args;
+  const startY = baseY - Math.max(0, children.length - 1) * (childStep / 2);
+  children.forEach((child, index) => {
+    const node = buildBomComponentNode({
+      source,
+      sku,
+      component: child,
+      x: baseX,
+      y: Math.max(70, startY + index * childStep),
+      parentId: parentNode.id,
+      order: `${parentNode.id}-${depth}-${index + 1}`,
+    });
+    nodes.push(node);
+    connections.push({ from: parentNode.id, to: node.id, kind: "drilldown" });
+    addBomChildren({
+      source,
+      sku,
+      parentNode: node,
+      children: child.children ?? [],
+      depth: depth + 1,
+      baseX: baseX + childXStep,
+      baseY: node.y,
+      childStep,
+      childXStep,
+      nodes,
+      connections,
+    });
+  });
+}
+
+function buildBomComponentNode(args: {
+  source: PipelineNode;
+  sku: string;
+  component: BomStockComponent;
+  x: number;
+  y: number;
+  parentId: string;
+  order: string;
+}): PipelineNode {
+  const { source, sku, component, x, y, parentId, order } = args;
+  const isSubAssembly = Boolean(component.isSubAssembly || (component.children?.length ?? 0) > 0);
+  const meta: BomComponentNodeMeta = {
+    sku,
+    code: component.code,
+    name: component.name,
+    requiredPerUnit: component.requiredPerUnit ?? null,
+    unit: component.unit,
+    tier: component.tier,
+    currentStock: component.currentStock ?? null,
+    maxProducts: component.maxProducts ?? null,
+    status: component.status,
+    isSubAssembly,
+    parentComponentCode: component.parentComponentCode ?? null,
+  };
+  const rows = [bomComponentToRow(meta)];
+  return {
+    id: `bom-${source.id}-${sanitizeNodeId(component.code)}-${order}`,
+    kind: "component",
+    title: component.code,
+    subtitle: component.name,
+    x,
+    y,
+    rows,
+    columns: collectColumns(rows),
+    drilldownParentId: parentId,
+    bomComponent: meta,
+  };
+}
+
+function bomComponentToRow(meta: BomComponentNodeMeta) {
+  return {
+    product_sku: meta.sku,
+    component_code: meta.code,
+    component_name: meta.name,
+    required_per_unit: meta.requiredPerUnit,
+    unit: meta.unit,
+    tier: meta.tier,
+    parent_component_code: meta.parentComponentCode,
+    current_stock: meta.currentStock,
+    max_products: meta.maxProducts,
+    status: meta.status,
+    is_subassembly: meta.isSubAssembly,
+  };
+}
+
+function sanitizeNodeId(value: string) {
+  return normalizeIdentifier(value).replace(/[^a-zA-Z0-9_.-]/g, "_") || "component";
+}
+
+function collectDrilldownDescendantIds(nodes: PipelineNode[], rootId: string) {
+  const childIdsByParent = new Map<string, string[]>();
+  nodes.forEach(node => {
+    if (!node.drilldownParentId) return;
+    childIdsByParent.set(node.drilldownParentId, [...(childIdsByParent.get(node.drilldownParentId) ?? []), node.id]);
+  });
+  const stale = new Set<string>();
+  const stack = [...(childIdsByParent.get(rootId) ?? [])];
+  while (stack.length > 0) {
+    const id = stack.pop()!;
+    if (stale.has(id)) continue;
+    stale.add(id);
+    stack.push(...(childIdsByParent.get(id) ?? []));
+  }
+  return stale;
+}
+
 function nextNodeX(source: PipelineNode, kind: NodeKind) {
   return source.x + nodeWidth(source.kind) + 72;
 }
@@ -2407,12 +2679,14 @@ function rectanglesOverlap(
 }
 
 function nodeWidth(kind: NodeKind) {
+  if (kind === "component") return 210;
   if (kind === "output") return 250;
   if (kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
+  if (kind === "component") return 106;
   if (kind === "output") return 72;
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
@@ -2421,11 +2695,12 @@ function nodeHeight(kind: NodeKind) {
 
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
-  if (node.semanticRole === "device") return 176;
+  if (node.semanticRole === "device") return 212;
   return nodeHeight(node.kind);
 }
 
 function nodeTone(kind: NodeKind) {
+  if (kind === "component") return "#587c7a";
   if (kind === "dataset") return "#6b7a8f";
   if (kind === "transform") return CT.info;
   if (kind === "union") return "#d92f7d";
@@ -2433,6 +2708,7 @@ function nodeTone(kind: NodeKind) {
 }
 
 function nodeIcon(kind: NodeKind, size: number) {
+  if (kind === "component") return <Box size={size} color="#587c7a" />;
   if (kind === "dataset") return <FileSpreadsheet size={size} color="#6b7a8f" />;
   if (kind === "transform") return <Hammer size={size} color={CT.info} />;
   if (kind === "union") return <Box size={size} color="#d92f7d" />;
@@ -2748,12 +3024,35 @@ const orderFieldsGridStyle: CSSProperties = {
   padding: "6px 12px 0",
 };
 
+const deviceEditorStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  padding: "6px 12px 0",
+};
+
 const deviceFieldsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 78px",
   gap: 7,
-  padding: "6px 12px 0",
 };
+
+function drilldownButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    height: 28,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    border: `1px solid ${disabled ? CT.border : "rgba(88,124,122,0.34)"}`,
+    borderRadius: 6,
+    background: disabled ? "#f2f2ef" : "#eef7f4",
+    color: disabled ? CT.inkFaint : "#416f6b",
+    fontFamily: CT_FONT,
+    fontSize: 11,
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
 
 const orderFieldStyle: CSSProperties = {
   minWidth: 0,
@@ -2799,6 +3098,16 @@ const nodeCountStyle: CSSProperties = {
   padding: "0 14px",
   color: CT.inkMuted,
   fontSize: 12,
+  fontFamily: CT_MONO,
+};
+
+const bomMetaGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 5,
+  padding: "5px 12px 0",
+  color: CT.inkSub,
+  fontSize: 10,
   fontFamily: CT_MONO,
 };
 
