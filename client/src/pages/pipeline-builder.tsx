@@ -2341,6 +2341,7 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const rowStep = 54;
   const columnStep = 182;
   const centerY = source.y + effectiveNodeHeight(source) / 2 - nodeHeight("component") / 2;
+  const minY = 116;
   const sortedComponents = [...components].sort((a, b) => String(a.code).localeCompare(String(b.code), "tr"));
   const leafComponents = sortedComponents.filter(component => (component.children?.length ?? 0) === 0);
   const subAssemblyComponents = sortedComponents.filter(component => (component.children?.length ?? 0) > 0);
@@ -2357,7 +2358,7 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
       ? subAssemblyComponents.length
       : Math.min(rowsPerColumn, leafComponents.length - column * rowsPerColumn);
     const x = rootX + column * columnStep + (isSubAssembly ? 28 : 0);
-    const y = Math.max(70, Math.round(centerY + (row - (columnSize - 1) / 2) * rowStep));
+    const y = layoutColumnY(row, columnSize, centerY, rowStep, minY);
     const node = buildBomComponentNode({
       source,
       sku,
@@ -2387,6 +2388,7 @@ function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStoc
   const columnStep = 182;
   const rootX = parentNode.x + nodeWidth(parentNode.kind) + 22;
   const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
+  const minY = 116;
 
   children.forEach((child, index) => {
     const column = Math.floor(index / rowsPerColumn);
@@ -2397,7 +2399,7 @@ function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStoc
       sku: parentNode.bomComponent?.sku ?? child.parentComponentCode ?? "",
       component: child,
       x: rootX + column * columnStep,
-      y: Math.max(70, Math.round(centerY + (row - (rowsInColumn - 1) / 2) * rowStep)),
+      y: layoutColumnY(row, rowsInColumn, centerY, rowStep, minY),
       parentId: parentNode.id,
       order: `${parentNode.id}-${index + 1}`,
     });
@@ -2406,6 +2408,11 @@ function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStoc
   });
 
   return { nodes, connections };
+}
+
+function layoutColumnY(row: number, rowCount: number, centerY: number, rowStep: number, minY: number) {
+  const columnTop = Math.max(minY, centerY - ((rowCount - 1) / 2) * rowStep);
+  return Math.round(columnTop + row * rowStep);
 }
 
 function addBomChildren(args: {
