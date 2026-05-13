@@ -1173,6 +1173,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   const uploadInputId = `pipeline-node-upload-${node.id}`;
   const isDataset = node.kind === "dataset";
   const isComponent = node.kind === "component";
+  const isSubAssembly = Boolean(node.bomComponent?.isSubAssembly);
   const [draftTitle, setDraftTitle] = useState(node.title);
 
   useEffect(() => {
@@ -1196,13 +1197,16 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         top: node.y,
         width: nodeWidth(node.kind),
         height: effectiveNodeHeight(node),
-        borderColor: selected ? nodeTone(node.kind) : CT.borderStrong,
+        borderColor: selected ? nodeTone(node.kind) : isSubAssembly ? "#416f6b" : CT.borderStrong,
+        borderLeft: isSubAssembly ? "5px solid #416f6b" : nodeStyle.border,
+        background: isSubAssembly ? "#f3fbf8" : nodeStyle.background,
         boxShadow: selected ? "0 0 0 3px rgba(73,92,114,0.16), 0 5px 16px rgba(20,20,19,0.12)" : nodeStyle.boxShadow,
       }}
     >
       {!isComponent && <GraphPort side="left" onClick={() => onPortClick("left")} />}
       <div style={nodeTitleStyle}>
         {nodeIcon(node.kind, 18)}
+        {isSubAssembly && <span style={subAssemblyBadgeStyle}>YM</span>}
         <input
           aria-label="Node name"
           value={draftTitle}
@@ -1433,7 +1437,9 @@ function BomComponentMeta({ meta, childCount, onDrillDown }: {
       <div style={bomMetaGridStyle}>
         <span>Tier {meta.tier}</span>
         <span>{formatCell(meta.requiredPerUnit)} {meta.unit}</span>
-        <span>{meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}</span>
+        <span style={meta.isSubAssembly ? bomSubAssemblyTextStyle : undefined}>
+          {meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}
+        </span>
         <span>{meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)}</span>
       </div>
       {childCount > 0 && (
@@ -1447,7 +1453,7 @@ function BomComponentMeta({ meta, childCount, onDrillDown }: {
           style={componentDrillButtonStyle}
         >
           <ListTree size={11} />
-          {childCount} alt
+          Alt bileşenler ({childCount})
         </button>
       )}
     </div>
@@ -3068,6 +3074,22 @@ const nodeTitleInputStyle: CSSProperties = {
   fontWeight: 750,
 };
 
+const subAssemblyBadgeStyle: CSSProperties = {
+  flex: "0 0 auto",
+  height: 18,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: "1px solid rgba(65,111,107,0.34)",
+  borderRadius: 5,
+  background: "#e4f3ef",
+  color: "#416f6b",
+  padding: "0 5px",
+  fontFamily: CT_MONO,
+  fontSize: 9,
+  fontWeight: 900,
+};
+
 const nodeFunctionBarStyle: CSSProperties = {
   height: 34,
   display: "grid",
@@ -3206,19 +3228,24 @@ const bomMetaGridStyle: CSSProperties = {
   fontFamily: CT_MONO,
 };
 
+const bomSubAssemblyTextStyle: CSSProperties = {
+  color: "#416f6b",
+  fontWeight: 900,
+};
+
 const componentDrillButtonStyle: CSSProperties = {
-  height: 20,
+  height: 22,
   margin: "0 12px",
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
   gap: 5,
-  border: `1px solid rgba(88,124,122,0.25)`,
+  border: `1px solid rgba(65,111,107,0.38)`,
   borderRadius: 5,
-  background: "#eef7f4",
+  background: "#e4f3ef",
   color: "#416f6b",
   fontFamily: CT_FONT,
-  fontSize: 10,
+  fontSize: 10.5,
   fontWeight: 800,
   cursor: "pointer",
 };
