@@ -919,8 +919,37 @@ export default function PipelineBuilderPage() {
       setError("Drill-down için önce cihaz SKU seç.");
       return;
     }
+    if (source.dbLinkedSku === cleanSku && collectAllDrilldownNodeIds(nodes).size > 0) {
+      closeDeviceDrilldowns(cleanSku);
+      return;
+    }
 
     await loadDeviceBomFromDatabase(nodeId, cleanSku, { pushSnapshot: true });
+  }
+
+  function closeDeviceDrilldowns(sku?: string) {
+    pushHistory();
+    setNodes(prev => {
+      const staleIds = collectAllDrilldownNodeIds(prev);
+      return prev
+        .filter(node => !staleIds.has(node.id))
+        .map(node => {
+          if (node.semanticRole !== "device" || !node.dbLinkedSku) return node;
+          const label = node.deviceSku || node.semanticLabel || node.title;
+          return {
+            ...node,
+            subtitle: `${label} cihaz entity`,
+            dbLinkedSku: undefined,
+          };
+        });
+    });
+    setConnections(prev => {
+      const staleIds = collectAllDrilldownNodeIds(nodes);
+      return prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
+    });
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(sku ? `${sku}: drill-down kapatıldı.` : "Açık drill-down kapatıldı.");
   }
 
   async function loadDeviceBomFromDatabase(nodeId: string, sku: string, opts: { pushSnapshot: boolean }) {
@@ -2553,7 +2582,11 @@ function collectDrilldownDescendantIds(nodes: PipelineNode[], rootId: string) {
 }
 
 function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
-  return new Set(nodes.filter(node => node.drilldownParentId).map(node => node.id));
+  return new Set(
+    nodes
+      .filter(node => node.drilldownParentId || (node.kind === "component" && node.id.startsWith("bom-")))
+      .map(node => node.id),
+  );
 }
 
 function nextNodeX(source: PipelineNode, kind: NodeKind) {
