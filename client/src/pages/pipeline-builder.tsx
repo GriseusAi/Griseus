@@ -1124,6 +1124,9 @@ export default function PipelineBuilderPage() {
                 {nodeIcon(selectedNode?.kind ?? "dataset", 14)}
                 <span>{selectedNode?.title ?? "Dataset"}</span>
               </div>
+              {selectedNode?.bomComponent && (
+                <ComponentStockPanel meta={selectedNode.bomComponent} childCount={selectedNode.bomChildren?.length ?? 0} />
+              )}
               {importPlan && (
                 <ImportPlanPanel plan={importPlan} />
               )}
@@ -1239,22 +1242,26 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
       <div style={nodeTitleStyle}>
         {nodeIcon(node.kind, 18)}
         {isSubAssembly && <span style={subAssemblyBadgeStyle}>YM</span>}
-        <input
-          aria-label="Node name"
-          value={draftTitle}
-          onClick={(event) => event.stopPropagation()}
-          onChange={(event) => setDraftTitle(event.currentTarget.value)}
-          onBlur={() => onTitleChange(draftTitle)}
-          onKeyDown={(event) => {
-            if (event.key === "Enter") {
-              event.currentTarget.blur();
-            } else if (event.key === "Escape") {
-              setDraftTitle(node.title);
-              event.currentTarget.blur();
-            }
-          }}
-          style={nodeTitleInputStyle}
-        />
+        {isComponent ? (
+          <div style={componentCodeTitleStyle}>{node.title}</div>
+        ) : (
+          <input
+            aria-label="Node name"
+            value={draftTitle}
+            onClick={(event) => event.stopPropagation()}
+            onChange={(event) => setDraftTitle(event.currentTarget.value)}
+            onBlur={() => onTitleChange(draftTitle)}
+            onKeyDown={(event) => {
+              if (event.key === "Enter") {
+                event.currentTarget.blur();
+              } else if (event.key === "Escape") {
+                setDraftTitle(node.title);
+                event.currentTarget.blur();
+              }
+            }}
+            style={nodeTitleInputStyle}
+          />
+        )}
       </div>
       {isDataset && (
         <div data-no-drag="true" style={nodeFunctionBarStyle} onClick={(event) => event.stopPropagation()}>
@@ -1275,14 +1282,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           </select>
         </div>
       )}
-      <div style={nodeMetaStyle}>{node.subtitle}</div>
-      {isComponent && node.bomComponent && (
-        <BomComponentMeta
-          meta={node.bomComponent}
-          childCount={node.bomChildren?.length ?? 0}
-          onDrillDown={onComponentDrillDown}
-        />
-      )}
+      {!isComponent && <div style={nodeMetaStyle}>{node.subtitle}</div>}
       {node.semanticRole === "order" && (
         <OrderFieldsEditor
           fields={node.orderFields ?? emptyOrderFields()}
@@ -1299,7 +1299,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           productOptions={productOptions}
         />
       )}
-      {node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
+      {!isComponent && node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
       {isDataset && (
         <label htmlFor={uploadInputId} style={nodeUploadStyle} onClick={(event) => event.stopPropagation()}>
           <input
@@ -1490,6 +1490,23 @@ function BomComponentMeta({ meta, childCount, onDrillDown }: {
           Alt bileşenler ({childCount})
         </button>
       )}
+    </div>
+  );
+}
+
+function ComponentStockPanel({ meta, childCount }: { meta: BomComponentNodeMeta; childCount: number }) {
+  return (
+    <div style={componentStockPanelStyle}>
+      <div style={componentStockPanelHeaderStyle}>
+        <span>{meta.name}</span>
+        <span style={bomStatusTextStyle(meta.status)}>{statusLabel(meta.status)}</span>
+      </div>
+      <Metric label="Kod" value={meta.code} />
+      <Metric label="Tip" value={meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"} />
+      <Metric label="Stok" value={meta.currentStock === null ? "N/A" : `${formatCell(meta.currentStock)} ${meta.unit}`} />
+      <Metric label="Birim ihtiyaç" value={meta.requiredPerUnit === null ? "N/A" : `${formatCell(meta.requiredPerUnit)} ${meta.unit}`} />
+      <Metric label="Üretilebilir" value={meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)} />
+      {childCount > 0 && <Metric label="Alt bileşen" value={childCount} />}
     </div>
   );
 }
@@ -2320,9 +2337,9 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
   const rootX = source.x + nodeWidth(source.kind) + 76;
-  const rowsPerColumn = 7;
-  const rowStep = 88;
-  const columnStep = 226;
+  const rowsPerColumn = 10;
+  const rowStep = 54;
+  const columnStep = 182;
   const centerY = source.y + effectiveNodeHeight(source) / 2 - nodeHeight("component") / 2;
   const orderedComponents = [...components].sort((a, b) => {
     const aChildren = a.children?.length ?? 0;
@@ -2361,9 +2378,9 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
 function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[]) {
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
-  const rowsPerColumn = 3;
-  const rowStep = 74;
-  const columnStep = 204;
+  const rowsPerColumn = 6;
+  const rowStep = 54;
+  const columnStep = 182;
   const rootX = parentNode.x + nodeWidth(parentNode.kind) + 22;
   const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
 
@@ -2822,14 +2839,14 @@ function rectanglesOverlap(
 }
 
 function nodeWidth(kind: NodeKind) {
-  if (kind === "component") return 190;
+  if (kind === "component") return 150;
   if (kind === "output") return 250;
   if (kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
-  if (kind === "component") return 108;
+  if (kind === "component") return 44;
   if (kind === "output") return 72;
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
@@ -2839,7 +2856,6 @@ function nodeHeight(kind: NodeKind) {
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
-  if (node.kind === "component" && node.bomComponent?.isSubAssembly && (node.bomChildren?.length ?? 0) > 0) return 128;
   return nodeHeight(node.kind);
 }
 
@@ -3131,6 +3147,18 @@ const nodeTitleInputStyle: CSSProperties = {
   fontWeight: 750,
 };
 
+const componentCodeTitleStyle: CSSProperties = {
+  minWidth: 0,
+  flex: 1,
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 14,
+  fontWeight: 900,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
 const subAssemblyBadgeStyle: CSSProperties = {
   flex: "0 0 auto",
   height: 18,
@@ -3318,6 +3346,26 @@ const componentDrillButtonStyle: CSSProperties = {
   fontSize: 10.5,
   fontWeight: 800,
   cursor: "pointer",
+};
+
+const componentStockPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#fbfbf8",
+  padding: 10,
+  marginBottom: 10,
+};
+
+const componentStockPanelHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  color: CT.ink,
+  fontSize: 12,
+  fontWeight: 800,
 };
 
 const nodeUploadStyle: CSSProperties = {
