@@ -1394,7 +1394,7 @@ function BomComponentMeta({ meta }: { meta: BomComponentNodeMeta }) {
       <span>Tier {meta.tier}</span>
       <span>{formatCell(meta.requiredPerUnit)} {meta.unit}</span>
       <span>{meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}</span>
-      <span>{meta.maxProducts === null ? "N/A" : `${formatCell(meta.maxProducts)} üretim`}</span>
+      <span>{meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)}</span>
     </div>
   );
 }
@@ -2210,18 +2210,31 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
   const rootX = source.x + nodeWidth(source.kind) + 76;
-  const rootY = Math.max(70, source.y - Math.max(0, components.length - 1) * 52);
-  const siblingStep = 116;
-  const childStep = 96;
-  const childXStep = 286;
+  const rowsPerColumn = 7;
+  const rowStep = 88;
+  const columnStep = 226;
+  const childStep = 78;
+  const directColumns = Math.max(1, Math.ceil(components.length / rowsPerColumn));
+  const centerY = source.y + effectiveNodeHeight(source) / 2 - nodeHeight("component") / 2;
+  const orderedComponents = [...components].sort((a, b) => {
+    const aChildren = a.children?.length ?? 0;
+    const bChildren = b.children?.length ?? 0;
+    if (aChildren !== bChildren) return bChildren - aChildren;
+    return String(a.code).localeCompare(String(b.code), "tr");
+  });
 
-  components.forEach((component, index) => {
+  orderedComponents.forEach((component, index) => {
+    const column = Math.floor(index / rowsPerColumn);
+    const row = index % rowsPerColumn;
+    const rowsInColumn = Math.min(rowsPerColumn, orderedComponents.length - column * rowsPerColumn);
+    const x = rootX + column * columnStep;
+    const y = Math.max(70, Math.round(centerY + (row - (rowsInColumn - 1) / 2) * rowStep));
     const node = buildBomComponentNode({
       source,
       sku,
       component,
-      x: rootX,
-      y: rootY + index * siblingStep,
+      x,
+      y,
       parentId: source.id,
       order: `${index + 1}`,
     });
@@ -2233,10 +2246,10 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
       parentNode: node,
       children: component.children ?? [],
       depth: 1,
-      baseX: rootX + childXStep,
+      baseX: rootX + directColumns * columnStep,
       baseY: node.y,
       childStep,
-      childXStep,
+      childXStep: columnStep,
       nodes,
       connections,
     });
@@ -2679,14 +2692,14 @@ function rectanglesOverlap(
 }
 
 function nodeWidth(kind: NodeKind) {
-  if (kind === "component") return 210;
+  if (kind === "component") return 190;
   if (kind === "output") return 250;
   if (kind === "union") return 260;
   return 300;
 }
 
 function nodeHeight(kind: NodeKind) {
-  if (kind === "component") return 106;
+  if (kind === "component") return 82;
   if (kind === "output") return 72;
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
@@ -3086,9 +3099,9 @@ const orderFieldSelectStyle: CSSProperties = {
 };
 
 const nodeMetaStyle: CSSProperties = {
-  padding: "8px 14px 4px",
+  padding: "7px 12px 3px",
   color: CT.inkMuted,
-  fontSize: 12,
+  fontSize: 11,
   whiteSpace: "nowrap",
   overflow: "hidden",
   textOverflow: "ellipsis",
@@ -3104,10 +3117,10 @@ const nodeCountStyle: CSSProperties = {
 const bomMetaGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
-  gap: 5,
-  padding: "5px 12px 0",
+  gap: 4,
+  padding: "3px 12px 0",
   color: CT.inkSub,
-  fontSize: 10,
+  fontSize: 9.5,
   fontFamily: CT_MONO,
 };
 
