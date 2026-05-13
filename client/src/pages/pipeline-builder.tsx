@@ -71,6 +71,7 @@ type PipelineNode = {
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart" | "drilldown";
+type DrilldownConnectionScope = "device_component" | "subassembly_component";
 
 type BomComponentNodeMeta = {
   sku: string;
@@ -129,6 +130,7 @@ type GraphConnection = {
   from: string;
   to: string;
   kind?: ConnectionKind;
+  scope?: DrilldownConnectionScope;
   contract?: SemanticConnectionContract;
 };
 
@@ -279,12 +281,13 @@ export default function PipelineBuilderPage() {
       return {
         key: `${connection.from}-${connection.to}`,
         kind: connection.kind,
+        scope: connection.scope,
         x1: getPortPosition(from, "right").x,
         y1: getPortPosition(from, "right").y,
         x2: getPortPosition(to, "left").x,
         y2: getPortPosition(to, "left").y,
       };
-    }).filter((edge): edge is { key: string; kind: ConnectionKind | undefined; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
+    }).filter((edge): edge is { key: string; kind: ConnectionKind | undefined; scope: DrilldownConnectionScope | undefined; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
   }, [connections, nodes]);
 
   const canvasSize = useMemo(() => {
@@ -1027,7 +1030,7 @@ export default function PipelineBuilderPage() {
           <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height }}>
             <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
               {renderedEdges.map(edge => (
-                <EdgeLine key={edge.key} kind={edge.kind} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
+                <EdgeLine key={edge.key} kind={edge.kind} scope={edge.scope} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
               ))}
             </svg>
 
@@ -1542,11 +1545,19 @@ function UploadDropzone({ node, onFile }: { node: PipelineNode; onFile: (file: F
   );
 }
 
-function EdgeLine({ kind, x1, y1, x2, y2 }: { kind?: ConnectionKind; x1: number; y1: number; x2: number; y2: number }) {
+function EdgeLine({ kind, scope, x1, y1, x2, y2 }: {
+  kind?: ConnectionKind;
+  scope?: DrilldownConnectionScope;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+}) {
   const mid = (x1 + x2) / 2;
   const isDrilldown = kind === "drilldown";
-  const stroke = isDrilldown ? "rgba(88,124,122,0.20)" : "rgba(86,101,119,0.58)";
-  const strokeWidth = isDrilldown ? 1.4 : 2;
+  const isSubassemblyEdge = scope === "subassembly_component";
+  const stroke = isSubassemblyEdge ? "rgba(65,111,107,0.46)" : isDrilldown ? "rgba(88,124,122,0.16)" : "rgba(86,101,119,0.58)";
+  const strokeWidth = isSubassemblyEdge ? 2 : isDrilldown ? 1.2 : 2;
   return (
     <g>
       <path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke={stroke} strokeWidth={strokeWidth} />
@@ -2305,7 +2316,7 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
       order: `${index + 1}`,
     });
     nodes.push(node);
-    connections.push({ from: source.id, to: node.id, kind: "drilldown" });
+    connections.push({ from: source.id, to: node.id, kind: "drilldown", scope: "device_component" });
   });
 
   return { nodes, connections };
@@ -2314,10 +2325,10 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
 function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[]) {
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
-  const rowsPerColumn = 6;
-  const rowStep = 78;
-  const columnStep = 226;
-  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 58;
+  const rowsPerColumn = 4;
+  const rowStep = 74;
+  const columnStep = 214;
+  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 30;
   const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
 
   children.forEach((child, index) => {
@@ -2334,7 +2345,7 @@ function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStoc
       order: `${parentNode.id}-${index + 1}`,
     });
     nodes.push(node);
-    connections.push({ from: parentNode.id, to: node.id, kind: "drilldown" });
+    connections.push({ from: parentNode.id, to: node.id, kind: "drilldown", scope: "subassembly_component" });
   });
 
   return { nodes, connections };
