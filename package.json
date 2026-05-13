@@ -11,6 +11,10 @@
     "backup:prod": "bash script/backup-production-db.sh",
     "restore:staging": "bash script/restore-staging-db.sh",
     "smoke:url": "bash script/smoke-test-url.sh",
+    "db:generate": "drizzle-kit generate",
+    "db:migrate": "tsx script/run-migrations.ts",
+    "db:migrate:dry": "tsx script/run-migrations.ts --dry-run",
+    "db:migrate:baseline": "tsx script/run-migrations.ts --baseline",
     "db:push": "drizzle-kit push"
   },
   "dependencies": {

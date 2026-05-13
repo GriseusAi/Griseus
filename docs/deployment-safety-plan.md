@@ -1,6 +1,6 @@
 # Griseus Deployment Safety Plan
 
-Last checked: 2026-05-06
+Last checked: 2026-05-13
 
 ## Current Facts
 
@@ -77,6 +77,7 @@ No `.vercel` folder, `vercel.json`, GitHub Actions workflow, or local Railway pr
 - Server entrypoint: `server/index.ts`
 - Client build output: `dist/public`
 - Server bundle output: `dist/index.cjs`
+- Express sessions are stored in Postgres through the `session` table, not in process memory.
 
 The production build and TypeScript check both succeed after the 2026-05-06 type-safety stabilization pass.
 
@@ -105,6 +106,7 @@ Do not paste secret values into chat or commit them to git. Verify and copy them
 3. Do not run schema push or migrations against production without a database backup.
 4. Do not remove the current Vercel or Railway deployment until the replacement has passed smoke tests.
 5. Keep rollback simple: old production deployment remains available until cutover is confirmed.
+6. Use `npm run db:migrate:dry` before applying migrations, and use `ALLOW_PRODUCTION_MIGRATIONS=1` only after backup plus staging smoke.
 
 ## Recommended Next Steps
 
@@ -118,13 +120,13 @@ Do not paste secret values into chat or commit them to git. Verify and copy them
 npm run smoke:url -- https://staging-url
 ```
 
-6. Only after staging passes, decide whether Vercel remains frontend-only and Railway remains core backend.
+6. Keep `griseus.io` on the smoke-tested Railway full-stack deployment unless a separate hosting split proves cleaner in staging first.
 
 ## Current Recommendation
 
-Keep the hybrid deployment model:
+Keep the current Railway full-stack model as the default operating shape:
 
-- Vercel: frontend and preview deployments
-- Railway or another long-running service: Express API, WebSocket, schedulers, workers
-- Postgres: source of truth
-- Redis/queue later: background jobs and orchestration
+- Railway: Express API, static client, WebSocket, schedulers, workers
+- Railway Postgres: source of truth, including sessions
+- Vercel: optional preview/legacy deployment only, not the live authority unless a future staging cutover proves it
+- Redis/queue later: background jobs and orchestration when workload requires it

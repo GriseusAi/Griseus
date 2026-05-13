@@ -5,12 +5,13 @@ import { startOrchestrator } from "./lib/orchestrator";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import session from "express-session";
-import createMemoryStore from "memorystore";
+import connectPgSimple from "connect-pg-simple";
 import passport from "passport";
 import { Strategy as LocalStrategy } from "passport-local";
 import { storage } from "./storage";
 import { scrypt, randomBytes, timingSafeEqual } from "crypto";
 import { initWebSocket } from "./ws";
+import { pool } from "./db";
 
 const app = express();
 const httpServer = createServer(app);
@@ -33,7 +34,7 @@ app.use(express.urlencoded({ extended: false }));
 
 // Session setup
 const isProduction = process.env.NODE_ENV === "production";
-const MemoryStore = createMemoryStore(session);
+const PgSessionStore = connectPgSimple(session);
 const sessionSecret = process.env.SESSION_SECRET;
 
 if (isProduction && !sessionSecret) {
@@ -46,10 +47,16 @@ if (isProduction) {
 
 app.use(
   session({
+    name: "griseus.sid",
     secret: sessionSecret || "griseus-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
-    store: new MemoryStore({ checkPeriod: 86400000 }),
+    store: new PgSessionStore({
+      pool,
+      tableName: "session",
+      createTableIfMissing: true,
+      pruneSessionInterval: 15 * 60,
+    }),
     cookie: {
       maxAge: 7 * 24 * 60 * 60 * 1000,
       secure: isProduction,

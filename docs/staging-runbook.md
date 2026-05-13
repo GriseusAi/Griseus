@@ -1,6 +1,6 @@
 # Griseus Staging Runbook
 
-Last updated: 2026-05-06
+Last updated: 2026-05-13
 
 ## Goal
 
@@ -12,6 +12,7 @@ Staging must have its own:
 - PostgreSQL database
 - `DATABASE_URL`
 - `SESSION_SECRET`
+- Postgres-backed Express session table
 - public deployment URL
 
 Staging may reuse non-data API keys such as Anthropic, Voyage, and Resend if cost and quota are acceptable, but production data must not be written by staging.
@@ -71,8 +72,43 @@ npm run smoke:url -- https://staging-url
 - Do not point staging at the production `DATABASE_URL`.
 - Do not paste database URLs or API keys into docs, commits, screenshots, or chat.
 - Take `npm run backup:prod` before any production migration or hosting cutover.
+- Run migrations against staging before production.
 - If staging uses copied production data, treat it as sensitive.
 - Do not change `griseus.io` routing until staging passes smoke tests.
+
+## Migration Discipline
+
+Schema changes must be represented as SQL files under `migrations/` and applied through the migration ledger, not by ad hoc production edits.
+
+Use this order:
+
+1. Add the migration file, for example `migrations/0012_pg_sessions.sql`.
+2. Check pending migrations without changing the database:
+
+```bash
+DATABASE_URL=<staging postgres url> APP_ENV=staging npm run db:migrate:dry
+```
+
+3. Apply to staging:
+
+```bash
+DATABASE_URL=<staging postgres url> APP_ENV=staging npm run db:migrate
+```
+
+4. Smoke test staging.
+5. Back up production:
+
+```bash
+npm run backup:prod
+```
+
+6. Apply to production only after backup and staging verification:
+
+```bash
+DATABASE_URL=<production postgres url> APP_ENV=production ALLOW_PRODUCTION_MIGRATIONS=1 npm run db:migrate
+```
+
+For an existing database whose historical migrations were already applied manually, run `npm run db:migrate:baseline` once to record that baseline without executing old SQL.
 
 ## Smoke Test Coverage
 
@@ -93,7 +129,6 @@ After the smoke command passes, open the staging URL and check:
 - Home/dashboard loads after login.
 - Strategy canvas opens.
 - Stock pages open.
-- Ontology screen opens.
 - Agent panel opens only when requested.
 
 ## Rollback
