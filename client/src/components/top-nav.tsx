@@ -2,7 +2,7 @@ import { useLocation } from "wouter";
 import { useAgentPanel, useGlobalAlerts } from "../App";
 import { useState, useRef, useEffect } from "react";
 import type { ProactiveAlertData } from "../lib/useStockWebSocket";
-import { Bell, CircleAlert, CircleCheck, CircleHelp, Clock3, Factory, GitBranch, Network, Sigma } from "lucide-react";
+import { Bell, CircleAlert, CircleCheck, CircleHelp, Clock3, Factory, GitBranch, Sigma } from "lucide-react";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 
 const C = {
@@ -40,7 +40,6 @@ function useNavItems(): NavItem[] {
       label: "",
       iconNode: <Factory size={18} />,
     },
-    { path: "/ontology", label: "Ontology", iconNode: <Network size={16} /> },
     { path: "/lineage", label: "LineAge", iconNode: <Sigma size={16} /> },
     { path: "/pipeline-builder", label: "Pipeline", iconNode: <GitBranch size={16} /> },
   ];
