@@ -2348,6 +2348,11 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
     });
     nodes.push(node);
     connections.push({ from: source.id, to: node.id, kind: "drilldown", scope: "device_component" });
+    if ((component.children?.length ?? 0) > 0) {
+      const childGraph = buildBomChildDrilldownNodes(node, component.children ?? []);
+      nodes.push(...childGraph.nodes);
+      connections.push(...childGraph.connections);
+    }
   });
 
   return { nodes, connections };
@@ -2356,10 +2361,10 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
 function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[]) {
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
-  const rowsPerColumn = 4;
+  const rowsPerColumn = 3;
   const rowStep = 74;
-  const columnStep = 214;
-  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 30;
+  const columnStep = 204;
+  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 22;
   const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
 
   children.forEach((child, index) => {
