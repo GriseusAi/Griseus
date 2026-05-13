@@ -2341,19 +2341,23 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const rowStep = 54;
   const columnStep = 182;
   const centerY = source.y + effectiveNodeHeight(source) / 2 - nodeHeight("component") / 2;
-  const orderedComponents = [...components].sort((a, b) => {
-    const aChildren = a.children?.length ?? 0;
-    const bChildren = b.children?.length ?? 0;
-    if (aChildren !== bChildren) return bChildren - aChildren;
-    return String(a.code).localeCompare(String(b.code), "tr");
-  });
+  const sortedComponents = [...components].sort((a, b) => String(a.code).localeCompare(String(b.code), "tr"));
+  const leafComponents = sortedComponents.filter(component => (component.children?.length ?? 0) === 0);
+  const subAssemblyComponents = sortedComponents.filter(component => (component.children?.length ?? 0) > 0);
+  const leafColumnCount = Math.max(1, Math.ceil(leafComponents.length / rowsPerColumn));
+  const subAssemblyColumn = leafColumnCount;
+  const orderedComponents = [...leafComponents, ...subAssemblyComponents];
 
   orderedComponents.forEach((component, index) => {
-    const column = Math.floor(index / rowsPerColumn);
-    const row = index % rowsPerColumn;
-    const rowsInColumn = Math.min(rowsPerColumn, orderedComponents.length - column * rowsPerColumn);
-    const x = rootX + column * columnStep;
-    const y = Math.max(70, Math.round(centerY + (row - (rowsInColumn - 1) / 2) * rowStep));
+    const isSubAssembly = (component.children?.length ?? 0) > 0;
+    const localIndex = isSubAssembly ? index - leafComponents.length : index;
+    const column = isSubAssembly ? subAssemblyColumn : Math.floor(localIndex / rowsPerColumn);
+    const row = isSubAssembly ? localIndex : localIndex % rowsPerColumn;
+    const columnSize = isSubAssembly
+      ? subAssemblyComponents.length
+      : Math.min(rowsPerColumn, leafComponents.length - column * rowsPerColumn);
+    const x = rootX + column * columnStep + (isSubAssembly ? 28 : 0);
+    const y = Math.max(70, Math.round(centerY + (row - (columnSize - 1) / 2) * rowStep));
     const node = buildBomComponentNode({
       source,
       sku,
