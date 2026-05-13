@@ -67,6 +67,7 @@ type PipelineNode = {
   deviceQuantity?: string;
   drilldownParentId?: string;
   bomComponent?: BomComponentNodeMeta;
+  bomChildren?: BomStockComponent[];
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart" | "drilldown";
@@ -277,12 +278,13 @@ export default function PipelineBuilderPage() {
       if (!from || !to) return null;
       return {
         key: `${connection.from}-${connection.to}`,
+        kind: connection.kind,
         x1: getPortPosition(from, "right").x,
         y1: getPortPosition(from, "right").y,
         x2: getPortPosition(to, "left").x,
         y2: getPortPosition(to, "left").y,
       };
-    }).filter((edge): edge is { key: string; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
+    }).filter((edge): edge is { key: string; kind: ConnectionKind | undefined; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
   }, [connections, nodes]);
 
   const canvasSize = useMemo(() => {
@@ -936,6 +938,33 @@ export default function PipelineBuilderPage() {
     }
   }
 
+  function drillDownComponentNode(nodeId: string) {
+    const source = nodes.find(node => node.id === nodeId);
+    const children = source?.bomChildren ?? [];
+    if (!source || source.kind !== "component" || children.length === 0) {
+      setSelectedNodeId(nodeId);
+      setActionMenu(null);
+      return;
+    }
+
+    const generated = buildBomChildDrilldownNodes(source, children);
+    pushHistory();
+    setNodes(prev => {
+      const staleIds = collectDrilldownDescendantIds(prev, nodeId);
+      const base = prev.filter(node => !staleIds.has(node.id));
+      return base.concat(generated.nodes);
+    });
+    setConnections(prev => {
+      const staleIds = collectDrilldownDescendantIds(nodes, nodeId);
+      const base = prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
+      return dedupeConnections(base.concat(generated.connections));
+    });
+    setSelectedNodeId(generated.nodes[0]?.id ?? nodeId);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(`${source.title}: ${generated.nodes.length} alt BOM node'u açıldı.`);
+  }
+
   return (
     <div style={{ minHeight: "100vh", background: CT.bg, color: CT.ink, fontFamily: CT_FONT }}>
       <TopNav />
@@ -998,7 +1027,7 @@ export default function PipelineBuilderPage() {
           <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height }}>
             <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
               {renderedEdges.map(edge => (
-                <EdgeLine key={edge.key} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
+                <EdgeLine key={edge.key} kind={edge.kind} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
               ))}
             </svg>
 
@@ -1017,6 +1046,7 @@ export default function PipelineBuilderPage() {
                 onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                 onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
                 onDrillDown={() => drillDownDeviceNode(node.id)}
+                onComponentDrillDown={() => drillDownComponentNode(node.id)}
                 productOptions={productOptions}
               />
             ))}
@@ -1124,7 +1154,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1137,6 +1167,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
   onDrillDown: () => void;
+  onComponentDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
   const uploadInputId = `pipeline-node-upload-${node.id}`;
@@ -1169,7 +1200,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         boxShadow: selected ? "0 0 0 3px rgba(73,92,114,0.16), 0 5px 16px rgba(20,20,19,0.12)" : nodeStyle.boxShadow,
       }}
     >
-      <GraphPort side="left" onClick={() => onPortClick("left")} />
+      {!isComponent && <GraphPort side="left" onClick={() => onPortClick("left")} />}
       <div style={nodeTitleStyle}>
         {nodeIcon(node.kind, 18)}
         <input
@@ -1210,7 +1241,11 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
       )}
       <div style={nodeMetaStyle}>{node.subtitle}</div>
       {isComponent && node.bomComponent && (
-        <BomComponentMeta meta={node.bomComponent} />
+        <BomComponentMeta
+          meta={node.bomComponent}
+          childCount={node.bomChildren?.length ?? 0}
+          onDrillDown={onComponentDrillDown}
+        />
       )}
       {node.semanticRole === "order" && (
         <OrderFieldsEditor
@@ -1245,7 +1280,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           <UploadCloud size={13} />
         </label>
       )}
-      {node.kind !== "output" && <GraphPort side="right" onClick={() => onPortClick("right")} />}
+      {node.kind !== "output" && !isComponent && <GraphPort side="right" onClick={() => onPortClick("right")} />}
     </div>
   );
 }
@@ -1388,13 +1423,33 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
   );
 }
 
-function BomComponentMeta({ meta }: { meta: BomComponentNodeMeta }) {
+function BomComponentMeta({ meta, childCount, onDrillDown }: {
+  meta: BomComponentNodeMeta;
+  childCount: number;
+  onDrillDown: () => void;
+}) {
   return (
-    <div style={bomMetaGridStyle}>
-      <span>Tier {meta.tier}</span>
-      <span>{formatCell(meta.requiredPerUnit)} {meta.unit}</span>
-      <span>{meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}</span>
-      <span>{meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)}</span>
+    <div style={bomMetaStackStyle}>
+      <div style={bomMetaGridStyle}>
+        <span>Tier {meta.tier}</span>
+        <span>{formatCell(meta.requiredPerUnit)} {meta.unit}</span>
+        <span>{meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}</span>
+        <span>{meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)}</span>
+      </div>
+      {childCount > 0 && (
+        <button
+          type="button"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onDrillDown();
+          }}
+          style={componentDrillButtonStyle}
+        >
+          <ListTree size={11} />
+          {childCount} alt
+        </button>
+      )}
     </div>
   );
 }
@@ -1481,13 +1536,20 @@ function UploadDropzone({ node, onFile }: { node: PipelineNode; onFile: (file: F
   );
 }
 
-function EdgeLine({ x1, y1, x2, y2 }: { x1: number; y1: number; x2: number; y2: number }) {
+function EdgeLine({ kind, x1, y1, x2, y2 }: { kind?: ConnectionKind; x1: number; y1: number; x2: number; y2: number }) {
   const mid = (x1 + x2) / 2;
+  const isDrilldown = kind === "drilldown";
+  const stroke = isDrilldown ? "rgba(88,124,122,0.20)" : "rgba(86,101,119,0.58)";
+  const strokeWidth = isDrilldown ? 1.4 : 2;
   return (
     <g>
-      <path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
-      <circle cx={x1} cy={y1} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
-      <circle cx={x2} cy={y2} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
+      <path d={`M ${x1} ${y1} C ${mid} ${y1}, ${mid} ${y2}, ${x2} ${y2}`} fill="none" stroke={stroke} strokeWidth={strokeWidth} />
+      {!isDrilldown && (
+        <>
+          <circle cx={x1} cy={y1} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
+          <circle cx={x2} cy={y2} r="5" fill="#eef1f5" stroke="rgba(86,101,119,0.58)" strokeWidth="2" />
+        </>
+      )}
     </g>
   );
 }
@@ -2213,8 +2275,6 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const rowsPerColumn = 7;
   const rowStep = 88;
   const columnStep = 226;
-  const childStep = 78;
-  const directColumns = Math.max(1, Math.ceil(components.length / rowsPerColumn));
   const centerY = source.y + effectiveNodeHeight(source) / 2 - nodeHeight("component") / 2;
   const orderedComponents = [...components].sort((a, b) => {
     const aChildren = a.children?.length ?? 0;
@@ -2240,19 +2300,35 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
     });
     nodes.push(node);
     connections.push({ from: source.id, to: node.id, kind: "drilldown" });
-    addBomChildren({
-      source,
-      sku,
-      parentNode: node,
-      children: component.children ?? [],
-      depth: 1,
-      baseX: rootX + directColumns * columnStep,
-      baseY: node.y,
-      childStep,
-      childXStep: columnStep,
-      nodes,
-      connections,
+  });
+
+  return { nodes, connections };
+}
+
+function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[]) {
+  const nodes: PipelineNode[] = [];
+  const connections: GraphConnection[] = [];
+  const rowsPerColumn = 6;
+  const rowStep = 78;
+  const columnStep = 226;
+  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 58;
+  const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
+
+  children.forEach((child, index) => {
+    const column = Math.floor(index / rowsPerColumn);
+    const row = index % rowsPerColumn;
+    const rowsInColumn = Math.min(rowsPerColumn, children.length - column * rowsPerColumn);
+    const node = buildBomComponentNode({
+      source: parentNode,
+      sku: parentNode.bomComponent?.sku ?? child.parentComponentCode ?? "",
+      component: child,
+      x: rootX + column * columnStep,
+      y: Math.max(70, Math.round(centerY + (row - (rowsInColumn - 1) / 2) * rowStep)),
+      parentId: parentNode.id,
+      order: `${parentNode.id}-${index + 1}`,
     });
+    nodes.push(node);
+    connections.push({ from: parentNode.id, to: node.id, kind: "drilldown" });
   });
 
   return { nodes, connections };
@@ -2337,6 +2413,7 @@ function buildBomComponentNode(args: {
     columns: collectColumns(rows),
     drilldownParentId: parentId,
     bomComponent: meta,
+    bomChildren: component.children ?? [],
   };
 }
 
@@ -2699,7 +2776,7 @@ function nodeWidth(kind: NodeKind) {
 }
 
 function nodeHeight(kind: NodeKind) {
-  if (kind === "component") return 82;
+  if (kind === "component") return 96;
   if (kind === "output") return 72;
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
@@ -3114,6 +3191,11 @@ const nodeCountStyle: CSSProperties = {
   fontFamily: CT_MONO,
 };
 
+const bomMetaStackStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+};
+
 const bomMetaGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
@@ -3122,6 +3204,23 @@ const bomMetaGridStyle: CSSProperties = {
   color: CT.inkSub,
   fontSize: 9.5,
   fontFamily: CT_MONO,
+};
+
+const componentDrillButtonStyle: CSSProperties = {
+  height: 20,
+  margin: "0 12px",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 5,
+  border: `1px solid rgba(88,124,122,0.25)`,
+  borderRadius: 5,
+  background: "#eef7f4",
+  color: "#416f6b",
+  fontFamily: CT_FONT,
+  fontSize: 10,
+  fontWeight: 800,
+  cursor: "pointer",
 };
 
 const nodeUploadStyle: CSSProperties = {
