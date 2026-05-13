@@ -2348,6 +2348,7 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
   const leafColumnCount = Math.max(1, Math.ceil(leafComponents.length / rowsPerColumn));
   const subAssemblyColumn = leafColumnCount;
   const orderedComponents = [...leafComponents, ...subAssemblyComponents];
+  let childLaneOffset = 0;
 
   orderedComponents.forEach((component, index) => {
     const isSubAssembly = (component.children?.length ?? 0) > 0;
@@ -2371,22 +2372,25 @@ function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: B
     nodes.push(node);
     connections.push({ from: source.id, to: node.id, kind: "drilldown", scope: "device_component" });
     if ((component.children?.length ?? 0) > 0) {
-      const childGraph = buildBomChildDrilldownNodes(node, component.children ?? []);
+      const childColumnCount = Math.max(1, Math.ceil((component.children?.length ?? 0) / 6));
+      const childRootX = node.x + nodeWidth(node.kind) + 44 + childLaneOffset * columnStep;
+      const childGraph = buildBomChildDrilldownNodes(node, component.children ?? [], childRootX);
       nodes.push(...childGraph.nodes);
       connections.push(...childGraph.connections);
+      childLaneOffset += childColumnCount;
     }
   });
 
   return { nodes, connections };
 }
 
-function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[]) {
+function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStockComponent[], rootXOverride?: number) {
   const nodes: PipelineNode[] = [];
   const connections: GraphConnection[] = [];
   const rowsPerColumn = 6;
   const rowStep = 54;
   const columnStep = 182;
-  const rootX = parentNode.x + nodeWidth(parentNode.kind) + 22;
+  const rootX = rootXOverride ?? parentNode.x + nodeWidth(parentNode.kind) + 22;
   const centerY = parentNode.y + effectiveNodeHeight(parentNode) / 2 - nodeHeight("component") / 2;
   const minY = 116;
 
