@@ -12,6 +12,7 @@ import {
   GitBranch,
   Hammer,
   ListTree,
+  Minus,
   Pencil,
   Plus,
   RotateCcw,
@@ -262,6 +263,7 @@ export default function PipelineBuilderPage() {
   const [savedPipelines, setSavedPipelines] = useState<SavedPipelineGraph[]>(initialSavedPipelines);
   const [activeSavedId, setActiveSavedId] = useState<string | null>(initialGraph?.id ?? null);
   const [savedPanelOpen, setSavedPanelOpen] = useState(false);
+  const [canvasZoom, setCanvasZoom] = useState(1);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -272,6 +274,8 @@ export default function PipelineBuilderPage() {
   const transformCount = nodes.filter(node => node.kind === "transform").length;
   const canUndo = history.length > 0;
   const canDelete = Boolean(selectedNode);
+  const canZoomOut = canvasZoom > 0.55;
+  const canZoomIn = canvasZoom < 1.45;
 
   const renderedEdges = useMemo(() => {
     const byId = new Map(nodes.map(node => [node.id, node]));
@@ -296,6 +300,10 @@ export default function PipelineBuilderPage() {
     const maxY = Math.max(...nodes.map(node => node.y + effectiveNodeHeight(node)), 900);
     return { width: maxX + 520, height: maxY + 320 };
   }, [nodes]);
+  const scaledCanvasSize = useMemo(() => ({
+    width: Math.ceil(canvasSize.width * canvasZoom),
+    height: Math.ceil(canvasSize.height * canvasZoom),
+  }), [canvasSize, canvasZoom]);
 
   function getPortPosition(node: PipelineNode, side: PortSide) {
     const nodeW = nodeWidth(node.kind);
@@ -449,12 +457,14 @@ export default function PipelineBuilderPage() {
       }
 
       if (!moved && !activeDrag.historyPushed) return;
+      const scaledDx = dx / canvasZoom;
+      const scaledDy = dy / canvasZoom;
       setNodes(prev => prev.map(node => {
         if (node.id !== activeDrag.nodeId) return node;
         return {
           ...node,
-          x: Math.max(20, Math.round(activeDrag.originX + dx)),
-          y: Math.max(40, Math.round(activeDrag.originY + dy)),
+          x: Math.max(20, Math.round(activeDrag.originX + scaledDx)),
+          y: Math.max(40, Math.round(activeDrag.originY + scaledDy)),
         };
       }));
       setActionMenu(null);
@@ -473,7 +483,11 @@ export default function PipelineBuilderPage() {
       window.removeEventListener("pointerup", onPointerUp);
       window.removeEventListener("pointercancel", onPointerUp);
     };
-  }, [dragState]);
+  }, [canvasZoom, dragState]);
+
+  function adjustCanvasZoom(delta: number) {
+    setCanvasZoom(prev => Math.min(1.5, Math.max(0.5, Number((prev + delta).toFixed(2)))));
+  }
 
   function deleteSelectedNode() {
     const selected = nodes.find(node => node.id === selectedNodeId);
@@ -1058,6 +1072,29 @@ export default function PipelineBuilderPage() {
           <button type="button" onClick={addDataset} style={toolbarButtonStyle}>
             <Plus size={14} /> Add dataset
           </button>
+          <div style={zoomControlStyle}>
+            <button
+              type="button"
+              aria-label="Zoom out"
+              title="Zoom out"
+              onClick={() => adjustCanvasZoom(-0.1)}
+              disabled={!canZoomOut}
+              style={zoomButtonStyle(!canZoomOut)}
+            >
+              <Minus size={14} />
+            </button>
+            <span style={zoomValueStyle}>{Math.round(canvasZoom * 100)}%</span>
+            <button
+              type="button"
+              aria-label="Zoom in"
+              title="Zoom in"
+              onClick={() => adjustCanvasZoom(0.1)}
+              disabled={!canZoomIn}
+              style={zoomButtonStyle(!canZoomIn)}
+            >
+              <Plus size={14} />
+            </button>
+          </div>
           <button
             type="button"
             aria-label="Undo"
@@ -1098,47 +1135,49 @@ export default function PipelineBuilderPage() {
 
       <main style={{ display: "grid", gridTemplateRows: "1fr 310px", height: "calc(100vh - 94px)", minHeight: 680 }}>
         <section style={canvasViewportStyle}>
-          <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height }}>
-            <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
-              {renderedEdges.map(edge => (
-                <EdgeLine key={edge.key} kind={edge.kind} scope={edge.scope} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
+          <div style={{ position: "relative", width: scaledCanvasSize.width, height: scaledCanvasSize.height }}>
+            <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height, transform: `scale(${canvasZoom})`, transformOrigin: "top left" }}>
+              <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
+                {renderedEdges.map(edge => (
+                  <EdgeLine key={edge.key} kind={edge.kind} scope={edge.scope} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
+                ))}
+              </svg>
+
+              {nodes.map(node => (
+                <PipelineGraphNode
+                  key={node.id}
+                  node={node}
+                  selected={selectedNodeId === node.id}
+                  onSelect={() => selectGraphNode(node.id)}
+                  onPortClick={(side) => openPortMenu(node.id, side)}
+                  onFile={(file) => handleNodeFile(node.id, file)}
+                  onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
+                  onTitleChange={(title) => updateNodeTitle(node.id, title)}
+                  onDragStart={(event) => startNodeDrag(node.id, event)}
+                  onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
+                  onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
+                  onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
+                  onDrillDown={() => drillDownDeviceNode(node.id)}
+                  onComponentDrillDown={() => drillDownComponentNode(node.id)}
+                  productOptions={productOptions}
+                />
               ))}
-            </svg>
 
-            {nodes.map(node => (
-              <PipelineGraphNode
-                key={node.id}
-                node={node}
-                selected={selectedNodeId === node.id}
-                onSelect={() => selectGraphNode(node.id)}
-                onPortClick={(side) => openPortMenu(node.id, side)}
-                onFile={(file) => handleNodeFile(node.id, file)}
-                onFunctionSelect={(functionKind) => updateNodeFunction(node.id, functionKind)}
-                onTitleChange={(title) => updateNodeTitle(node.id, title)}
-                onDragStart={(event) => startNodeDrag(node.id, event)}
-                onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
-                onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
-                onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
-                onDrillDown={() => drillDownDeviceNode(node.id)}
-                onComponentDrillDown={() => drillDownComponentNode(node.id)}
-                productOptions={productOptions}
-              />
-            ))}
-
-            {actionMenu && (
-              <NodeActionMenu
-                state={actionMenu}
-                onTransform={() => createTransform(actionMenu.nodeId)}
-                onUnion={() => createUnion(actionMenu.nodeId)}
-                onConnect={() => createSmartConnection(actionMenu.nodeId)}
-                onOutput={() => createOutputFrom(actionMenu.nodeId)}
-                onNewDataset={() => {
-                  addDataset();
-                  setActionMenu(null);
-                }}
-                onEdit={() => editNodeData(actionMenu.nodeId)}
-              />
-            )}
+              {actionMenu && (
+                <NodeActionMenu
+                  state={actionMenu}
+                  onTransform={() => createTransform(actionMenu.nodeId)}
+                  onUnion={() => createUnion(actionMenu.nodeId)}
+                  onConnect={() => createSmartConnection(actionMenu.nodeId)}
+                  onOutput={() => createOutputFrom(actionMenu.nodeId)}
+                  onNewDataset={() => {
+                    addDataset();
+                    setActionMenu(null);
+                  }}
+                  onEdit={() => editNodeData(actionMenu.nodeId)}
+                />
+              )}
+            </div>
           </div>
         </section>
 
@@ -3075,6 +3114,42 @@ function iconToolbarButtonStyle(disabled: boolean): CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
   };
 }
+
+const zoomControlStyle: CSSProperties = {
+  height: 32,
+  display: "inline-flex",
+  alignItems: "center",
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  background: CT.surface,
+  overflow: "hidden",
+};
+
+function zoomButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    width: 31,
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    border: 0,
+    borderRight: `1px solid ${CT.border}`,
+    background: "transparent",
+    color: disabled ? CT.inkFaint : CT.inkSub,
+    opacity: disabled ? 0.48 : 1,
+    cursor: disabled ? "not-allowed" : "pointer",
+  };
+}
+
+const zoomValueStyle: CSSProperties = {
+  minWidth: 44,
+  textAlign: "center",
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontFamily: CT_MONO,
+  fontWeight: 700,
+  borderRight: `1px solid ${CT.border}`,
+};
 
 function deployButtonStyle(disabled: boolean): CSSProperties {
   return {
