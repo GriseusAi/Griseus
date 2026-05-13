@@ -68,6 +68,7 @@ type PipelineNode = {
   drilldownParentId?: string;
   bomComponent?: BomComponentNodeMeta;
   bomChildren?: BomStockComponent[];
+  dbLinkedSku?: string;
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart" | "drilldown";
@@ -826,21 +827,28 @@ export default function PipelineBuilderPage() {
   }
 
   function updateNodeFunction(nodeId: string, functionKind: NodeFunctionKind) {
+    const current = nodes.find(node => node.id === nodeId);
+    const nextDeviceSku = functionKind === "device"
+      ? current?.deviceSku || productOptions[0]?.sku || productOptions[0]?.name || ""
+      : current?.deviceSku;
     pushHistory();
     setNodes(prev => prev.map(node => {
       if (node.id !== nodeId) return node;
       const semanticRole = nodeFunctionToSemanticRole(functionKind);
       const label = semanticRoleLabel(semanticRole);
+      const deviceLabel = semanticRole === "device" && nextDeviceSku ? nextDeviceSku : label;
       return {
         ...node,
-        title: label,
-        subtitle: node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
+        title: deviceLabel,
+        subtitle: semanticRole === "device" && nextDeviceSku
+          ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
+          : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
         functionKind,
         semanticRole,
-        semanticLabel: label,
+        semanticLabel: deviceLabel,
         backendKey: semanticRole,
         orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
-        deviceSku: semanticRole === "device" ? node.deviceSku ?? "" : node.deviceSku,
+        deviceSku: semanticRole === "device" ? nextDeviceSku : node.deviceSku,
         deviceQuantity: semanticRole === "device" ? node.deviceQuantity ?? "" : node.deviceQuantity,
       };
     }));
@@ -848,6 +856,9 @@ export default function PipelineBuilderPage() {
     setActionMenu(null);
     const label = semanticRoleLabel(nodeFunctionToSemanticRole(functionKind));
     setError(`${label} fonksiyonu seçildi. Bu kutu artık pipeline içinde ${label.toLocaleLowerCase("tr-TR")} entity olarak davranır.`);
+    if (functionKind === "device" && nextDeviceSku) {
+      void loadDeviceBomFromDatabase(nodeId, nextDeviceSku, { pushSnapshot: false });
+    }
   }
 
   function updateNodeTitle(nodeId: string, title: string) {
@@ -890,8 +901,10 @@ export default function PipelineBuilderPage() {
         subtitle: value ? `${value} cihaz entity` : "Cihaz entity node",
         semanticLabel: label,
         deviceSku: value,
+        dbLinkedSku: undefined,
       };
     }));
+    if (value) void loadDeviceBomFromDatabase(nodeId, value, { pushSnapshot: true });
   }
 
   function updateDeviceQuantity(nodeId: string, value: string) {
@@ -907,37 +920,53 @@ export default function PipelineBuilderPage() {
       return;
     }
 
+    await loadDeviceBomFromDatabase(nodeId, cleanSku, { pushSnapshot: true });
+  }
+
+  async function loadDeviceBomFromDatabase(nodeId: string, sku: string, opts: { pushSnapshot: boolean }) {
+    const cleanSku = sku.trim();
+    const source = nodes.find(node => node.id === nodeId);
+    if (!source || !cleanSku) return;
+
     try {
-      setError(`${cleanSku} BOM drill-down yükleniyor...`);
+      setError(`${cleanSku} DB semantic layer bağlanıyor...`);
       const res = await fetch(`/api/bom/${encodeURIComponent(cleanSku)}/stock`);
       const data: BomStockResponse | { error?: string } = await res.json().catch(() => ({}));
       if (!res.ok || !Array.isArray((data as BomStockResponse).components)) {
         throw new Error((data as { error?: string }).error || "BOM okunamadı");
       }
 
-      const generated = buildBomDrilldownNodes(source, cleanSku, (data as BomStockResponse).components);
+      const components = (data as BomStockResponse).components;
+      const generated = buildBomDrilldownNodes({ ...source, deviceSku: cleanSku, semanticLabel: cleanSku, title: cleanSku }, cleanSku, components);
       if (generated.nodes.length === 0) {
-        setError(`${cleanSku} için gösterilecek alt bileşen bulunamadı.`);
+        setError(`${cleanSku} için gösterilecek BOM bulunamadı.`);
         return;
       }
 
-      pushHistory();
+      if (opts.pushSnapshot) pushHistory();
       setNodes(prev => {
         const staleIds = collectDrilldownDescendantIds(prev, nodeId);
         const base = prev.filter(node => !staleIds.has(node.id));
-        return base.concat(generated.nodes);
+        return base.map(node => node.id === nodeId ? {
+          ...node,
+          title: cleanSku,
+          subtitle: `${cleanSku} cihaz entity · DB bağlı · ${generated.nodes.length} direkt BOM`,
+          semanticLabel: cleanSku,
+          deviceSku: cleanSku,
+          dbLinkedSku: cleanSku,
+        } : node).concat(generated.nodes);
       });
       setConnections(prev => {
         const staleIds = collectDrilldownDescendantIds(nodes, nodeId);
         const base = prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
         return dedupeConnections(base.concat(generated.connections));
       });
-      setSelectedNodeId(generated.nodes[0]?.id ?? nodeId);
+      setSelectedNodeId(nodeId);
       setActionMenu(null);
       setPendingConnection(null);
-      setError(`${cleanSku}: ${generated.nodes.length} BOM node'u açıldı.`);
+      setError(`${cleanSku}: DB'den ${generated.nodes.length} direkt BOM node'u açıldı.`);
     } catch (err: any) {
-      setError(`Drill-down başarısız: ${err?.message || "BOM endpoint unavailable"}`);
+      setError(`DB bağlantısı başarısız: ${err?.message || "BOM endpoint unavailable"}`);
     }
   }
 
@@ -1443,7 +1472,9 @@ function BomComponentMeta({ meta, childCount, onDrillDown }: {
         <span style={meta.isSubAssembly ? bomSubAssemblyTextStyle : undefined}>
           {meta.isSubAssembly ? "Yarı-mamül" : "Bileşen"}
         </span>
-        <span>{meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)}</span>
+        <span style={bomStatusTextStyle(meta.status)}>{statusLabel(meta.status)}</span>
+        <span>Stok {meta.currentStock === null ? "N/A" : formatCell(meta.currentStock)}</span>
+        <span>{meta.maxProducts === null ? "Üretim N/A" : `Üretim ${formatCell(meta.maxProducts)}`}</span>
       </div>
       {childCount > 0 && (
         <button
@@ -2793,7 +2824,7 @@ function nodeWidth(kind: NodeKind) {
 }
 
 function nodeHeight(kind: NodeKind) {
-  if (kind === "component") return 96;
+  if (kind === "component") return 108;
   if (kind === "output") return 72;
   if (kind === "union") return 104;
   if (kind === "dataset") return 122;
@@ -2803,6 +2834,7 @@ function nodeHeight(kind: NodeKind) {
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
+  if (node.kind === "component" && node.bomComponent?.isSubAssembly && (node.bomChildren?.length ?? 0) > 0) return 128;
   return nodeHeight(node.kind);
 }
 
@@ -2833,6 +2865,15 @@ function formatCell(value: any) {
   if (value === null || value === undefined || value === "") return "-";
   if (typeof value === "number") return Number.isInteger(value) ? value.toLocaleString("tr-TR") : value.toLocaleString("tr-TR", { maximumFractionDigits: 2 });
   return String(value);
+}
+
+function statusLabel(status: string) {
+  if (status === "critical") return "Kritik";
+  if (status === "warning") return "Düşük";
+  if (status === "ok") return "OK";
+  if (status === "abundant") return "Bol";
+  if (status === "variable") return "Değişken";
+  return status || "N/A";
 }
 
 function Metric({ label, value }: { label: string; value: string | number }) {
@@ -3243,6 +3284,19 @@ const bomSubAssemblyTextStyle: CSSProperties = {
   color: "#416f6b",
   fontWeight: 900,
 };
+
+function bomStatusTextStyle(status: string): CSSProperties {
+  const color =
+    status === "critical" ? CT.err :
+    status === "warning" ? "#a96f00" :
+    status === "abundant" ? CT.ok :
+    status === "variable" ? "#b75e00" :
+    CT.inkSub;
+  return {
+    color,
+    fontWeight: 900,
+  };
+}
 
 const componentDrillButtonStyle: CSSProperties = {
   height: 22,
