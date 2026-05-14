@@ -1684,8 +1684,6 @@ function ProcurementFieldsEditor({ fields, onChange }: {
       <OrderField label="Miktar" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
       <OrderField label="Tedarikçi" value={fields.supplier} onChange={(value) => onChange("supplier", value)} />
       <OrderField label="ETA" value={fields.eta} type="date" onChange={(value) => onChange("eta", value)} />
-      <OrderField label="Kabul" value={fields.inboundBufferDays} inputMode="numeric" onChange={(value) => onChange("inboundBufferDays", value)} />
-      <OrderField label="Üretim" value={fields.productionLeadDays} inputMode="numeric" onChange={(value) => onChange("productionLeadDays", value)} />
     </div>
   );
 }
@@ -3714,7 +3712,7 @@ function nodeHeight(kind: NodeKind) {
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
-  if (node.semanticRole === "procurement") return 246;
+  if (node.semanticRole === "procurement") return 190;
   return nodeHeight(node.kind);
 }
 
