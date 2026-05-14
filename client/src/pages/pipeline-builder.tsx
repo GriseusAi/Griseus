@@ -26,8 +26,8 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
-type NodeFunctionKind = "customer" | "order" | "orderLine" | "device";
-type SemanticRole = "customer" | "order" | "orderLine" | "device";
+type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procurement";
+type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement";
 type PortSide = "left" | "right";
 
 type OrderFields = {
@@ -40,6 +40,14 @@ type OrderLineFields = {
   deviceType: string;
   quantity: string;
   deadline: string;
+};
+
+type ProcurementFields = {
+  componentCode: string;
+  supplier: string;
+  quantity: string;
+  eta: string;
+  status: string;
 };
 
 type ProductOption = {
@@ -65,6 +73,7 @@ type PipelineNode = {
   backendKey?: SemanticRole;
   orderFields?: OrderFields;
   orderLineFields?: OrderLineFields;
+  procurementFields?: ProcurementFields;
   deviceSku?: string;
   deviceQuantity?: string;
   drilldownParentId?: string;
@@ -115,7 +124,7 @@ type BomStockResponse = {
 };
 
 type SemanticConnectionContract = {
-  relation: "customer_order" | "order_order_line" | "order_line_device" | "order_device" | "generic";
+  relation: "customer_order" | "order_order_line" | "order_line_device" | "order_device" | "component_procurement" | "generic";
   fromRole?: SemanticRole;
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
@@ -951,6 +960,7 @@ export default function PipelineBuilderPage() {
         semanticLabel: deviceLabel,
         backendKey: semanticRole,
         orderFields: semanticRole === "order" ? node.orderFields ?? emptyOrderFields() : node.orderFields,
+        procurementFields: semanticRole === "procurement" ? node.procurementFields ?? emptyProcurementFields() : node.procurementFields,
         deviceSku: semanticRole === "device" ? nextDeviceSku : node.deviceSku,
         deviceQuantity: semanticRole === "device" ? node.deviceQuantity ?? "" : node.deviceQuantity,
       };
@@ -988,6 +998,20 @@ export default function PipelineBuilderPage() {
         orderFields: {
           ...emptyOrderFields(),
           ...node.orderFields,
+          [field]: value,
+        },
+      };
+    }));
+  }
+
+  function updateProcurementField(nodeId: string, field: keyof ProcurementFields, value: string) {
+    setNodes(prev => prev.map(node => {
+      if (node.id !== nodeId) return node;
+      return {
+        ...node,
+        procurementFields: {
+          ...emptyProcurementFields(),
+          ...node.procurementFields,
           [field]: value,
         },
       };
@@ -1250,6 +1274,7 @@ export default function PipelineBuilderPage() {
                   onTitleChange={(title) => updateNodeTitle(node.id, title)}
                   onDragStart={(event) => startNodeDrag(node.id, event)}
                   onOrderFieldChange={(field, value) => updateOrderField(node.id, field, value)}
+                  onProcurementFieldChange={(field, value) => updateProcurementField(node.id, field, value)}
                   onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                   onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
                   onDrillDown={() => drillDownDeviceNode(node.id)}
@@ -1365,7 +1390,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1375,6 +1400,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onTitleChange: (title: string) => void;
   onDragStart: (event: ReactPointerEvent<HTMLDivElement>) => void;
   onOrderFieldChange: (field: keyof OrderFields, value: string) => void;
+  onProcurementFieldChange: (field: keyof ProcurementFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
   onDrillDown: () => void;
@@ -1455,6 +1481,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="customer">Müşteri</option>
             <option value="order">Sipariş</option>
             <option value="device">Cihaz</option>
+            <option value="procurement">Tedarik</option>
           </select>
         </div>
       )}
@@ -1475,6 +1502,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           productOptions={productOptions}
         />
       )}
+      {node.semanticRole === "procurement" && (
+        <ProcurementFieldsEditor
+          fields={node.procurementFields ?? emptyProcurementFields()}
+          onChange={onProcurementFieldChange}
+        />
+      )}
       {!isComponent && node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
       {isDataset && (
         <label htmlFor={uploadInputId} style={nodeUploadStyle} onClick={(event) => event.stopPropagation()}>
@@ -1493,6 +1526,21 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         </label>
       )}
       {node.kind !== "output" && !isComponent && <GraphPort side="right" onClick={() => onPortClick("right")} />}
+      {isComponent && node.bomComponent?.isInsufficient && (
+        <button
+          type="button"
+          data-no-drag="true"
+          title="Tedarik bağlantısı kur"
+          onClick={(event) => {
+            event.preventDefault();
+            event.stopPropagation();
+            onPortClick("right");
+          }}
+          style={procurementMiniNodeStyle}
+        >
+          T
+        </button>
+      )}
       {node.bomComponent?.isInsufficient && (
         <span
           style={componentWarningDotStyle}
@@ -1560,6 +1608,20 @@ function OrderFieldsEditor({ fields, onChange }: {
     <div data-no-drag="true" style={orderFieldsGridStyle}>
       <OrderField label="Müşteri" value={fields.customer} onChange={(value) => onChange("customer", value)} />
       <OrderField label="Teslim" value={fields.deadline} type="date" onChange={(value) => onChange("deadline", value)} />
+    </div>
+  );
+}
+
+function ProcurementFieldsEditor({ fields, onChange }: {
+  fields: ProcurementFields;
+  onChange: (field: keyof ProcurementFields, value: string) => void;
+}) {
+  return (
+    <div data-no-drag="true" style={procurementFieldsGridStyle}>
+      <OrderField label="Kod" value={fields.componentCode} onChange={(value) => onChange("componentCode", value)} />
+      <OrderField label="Miktar" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
+      <OrderField label="Tedarikçi" value={fields.supplier} onChange={(value) => onChange("supplier", value)} />
+      <OrderField label="ETA" value={fields.eta} type="date" onChange={(value) => onChange("eta", value)} />
     </div>
   );
 }
@@ -2982,6 +3044,16 @@ function emptyOrderFields(): OrderFields {
   };
 }
 
+function emptyProcurementFields(): ProcurementFields {
+  return {
+    componentCode: "",
+    supplier: "",
+    quantity: "",
+    eta: "",
+    status: "planned",
+  };
+}
+
 function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
   return {
     customer: orderFields?.customer ?? "",
@@ -2994,17 +3066,28 @@ function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
 function semanticRoleLabel(role: SemanticRole) {
   if (role === "customer") return "Müşteri";
   if (role === "order") return "Sipariş";
+  if (role === "orderLine") return "Sipariş kalemi";
+  if (role === "procurement") return "Tedarik";
   return "Cihaz";
 }
 
 function buildSmartConnection(source: PipelineNode, target: PipelineNode): GraphConnection {
   const relation =
-    source.semanticRole === "customer" && target.semanticRole === "order"
+    source.bomComponent && target.semanticRole === "procurement"
+      ? "component_procurement"
+      : source.semanticRole === "customer" && target.semanticRole === "order"
       ? "customer_order"
       : source.semanticRole === "order" && target.semanticRole === "device"
         ? "order_device"
         : "generic";
   const context: Record<string, string> = {};
+  if (relation === "component_procurement" && source.bomComponent) {
+    context.componentCode = source.bomComponent.code;
+    context.componentName = source.bomComponent.name;
+    context.shortage = source.bomComponent.stockShortage === null ? "" : String(source.bomComponent.stockShortage);
+    context.unit = source.bomComponent.unit;
+    context.orderQuantity = source.bomComponent.orderQuantity === null ? "" : String(source.bomComponent.orderQuantity);
+  }
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
   if (relation === "order_device") {
     if (source.orderFields?.customer) context.customer = source.orderFields.customer;
@@ -3013,7 +3096,12 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
     if (target.deviceQuantity) context.quantity = target.deviceQuantity;
   }
   const internalOrderLine = relation === "order_device" ? buildInternalOrderLine(source, target) : undefined;
-  const fieldMap = relation === "customer_order"
+  const fieldMap = relation === "component_procurement"
+    ? [
+        { from: "bomComponent.code", to: "procurementFields.componentCode" },
+        { from: "bomComponent.stockShortage", to: "procurementFields.quantity" },
+      ]
+    : relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
     : relation === "order_device"
       ? [
@@ -3036,7 +3124,9 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
       context,
       internal: internalOrderLine,
       status: "local",
-      message: relation === "customer_order"
+      message: relation === "component_procurement"
+        ? "Shortage component mapped into procurement need"
+        : relation === "customer_order"
         ? "Customer context mapped into order.customer"
         : relation === "order_device"
           ? "Order linked to device through hidden orderLine semantic entity"
@@ -3112,6 +3202,21 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
       deviceQuantity: quantity || node.deviceQuantity,
     };
   }
+  if (source.bomComponent && target.semanticRole === "procurement") {
+    const shortage = source.bomComponent.stockShortage;
+    return {
+      ...node,
+      title: `Tedarik · ${source.bomComponent.code}`,
+      semanticLabel: `Tedarik ${source.bomComponent.code}`,
+      subtitle: `${source.bomComponent.code} tedarik ihtiyacı`,
+      procurementFields: {
+        ...emptyProcurementFields(),
+        ...node.procurementFields,
+        componentCode: source.bomComponent.code,
+        quantity: shortage === null ? node.procurementFields?.quantity ?? "" : String(Math.ceil(shortage)),
+      },
+    };
+  }
   return node;
 }
 
@@ -3124,6 +3229,10 @@ function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
   }
   if (source.semanticRole === "orderLine" && target.semanticRole === "device") {
     return `${source.title} → ${target.title}: cihaz tipi cihaz node'una aktarıldı.`;
+  }
+  if (source.bomComponent && target.semanticRole === "procurement") {
+    const shortage = source.bomComponent.stockShortage === null ? "eksik" : `${formatCell(source.bomComponent.stockShortage)} ${source.bomComponent.unit}`;
+    return `${source.title} → ${target.title}: tedarik ihtiyacı bağlandı (${shortage}).`;
   }
   const left = source.semanticRole ? semanticRoleLabel(source.semanticRole) : source.title;
   const right = target.semanticRole ? semanticRoleLabel(target.semanticRole) : target.title;
@@ -3188,6 +3297,7 @@ function nodeHeight(kind: NodeKind) {
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
+  if (node.semanticRole === "procurement") return 190;
   return nodeHeight(node.kind);
 }
 
@@ -3555,6 +3665,27 @@ const componentWarningDotStyle: CSSProperties = {
   boxShadow: "0 2px 8px rgba(178,34,34,0.34)",
 };
 
+const procurementMiniNodeStyle: CSSProperties = {
+  position: "absolute",
+  right: -22,
+  top: "50%",
+  width: 18,
+  height: 18,
+  transform: "translateY(-50%)",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  borderRadius: 999,
+  border: "2px solid #ffffff",
+  background: CT.err,
+  color: "#ffffff",
+  fontFamily: CT_MONO,
+  fontSize: 9,
+  fontWeight: 900,
+  boxShadow: "0 2px 8px rgba(178,34,34,0.32)",
+  cursor: "crosshair",
+};
+
 const nodeFunctionBarStyle: CSSProperties = {
   height: 34,
   display: "grid",
@@ -3597,6 +3728,13 @@ const nodeFunctionSelectStyle: CSSProperties = {
 const orderFieldsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
+  gap: 7,
+  padding: "6px 12px 0",
+};
+
+const procurementFieldsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 78px",
   gap: 7,
   padding: "6px 12px 0",
 };
