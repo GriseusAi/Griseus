@@ -1035,8 +1035,19 @@ export default function PipelineBuilderPage() {
     setNodes(prev => refreshProcurementNeedTables(prev.map(node => {
       if (node.id !== nodeId) return node;
       const current = node.procurementOverrides?.[componentCode] ?? {};
+      const nextProcurementFields = {
+        ...emptyProcurementFields(),
+        ...node.procurementFields,
+        componentCode,
+      };
+      if (column === "planned_quantity") nextProcurementFields.quantity = value;
+      if (column === "supplier") nextProcurementFields.supplier = value;
+      if (column === "eta") nextProcurementFields.eta = value;
       return {
         ...node,
+        title: `Tedarik · ${componentCode}`,
+        semanticLabel: `Tedarik ${componentCode}`,
+        procurementFields: nextProcurementFields,
         procurementOverrides: {
           ...(node.procurementOverrides ?? {}),
           [componentCode]: {
@@ -1046,6 +1057,7 @@ export default function PipelineBuilderPage() {
         },
       };
     }), connections));
+    setConnections(prev => prev.map(connection => updateProcurementConnectionContext(connection, nodeId, componentCode, column, value)));
   }
 
   function updateDeviceSelection(nodeId: string, value: string) {
@@ -2968,6 +2980,39 @@ function procurementOverrideField(column: string): keyof ProcurementOverride | n
   return null;
 }
 
+function updateProcurementConnectionContext(
+  connection: GraphConnection,
+  procurementNodeId: string,
+  componentCode: string,
+  column: string,
+  value: string,
+): GraphConnection {
+  if (connection.to !== procurementNodeId || connection.contract?.relation !== "component_procurement") return connection;
+  if (connection.contract.context.componentCode !== componentCode) return connection;
+  const contextKey = procurementContextKey(column);
+  if (!contextKey) return connection;
+  return {
+    ...connection,
+    contract: {
+      ...connection.contract,
+      context: {
+        ...connection.contract.context,
+        [contextKey]: value,
+      },
+      status: "local",
+      message: "Procurement row edit synced into semantic context",
+    },
+  };
+}
+
+function procurementContextKey(column: string) {
+  if (column === "planned_quantity") return "plannedQuantity";
+  if (column === "supplier") return "supplier";
+  if (column === "eta") return "eta";
+  if (column === "status") return "status";
+  return null;
+}
+
 function sanitizeNodeId(value: string) {
   return normalizeIdentifier(value).replace(/[^a-zA-Z0-9_.-]/g, "_") || "component";
 }
@@ -3187,6 +3232,10 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
     context.shortage = source.bomComponent.stockShortage === null ? "" : String(source.bomComponent.stockShortage);
     context.unit = source.bomComponent.unit;
     context.orderQuantity = source.bomComponent.orderQuantity === null ? "" : String(source.bomComponent.orderQuantity);
+    context.plannedQuantity = source.bomComponent.stockShortage === null ? "" : String(Math.ceil(source.bomComponent.stockShortage));
+    context.supplier = target.procurementFields?.supplier ?? "";
+    context.eta = target.procurementFields?.eta ?? "";
+    context.status = target.procurementFields?.status ?? "planned";
   }
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
   if (relation === "order_device") {
