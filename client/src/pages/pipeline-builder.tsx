@@ -50,6 +50,13 @@ type ProcurementFields = {
   status: string;
 };
 
+type ProcurementOverride = {
+  plannedQuantity?: string;
+  supplier?: string;
+  eta?: string;
+  status?: string;
+};
+
 type ProductOption = {
   id?: number;
   sku?: string;
@@ -74,6 +81,7 @@ type PipelineNode = {
   orderFields?: OrderFields;
   orderLineFields?: OrderLineFields;
   procurementFields?: ProcurementFields;
+  procurementOverrides?: Record<string, ProcurementOverride>;
   deviceSku?: string;
   deviceQuantity?: string;
   drilldownParentId?: string;
@@ -1021,6 +1029,25 @@ export default function PipelineBuilderPage() {
     }), connections));
   }
 
+  function updateProcurementRowCell(nodeId: string, componentCode: string, column: string, value: string) {
+    const overrideField = procurementOverrideField(column);
+    if (!componentCode || !overrideField) return;
+    setNodes(prev => refreshProcurementNeedTables(prev.map(node => {
+      if (node.id !== nodeId) return node;
+      const current = node.procurementOverrides?.[componentCode] ?? {};
+      return {
+        ...node,
+        procurementOverrides: {
+          ...(node.procurementOverrides ?? {}),
+          [componentCode]: {
+            ...current,
+            [overrideField]: value,
+          },
+        },
+      };
+    }), connections));
+  }
+
   function updateDeviceSelection(nodeId: string, value: string) {
     const label = value || "Cihaz";
     setNodes(prev => prev.map(node => {
@@ -1364,7 +1391,17 @@ export default function PipelineBuilderPage() {
                     {previewRows.slice(0, 100).map((row, idx) => (
                       <tr key={idx}>
                         <td style={{ ...tdStyle, color: CT.inkMuted, fontFamily: CT_MONO }}>{idx + 1}</td>
-                        {previewColumns.map(col => <td key={`${idx}-${col}`} style={tdStyle}>{formatCell(row[col])}</td>)}
+                        {previewColumns.map(col => (
+                          <td key={`${idx}-${col}`} style={tdStyle}>
+                            {selectedNode?.semanticRole === "procurement" && isEditableProcurementColumn(col) ? (
+                              <input
+                                value={formatCell(row[col])}
+                                onChange={(event) => updateProcurementRowCell(selectedNode.id, row.component_code, col, event.currentTarget.value)}
+                                style={previewCellInputStyle}
+                              />
+                            ) : formatCell(row[col])}
+                          </td>
+                        ))}
                       </tr>
                     ))}
                   </tbody>
@@ -2825,9 +2862,10 @@ function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphC
     if (!source?.bomComponent || target?.semanticRole !== "procurement") return;
     const meta = source.bomComponent;
     const defaultQuantity = meta.stockShortage === null ? "" : String(Math.ceil(meta.stockShortage));
+    const override = target.procurementOverrides?.[meta.code] ?? {};
     const plannedQuantity = connectionCountByProcurement.get(connection.to) === 1
-      ? target.procurementFields?.quantity || defaultQuantity
-      : defaultQuantity;
+      ? (override.plannedQuantity ?? target.procurementFields?.quantity ?? defaultQuantity)
+      : override.plannedQuantity ?? defaultQuantity;
     const row = {
       component_code: meta.code,
       component_name: meta.name,
@@ -2837,9 +2875,9 @@ function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphC
       required_for_order: meta.requiredForOrder,
       available_stock: meta.currentStock,
       planned_quantity: plannedQuantity,
-      supplier: target.procurementFields?.supplier ?? "",
-      eta: target.procurementFields?.eta ?? "",
-      status: target.procurementFields?.status ?? "planned",
+      supplier: override.supplier ?? target.procurementFields?.supplier ?? "",
+      eta: override.eta ?? target.procurementFields?.eta ?? "",
+      status: override.status ?? target.procurementFields?.status ?? "planned",
     };
     needsByProcurement.set(connection.to, [...(needsByProcurement.get(connection.to) ?? []), row]);
   });
@@ -2916,6 +2954,18 @@ function componentWarningTitle(meta: BomComponentNodeMeta) {
   const capacity = meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts);
   const shortage = meta.stockShortage === null ? "stok yetersiz" : `${formatCell(meta.stockShortage)} ${meta.unit} eksik`;
   return `${meta.code}: sipariş ${order}, üretilebilir ${capacity}, ${shortage}`;
+}
+
+function isEditableProcurementColumn(column: string) {
+  return column === "planned_quantity" || column === "supplier" || column === "eta" || column === "status";
+}
+
+function procurementOverrideField(column: string): keyof ProcurementOverride | null {
+  if (column === "planned_quantity") return "plannedQuantity";
+  if (column === "supplier") return "supplier";
+  if (column === "eta") return "eta";
+  if (column === "status") return "status";
+  return null;
 }
 
 function sanitizeNodeId(value: string) {
@@ -3255,6 +3305,7 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
   if (source.bomComponent && target.semanticRole === "procurement") {
     const shortage = source.bomComponent.stockShortage;
     const quantity = shortage === null ? "" : String(Math.ceil(shortage));
+    const override = node.procurementOverrides?.[source.bomComponent.code] ?? {};
     const row = {
       component_code: source.bomComponent.code,
       component_name: source.bomComponent.name,
@@ -3263,10 +3314,10 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
       order_quantity: source.bomComponent.orderQuantity,
       required_for_order: source.bomComponent.requiredForOrder,
       available_stock: source.bomComponent.currentStock,
-      planned_quantity: quantity,
-      supplier: node.procurementFields?.supplier ?? "",
-      eta: node.procurementFields?.eta ?? "",
-      status: node.procurementFields?.status ?? "planned",
+      planned_quantity: override.plannedQuantity ?? quantity,
+      supplier: override.supplier ?? node.procurementFields?.supplier ?? "",
+      eta: override.eta ?? node.procurementFields?.eta ?? "",
+      status: override.status ?? node.procurementFields?.status ?? "planned",
     };
     const existingRows = node.rows.filter(row => row.component_code && row.component_code !== source.bomComponent?.code);
     const rows = existingRows.concat(row);
@@ -4099,6 +4150,20 @@ const tdStyle: CSSProperties = {
   maxWidth: 260,
   overflow: "hidden",
   textOverflow: "ellipsis",
+};
+
+const previewCellInputStyle: CSSProperties = {
+  width: "100%",
+  minWidth: 82,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 5,
+  background: "#fffefb",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 12,
+  fontWeight: 650,
+  padding: "4px 6px",
+  outline: 0,
 };
 
 const summaryPanelStyle: CSSProperties = {
