@@ -2812,15 +2812,22 @@ function refreshAllDeviceOrderRisks(nodes: PipelineNode[]) {
 
 function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphConnection[]) {
   const byId = new Map(nodes.map(node => [node.id, node]));
+  const procurementConnections = connections.filter(connection => connection.contract?.relation === "component_procurement");
+  const connectionCountByProcurement = procurementConnections.reduce<Map<string, number>>((counts, connection) => {
+    counts.set(connection.to, (counts.get(connection.to) ?? 0) + 1);
+    return counts;
+  }, new Map());
   const needsByProcurement = new Map<string, Array<Record<string, any>>>();
 
-  connections.forEach(connection => {
-    if (connection.contract?.relation !== "component_procurement") return;
+  procurementConnections.forEach(connection => {
     const source = byId.get(connection.from);
     const target = byId.get(connection.to);
     if (!source?.bomComponent || target?.semanticRole !== "procurement") return;
     const meta = source.bomComponent;
-    const plannedQuantity = target.procurementFields?.quantity || (meta.stockShortage === null ? "" : String(Math.ceil(meta.stockShortage)));
+    const defaultQuantity = meta.stockShortage === null ? "" : String(Math.ceil(meta.stockShortage));
+    const plannedQuantity = connectionCountByProcurement.get(connection.to) === 1
+      ? target.procurementFields?.quantity || defaultQuantity
+      : defaultQuantity;
     const row = {
       component_code: meta.code,
       component_name: meta.name,
@@ -3247,7 +3254,7 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
   }
   if (source.bomComponent && target.semanticRole === "procurement") {
     const shortage = source.bomComponent.stockShortage;
-    const quantity = shortage === null ? node.procurementFields?.quantity ?? "" : String(Math.ceil(shortage));
+    const quantity = shortage === null ? "" : String(Math.ceil(shortage));
     const row = {
       component_code: source.bomComponent.code,
       component_name: source.bomComponent.name,
