@@ -980,7 +980,9 @@ export default function PipelineBuilderPage() {
       }
 
       const components = (data as BomStockResponse).components;
-      const generated = buildBomDrilldownNodes({ ...source, deviceSku: cleanSku, semanticLabel: cleanSku, title: cleanSku }, cleanSku, components);
+      const generatedRaw = buildBomDrilldownNodes({ ...source, deviceSku: cleanSku, semanticLabel: cleanSku, title: cleanSku }, cleanSku, components);
+      const staleIds = collectDeviceDrilldownNodeIds(nodes, nodeId);
+      const generated = placeBomDrilldownBelowOpenGraphs(generatedRaw, nodes.filter(node => !staleIds.has(node.id)));
       if (generated.nodes.length === 0) {
         setError(`${cleanSku} için gösterilecek BOM bulunamadı.`);
         return;
@@ -2490,6 +2492,34 @@ function buildBomChildDrilldownNodes(parentNode: PipelineNode, children: BomStoc
 function layoutColumnY(row: number, rowCount: number, centerY: number, rowStep: number, minY: number) {
   const columnTop = Math.max(minY, centerY - ((rowCount - 1) / 2) * rowStep);
   return Math.round(columnTop + row * rowStep);
+}
+
+function placeBomDrilldownBelowOpenGraphs(
+  generated: { nodes: PipelineNode[]; connections: GraphConnection[] },
+  existingNodes: PipelineNode[],
+) {
+  if (generated.nodes.length === 0) return generated;
+  const rowGap = 96;
+  let yOffset = 0;
+
+  for (let attempt = 0; attempt < 18; attempt++) {
+    const shiftedNodes = yOffset === 0
+      ? generated.nodes
+      : generated.nodes.map(node => ({ ...node, y: node.y + yOffset }));
+    const overlaps = shiftedNodes.some(node => existingNodes.some(existing => rectanglesOverlap(
+      { x: node.x, y: node.y, width: nodeWidth(node.kind), height: effectiveNodeHeight(node) },
+      { x: existing.x, y: existing.y, width: nodeWidth(existing.kind), height: effectiveNodeHeight(existing) },
+    )));
+    if (!overlaps) {
+      return yOffset === 0 ? generated : { ...generated, nodes: shiftedNodes };
+    }
+    yOffset += rowGap;
+  }
+
+  return {
+    ...generated,
+    nodes: generated.nodes.map(node => ({ ...node, y: node.y + yOffset })),
+  };
 }
 
 function addBomChildren(args: {
