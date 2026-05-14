@@ -47,6 +47,8 @@ type ProcurementFields = {
   supplier: string;
   quantity: string;
   eta: string;
+  inboundBufferDays: string;
+  productionLeadDays: string;
   status: string;
 };
 
@@ -54,6 +56,8 @@ type ProcurementOverride = {
   plannedQuantity?: string;
   supplier?: string;
   eta?: string;
+  inboundBufferDays?: string;
+  productionLeadDays?: string;
   status?: string;
 };
 
@@ -815,7 +819,7 @@ export default function PipelineBuilderPage() {
     const source = nodes.find(node => node.id === fromId);
     const target = nodes.find(node => node.id === toId);
     if (!source || !target || source.kind === "output" || target.kind === "output") return;
-    const connection = buildSmartConnection(source, target);
+    const connection = buildSmartConnection(source, target, nodes, connections);
     pushHistory();
     setConnections(prev => dedupeConnections([
       ...prev,
@@ -1002,7 +1006,7 @@ export default function PipelineBuilderPage() {
   }
 
   function updateOrderField(nodeId: string, field: keyof OrderFields, value: string) {
-    setNodes(prev => prev.map(node => {
+    setNodes(prev => refreshProcurementNeedTables(prev.map(node => {
       if (node.id !== nodeId) return node;
       return {
         ...node,
@@ -1012,7 +1016,10 @@ export default function PipelineBuilderPage() {
           [field]: value,
         },
       };
-    }));
+    }), connections));
+    if (field === "deadline") {
+      setConnections(prev => updateProcurementDeadlineContexts(prev, nodes, nodeId, value));
+    }
   }
 
   function updateProcurementField(nodeId: string, field: keyof ProcurementFields, value: string) {
@@ -1027,6 +1034,7 @@ export default function PipelineBuilderPage() {
         },
       };
     }), connections));
+    setConnections(prev => updateProcurementFieldContexts(prev, nodeId, field, value));
   }
 
   function updateProcurementRowCell(nodeId: string, componentCode: string, column: string, value: string) {
@@ -1043,6 +1051,8 @@ export default function PipelineBuilderPage() {
       if (column === "planned_quantity") nextProcurementFields.quantity = value;
       if (column === "supplier") nextProcurementFields.supplier = value;
       if (column === "eta") nextProcurementFields.eta = value;
+      if (column === "inbound_buffer_days") nextProcurementFields.inboundBufferDays = value;
+      if (column === "production_lead_days") nextProcurementFields.productionLeadDays = value;
       return {
         ...node,
         title: `Tedarik · ${componentCode}`,
@@ -1674,6 +1684,8 @@ function ProcurementFieldsEditor({ fields, onChange }: {
       <OrderField label="Miktar" value={fields.quantity} inputMode="numeric" onChange={(value) => onChange("quantity", value)} />
       <OrderField label="Tedarikçi" value={fields.supplier} onChange={(value) => onChange("supplier", value)} />
       <OrderField label="ETA" value={fields.eta} type="date" onChange={(value) => onChange("eta", value)} />
+      <OrderField label="Kabul" value={fields.inboundBufferDays} inputMode="numeric" onChange={(value) => onChange("inboundBufferDays", value)} />
+      <OrderField label="Üretim" value={fields.productionLeadDays} inputMode="numeric" onChange={(value) => onChange("productionLeadDays", value)} />
     </div>
   );
 }
@@ -2873,11 +2885,16 @@ function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphC
     const target = byId.get(connection.to);
     if (!source?.bomComponent || target?.semanticRole !== "procurement") return;
     const meta = source.bomComponent;
+    const orderDeadline = findOrderDeadlineForBomSource(source, byId, connections);
     const defaultQuantity = meta.stockShortage === null ? "" : String(Math.ceil(meta.stockShortage));
     const override = target.procurementOverrides?.[meta.code] ?? {};
     const plannedQuantity = connectionCountByProcurement.get(connection.to) === 1
       ? (override.plannedQuantity ?? target.procurementFields?.quantity ?? defaultQuantity)
       : override.plannedQuantity ?? defaultQuantity;
+    const eta = override.eta ?? target.procurementFields?.eta ?? "";
+    const inboundBufferDays = override.inboundBufferDays ?? target.procurementFields?.inboundBufferDays ?? "1";
+    const productionLeadDays = override.productionLeadDays ?? target.procurementFields?.productionLeadDays ?? "5";
+    const schedule = buildProcurementSchedule(eta, orderDeadline, inboundBufferDays, productionLeadDays);
     const row = {
       component_code: meta.code,
       component_name: meta.name,
@@ -2888,7 +2905,14 @@ function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphC
       available_stock: meta.currentStock,
       planned_quantity: plannedQuantity,
       supplier: override.supplier ?? target.procurementFields?.supplier ?? "",
-      eta: override.eta ?? target.procurementFields?.eta ?? "",
+      eta,
+      inbound_buffer_days: inboundBufferDays,
+      production_lead_days: productionLeadDays,
+      ready_date: schedule.readyDate,
+      order_deadline: orderDeadline,
+      slack_days: schedule.slackDays,
+      schedule_status: schedule.status,
+      schedule_message: schedule.message,
       status: override.status ?? target.procurementFields?.status ?? "planned",
     };
     needsByProcurement.set(connection.to, [...(needsByProcurement.get(connection.to) ?? []), row]);
@@ -2905,6 +2929,89 @@ function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphC
       subtitle: `${rows.length} bağlı tedarik ihtiyacı`,
     };
   });
+}
+
+function findOrderDeadlineForBomSource(
+  source: PipelineNode,
+  byId: Map<string, PipelineNode>,
+  connections: GraphConnection[],
+) {
+  const rootDeviceId = findRootDeviceNodeId(source, byId);
+  if (!rootDeviceId) return "";
+  const orderConnection = connections.find(connection => (
+    connection.to === rootDeviceId
+    && connection.contract?.relation === "order_device"
+  ));
+  const orderNode = orderConnection ? byId.get(orderConnection.from) : null;
+  return orderNode?.orderFields?.deadline
+    || orderConnection?.contract?.context.deadline
+    || orderConnection?.contract?.internal?.fields.deadline
+    || "";
+}
+
+function findRootDeviceNodeId(source: PipelineNode, byId: Map<string, PipelineNode>) {
+  let cursor: PipelineNode | undefined = source;
+  for (let depth = 0; cursor && depth < 12; depth++) {
+    if (cursor.semanticRole === "device") return cursor.id;
+    if (!cursor.drilldownParentId) return "";
+    cursor = byId.get(cursor.drilldownParentId);
+  }
+  return "";
+}
+
+function buildProcurementSchedule(
+  eta: string,
+  orderDeadline: string,
+  inboundBufferDays: string,
+  productionLeadDays: string,
+) {
+  const etaDate = parseIsoDate(eta);
+  const deadlineDate = parseIsoDate(orderDeadline);
+  const buffer = parseNonNegativeDays(inboundBufferDays);
+  const production = parseNonNegativeDays(productionLeadDays);
+  if (!etaDate || !deadlineDate) {
+    return { readyDate: "", slackDays: "", status: "pending", message: "ETA veya sipariş tarihi eksik" };
+  }
+  const ready = addDays(etaDate, buffer + production);
+  const slack = diffDays(deadlineDate, ready);
+  const status = slack < 0 ? "late" : slack <= 2 ? "risk" : "ok";
+  const message = status === "late"
+    ? `${Math.abs(slack)} gün geç`
+    : status === "risk"
+      ? `${slack} gün tampon`
+      : `${slack} gün rahat`;
+  return {
+    readyDate: formatIsoDate(ready),
+    slackDays: String(slack),
+    status,
+    message,
+  };
+}
+
+function parseIsoDate(value: string) {
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(value)) return null;
+  const date = new Date(`${value}T00:00:00Z`);
+  return Number.isNaN(date.getTime()) ? null : date;
+}
+
+function parseNonNegativeDays(value: string) {
+  const parsed = Number(String(value || "0").replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed < 0) return 0;
+  return Math.ceil(parsed);
+}
+
+function addDays(date: Date, days: number) {
+  const next = new Date(date);
+  next.setUTCDate(next.getUTCDate() + days);
+  return next;
+}
+
+function diffDays(left: Date, right: Date) {
+  return Math.round((left.getTime() - right.getTime()) / 86400000);
+}
+
+function formatIsoDate(date: Date) {
+  return date.toISOString().slice(0, 10);
 }
 
 function refreshDeviceOrderRisk(nodes: PipelineNode[], deviceNodeId: string, quantity: string) {
@@ -2969,13 +3076,20 @@ function componentWarningTitle(meta: BomComponentNodeMeta) {
 }
 
 function isEditableProcurementColumn(column: string) {
-  return column === "planned_quantity" || column === "supplier" || column === "eta" || column === "status";
+  return column === "planned_quantity"
+    || column === "supplier"
+    || column === "eta"
+    || column === "inbound_buffer_days"
+    || column === "production_lead_days"
+    || column === "status";
 }
 
 function procurementOverrideField(column: string): keyof ProcurementOverride | null {
   if (column === "planned_quantity") return "plannedQuantity";
   if (column === "supplier") return "supplier";
   if (column === "eta") return "eta";
+  if (column === "inbound_buffer_days") return "inboundBufferDays";
+  if (column === "production_lead_days") return "productionLeadDays";
   if (column === "status") return "status";
   return null;
 }
@@ -2991,24 +3105,126 @@ function updateProcurementConnectionContext(
   if (connection.contract.context.componentCode !== componentCode) return connection;
   const contextKey = procurementContextKey(column);
   if (!contextKey) return connection;
+  const nextContext = {
+    ...connection.contract.context,
+    [contextKey]: value,
+  };
+  const schedule = buildProcurementSchedule(
+    nextContext.eta ?? "",
+    nextContext.orderDeadline ?? "",
+    nextContext.inboundBufferDays ?? "1",
+    nextContext.productionLeadDays ?? "5",
+  );
   return {
     ...connection,
     contract: {
       ...connection.contract,
       context: {
-        ...connection.contract.context,
-        [contextKey]: value,
+        ...nextContext,
+        readyDate: schedule.readyDate,
+        slackDays: schedule.slackDays,
+        scheduleStatus: schedule.status,
+        scheduleMessage: schedule.message,
       },
-      status: "local",
+      status: "local" as const,
       message: "Procurement row edit synced into semantic context",
     },
   };
+}
+
+function updateProcurementDeadlineContexts(
+  connections: GraphConnection[],
+  nodes: PipelineNode[],
+  orderNodeId: string,
+  deadline: string,
+) {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const orderDeviceTargets = new Set(connections
+    .filter(connection => connection.from === orderNodeId && connection.contract?.relation === "order_device")
+    .map(connection => connection.to));
+  return connections.map(connection => {
+    if (connection.contract?.relation !== "component_procurement") return connection;
+    const source = byId.get(connection.from);
+    const rootDeviceId = source ? findRootDeviceNodeId(source, byId) : "";
+    if (!rootDeviceId || !orderDeviceTargets.has(rootDeviceId)) return connection;
+    const nextContext: Record<string, string> = {
+      ...connection.contract.context,
+      orderDeadline: deadline,
+    };
+    const schedule = buildProcurementSchedule(
+      nextContext.eta ?? "",
+      nextContext.orderDeadline ?? "",
+      nextContext.inboundBufferDays ?? "1",
+      nextContext.productionLeadDays ?? "5",
+    );
+    return {
+      ...connection,
+      contract: {
+        ...connection.contract,
+        context: {
+          ...nextContext,
+          readyDate: schedule.readyDate,
+          slackDays: schedule.slackDays,
+          scheduleStatus: schedule.status,
+          scheduleMessage: schedule.message,
+        },
+        status: "local" as const,
+        message: "Order deadline synced into procurement schedule",
+      },
+    };
+  });
+}
+
+function updateProcurementFieldContexts(
+  connections: GraphConnection[],
+  procurementNodeId: string,
+  field: keyof ProcurementFields,
+  value: string,
+) {
+  const procurementConnections = connections.filter(connection => (
+    connection.to === procurementNodeId
+    && connection.contract?.relation === "component_procurement"
+  ));
+  return connections.map(connection => {
+    if (connection.to !== procurementNodeId || connection.contract?.relation !== "component_procurement") return connection;
+    if (field === "componentCode") return connection;
+    const nextContext = { ...connection.contract.context };
+    if (field === "quantity" && procurementConnections.length === 1) nextContext.plannedQuantity = value;
+    if (field === "supplier") nextContext.supplier = value;
+    if (field === "eta") nextContext.eta = value;
+    if (field === "inboundBufferDays") nextContext.inboundBufferDays = value;
+    if (field === "productionLeadDays") nextContext.productionLeadDays = value;
+    if (field === "status") nextContext.status = value;
+    const schedule = buildProcurementSchedule(
+      nextContext.eta ?? "",
+      nextContext.orderDeadline ?? "",
+      nextContext.inboundBufferDays ?? "1",
+      nextContext.productionLeadDays ?? "5",
+    );
+    return {
+      ...connection,
+      contract: {
+        ...connection.contract,
+        context: {
+          ...nextContext,
+          readyDate: schedule.readyDate,
+          slackDays: schedule.slackDays,
+          scheduleStatus: schedule.status,
+          scheduleMessage: schedule.message,
+        },
+        status: "local" as const,
+        message: "Procurement schedule field synced into semantic context",
+      },
+    };
+  });
 }
 
 function procurementContextKey(column: string) {
   if (column === "planned_quantity") return "plannedQuantity";
   if (column === "supplier") return "supplier";
   if (column === "eta") return "eta";
+  if (column === "inbound_buffer_days") return "inboundBufferDays";
+  if (column === "production_lead_days") return "productionLeadDays";
   if (column === "status") return "status";
   return null;
 }
@@ -3195,6 +3411,8 @@ function emptyProcurementFields(): ProcurementFields {
     supplier: "",
     quantity: "",
     eta: "",
+    inboundBufferDays: "1",
+    productionLeadDays: "5",
     status: "planned",
   };
 }
@@ -3216,7 +3434,12 @@ function semanticRoleLabel(role: SemanticRole) {
   return "Cihaz";
 }
 
-function buildSmartConnection(source: PipelineNode, target: PipelineNode): GraphConnection {
+function buildSmartConnection(
+  source: PipelineNode,
+  target: PipelineNode,
+  graphNodes: PipelineNode[] = [],
+  graphConnections: GraphConnection[] = [],
+): GraphConnection {
   const relation =
     source.bomComponent && target.semanticRole === "procurement"
       ? "component_procurement"
@@ -3227,6 +3450,12 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
         : "generic";
   const context: Record<string, string> = {};
   if (relation === "component_procurement" && source.bomComponent) {
+    const byId = new Map(graphNodes.map(node => [node.id, node]));
+    const orderDeadline = findOrderDeadlineForBomSource(source, byId, graphConnections);
+    const eta = target.procurementFields?.eta ?? "";
+    const inboundBufferDays = target.procurementFields?.inboundBufferDays ?? "1";
+    const productionLeadDays = target.procurementFields?.productionLeadDays ?? "5";
+    const schedule = buildProcurementSchedule(eta, orderDeadline, inboundBufferDays, productionLeadDays);
     context.componentCode = source.bomComponent.code;
     context.componentName = source.bomComponent.name;
     context.shortage = source.bomComponent.stockShortage === null ? "" : String(source.bomComponent.stockShortage);
@@ -3234,7 +3463,14 @@ function buildSmartConnection(source: PipelineNode, target: PipelineNode): Graph
     context.orderQuantity = source.bomComponent.orderQuantity === null ? "" : String(source.bomComponent.orderQuantity);
     context.plannedQuantity = source.bomComponent.stockShortage === null ? "" : String(Math.ceil(source.bomComponent.stockShortage));
     context.supplier = target.procurementFields?.supplier ?? "";
-    context.eta = target.procurementFields?.eta ?? "";
+    context.eta = eta;
+    context.inboundBufferDays = inboundBufferDays;
+    context.productionLeadDays = productionLeadDays;
+    context.readyDate = schedule.readyDate;
+    context.orderDeadline = orderDeadline;
+    context.slackDays = schedule.slackDays;
+    context.scheduleStatus = schedule.status;
+    context.scheduleMessage = schedule.message;
     context.status = target.procurementFields?.status ?? "planned";
   }
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
@@ -3355,6 +3591,10 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
     const shortage = source.bomComponent.stockShortage;
     const quantity = shortage === null ? "" : String(Math.ceil(shortage));
     const override = node.procurementOverrides?.[source.bomComponent.code] ?? {};
+    const eta = override.eta ?? node.procurementFields?.eta ?? "";
+    const inboundBufferDays = override.inboundBufferDays ?? node.procurementFields?.inboundBufferDays ?? "1";
+    const productionLeadDays = override.productionLeadDays ?? node.procurementFields?.productionLeadDays ?? "5";
+    const schedule = buildProcurementSchedule(eta, "", inboundBufferDays, productionLeadDays);
     const row = {
       component_code: source.bomComponent.code,
       component_name: source.bomComponent.name,
@@ -3365,7 +3605,14 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
       available_stock: source.bomComponent.currentStock,
       planned_quantity: override.plannedQuantity ?? quantity,
       supplier: override.supplier ?? node.procurementFields?.supplier ?? "",
-      eta: override.eta ?? node.procurementFields?.eta ?? "",
+      eta,
+      inbound_buffer_days: inboundBufferDays,
+      production_lead_days: productionLeadDays,
+      ready_date: schedule.readyDate,
+      order_deadline: "",
+      slack_days: schedule.slackDays,
+      schedule_status: schedule.status,
+      schedule_message: schedule.message,
       status: override.status ?? node.procurementFields?.status ?? "planned",
     };
     const existingRows = node.rows.filter(row => row.component_code && row.component_code !== source.bomComponent?.code);
@@ -3380,6 +3627,8 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
         ...node.procurementFields,
         componentCode: source.bomComponent.code,
         quantity,
+        inboundBufferDays,
+        productionLeadDays,
       },
       rows,
       columns: collectColumns(rows),
@@ -3465,7 +3714,7 @@ function nodeHeight(kind: NodeKind) {
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
-  if (node.semanticRole === "procurement") return 190;
+  if (node.semanticRole === "procurement") return 246;
   return nodeHeight(node.kind);
 }
 
