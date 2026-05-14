@@ -813,7 +813,10 @@ export default function PipelineBuilderPage() {
       ...prev,
       connection,
     ]));
-    setNodes(prev => refreshAllDeviceOrderRisks(prev.map(node => applySmartNodeContext(source, target, node))));
+    setNodes(prev => {
+      const contextual = refreshAllDeviceOrderRisks(prev.map(node => applySmartNodeContext(source, target, node)));
+      return refreshProcurementNeedTables(contextual, dedupeConnections([...connections, connection]));
+    });
     setSelectedNodeId(toId);
     setActionMenu(null);
     setPendingConnection(null);
@@ -1005,7 +1008,7 @@ export default function PipelineBuilderPage() {
   }
 
   function updateProcurementField(nodeId: string, field: keyof ProcurementFields, value: string) {
-    setNodes(prev => prev.map(node => {
+    setNodes(prev => refreshProcurementNeedTables(prev.map(node => {
       if (node.id !== nodeId) return node;
       return {
         ...node,
@@ -1015,7 +1018,7 @@ export default function PipelineBuilderPage() {
           [field]: value,
         },
       };
-    }));
+    }), connections));
   }
 
   function updateDeviceSelection(nodeId: string, value: string) {
@@ -2807,6 +2810,46 @@ function refreshAllDeviceOrderRisks(nodes: PipelineNode[]) {
   }, nodes);
 }
 
+function refreshProcurementNeedTables(nodes: PipelineNode[], connections: GraphConnection[]) {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  const needsByProcurement = new Map<string, Array<Record<string, any>>>();
+
+  connections.forEach(connection => {
+    if (connection.contract?.relation !== "component_procurement") return;
+    const source = byId.get(connection.from);
+    const target = byId.get(connection.to);
+    if (!source?.bomComponent || target?.semanticRole !== "procurement") return;
+    const meta = source.bomComponent;
+    const plannedQuantity = target.procurementFields?.quantity || (meta.stockShortage === null ? "" : String(Math.ceil(meta.stockShortage)));
+    const row = {
+      component_code: meta.code,
+      component_name: meta.name,
+      shortage: meta.stockShortage,
+      unit: meta.unit,
+      order_quantity: meta.orderQuantity,
+      required_for_order: meta.requiredForOrder,
+      available_stock: meta.currentStock,
+      planned_quantity: plannedQuantity,
+      supplier: target.procurementFields?.supplier ?? "",
+      eta: target.procurementFields?.eta ?? "",
+      status: target.procurementFields?.status ?? "planned",
+    };
+    needsByProcurement.set(connection.to, [...(needsByProcurement.get(connection.to) ?? []), row]);
+  });
+
+  return nodes.map(node => {
+    if (node.semanticRole !== "procurement") return node;
+    const rows = needsByProcurement.get(node.id) ?? [];
+    if (rows.length === 0) return node;
+    return {
+      ...node,
+      rows,
+      columns: collectColumns(rows),
+      subtitle: `${rows.length} bağlı tedarik ihtiyacı`,
+    };
+  });
+}
+
 function refreshDeviceOrderRisk(nodes: PipelineNode[], deviceNodeId: string, quantity: string) {
   const staleIds = collectDeviceDrilldownNodeIds(nodes, deviceNodeId);
   if (staleIds.size === 0) return nodes;
@@ -2906,7 +2949,7 @@ function repairGraphSnapshot<T extends GraphSnapshot>(snapshot: T): T {
   const connections = dedupeConnections(snapshot.connections.filter(connection => (
     nodeIds.has(connection.from) && nodeIds.has(connection.to)
   )));
-  const nodes = refreshAllDeviceOrderRisks(snapshot.nodes);
+  const nodes = refreshProcurementNeedTables(refreshAllDeviceOrderRisks(snapshot.nodes), connections);
   const selectedNodeId = nodeIds.has(snapshot.selectedNodeId)
     ? snapshot.selectedNodeId
     : nodes[0]?.id ?? initialDatasetId;
@@ -3204,17 +3247,35 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
   }
   if (source.bomComponent && target.semanticRole === "procurement") {
     const shortage = source.bomComponent.stockShortage;
+    const quantity = shortage === null ? node.procurementFields?.quantity ?? "" : String(Math.ceil(shortage));
+    const row = {
+      component_code: source.bomComponent.code,
+      component_name: source.bomComponent.name,
+      shortage,
+      unit: source.bomComponent.unit,
+      order_quantity: source.bomComponent.orderQuantity,
+      required_for_order: source.bomComponent.requiredForOrder,
+      available_stock: source.bomComponent.currentStock,
+      planned_quantity: quantity,
+      supplier: node.procurementFields?.supplier ?? "",
+      eta: node.procurementFields?.eta ?? "",
+      status: node.procurementFields?.status ?? "planned",
+    };
+    const existingRows = node.rows.filter(row => row.component_code && row.component_code !== source.bomComponent?.code);
+    const rows = existingRows.concat(row);
     return {
       ...node,
       title: `Tedarik · ${source.bomComponent.code}`,
       semanticLabel: `Tedarik ${source.bomComponent.code}`,
-      subtitle: `${source.bomComponent.code} tedarik ihtiyacı`,
+      subtitle: `${rows.length} bağlı tedarik ihtiyacı`,
       procurementFields: {
         ...emptyProcurementFields(),
         ...node.procurementFields,
         componentCode: source.bomComponent.code,
-        quantity: shortage === null ? node.procurementFields?.quantity ?? "" : String(Math.ceil(shortage)),
+        quantity,
       },
+      rows,
+      columns: collectColumns(rows),
     };
   }
   return node;
