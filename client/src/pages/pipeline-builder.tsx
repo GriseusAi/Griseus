@@ -933,22 +933,22 @@ export default function PipelineBuilderPage() {
       setError("Drill-down için önce cihaz SKU seç.");
       return;
     }
-    if (source.dbLinkedSku === cleanSku && collectAllDrilldownNodeIds(nodes).size > 0) {
-      closeDeviceDrilldowns(cleanSku);
+    if (source.dbLinkedSku === cleanSku && collectDeviceDrilldownNodeIds(nodes, nodeId).size > 0) {
+      closeDeviceDrilldown(nodeId, cleanSku);
       return;
     }
 
     await loadDeviceBomFromDatabase(nodeId, cleanSku, { pushSnapshot: true });
   }
 
-  function closeDeviceDrilldowns(sku?: string) {
+  function closeDeviceDrilldown(nodeId: string, sku?: string) {
     pushHistory();
     setNodes(prev => {
-      const staleIds = collectAllDrilldownNodeIds(prev);
+      const staleIds = collectDeviceDrilldownNodeIds(prev, nodeId);
       return prev
         .filter(node => !staleIds.has(node.id))
         .map(node => {
-          if (node.semanticRole !== "device" || !node.dbLinkedSku) return node;
+          if (node.id !== nodeId || node.semanticRole !== "device" || !node.dbLinkedSku) return node;
           const label = node.deviceSku || node.semanticLabel || node.title;
           return {
             ...node,
@@ -958,7 +958,7 @@ export default function PipelineBuilderPage() {
         });
     });
     setConnections(prev => {
-      const staleIds = collectAllDrilldownNodeIds(nodes);
+      const staleIds = collectDeviceDrilldownNodeIds(nodes, nodeId);
       return prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
     });
     setActionMenu(null);
@@ -988,7 +988,7 @@ export default function PipelineBuilderPage() {
 
       if (opts.pushSnapshot) pushHistory();
       setNodes(prev => {
-        const staleIds = collectAllDrilldownNodeIds(prev);
+        const staleIds = collectDeviceDrilldownNodeIds(prev, nodeId);
         const base = prev.filter(node => !staleIds.has(node.id));
         return base.map(node => {
           if (node.id === nodeId) {
@@ -1001,19 +1001,11 @@ export default function PipelineBuilderPage() {
               dbLinkedSku: cleanSku,
             };
           }
-          if (node.semanticRole === "device" && node.dbLinkedSku) {
-            const label = node.deviceSku || node.semanticLabel || node.title;
-            return {
-              ...node,
-              subtitle: `${label} cihaz entity`,
-              dbLinkedSku: undefined,
-            };
-          }
           return node;
         }).concat(generated.nodes);
       });
       setConnections(prev => {
-        const staleIds = collectAllDrilldownNodeIds(nodes);
+        const staleIds = collectDeviceDrilldownNodeIds(nodes, nodeId);
         const base = prev.filter(connection => !staleIds.has(connection.from) && !staleIds.has(connection.to));
         return dedupeConnections(base.concat(generated.connections));
       });
@@ -2618,6 +2610,10 @@ function collectDrilldownDescendantIds(nodes: PipelineNode[], rootId: string) {
     stack.push(...(childIdsByParent.get(id) ?? []));
   }
   return stale;
+}
+
+function collectDeviceDrilldownNodeIds(nodes: PipelineNode[], deviceNodeId: string) {
+  return collectDrilldownDescendantIds(nodes, deviceNodeId);
 }
 
 function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
