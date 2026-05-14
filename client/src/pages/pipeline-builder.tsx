@@ -87,6 +87,10 @@ type BomComponentNodeMeta = {
   status: string;
   isSubAssembly: boolean;
   parentComponentCode: string | null;
+  orderQuantity: number | null;
+  requiredForOrder: number | null;
+  stockShortage: number | null;
+  isInsufficient: boolean;
 };
 
 type BomStockComponent = {
@@ -715,7 +719,7 @@ export default function PipelineBuilderPage() {
       ...prev,
       connection,
     ]));
-    setNodes(prev => prev.map(node => applySmartNodeContext(source, target, node)));
+    setNodes(prev => refreshAllDeviceOrderRisks(prev.map(node => applySmartNodeContext(source, target, node))));
     setSelectedNodeId(toId);
     setActionMenu(null);
     setPendingConnection(null);
@@ -922,7 +926,11 @@ export default function PipelineBuilderPage() {
   }
 
   function updateDeviceQuantity(nodeId: string, value: string) {
-    setNodes(prev => prev.map(node => node.id === nodeId ? { ...node, deviceQuantity: value } : node));
+    setNodes(prev => refreshDeviceOrderRisk(
+      prev.map(node => node.id === nodeId ? { ...node, deviceQuantity: value } : node),
+      nodeId,
+      value,
+    ));
   }
 
   async function drillDownDeviceNode(nodeId: string) {
@@ -1392,6 +1400,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         </label>
       )}
       {node.kind !== "output" && !isComponent && <GraphPort side="right" onClick={() => onPortClick("right")} />}
+      {node.bomComponent?.isInsufficient && (
+        <span
+          style={componentWarningDotStyle}
+          title={componentWarningTitle(node.bomComponent)}
+        />
+      )}
     </div>
   );
 }
@@ -1581,6 +1595,8 @@ function ComponentStockPanel({ meta, childCount }: { meta: BomComponentNodeMeta;
       <Metric label="Stok" value={meta.currentStock === null ? "N/A" : `${formatCell(meta.currentStock)} ${meta.unit}`} />
       <Metric label="Birim ihtiyaç" value={meta.requiredPerUnit === null ? "N/A" : `${formatCell(meta.requiredPerUnit)} ${meta.unit}`} />
       <Metric label="Üretilebilir" value={meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts)} />
+      {meta.orderQuantity !== null && <Metric label="Sipariş adedi" value={formatCell(meta.orderQuantity)} />}
+      {meta.isInsufficient && <Metric label="Eksik" value={meta.stockShortage === null ? "Yetersiz" : `${formatCell(meta.stockShortage)} ${meta.unit}`} />}
       {childCount > 0 && <Metric label="Alt bileşen" value={childCount} />}
     </div>
   );
@@ -2576,7 +2592,7 @@ function buildBomComponentNode(args: {
 }): PipelineNode {
   const { source, sku, component, x, y, parentId, order } = args;
   const isSubAssembly = Boolean(component.isSubAssembly || (component.children?.length ?? 0) > 0);
-  const meta: BomComponentNodeMeta = {
+  const meta = applyOrderRiskToBomMeta({
     sku,
     code: component.code,
     name: component.name,
@@ -2588,7 +2604,11 @@ function buildBomComponentNode(args: {
     status: component.status,
     isSubAssembly,
     parentComponentCode: component.parentComponentCode ?? null,
-  };
+    orderQuantity: null,
+    requiredForOrder: null,
+    stockShortage: null,
+    isInsufficient: false,
+  }, source.deviceQuantity);
   const rows = [bomComponentToRow(meta)];
   return {
     id: `bom-${source.id}-${sanitizeNodeId(component.code)}-${order}`,
@@ -2618,7 +2638,79 @@ function bomComponentToRow(meta: BomComponentNodeMeta) {
     max_products: meta.maxProducts,
     status: meta.status,
     is_subassembly: meta.isSubAssembly,
+    order_quantity: meta.orderQuantity,
+    required_for_order: meta.requiredForOrder,
+    stock_shortage: meta.stockShortage,
+    semantic_warning: meta.isInsufficient ? "insufficient_stock" : null,
   };
+}
+
+function refreshAllDeviceOrderRisks(nodes: PipelineNode[]) {
+  return nodes.reduce((current, node) => {
+    if (node.semanticRole !== "device") return current;
+    return refreshDeviceOrderRisk(current, node.id, node.deviceQuantity ?? "");
+  }, nodes);
+}
+
+function refreshDeviceOrderRisk(nodes: PipelineNode[], deviceNodeId: string, quantity: string) {
+  const staleIds = collectDeviceDrilldownNodeIds(nodes, deviceNodeId);
+  if (staleIds.size === 0) return nodes;
+  return nodes.map(node => {
+    if (!staleIds.has(node.id) || !node.bomComponent) return node;
+    return updateBomNodeOrderRisk(node, quantity);
+  });
+}
+
+function updateBomNodeOrderRisk(node: PipelineNode, quantity: string): PipelineNode {
+  if (!node.bomComponent) return node;
+  const bomComponent = applyOrderRiskToBomMeta(node.bomComponent, quantity);
+  const rows = [bomComponentToRow(bomComponent)];
+  return {
+    ...node,
+    bomComponent,
+    rows,
+    columns: collectColumns(rows),
+  };
+}
+
+function applyOrderRiskToBomMeta(meta: BomComponentNodeMeta, quantity: string | number | null | undefined): BomComponentNodeMeta {
+  const orderQuantity = parsePositiveQuantity(quantity);
+  if (orderQuantity === null) {
+    return {
+      ...meta,
+      orderQuantity: null,
+      requiredForOrder: null,
+      stockShortage: null,
+      isInsufficient: false,
+    };
+  }
+  const requiredForOrder = meta.requiredPerUnit === null ? null : meta.requiredPerUnit * orderQuantity;
+  const stockShortage = requiredForOrder === null || meta.currentStock === null
+    ? null
+    : Math.max(0, requiredForOrder - meta.currentStock);
+  const capacityInsufficient = meta.maxProducts !== null && meta.maxProducts < orderQuantity;
+  const isInsufficient = capacityInsufficient || (stockShortage !== null && stockShortage > 0);
+  return {
+    ...meta,
+    orderQuantity,
+    requiredForOrder,
+    stockShortage,
+    isInsufficient,
+  };
+}
+
+function parsePositiveQuantity(value: string | number | null | undefined) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = typeof value === "number" ? value : Number(String(value).replace(",", "."));
+  if (!Number.isFinite(parsed) || parsed <= 0) return null;
+  return parsed;
+}
+
+function componentWarningTitle(meta: BomComponentNodeMeta) {
+  const order = meta.orderQuantity === null ? "N/A" : formatCell(meta.orderQuantity);
+  const capacity = meta.maxProducts === null ? "N/A" : formatCell(meta.maxProducts);
+  const shortage = meta.stockShortage === null ? "stok yetersiz" : `${formatCell(meta.stockShortage)} ${meta.unit} eksik`;
+  return `${meta.code}: sipariş ${order}, üretilebilir ${capacity}, ${shortage}`;
 }
 
 function sanitizeNodeId(value: string) {
@@ -3339,6 +3431,18 @@ const subAssemblyBadgeStyle: CSSProperties = {
   fontFamily: CT_MONO,
   fontSize: 9,
   fontWeight: 900,
+};
+
+const componentWarningDotStyle: CSSProperties = {
+  position: "absolute",
+  top: -6,
+  right: -6,
+  width: 14,
+  height: 14,
+  borderRadius: 999,
+  border: "2px solid #ffffff",
+  background: CT.err,
+  boxShadow: "0 2px 8px rgba(178,34,34,0.34)",
 };
 
 const nodeFunctionBarStyle: CSSProperties = {
