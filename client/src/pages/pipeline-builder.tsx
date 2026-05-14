@@ -4,6 +4,7 @@ import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 import {
+  Activity,
   ArrowDownToLine,
   Box,
   CheckCircle2,
@@ -251,7 +252,10 @@ const initialNodes: PipelineNode[] = [
 ];
 
 export default function PipelineBuilderPage() {
-  const initialGraph = useMemo(() => loadSavedPipelineGraph(), []);
+  const initialGraph = useMemo(() => {
+    const graph = loadSavedPipelineGraph();
+    return graph ? repairGraphSnapshot(graph) : null;
+  }, []);
   const initialSavedPipelines = useMemo(() => loadSavedPipelineHistory(), []);
   const [nodes, setNodes] = useState<PipelineNode[]>(initialGraph?.nodes ?? initialNodes);
   const [connections, setConnections] = useState<GraphConnection[]>(initialGraph?.connections ?? []);
@@ -268,6 +272,7 @@ export default function PipelineBuilderPage() {
   const [activeSavedId, setActiveSavedId] = useState<string | null>(initialGraph?.id ?? null);
   const [savedPanelOpen, setSavedPanelOpen] = useState(false);
   const [canvasZoom, setCanvasZoom] = useState(1);
+  const [twinHealthRunning, setTwinHealthRunning] = useState(false);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -354,9 +359,10 @@ export default function PipelineBuilderPage() {
           .filter((item): item is SavedPipelineGraph => Boolean(item));
         setSavedPipelines(prev => mergeSavedPipelines(normalized, prev));
         if (!initialGraph && normalized[0]) {
-          setNodes(normalized[0].nodes);
-          setConnections(normalized[0].connections);
-          setSelectedNodeId(normalized[0].selectedNodeId);
+          const repaired = repairGraphSnapshot(normalized[0]);
+          setNodes(repaired.nodes);
+          setConnections(repaired.connections);
+          setSelectedNodeId(repaired.selectedNodeId);
           setActiveSavedId(normalized[0].id);
           setLastSavedAt(normalized[0].savedAt);
         }
@@ -429,16 +435,95 @@ export default function PipelineBuilderPage() {
   }
 
   function loadSavedPipeline(pipeline: SavedPipelineGraph) {
+    const repaired = repairGraphSnapshot(pipeline);
     pushHistory();
-    setNodes(pipeline.nodes);
-    setConnections(pipeline.connections);
-    setSelectedNodeId(pipeline.selectedNodeId);
+    setNodes(repaired.nodes);
+    setConnections(repaired.connections);
+    setSelectedNodeId(repaired.selectedNodeId);
     setActiveSavedId(pipeline.id);
     setLastSavedAt(pipeline.savedAt);
     setActionMenu(null);
     setPendingConnection(null);
     setSavedPanelOpen(false);
     setError(`${pipeline.name} açıldı · ${formatSavedAt(pipeline.savedAt)}`);
+  }
+
+  async function runTwinHealth() {
+    if (twinHealthRunning) return;
+    setTwinHealthRunning(true);
+    setActionMenu(null);
+    setPendingConnection(null);
+
+    const repaired = repairGraphSnapshot({
+      nodes,
+      connections,
+      selectedNodeId,
+    });
+    setNodes(repaired.nodes);
+    setConnections(repaired.connections);
+    setSelectedNodeId(repaired.selectedNodeId);
+
+    const semanticConnections = repaired.connections.filter(connection => connection.contract);
+    if (semanticConnections.length === 0) {
+      setTwinHealthRunning(false);
+      setError("Twin health: semantic bağlantı yok. Graph temizlendi ve riskler yeniden hesaplandı.");
+      return;
+    }
+
+    const byId = new Map(repaired.nodes.map(node => [node.id, node]));
+    const checked = await Promise.all(semanticConnections.map(async connection => {
+      const source = byId.get(connection.from);
+      const target = byId.get(connection.to);
+      if (!source || !target || !connection.contract) return { key: connectionKey(connection), connection, ok: false, message: "Bağlantı node'u eksik" };
+      try {
+        const res = await fetch("/api/pipeline-builder/semantic/validate", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ connection, source, target }),
+        });
+        const payload = await res.json().catch(() => ({}));
+        if (!res.ok || !payload?.ok) throw new Error(payload?.error || "semantic validation failed");
+        return {
+          key: connectionKey(connection),
+          ok: true,
+          message: payload.message || "validated",
+          connection: {
+            ...connection,
+            contract: {
+              ...connection.contract,
+              status: "validated" as const,
+              backendValidatedAt: payload.validatedAt,
+              context: payload.context ?? connection.contract.context,
+              internal: payload.internal ?? connection.contract.internal,
+              message: payload.message,
+            },
+          },
+        };
+      } catch (err: any) {
+        return {
+          key: connectionKey(connection),
+          ok: false,
+          message: err?.message || "semantic validation failed",
+          connection: {
+            ...connection,
+            contract: {
+              ...connection.contract,
+              status: "invalid" as const,
+              message: err?.message || "semantic validation failed",
+            },
+          },
+        };
+      }
+    }));
+
+    const checkedByKey = new Map(checked.map(item => [item.key, item.connection]));
+    setConnections(prev => prev.map(connection => checkedByKey.get(connectionKey(connection)) ?? connection));
+    const passed = checked.filter(item => item.ok).length;
+    const failed = checked.length - passed;
+    setTwinHealthRunning(false);
+    setError(failed > 0
+      ? `Twin health: ${passed} bağ sağlıklı, ${failed} bağ uyarıda. Graph ve stok riskleri yenilendi.`
+      : `Twin health: ${passed} semantic bağ sağlıklı. Graph ve stok riskleri yenilendi.`);
   }
 
   useEffect(() => {
@@ -1073,6 +1158,14 @@ export default function PipelineBuilderPage() {
         <div style={{ display: "flex", alignItems: "center", gap: 8 }}>
           <button type="button" onClick={addDataset} style={toolbarButtonStyle}>
             <Plus size={14} /> Add dataset
+          </button>
+          <button
+            type="button"
+            onClick={runTwinHealth}
+            disabled={twinHealthRunning}
+            style={toolbarButtonStyle}
+          >
+            <Activity size={14} /> {twinHealthRunning ? "Checking" : "Twin health"}
           </button>
           <div style={zoomControlStyle}>
             <button
@@ -2744,6 +2837,23 @@ function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
       .filter(node => node.drilldownParentId || (node.kind === "component" && node.id.startsWith("bom-")))
       .map(node => node.id),
   );
+}
+
+function repairGraphSnapshot<T extends GraphSnapshot>(snapshot: T): T {
+  const nodeIds = new Set(snapshot.nodes.map(node => node.id));
+  const connections = dedupeConnections(snapshot.connections.filter(connection => (
+    nodeIds.has(connection.from) && nodeIds.has(connection.to)
+  )));
+  const nodes = refreshAllDeviceOrderRisks(snapshot.nodes);
+  const selectedNodeId = nodeIds.has(snapshot.selectedNodeId)
+    ? snapshot.selectedNodeId
+    : nodes[0]?.id ?? initialDatasetId;
+  return {
+    ...snapshot,
+    nodes,
+    connections,
+    selectedNodeId,
+  };
 }
 
 function nextNodeX(source: PipelineNode, kind: NodeKind) {
