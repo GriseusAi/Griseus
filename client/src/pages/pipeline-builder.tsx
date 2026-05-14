@@ -23,7 +23,6 @@ import {
   Table2,
   Trash2,
   UploadCloud,
-  X,
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
@@ -217,12 +216,6 @@ type ActionMenuState = {
   y: number;
 } | null;
 
-type LineagePanelState = {
-  nodeId: string;
-  x: number;
-  y: number;
-} | null;
-
 type PendingConnection = {
   kind: "union" | "smart";
   sourceId: string;
@@ -289,7 +282,6 @@ export default function PipelineBuilderPage() {
   const [connections, setConnections] = useState<GraphConnection[]>(initialGraph?.connections ?? []);
   const [selectedNodeId, setSelectedNodeId] = useState(initialGraph?.selectedNodeId ?? initialDatasetId);
   const [actionMenu, setActionMenu] = useState<ActionMenuState>(null);
-  const [lineagePanel, setLineagePanel] = useState<LineagePanelState>(null);
   const [pendingConnection, setPendingConnection] = useState<PendingConnection>(null);
   const [dragState, setDragState] = useState<DragState | null>(null);
   const [history, setHistory] = useState<GraphSnapshot[]>([]);
@@ -724,18 +716,6 @@ export default function PipelineBuilderPage() {
       nodeId,
       x: node.x + nodeWidth(node.kind) + 18,
       y: node.y - 26,
-    });
-  }
-
-  function openLineagePanel(nodeId: string) {
-    const node = nodes.find(item => item.id === nodeId);
-    if (!node) return;
-    setSelectedNodeId(nodeId);
-    setActionMenu(null);
-    setLineagePanel({
-      nodeId,
-      x: node.x + nodeWidth(node.kind) + 18,
-      y: Math.max(40, node.y - 18),
     });
   }
 
@@ -1362,21 +1342,11 @@ export default function PipelineBuilderPage() {
                   onUnion={() => createUnion(actionMenu.nodeId)}
                   onConnect={() => createSmartConnection(actionMenu.nodeId)}
                   onOutput={() => createOutputFrom(actionMenu.nodeId)}
-                  onLineage={() => openLineagePanel(actionMenu.nodeId)}
                   onNewDataset={() => {
                     addDataset();
                     setActionMenu(null);
                   }}
                   onEdit={() => editNodeData(actionMenu.nodeId)}
-                />
-              )}
-
-              {lineagePanel && (
-                <PipelineLineagePanel
-                  state={lineagePanel}
-                  nodes={nodes}
-                  connections={connections}
-                  onClose={() => setLineagePanel(null)}
                 />
               )}
             </div>
@@ -1643,13 +1613,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   );
 }
 
-function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onLineage, onNewDataset, onEdit }: {
+function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
   onTransform: () => void;
   onUnion: () => void;
   onConnect: () => void;
   onOutput: () => void;
-  onLineage: () => void;
   onNewDataset: () => void;
   onEdit: () => void;
 }) {
@@ -1660,8 +1629,6 @@ function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onLi
       <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
-      <div style={actionDividerStyle} />
-      <ActionItem icon={<ListTree size={18} />} label="Lineage" tone="#4f7fbd" onClick={onLineage} />
       <div style={actionDividerStyle} />
       <ActionItem icon={<ArrowDownToLine size={18} />} label="New dataset" tone="#cc8a00" onClick={onNewDataset} />
       <div style={actionDividerStyle} />
@@ -1692,97 +1659,6 @@ function ActionItem({ icon, label, tone, disabled = false, onClick }: {
       {icon}
       <span>{label}</span>
     </button>
-  );
-}
-
-function PipelineLineagePanel({ state, nodes, connections, onClose }: {
-  state: NonNullable<LineagePanelState>;
-  nodes: PipelineNode[];
-  connections: GraphConnection[];
-  onClose: () => void;
-}) {
-  const model = buildInlineLineageModel(state.nodeId, nodes, connections);
-  if (!model) return null;
-
-  return (
-    <div
-      data-no-drag="true"
-      style={{
-        ...lineagePanelStyle,
-        left: state.x,
-        top: state.y,
-      }}
-    >
-      <div style={lineagePanelHeaderStyle}>
-        <div>
-          <div style={lineagePanelEyebrowStyle}>LINEAGE</div>
-          <div style={lineagePanelTitleStyle}>{model.title}</div>
-          <div style={lineagePanelSubtitleStyle}>{model.subtitle}</div>
-        </div>
-        <button type="button" onClick={onClose} style={lineageCloseButtonStyle} title="Kapat">
-          <X size={14} />
-        </button>
-      </div>
-
-      <div style={lineageSummaryGridStyle}>
-        <LineageMetric label="Kapasite" value={model.capacity} tone={model.capacityTone} />
-        <LineageMetric label="Darboğaz" value={model.bottleneck} tone={CT.err} />
-        <LineageMetric label="Katman" value={model.tierCount} tone={CT.ink} />
-      </div>
-
-      <svg width="100%" height="220" viewBox="0 0 430 220" style={lineageSvgStyle}>
-        {model.edges.map(edge => {
-          const from = model.nodes.find(node => node.id === edge.from);
-          const to = model.nodes.find(node => node.id === edge.to);
-          if (!from || !to) return null;
-          return (
-            <line
-              key={`${edge.from}-${edge.to}`}
-              x1={from.x}
-              y1={from.y}
-              x2={to.x}
-              y2={to.y}
-              stroke="rgba(117,135,146,0.38)"
-              strokeWidth={edge.focus ? 2 : 1}
-            />
-          );
-        })}
-        {model.nodes.map(node => (
-          <g key={node.id}>
-            <circle
-              cx={node.x}
-              cy={node.y}
-              r={node.focus ? 15 : 12}
-              fill={lineageStatusColor(node.status)}
-              stroke={node.focus ? CT.accent : "rgba(255,255,255,0.9)"}
-              strokeWidth={node.focus ? 3 : 2}
-            />
-            <text x={node.x} y={node.y + 3} textAnchor="middle" style={lineageNodeTextStyle}>
-              {node.shortLabel}
-            </text>
-            <text x={node.x} y={node.y + 28} textAnchor="middle" style={lineageNodeCaptionStyle}>
-              {node.label}
-            </text>
-          </g>
-        ))}
-      </svg>
-
-      <div style={lineageLegendStyle}>
-        <span><b style={{ color: "#4d9465" }}>●</b> Bol stok</span>
-        <span><b style={{ color: "#4f7fbd" }}>●</b> Yeterli</span>
-        <span><b style={{ color: "#c7832f" }}>●</b> Düşük</span>
-        <span><b style={{ color: "#c85a45" }}>●</b> Kritik</span>
-      </div>
-    </div>
-  );
-}
-
-function LineageMetric({ label, value, tone }: { label: string; value: string; tone: string }) {
-  return (
-    <div style={lineageMetricStyle}>
-      <div style={lineageMetricLabelStyle}>{label}</div>
-      <div style={{ ...lineageMetricValueStyle, color: tone }}>{value}</div>
-    </div>
   );
 }
 
@@ -3376,122 +3252,6 @@ function collectDeviceDrilldownNodeIds(nodes: PipelineNode[], deviceNodeId: stri
   return collectDrilldownDescendantIds(nodes, deviceNodeId);
 }
 
-function buildInlineLineageModel(nodeId: string, nodes: PipelineNode[], connections: GraphConnection[]) {
-  const focus = nodes.find(node => node.id === nodeId);
-  if (!focus) return null;
-  const root = findLineageRootNode(focus, nodes);
-  const includedIds = new Set<string>([root.id]);
-  collectLineageAncestorIds(focus, nodes).forEach(id => includedIds.add(id));
-  collectDrilldownDescendantIds(nodes, focus.semanticRole === "device" ? focus.id : focus.id).forEach(id => includedIds.add(id));
-  if (focus.id !== root.id) includedIds.add(focus.id);
-
-  const included = nodes
-    .filter(node => includedIds.has(node.id))
-    .sort((a, b) => lineageNodeDepth(a, nodes) - lineageNodeDepth(b, nodes) || a.y - b.y)
-    .slice(0, 32);
-  const visibleIds = new Set(included.map(node => node.id));
-  const groups = new Map<number, PipelineNode[]>();
-  included.forEach(node => {
-    const depth = lineageNodeDepth(node, nodes);
-    groups.set(depth, [...(groups.get(depth) ?? []), node]);
-  });
-  const maxDepth = Math.max(0, ...Array.from(groups.keys()));
-  const graphNodes = included.map(node => {
-    const depth = lineageNodeDepth(node, nodes);
-    const group = groups.get(depth) ?? [node];
-    const index = group.findIndex(item => item.id === node.id);
-    const stepY = Math.min(42, 166 / Math.max(1, group.length));
-    return {
-      id: node.id,
-      x: 38 + depth * (maxDepth > 2 ? 112 : 146),
-      y: 34 + index * stepY,
-      label: lineageNodeLabel(node),
-      shortLabel: lineageShortLabel(node),
-      status: node.bomComponent?.status ?? (node.semanticRole === "device" ? "product" : "ok"),
-      focus: node.id === focus.id,
-    };
-  });
-  const graphEdges = connections
-    .filter(connection => visibleIds.has(connection.from) && visibleIds.has(connection.to))
-    .map(connection => ({ from: connection.from, to: connection.to, focus: connection.from === focus.id || connection.to === focus.id }));
-  const componentNodes = included.filter(node => node.bomComponent);
-  const bottleneck = componentNodes
-    .filter(node => node.bomComponent?.maxProducts !== null)
-    .sort((a, b) => (a.bomComponent?.maxProducts ?? Number.POSITIVE_INFINITY) - (b.bomComponent?.maxProducts ?? Number.POSITIVE_INFINITY))[0];
-  const capacity = componentNodes
-    .map(node => node.bomComponent?.maxProducts)
-    .filter((value): value is number => typeof value === "number")
-    .sort((a, b) => a - b)[0];
-  const title = `${lineageNodeLabel(focus)} lineage`;
-  const subtitle = focus.kind === "component"
-    ? `${lineageNodeLabel(root)} → ${lineageNodeLabel(focus)} · ${componentNodes.length} bağlı bileşen`
-    : `${componentNodes.length} BOM node · ${graphEdges.length} bağlantı`;
-
-  return {
-    title,
-    subtitle,
-    capacity: capacity === undefined ? "-" : formatCell(capacity),
-    capacityTone: capacity === undefined ? CT.inkMuted : capacity < 50 ? CT.err : capacity < 150 ? "#c7832f" : "#4d9465",
-    bottleneck: bottleneck?.title ?? "-",
-    tierCount: String(new Set(componentNodes.map(node => node.bomComponent?.tier ?? 0)).size || Math.max(1, maxDepth + 1)),
-    nodes: graphNodes,
-    edges: graphEdges,
-  };
-}
-
-function findLineageRootNode(node: PipelineNode, nodes: PipelineNode[]) {
-  let current = node;
-  for (let depth = 0; current.drilldownParentId && depth < 12; depth++) {
-    const parent = nodes.find(item => item.id === current.drilldownParentId);
-    if (!parent) break;
-    current = parent;
-  }
-  return current;
-}
-
-function collectLineageAncestorIds(node: PipelineNode, nodes: PipelineNode[]) {
-  const ids = new Set<string>();
-  let current = node;
-  for (let depth = 0; current.drilldownParentId && depth < 12; depth++) {
-    const parent = nodes.find(item => item.id === current.drilldownParentId);
-    if (!parent) break;
-    ids.add(parent.id);
-    current = parent;
-  }
-  return ids;
-}
-
-function lineageNodeDepth(node: PipelineNode, nodes: PipelineNode[]) {
-  let depth = 0;
-  let current = node;
-  while (current.drilldownParentId && depth < 12) {
-    const parent = nodes.find(item => item.id === current.drilldownParentId);
-    if (!parent) break;
-    depth++;
-    current = parent;
-  }
-  return depth;
-}
-
-function lineageNodeLabel(node: PipelineNode) {
-  return node.bomComponent?.code || node.deviceSku || node.semanticLabel || node.title;
-}
-
-function lineageShortLabel(node: PipelineNode) {
-  const label = lineageNodeLabel(node);
-  const parts = label.split(/[.\-\s]+/).filter(Boolean);
-  return (parts.at(-1) ?? label).slice(0, 4);
-}
-
-function lineageStatusColor(status: string) {
-  if (status === "product") return CT.accent;
-  if (status === "critical") return "#c85a45";
-  if (status === "warning" || status === "variable") return "#c7832f";
-  if (status === "ok") return "#4f7fbd";
-  if (status === "abundant") return "#4d9465";
-  return "#7b8a8e";
-}
-
 function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
   return new Set(
     nodes
@@ -4609,123 +4369,6 @@ const actionDividerStyle: CSSProperties = {
   height: 1,
   background: CT.borderStrong,
   margin: "6px 0",
-};
-
-const lineagePanelStyle: CSSProperties = {
-  position: "absolute",
-  zIndex: 12,
-  width: 470,
-  minHeight: 354,
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 8,
-  background: CT.surface,
-  boxShadow: "0 16px 36px rgba(20,20,19,0.2)",
-  padding: 14,
-};
-
-const lineagePanelHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "flex-start",
-  justifyContent: "space-between",
-  gap: 12,
-  borderBottom: `1px solid ${CT.border}`,
-  paddingBottom: 10,
-};
-
-const lineagePanelEyebrowStyle: CSSProperties = {
-  color: CT.accent,
-  fontFamily: CT_MONO,
-  fontSize: 9,
-  letterSpacing: 1.4,
-  fontWeight: 800,
-};
-
-const lineagePanelTitleStyle: CSSProperties = {
-  marginTop: 3,
-  color: CT.ink,
-  fontSize: 15,
-  fontWeight: 800,
-};
-
-const lineagePanelSubtitleStyle: CSSProperties = {
-  marginTop: 3,
-  color: CT.inkMuted,
-  fontSize: 11,
-};
-
-const lineageCloseButtonStyle: CSSProperties = {
-  width: 26,
-  height: 26,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  border: `1px solid ${CT.border}`,
-  borderRadius: 6,
-  background: "#fff",
-  color: CT.inkMuted,
-  cursor: "pointer",
-};
-
-const lineageSummaryGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "1fr 1fr 1fr",
-  gap: 8,
-  margin: "12px 0 10px",
-};
-
-const lineageMetricStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: "#fbfbf8",
-  padding: "8px 9px",
-};
-
-const lineageMetricLabelStyle: CSSProperties = {
-  color: CT.inkMuted,
-  fontFamily: CT_MONO,
-  fontSize: 9,
-  textTransform: "uppercase",
-};
-
-const lineageMetricValueStyle: CSSProperties = {
-  marginTop: 3,
-  fontSize: 14,
-  fontWeight: 800,
-  whiteSpace: "nowrap",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-};
-
-const lineageSvgStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "#f7f8f4",
-};
-
-const lineageNodeTextStyle: CSSProperties = {
-  fill: "#fff",
-  fontFamily: CT_MONO,
-  fontSize: 7,
-  fontWeight: 900,
-  pointerEvents: "none",
-};
-
-const lineageNodeCaptionStyle: CSSProperties = {
-  fill: CT.ink,
-  fontFamily: CT_MONO,
-  fontSize: 8,
-  fontWeight: 800,
-  pointerEvents: "none",
-};
-
-const lineageLegendStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  color: CT.inkMuted,
-  fontSize: 10,
-  marginTop: 9,
 };
 
 const previewHeaderStyle: CSSProperties = {
