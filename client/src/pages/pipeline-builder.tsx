@@ -2155,100 +2155,69 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
 
   return (
     <div style={ontologyPreviewStyle}>
-      <div style={ontologyPreviewHeaderStyle}>
-        <div>
-          <div style={ontologyEyebrowStyle}>ONTOLOGY AI</div>
-          <h3 style={ontologyTitleStyle}>Visionary analysis engine</h3>
-          <p style={ontologyTextStyle}>
-            Bağlı cihazları, siparişleri ve tedarik/BOM node'larını okuyup enterprise chart + aksiyon çıktısı üretir.
-          </p>
+      <div style={ontologyChatShellStyle}>
+        <div style={ontologyChatTopStyle}>
+          <div>
+            <div style={ontologyEyebrowStyle}>ONTOLOGY AI</div>
+            <h3 style={ontologyTitleStyle}>Ne analiz edeyim?</h3>
+          </div>
+          <div style={ontologyContextPillsStyle}>
+            <span>{context.devices.length} cihaz</span>
+            <span>{context.orders.length} sipariş</span>
+            <span>{context.components.length} BOM</span>
+          </div>
         </div>
-        <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
-          <Network size={15} />
-          Chart workspace
-        </a>
-      </div>
 
-      <div style={ontologyCardsStyle}>
-        <div style={ontologyCardStyle}>
-          <strong>Connected context</strong>
-          <span>{context.connected.length} upstream node · {context.devices.length} cihaz · {context.components.length} BOM node</span>
-        </div>
-        <div style={ontologyCardStyle}>
-          <strong>Vision parameters</strong>
-          <span>stok, üretilebilirlik, bottleneck, teslim tarihi, tedarik riski, ortak bileşen</span>
-        </div>
-        <div style={ontologyCardStyle}>
-          <strong>Output contract</strong>
-          <span>JSON chart spec, executive narrative, recommended pipeline actions</span>
-        </div>
-      </div>
-
-      <div style={ontologyAnalysisGridStyle}>
-        <div style={ontologyAnalysisPanelStyle}>
-          <div style={ontologyPanelTitleStyle}>AI prompt</div>
+        <div style={ontologyChatCenterStyle}>
           <div style={ontologyChatLogStyle}>
-            {messages.slice(-4).map((message, index) => (
+            {messages.slice(-5).map((message, index) => (
               <div key={`${message.role}-${index}`} style={ontologyChatBubbleStyle(message.role)}>
                 {message.text}
               </div>
             ))}
           </div>
+
           <div style={ontologyPromptBoxStyle}>
             <textarea
               value={prompt}
               onChange={event => setPrompt(event.currentTarget.value)}
-              placeholder="Orn: ELT-7-11 ve GSA20 icin depo mu uretim mi daha mantikli, hangi bilesen darboğaz?"
+              placeholder="Cihazları stok, üretilebilirlik, teslim tarihi veya kritik bileşene göre karşılaştır..."
               style={ontologyPromptInputStyle}
               rows={3}
             />
-            <button type="button" onClick={submitPrompt} style={ontologySendButtonStyle}>
-              <Send size={14} />
-              Run
-            </button>
+            <div style={ontologyPromptFooterStyle}>
+              <div style={ontologyProviderStripStyle}>
+                <span>Griseus orchestrator</span>
+                <b>provider-ready</b>
+              </div>
+              <button type="button" onClick={submitPrompt} style={ontologySendButtonStyle}>
+                <Send size={15} />
+              </button>
+            </div>
           </div>
-          <div style={ontologyProviderStripStyle}>
-            <span>Provider</span>
-            <b>Griseus orchestrator</b>
-            <span>OpenAI / Claude / Gemini takilabilir</span>
-          </div>
-        </div>
-        <div style={ontologyAnalysisPanelStyle}>
-          <div style={ontologyPanelTitleStyle}>Context ve cikti</div>
-          <div style={ontologyMiniGridStyle}>
-            <div style={ontologyMiniPanelStyle}>
-              <strong>Bagli cihazlar</strong>
-              {context.devices.length === 0 ? (
-                <span style={ontologyMutedStyle}>Cihaz node'unu Ontology AI kutusuna bağla.</span>
-              ) : context.devices.map(device => (
-                <span key={device.id}>{resolveDeviceNodeSku(device) || device.title}: {device.deviceQuantity || "-"} adet</span>
+
+          <div style={ontologyAnswerStyle(context.riskTone)}>
+            <div>
+              <strong>{analysis.title}</strong>
+              <span>{analysis.summary}</span>
+            </div>
+            <div style={ontologyActionListStyle}>
+              {analysis.actions.map(action => (
+                <span key={action}>{action}</span>
               ))}
             </div>
-            <div style={ontologyMiniPanelStyle}>
-              <strong>Chart spec</strong>
-              <span>{analysis.chartSpec.type} · x: {analysis.chartSpec.x}</span>
-              <span>{analysis.chartSpec.metrics.join(", ")}</span>
-            </div>
-          </div>
-          <div style={ontologyResultStyle(context.riskTone)}>
-            <strong>{analysis.title}</strong>
-            <span>{analysis.summary}</span>
-          </div>
-          <pre style={ontologyJsonPreviewStyle}>{JSON.stringify(analysis.request, null, 2)}</pre>
-          <div style={ontologyActionListStyle}>
-            {analysis.actions.map((action, index) => (
-              <span key={action}>{index + 1}. {action}</span>
-            ))}
           </div>
         </div>
-      </div>
 
-      <div style={ontologyFlowStyle}>
-        <span>Dataset / Cihaz / Sipariş</span>
-        <b>→</b>
-        <span>Ontology AI</span>
-        <b>→</b>
-        <span>Vision chart + action plan</span>
+        <div style={ontologyBottomBarStyle}>
+          <span>Chart: {analysis.chartSpec.type}</span>
+          <span>X: {analysis.chartSpec.x}</span>
+          <span>{analysis.chartSpec.metrics.join(" · ")}</span>
+          <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
+            <Network size={14} />
+            Chart workspace
+          </a>
+        </div>
       </div>
     </div>
   );
@@ -5434,16 +5403,25 @@ const ontologyNodeHintStyle: CSSProperties = {
 };
 
 const ontologyPreviewStyle: CSSProperties = {
-  padding: 18,
-  display: "grid",
-  gap: 14,
+  padding: 14,
 };
 
-const ontologyPreviewHeaderStyle: CSSProperties = {
+const ontologyChatShellStyle: CSSProperties = {
+  minHeight: 470,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 10,
+  background: "#f7f6f1",
+  display: "grid",
+  gridTemplateRows: "auto 1fr auto",
+  overflow: "hidden",
+};
+
+const ontologyChatTopStyle: CSSProperties = {
   display: "flex",
-  alignItems: "start",
+  alignItems: "center",
   justifyContent: "space-between",
-  gap: 18,
+  gap: 14,
+  padding: "18px 22px 10px",
 };
 
 const ontologyEyebrowStyle: CSSProperties = {
@@ -5454,163 +5432,108 @@ const ontologyEyebrowStyle: CSSProperties = {
 };
 
 const ontologyTitleStyle: CSSProperties = {
-  margin: "3px 0 6px",
-  fontSize: 24,
-  lineHeight: 1,
-};
-
-const ontologyTextStyle: CSSProperties = {
   margin: 0,
-  color: CT.inkMuted,
-  fontSize: 13,
-  maxWidth: 620,
+  fontSize: 26,
+  lineHeight: 1.05,
 };
 
 const ontologyOpenButtonStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
-  gap: 8,
-  height: 34,
-  border: `1px solid ${CT.borderStrong}`,
+  gap: 7,
+  height: 30,
+  border: "1px solid rgba(47,93,80,0.28)",
   borderRadius: 7,
-  background: "#2f5d50",
-  color: "#fff",
+  background: "#e9f2ee",
+  color: "#2f5d50",
   textDecoration: "none",
-  padding: "0 12px",
-  fontSize: 12,
+  padding: "0 10px",
+  fontSize: 11,
   fontWeight: 850,
 };
 
-const ontologyCardsStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 10,
-};
-
-const ontologyCardStyle: CSSProperties = {
-  minHeight: 82,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surfaceMuted,
-  padding: 12,
-  display: "grid",
-  gap: 7,
-  alignContent: "start",
-  color: CT.inkSub,
-  fontSize: 12,
-};
-
-const ontologyFlowStyle: CSSProperties = {
+const ontologyContextPillsStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+};
+
+const ontologyChatCenterStyle: CSSProperties = {
+  width: "min(920px, 100%)",
+  margin: "0 auto",
+  padding: "4px 22px 18px",
+  display: "grid",
   gap: 12,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "#fffaf4",
-  padding: "12px 14px",
-  color: CT.ink,
-  fontSize: 13,
-  fontWeight: 850,
-};
-
-const ontologyAnalysisGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(260px, 0.9fr) minmax(360px, 1.2fr)",
-  gap: 10,
-};
-
-const ontologyAnalysisPanelStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "#fffdf8",
-  padding: 12,
-  display: "grid",
-  gap: 9,
   alignContent: "start",
-};
-
-const ontologyPanelTitleStyle: CSSProperties = {
-  color: CT.ink,
-  fontSize: 13,
-  fontWeight: 900,
-};
-
-const ontologyMutedStyle: CSSProperties = {
-  color: CT.inkMuted,
-  fontSize: 12,
-};
-
-const ontologyLinkedRowStyle: CSSProperties = {
-  display: "grid",
-  gap: 3,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surfaceMuted,
-  padding: "8px 10px",
-  fontSize: 12,
-  color: CT.inkSub,
 };
 
 const ontologyChatLogStyle: CSSProperties = {
-  minHeight: 120,
-  maxHeight: 184,
+  minHeight: 108,
+  maxHeight: 150,
   overflow: "auto",
   display: "grid",
   gap: 8,
   alignContent: "start",
-  padding: 10,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "#f7f7f3",
+  padding: "0 6px",
 };
 
 const ontologyChatBubbleStyle = (role: "assistant" | "user"): CSSProperties => ({
   justifySelf: role === "user" ? "end" : "start",
-  maxWidth: "82%",
-  border: `1px solid ${role === "user" ? CT.accentEdge : CT.border}`,
-  borderRadius: 8,
-  background: role === "user" ? "#2f5d50" : "#fffdf8",
+  maxWidth: "78%",
+  border: `1px solid ${role === "user" ? "rgba(47,93,80,0.35)" : CT.border}`,
+  borderRadius: 12,
+  background: role === "user" ? "#2f5d50" : "#fff",
   color: role === "user" ? "#fff" : CT.ink,
-  padding: "9px 11px",
-  fontSize: 12,
-  lineHeight: 1.45,
+  padding: "11px 13px",
+  fontSize: 13,
+  lineHeight: 1.5,
+  boxShadow: role === "user" ? "none" : "0 8px 22px rgba(33,29,22,0.06)",
 });
 
 const ontologyPromptBoxStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1fr auto",
   gap: 8,
-  alignItems: "end",
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 14,
+  background: "#fff",
+  padding: 10,
+  boxShadow: "0 18px 45px rgba(33,29,22,0.10)",
 };
 
 const ontologyPromptInputStyle: CSSProperties = {
   width: "100%",
-  minHeight: 74,
+  minHeight: 84,
   resize: "vertical",
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 8,
-  background: "#fff",
+  border: 0,
+  background: "transparent",
   color: CT.ink,
-  padding: 10,
-  fontSize: 12,
-  lineHeight: 1.45,
+  padding: "4px 6px",
+  fontSize: 14,
+  lineHeight: 1.5,
   outline: "none",
   fontFamily: "inherit",
 };
 
+const ontologyPromptFooterStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 8,
+};
+
 const ontologySendButtonStyle: CSSProperties = {
-  height: 38,
+  width: 34,
+  height: 34,
   display: "inline-flex",
   alignItems: "center",
   justifyContent: "center",
-  gap: 7,
   border: "1px solid #244c41",
-  borderRadius: 8,
+  borderRadius: 999,
   background: "#2f5d50",
   color: "#fff",
-  padding: "0 13px",
-  fontSize: 12,
-  fontWeight: 900,
   cursor: "pointer",
 };
 
@@ -5623,55 +5546,35 @@ const ontologyProviderStripStyle: CSSProperties = {
   fontSize: 11,
 };
 
-const ontologyMiniGridStyle: CSSProperties = {
+const ontologyAnswerStyle = (tone: "critical" | "ok" | "idle"): CSSProperties => ({
   display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
-  gap: 8,
-};
+  gap: 10,
+  border: `1px solid ${tone === "critical" ? "rgba(179,64,55,0.28)" : tone === "ok" ? "rgba(63,143,91,0.26)" : CT.border}`,
+  borderRadius: 12,
+  background: tone === "critical" ? "#fff1ee" : tone === "ok" ? "#eef7f3" : "#fff",
+  color: tone === "critical" ? CT.err : tone === "ok" ? "#2f5d50" : CT.inkSub,
+  padding: "13px 15px",
+  fontSize: 13,
+});
 
-const ontologyMiniPanelStyle: CSSProperties = {
-  minHeight: 78,
-  display: "grid",
-  gap: 5,
-  alignContent: "start",
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surfaceMuted,
-  padding: 10,
+const ontologyActionListStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
   color: CT.inkSub,
   fontSize: 12,
 };
 
-const ontologyJsonPreviewStyle: CSSProperties = {
-  maxHeight: 176,
-  overflow: "auto",
-  margin: 0,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "#161616",
-  color: "#d8f0df",
-  padding: 12,
-  fontSize: 11,
-  lineHeight: 1.45,
-  fontFamily: CT_MONO,
-};
-
-const ontologyResultStyle = (tone: "critical" | "ok" | "idle"): CSSProperties => ({
-  display: "grid",
-  gap: 5,
-  border: `1px solid ${tone === "critical" ? "rgba(179,64,55,0.28)" : tone === "ok" ? "rgba(63,143,91,0.26)" : CT.border}`,
-  borderRadius: 8,
-  background: tone === "critical" ? CT.errSoft : tone === "ok" ? "#eef7f3" : CT.surfaceMuted,
-  color: tone === "critical" ? CT.err : tone === "ok" ? "#2f5d50" : CT.inkSub,
-  padding: 12,
-  fontSize: 12,
-});
-
-const ontologyActionListStyle: CSSProperties = {
-  display: "grid",
-  gap: 6,
+const ontologyBottomBarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  flexWrap: "wrap",
+  borderTop: `1px solid ${CT.border}`,
+  padding: "10px 16px",
   color: CT.inkMuted,
-  fontSize: 12,
+  fontSize: 11,
+  background: "#fffdf8",
 };
 
 const graphPortStyle: CSSProperties = {
