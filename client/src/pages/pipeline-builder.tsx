@@ -315,6 +315,7 @@ export default function PipelineBuilderPage() {
   const [savedPanelOpen, setSavedPanelOpen] = useState(false);
   const [canvasZoom, setCanvasZoom] = useState(1);
   const [twinHealthRunning, setTwinHealthRunning] = useState(false);
+  const [previewHeight, setPreviewHeight] = useState(310);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -371,6 +372,32 @@ export default function PipelineBuilderPage() {
       connections,
       selectedNodeId,
     }]);
+  }
+
+  function startPreviewResize(event: ReactPointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const startY = event.clientY;
+    const startHeight = previewHeight;
+    const viewportHeight = window.innerHeight;
+    const minHeight = 190;
+    const maxHeight = Math.max(260, viewportHeight - 250);
+
+    function onPointerMove(moveEvent: PointerEvent) {
+      const delta = startY - moveEvent.clientY;
+      setPreviewHeight(Math.min(maxHeight, Math.max(minHeight, startHeight + delta)));
+    }
+
+    function onPointerUp() {
+      document.removeEventListener("pointermove", onPointerMove);
+      document.removeEventListener("pointerup", onPointerUp);
+      document.body.style.cursor = "";
+      document.body.style.userSelect = "";
+    }
+
+    document.body.style.cursor = "ns-resize";
+    document.body.style.userSelect = "none";
+    document.addEventListener("pointermove", onPointerMove);
+    document.addEventListener("pointerup", onPointerUp, { once: true });
   }
 
   useEffect(() => {
@@ -1410,7 +1437,7 @@ export default function PipelineBuilderPage() {
         </div>
       </header>
 
-      <main style={{ display: "grid", gridTemplateRows: "1fr 310px", height: "calc(100vh - 94px)", minHeight: 680 }}>
+      <main style={{ display: "grid", gridTemplateRows: `minmax(0, 1fr) 8px ${previewHeight}px`, height: "calc(100vh - 94px)", minHeight: 680 }}>
         <section style={canvasViewportStyle}>
           <div style={{ position: "relative", width: scaledCanvasSize.width, height: scaledCanvasSize.height }}>
             <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height, transform: `scale(${canvasZoom})`, transformOrigin: "top left" }}>
@@ -1459,6 +1486,18 @@ export default function PipelineBuilderPage() {
           </div>
         </section>
 
+        <div
+          role="separator"
+          aria-label="Data preview panel height"
+          aria-orientation="horizontal"
+          title="Paneli büyüt/küçült"
+          onPointerDown={startPreviewResize}
+          onDoubleClick={() => setPreviewHeight(310)}
+          style={previewResizeHandleStyle}
+        >
+          <span style={previewResizeGripStyle} />
+        </div>
+
         <section style={{ borderTop: `1px solid ${CT.borderStrong}`, background: CT.surface, overflow: "hidden" }}>
           <div style={previewHeaderStyle}>
             <div style={{ display: "flex", alignItems: "center", gap: 8, fontSize: 13, fontWeight: 700 }}>
@@ -1471,7 +1510,7 @@ export default function PipelineBuilderPage() {
             </div>
           </div>
 
-          <div style={{ display: "grid", gridTemplateColumns: "270px 1fr", height: 272 }}>
+          <div style={{ display: "grid", gridTemplateColumns: "270px 1fr", height: Math.max(120, previewHeight - 38) }}>
             <aside style={{ borderRight: `1px solid ${CT.border}`, padding: 12, overflow: "auto" }}>
               {selectedNode?.kind === "dataset" && (
                 <UploadDropzone
@@ -4390,6 +4429,25 @@ const canvasViewportStyle: CSSProperties = {
   overflow: "auto",
   background: "#eef1f5",
   cursor: "default",
+};
+
+const previewResizeHandleStyle: CSSProperties = {
+  height: 8,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  background: "#eef1f5",
+  borderTop: `1px solid ${CT.border}`,
+  borderBottom: `1px solid ${CT.borderStrong}`,
+  cursor: "ns-resize",
+  touchAction: "none",
+};
+
+const previewResizeGripStyle: CSSProperties = {
+  width: 92,
+  height: 4,
+  borderRadius: 999,
+  background: "rgba(86,101,119,0.42)",
 };
 
 const nodeStyle: CSSProperties = {
