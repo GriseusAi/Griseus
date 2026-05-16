@@ -198,24 +198,13 @@ export default function OntologyLayersPage() {
 
   const maxCapacity = Math.max(1, ...visibleDevices.map(device => device.capacity ?? 0), ...visibleDevices.map(device => device.warehouse));
   const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(query => query.isLoading);
+  const criticalComponents = filteredComponents.filter(row => row.status === "critical").slice(0, 18);
 
   return (
     <div style={pageStyle}>
       <TopNav />
       <main style={shellStyle}>
-        <header style={headerStyle}>
-          <div>
-            <div style={eyebrowStyle}>Ontology workspace</div>
-            <h1 style={titleStyle}>Cihazlar ve alt bilesenler</h1>
-          </div>
-          <div style={summaryPillsStyle}>
-            <SummaryPill icon={<Factory size={15} />} label="Cihaz" value={products.length} />
-            <SummaryPill icon={<Boxes size={15} />} label="Bilesen satiri" value={flatComponents.length} />
-            <SummaryPill icon={<AlertTriangle size={15} />} label="Kritik" value={flatComponents.filter(row => row.status === "critical").length} tone="risk" />
-          </div>
-        </header>
-
-        <section style={layoutStyle}>
+        <section style={workbenchStyle}>
           <aside style={sidebarStyle}>
             <div style={panelTitleStyle}>
               <span>Cihaz seti</span>
@@ -226,7 +215,7 @@ export default function OntologyLayersPage() {
                 const active = activeSkus.includes(product.sku);
                 const stock = stockBySku.get(product.sku);
                 return (
-                  <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, active, selectedSkus, setSelectedSkus)} style={deviceButtonStyle(active)}>
+                  <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, selectedSkus, setSelectedSkus, products)} style={deviceButtonStyle(active)}>
                     <span style={deviceCheckStyle(active)}>{active ? <CheckCircle2 size={14} /> : null}</span>
                     <span style={{ minWidth: 0 }}>
                       <strong style={deviceNameStyle}>{product.sku}</strong>
@@ -239,96 +228,51 @@ export default function OntologyLayersPage() {
             </div>
           </aside>
 
-          <section style={mainPanelStyle}>
-            <div style={filterBarStyle}>
-              <div style={searchBoxStyle}>
-                <Search size={15} color={CT.inkMuted} />
-                <input value={componentQuery} onChange={event => setComponentQuery(event.target.value)} placeholder="Bilesen kodu, ad veya cihaz ara" style={searchInputStyle} />
-                {componentQuery && (
-                  <button type="button" onClick={() => setComponentQuery("")} style={clearButtonStyle}><X size={13} /></button>
-                )}
+          <section style={canvasColumnStyle}>
+            <div style={canvasToolbarStyle}>
+              <ParameterCard label="Property Value" value={statusFilter === "all" ? "all status" : statusLabels[statusFilter]} onClear={() => setStatusFilter("all")} />
+              <ParameterCard label="Property Value" value={stockFilter === "all" ? "all stock" : stockFilter} onClear={() => setStockFilter("all")} />
+              <ParameterCard label="Property Value" value={timeFilter === "all" ? "all time" : timeFilter} onClear={() => setTimeFilter("all")} />
+              <div style={toolbarFilterStackStyle}>
+                <div style={canvasSearchStyle}>
+                  <Search size={16} color={CT.inkMuted} />
+                  <input value={componentQuery} onChange={event => setComponentQuery(event.target.value)} placeholder="Search components..." style={searchInputStyle} />
+                  {componentQuery && <button type="button" onClick={() => setComponentQuery("")} style={clearButtonStyle}><X size={13} /></button>}
+                </div>
+                <div style={compactFilterGridStyle}>
+                  <Select label="Durum" value={statusFilter} onChange={value => setStatusFilter(value as StatusFilter)} options={[
+                    ["all", "Hepsi"], ["critical", "Kritik"], ["warning", "Risk"], ["ok", "Yeterli"], ["abundant", "Bol"], ["variable", "Opsiyonel"],
+                  ]} />
+                  <Select label="Stok" value={stockFilter} onChange={value => setStockFilter(value as StockFilter)} options={[
+                    ["all", "Hepsi"], ["zero", "Sifir"], ["low", "Dusuk"], ["enough", "Yeterli"],
+                  ]} />
+                  <Select label="Zaman" value={timeFilter} onChange={value => setTimeFilter(value as TimeFilter)} options={[
+                    ["all", "Hepsi"], ["fresh", "Bugun"], ["week", "7 gun"], ["stale", "Eski"],
+                  ]} />
+                  <Select label="Sirala" value={sortMode} onChange={value => setSortMode(value as SortMode)} options={[
+                    ["risk", "Risk"], ["stock", "Stok"], ["required", "BOM"], ["device", "Cihaz"],
+                  ]} />
+                </div>
               </div>
-              <Select label="Durum" value={statusFilter} onChange={value => setStatusFilter(value as StatusFilter)} options={[
-                ["all", "Hepsi"], ["critical", "Kritik"], ["warning", "Risk"], ["ok", "Yeterli"], ["abundant", "Bol"], ["variable", "Opsiyonel"],
-              ]} />
-              <Select label="Stok" value={stockFilter} onChange={value => setStockFilter(value as StockFilter)} options={[
-                ["all", "Hepsi"], ["zero", "Sifir"], ["low", "Dusuk kapasite"], ["enough", "Yeterli"],
-              ]} />
-              <Select label="Zaman" value={timeFilter} onChange={value => setTimeFilter(value as TimeFilter)} options={[
-                ["all", "Hepsi"], ["fresh", "Bugun"], ["week", "7 gun"], ["stale", "Eski/veri yok"],
-              ]} />
-              <Select label="Sirala" value={sortMode} onChange={value => setSortMode(value as SortMode)} options={[
-                ["risk", "Risk"], ["stock", "Stok"], ["required", "BOM ihtiyaci"], ["device", "Cihaz"],
-              ]} />
             </div>
 
-            <div style={compareGridStyle}>
-              {visibleDevices.map(device => (
-                <DeviceCompareCard key={device.sku} device={device} maxCapacity={maxCapacity} />
-              ))}
-              {visibleDevices.length === 0 && <EmptyState text="Bu zaman filtresine uyan cihaz yok." />}
-            </div>
+            <div style={visualCanvasStyle}>
+              <ChartPanel title="Bar plot of devices by stock and capacity" meta={`${visibleDevices.length} selected devices`}>
+                <DeviceBarChart devices={visibleDevices} max={maxCapacity} />
+              </ChartPanel>
 
-            <div style={contentGridStyle}>
-              <section style={tablePanelStyle}>
-                <div style={panelTitleStyle}>
-                  <span>Alt bilesenler</span>
-                  <small>{filteredComponents.length} satir</small>
-                </div>
-                <div style={componentTableStyle}>
-                  <div style={tableHeaderStyle}>
-                    <span>Cihaz</span>
-                    <span>Bilesen</span>
-                    <span>Stok</span>
-                    <span>Uretilebilir</span>
-                    <span>Durum</span>
-                  </div>
-                  {filteredComponents.slice(0, 120).map(row => (
-                    <div key={`${row.sku}-${row.path}`} style={tableRowStyle}>
-                      <strong>{row.sku}</strong>
-                      <span style={{ minWidth: 0 }}>
-                        <b style={componentCodeStyle}>{row.code}</b>
-                        <em style={componentNameStyle}>{row.name}</em>
-                      </span>
-                      <span>{fmt(row.currentStock)} {row.unit}</span>
-                      <span>{row.maxProducts === null ? "-" : fmt(row.maxProducts)}</span>
-                      <StatusBadge status={row.status} />
-                    </div>
-                  ))}
-                </div>
-              </section>
+              <ChartPanel title="Grouped component stock plots" meta={`${filteredComponents.length} matching components`}>
+                <GroupedStockPlots devices={visibleDevices} components={filteredComponents} />
+              </ChartPanel>
 
-              <aside style={insightPanelStyle}>
-                <div style={panelTitleStyle}>
-                  <span>Kesisen bilesenler</span>
-                  <GitCompare size={15} color={CT.inkMuted} />
-                </div>
-                <div style={sharedListStyle}>
-                  {sharedComponents.map(item => (
-                    <div key={item.code} style={sharedRowStyle}>
-                      <div>
-                        <strong>{item.code}</strong>
-                        <span>{item.name}</span>
-                      </div>
-                      <div style={sharedMetaStyle}>
-                        <StatusBadge status={item.worstStatus} />
-                        <small>{item.devices.size} cihaz</small>
-                      </div>
-                    </div>
-                  ))}
-                  {sharedComponents.length === 0 && <EmptyState text="Secili cihazlar arasinda ortak bilesen yok." />}
-                </div>
-
-                <div style={panelTitleStyle}>
-                  <span>Filtre mantigi</span>
-                  <Filter size={15} color={CT.inkMuted} />
-                </div>
-                <div style={ruleBoxStyle}>
-                  <div><Clock3 size={14} /> Zaman filtresi cihaz stok kaydinin guncellenme tarihine bakar.</div>
-                  <div><Database size={14} /> Stok filtresi BOM + component_stock birlesik verisini kullanir.</div>
-                  <div><Layers3 size={14} /> Yari mamul satirlari alt cocuklariyla birlikte listelenir.</div>
-                </div>
-              </aside>
+              <div style={bottomCanvasGridStyle}>
+                <ChartPanel title="Events timeline of stock risk" meta={`${criticalComponents.length} critical events`}>
+                  <RiskTimeline components={criticalComponents} />
+                </ChartPanel>
+                <ChartPanel title="Shared component object view" meta={`${sharedComponents.length} overlaps`}>
+                  <SharedObjectView components={sharedComponents} />
+                </ChartPanel>
+              </div>
             </div>
           </section>
         </section>
@@ -345,12 +289,11 @@ function flattenComponent(component: BomComponent, sku: string, productName: str
   return [row, ...children.flatMap(child => flattenComponent(child, sku, productName, `${path}/${child.code}`))];
 }
 
-function toggleSku(sku: string, active: boolean, selectedSkus: string[], setSelectedSkus: (next: string[]) => void) {
-  if (selectedSkus.length === 0) {
-    setSelectedSkus(active ? [] : [sku]);
-    return;
-  }
-  const next = active ? selectedSkus.filter(item => item !== sku) : [...selectedSkus, sku];
+function toggleSku(sku: string, selectedSkus: string[], setSelectedSkus: (next: string[]) => void, products: Product[]) {
+  const defaultSkus = products.slice(0, 4).map(product => product.sku);
+  const current = selectedSkus.length > 0 ? selectedSkus : defaultSkus;
+  const active = current.includes(sku);
+  const next = active ? current.filter(item => item !== sku) : [...current, sku];
   setSelectedSkus(next.slice(0, 8));
 }
 
@@ -400,6 +343,161 @@ function SummaryPill({ icon, label, value, tone = "neutral" }: { icon: React.Rea
       <strong>{fmt(value)}</strong>
     </div>
   );
+}
+
+function ParameterCard({ label, value, onClear }: { label: string; value: string; onClear: () => void }) {
+  return (
+    <div style={parameterCardStyle}>
+      <span>{label}</span>
+      <div>
+        <strong>{value}</strong>
+        <button type="button" onClick={onClear} style={parameterClearStyle}><X size={13} /></button>
+      </div>
+    </div>
+  );
+}
+
+function ChartPanel({ title, meta, children }: { title: string; meta: string; children: React.ReactNode }) {
+  return (
+    <section style={chartPanelStyle}>
+      <div style={chartHeaderStyle}>
+        <div>
+          <span style={dragDotsStyle}>•••</span>
+          <strong>{title}</strong>
+        </div>
+        <div style={chartMetaStyle}>
+          <span>{meta}</span>
+          <span>⚙</span>
+          <span>⋯</span>
+          <span>×</span>
+        </div>
+      </div>
+      {children}
+    </section>
+  );
+}
+
+function DeviceBarChart({ devices, max }: { devices: Array<{ sku: string; warehouse: number; capacity: number | null; critical: number }>; max: number }) {
+  const rows = devices.slice(0, 10);
+  return (
+    <div style={barChartStyle}>
+      {rows.map(device => {
+        const capacity = device.capacity ?? 0;
+        return (
+          <div key={device.sku} style={barChartRowStyle}>
+            <span>{device.sku}</span>
+            <div style={barChartTrackStyle}>
+              <div style={{ ...barChartBarStyle, width: `${Math.max(1, (device.warehouse / max) * 100)}%`, background: "#5c84d8" }} />
+              <div style={{ ...barChartBarStyle, width: `${Math.max(1, (capacity / max) * 100)}%`, background: "rgba(87,184,72,0.72)", marginTop: 3 }} />
+            </div>
+            <strong>{fmt(device.warehouse)}</strong>
+          </div>
+        );
+      })}
+      <div style={axisLabelStyle}>object count / producible capacity</div>
+    </div>
+  );
+}
+
+function GroupedStockPlots({ devices, components }: {
+  devices: Array<{ sku: string; warehouse: number; capacity: number | null; critical: number; warnings: number }>;
+  components: FlatComponent[];
+}) {
+  return (
+    <div style={plotStackStyle}>
+      {devices.slice(0, 3).map((device, index) => {
+        const rows = components.filter(component => component.sku === device.sku).slice(0, 34);
+        return (
+          <div key={device.sku} style={plotRowStyle}>
+            <div style={plotAxisStyle}>
+              <span>stock</span>
+              <span>{fmt(Math.max(device.warehouse, device.capacity ?? 0))}</span>
+              <span>0</span>
+            </div>
+            <div style={sparkPlotStyle}>
+              <svg viewBox="0 0 900 132" preserveAspectRatio="none" style={plotSvgStyle}>
+                <g>
+                  {Array.from({ length: 12 }).map((_, i) => (
+                    <line key={`v-${i}`} x1={i * 75} x2={i * 75} y1="0" y2="132" stroke="rgba(82,105,122,0.13)" />
+                  ))}
+                  {Array.from({ length: 5 }).map((_, i) => (
+                    <line key={`h-${i}`} x1="0" x2="900" y1={i * 31} y2={i * 31} stroke="rgba(82,105,122,0.13)" />
+                  ))}
+                </g>
+                <polyline
+                  points={buildPlotPoints(rows.map(row => Number(row.currentStock)), 900, 132)}
+                  fill="none"
+                  stroke="#00a99d"
+                  strokeWidth="1.8"
+                />
+                <polyline
+                  points={buildPlotPoints(rows.map(row => Number(row.maxProducts ?? 0)), 900, 132)}
+                  fill="none"
+                  stroke="#70c20f"
+                  strokeWidth="1.5"
+                />
+                {rows.filter(row => row.status === "critical").slice(0, 12).map((row, markerIndex) => (
+                  <rect key={`${row.code}-${markerIndex}`} x={markerIndex * 64 + index * 17} y={102 - (markerIndex % 4) * 14} width="4" height="22" fill="#5c84d8" opacity="0.85" />
+                ))}
+              </svg>
+              <div style={plotTitleStyle}>{device.sku}</div>
+              <div style={plotLegendStyle}>
+                <span><i style={{ background: "#00a99d" }} /> component stock</span>
+                <span><i style={{ background: "#70c20f" }} /> max producible</span>
+              </div>
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function RiskTimeline({ components }: { components: FlatComponent[] }) {
+  return (
+    <div style={timelineStyle}>
+      <svg viewBox="0 0 820 140" preserveAspectRatio="none" style={plotSvgStyle}>
+        {Array.from({ length: 18 }).map((_, i) => (
+          <line key={i} x1={i * 48} x2={i * 48} y1="0" y2="140" stroke="rgba(82,105,122,0.14)" />
+        ))}
+        <line x1="0" x2="820" y1="70" y2="70" stroke="rgba(82,105,122,0.28)" />
+        {components.map((component, index) => (
+          <rect key={`${component.sku}-${component.code}-${index}`} x={24 + index * 42} y={44 + (index % 3) * 11} width="4" height="34" fill="#5c84d8" />
+        ))}
+      </svg>
+      <div style={timelineCaptionStyle}>critical component events across selected device object set</div>
+    </div>
+  );
+}
+
+function SharedObjectView({ components }: {
+  components: Array<{ code: string; name: string; devices: Set<string>; worstStatus: string }>;
+}) {
+  return (
+    <div style={objectViewStyle}>
+      {components.slice(0, 8).map(component => (
+        <div key={component.code} style={objectViewRowStyle}>
+          <span style={objectGlyphStyle}>◇</span>
+          <div>
+            <strong>{component.code}</strong>
+            <span>{component.name}</span>
+          </div>
+          <StatusBadge status={component.worstStatus} />
+        </div>
+      ))}
+      {components.length === 0 && <EmptyState text="Secili cihazlarda ortak bilesen yok." />}
+    </div>
+  );
+}
+
+function buildPlotPoints(values: number[], width: number, height: number) {
+  const safe = values.length > 1 ? values : [0, 0];
+  const max = Math.max(1, ...safe);
+  return safe.map((value, index) => {
+    const x = (index / Math.max(1, safe.length - 1)) * width;
+    const y = height - (Number(value) / max) * (height - 12) - 6;
+    return `${x.toFixed(1)},${y.toFixed(1)}`;
+  }).join(" ");
 }
 
 function Select({ label, value, options, onChange }: {
@@ -502,9 +600,259 @@ const pageStyle: CSSProperties = {
 };
 
 const shellStyle: CSSProperties = {
-  padding: "16px clamp(14px, 2vw, 28px) 26px",
+  padding: "0 10px 10px",
   display: "grid",
   gap: 12,
+};
+
+const workbenchStyle: CSSProperties = {
+  minHeight: "calc(100vh - 58px)",
+  display: "grid",
+  gridTemplateColumns: "282px minmax(0, 1fr)",
+  gap: 10,
+};
+
+const canvasColumnStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateRows: "128px minmax(0, 1fr)",
+  gap: 10,
+};
+
+const canvasToolbarStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  background: "#eaf1f5",
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(180px, 240px)) minmax(260px, 1fr)",
+  gap: 10,
+  padding: 12,
+  alignItems: "start",
+};
+
+const parameterCardStyle: CSSProperties = {
+  height: 92,
+  border: `1px solid ${CT.borderStrong}`,
+  background: CT.surface,
+  padding: 10,
+  display: "grid",
+  alignContent: "start",
+  gap: 14,
+  color: CT.inkSub,
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const parameterClearStyle: CSSProperties = {
+  width: 20,
+  height: 20,
+  border: 0,
+  background: "transparent",
+  color: CT.inkMuted,
+  cursor: "pointer",
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+};
+
+const canvasSearchStyle: CSSProperties = {
+  height: 36,
+  alignSelf: "start",
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${CT.borderStrong}`,
+  background: CT.surface,
+  padding: "0 10px",
+};
+
+const toolbarFilterStackStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const compactFilterGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 6,
+};
+
+const visualCanvasStyle: CSSProperties = {
+  minHeight: 0,
+  overflow: "auto",
+  display: "grid",
+  gridTemplateRows: "230px minmax(420px, 1fr) 230px",
+  gap: 10,
+};
+
+const chartPanelStyle: CSSProperties = {
+  border: `1px solid ${CT.borderStrong}`,
+  background: CT.surface,
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "34px minmax(0, 1fr)",
+};
+
+const chartHeaderStyle: CSSProperties = {
+  borderBottom: `1px solid ${CT.border}`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  padding: "0 10px",
+  color: CT.ink,
+  fontSize: 14,
+};
+
+const dragDotsStyle: CSSProperties = {
+  color: CT.inkMuted,
+  letterSpacing: 1,
+  marginRight: 8,
+  fontSize: 12,
+};
+
+const chartMetaStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  color: CT.inkSub,
+  fontSize: 12,
+};
+
+const barChartStyle: CSSProperties = {
+  padding: "16px 26px 20px 70px",
+  display: "grid",
+  gap: 7,
+  alignContent: "center",
+};
+
+const barChartRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "112px minmax(0, 1fr) 70px",
+  gap: 10,
+  alignItems: "center",
+  color: "#6e8799",
+  fontSize: 12,
+};
+
+const barChartTrackStyle: CSSProperties = {
+  minHeight: 15,
+  borderLeft: "1px solid rgba(82,105,122,0.22)",
+  backgroundImage: "linear-gradient(90deg, rgba(82,105,122,0.15) 1px, transparent 1px)",
+  backgroundSize: "72px 100%",
+};
+
+const barChartBarStyle: CSSProperties = {
+  height: 5,
+};
+
+const axisLabelStyle: CSSProperties = {
+  color: CT.ink,
+  fontSize: 12,
+  textAlign: "center",
+  marginTop: 4,
+};
+
+const plotStackStyle: CSSProperties = {
+  overflow: "auto",
+  display: "grid",
+  alignContent: "start",
+};
+
+const plotRowStyle: CSSProperties = {
+  minHeight: 160,
+  display: "grid",
+  gridTemplateColumns: "58px minmax(0, 1fr)",
+  borderBottom: `1px solid ${CT.border}`,
+};
+
+const plotAxisStyle: CSSProperties = {
+  borderRight: `1px solid ${CT.border}`,
+  color: "#6e8799",
+  fontSize: 11,
+  display: "grid",
+  alignContent: "space-between",
+  justifyItems: "center",
+  padding: "12px 0",
+};
+
+const sparkPlotStyle: CSSProperties = {
+  position: "relative",
+  minHeight: 160,
+};
+
+const plotSvgStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  display: "block",
+};
+
+const plotTitleStyle: CSSProperties = {
+  position: "absolute",
+  top: 8,
+  left: "45%",
+  color: CT.ink,
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const plotLegendStyle: CSSProperties = {
+  position: "absolute",
+  top: 10,
+  right: 16,
+  display: "grid",
+  gap: 6,
+  background: "rgba(255,255,255,0.78)",
+  border: `1px solid ${CT.border}`,
+  padding: "8px 10px",
+  color: CT.inkSub,
+  fontSize: 11,
+};
+
+const bottomCanvasGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1.6fr) minmax(300px, 0.8fr)",
+  gap: 10,
+  minHeight: 230,
+};
+
+const timelineStyle: CSSProperties = {
+  position: "relative",
+  minHeight: 196,
+};
+
+const timelineCaptionStyle: CSSProperties = {
+  position: "absolute",
+  left: 12,
+  bottom: 10,
+  color: CT.inkMuted,
+  fontSize: 12,
+  fontStyle: "italic",
+};
+
+const objectViewStyle: CSSProperties = {
+  padding: 10,
+  display: "grid",
+  gap: 7,
+  alignContent: "start",
+  overflow: "auto",
+};
+
+const objectViewRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "24px minmax(0, 1fr) auto",
+  gap: 8,
+  alignItems: "center",
+  minHeight: 42,
+  border: `1px solid ${CT.border}`,
+  background: CT.surfaceMuted,
+  padding: "7px 8px",
+  color: CT.ink,
+  fontSize: 12,
+};
+
+const objectGlyphStyle: CSSProperties = {
+  color: CT.accent,
+  fontSize: 14,
 };
 
 const headerStyle: CSSProperties = {
@@ -944,4 +1292,3 @@ const loadingStyle: CSSProperties = {
   padding: "10px 12px",
   boxShadow: "0 10px 28px rgba(20,20,19,0.10)",
 };
-
