@@ -157,7 +157,7 @@ type DeviceOperationSnapshot = {
 };
 
 type SemanticConnectionContract = {
-  relation: "customer_order" | "order_order_line" | "order_line_device" | "order_device" | "component_procurement" | "generic";
+  relation: "customer_order" | "customer_device" | "order_order_line" | "order_line_device" | "order_device" | "component_procurement" | "generic";
   fromRole?: SemanticRole;
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
@@ -867,7 +867,7 @@ export default function PipelineBuilderPage() {
     setSelectedNodeId(fromId);
     setActionMenu(null);
     setPendingConnection({ kind: "smart", sourceId: fromId });
-    setError("Connect için hedef node'u seç. Müşteri → Sipariş veya Sipariş → Cihaz zinciri semantic olarak bağlanır.");
+    setError("Connect için hedef node'u seç. Müşteri → Cihaz veya Sipariş → Cihaz semantic olarak bağlanır.");
   }
 
   function completeSmartConnection(fromId: string, toId: string) {
@@ -1542,6 +1542,8 @@ export default function PipelineBuilderPage() {
               {selectedNode?.semanticRole === "device" && (
                 <DeviceOperationPreviewPanel
                   node={selectedNode}
+                  nodes={nodes}
+                  connections={connections}
                   productOptions={productOptions}
                   onDeviceSelect={(value) => updateDeviceSelection(selectedNode.id, value)}
                   onQuantityChange={(value) => updateDeviceQuantity(selectedNode.id, value)}
@@ -1914,8 +1916,10 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
   );
 }
 
-function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQuantityChange, onModeChange, onRefresh }: {
+function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions, onDeviceSelect, onQuantityChange, onModeChange, onRefresh }: {
   node: PipelineNode;
+  nodes: PipelineNode[];
+  connections: GraphConnection[];
   productOptions: ProductOption[];
   onDeviceSelect: (value: string) => void;
   onQuantityChange: (value: string) => void;
@@ -1927,6 +1931,7 @@ function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQ
   const operation = node.deviceOperation;
   const selectedMode = plan.mode;
   const currentSku = resolveDeviceNodeSku(node);
+  const customerOrders = collectDeviceCustomerOrders(node, nodes, connections);
   const bottleneck = operation?.bottleneck?.code
     ? `${operation.bottleneck.code}${operation.bottleneck.name ? ` · ${operation.bottleneck.name}` : ""}`
     : "-";
@@ -1953,6 +1958,27 @@ function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQ
           <span>Durum</span>
           <strong style={operationBadgeStyle(plan.status)}>{plan.badge}</strong>
         </div>
+      </div>
+
+      <div style={deviceCustomerPanelStyle}>
+        <div style={deviceCustomerHeaderStyle}>
+          <span>Müşteri / Sipariş</span>
+          <strong>{customerOrders.length}</strong>
+        </div>
+        {customerOrders.length === 0 ? (
+          <div style={deviceCustomerEmptyStyle}>Müşteri node'unu bu cihaza bağla; sipariş bağlamı burada görünür.</div>
+        ) : (
+          <div style={deviceCustomerListStyle}>
+            {customerOrders.map((item, index) => (
+              <div key={`${item.customer}-${item.deadline}-${index}`} style={deviceCustomerRowStyle}>
+                <strong>{item.customer}</strong>
+                <span>{item.quantity ? `${item.quantity} adet` : "adet -"}</span>
+                <span>{item.deadline || "teslim -"}</span>
+                <span>{item.source}</span>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
 
       <div style={previewModeGridStyle}>
@@ -2023,6 +2049,32 @@ function DecisionCard({ title, value, detail, active, tone = "neutral" }: {
       <span style={decisionCardDetailStyle}>{detail}</span>
     </div>
   );
+}
+
+function collectDeviceCustomerOrders(device: PipelineNode, nodes: PipelineNode[], connections: GraphConnection[]) {
+  const byId = new Map(nodes.map(node => [node.id, node]));
+  return connections.flatMap(connection => {
+    if (connection.to !== device.id) return [];
+    const source = byId.get(connection.from);
+    const relation = connection.contract?.relation;
+    if (relation === "customer_device" && source?.semanticRole === "customer") {
+      return [{
+        customer: connection.contract?.context.customer || source.semanticLabel || source.title,
+        quantity: device.deviceQuantity || connection.contract?.context.quantity || "",
+        deadline: connection.contract?.context.deadline || "",
+        source: "Müşteri → Cihaz",
+      }];
+    }
+    if (relation === "order_device" && source?.semanticRole === "order") {
+      return [{
+        customer: connection.contract?.context.customer || source.orderFields?.customer || source.semanticLabel || source.title,
+        quantity: device.deviceQuantity || connection.contract?.context.quantity || "",
+        deadline: connection.contract?.context.deadline || source.orderFields?.deadline || "",
+        source: "Sipariş → Cihaz",
+      }];
+    }
+    return [];
+  });
 }
 
 function BomComponentMeta({ meta, childCount, onDrillDown }: {
@@ -3852,6 +3904,8 @@ function buildSmartConnection(
   const relation =
     source.bomComponent && target.semanticRole === "procurement"
       ? "component_procurement"
+      : source.semanticRole === "customer" && target.semanticRole === "device"
+      ? "customer_device"
       : source.semanticRole === "customer" && target.semanticRole === "order"
       ? "customer_order"
       : source.semanticRole === "order" && target.semanticRole === "device"
@@ -3883,13 +3937,22 @@ function buildSmartConnection(
     context.status = target.procurementFields?.status ?? "planned";
   }
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
+  if (relation === "customer_device") {
+    context.customer = source.semanticLabel || source.title;
+    context.device = target.deviceSku || target.semanticLabel || target.title;
+    if (target.deviceQuantity) context.quantity = target.deviceQuantity;
+  }
   if (relation === "order_device") {
     if (source.orderFields?.customer) context.customer = source.orderFields.customer;
     if (source.orderFields?.deadline) context.deadline = source.orderFields.deadline;
     context.device = target.deviceSku || target.semanticLabel || target.title;
     if (target.deviceQuantity) context.quantity = target.deviceQuantity;
   }
-  const internalOrderLine = relation === "order_device" ? buildInternalOrderLine(source, target) : undefined;
+  const internalOrderLine = relation === "order_device"
+    ? buildInternalOrderLine(source, target)
+    : relation === "customer_device"
+      ? buildCustomerDeviceInternalOrderLine(source, target)
+      : undefined;
   const fieldMap = relation === "component_procurement"
     ? [
         { from: "bomComponent.code", to: "procurementFields.componentCode" },
@@ -3897,6 +3960,12 @@ function buildSmartConnection(
       ]
     : relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
+    : relation === "customer_device"
+      ? [
+          { from: "semanticLabel", to: "internal.orderLine.customer" },
+          { from: "deviceSku", to: "internal.orderLine.deviceType" },
+          { from: "deviceQuantity", to: "internal.orderLine.quantity" },
+        ]
     : relation === "order_device"
       ? [
           { from: "orderFields.customer", to: "internal.orderLine.customer" },
@@ -3920,6 +3989,8 @@ function buildSmartConnection(
       status: "local",
       message: relation === "component_procurement"
         ? "Shortage component mapped into procurement need"
+        : relation === "customer_device"
+        ? "Customer linked directly to device through visible order context"
         : relation === "customer_order"
         ? "Customer context mapped into order.customer"
         : relation === "order_device"
@@ -3945,6 +4016,34 @@ function buildInternalOrderLine(order: PipelineNode, device: PipelineNode): Sema
         fieldMap: [
           { from: "orderFields.customer", to: "orderLineFields.customer" },
           { from: "orderFields.deadline", to: "orderLineFields.deadline" },
+        ],
+      },
+      {
+        relation: "order_line_device",
+        fieldMap: [
+          { from: "orderLineFields.deviceType", to: "semanticLabel" },
+          { from: "orderLineFields.quantity", to: "deviceQuantity" },
+        ],
+      },
+    ],
+  };
+}
+
+function buildCustomerDeviceInternalOrderLine(customer: PipelineNode, device: PipelineNode): SemanticConnectionContract["internal"] {
+  const deviceValue = device.deviceSku || (device.semanticLabel !== "Cihaz" ? device.semanticLabel : "") || device.title;
+  return {
+    entity: "orderLine",
+    fields: {
+      customer: customer.semanticLabel || customer.title,
+      deadline: "",
+      deviceType: deviceValue !== "Cihaz" ? deviceValue : "",
+      quantity: device.deviceQuantity ?? "",
+    },
+    contracts: [
+      {
+        relation: "order_order_line",
+        fieldMap: [
+          { from: "semanticLabel", to: "orderLineFields.customer" },
         ],
       },
       {
@@ -4049,6 +4148,9 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
 function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
   if (source.semanticRole === "customer" && target.semanticRole === "order") {
     return `${source.title} → ${target.title}: müşteri alanı siparişe aktarıldı.`;
+  }
+  if (source.semanticRole === "customer" && target.semanticRole === "device") {
+    return `${source.title} → ${target.title}: müşteri bağlamı cihaz paneline aktarıldı.`;
   }
   if (source.semanticRole === "order" && target.semanticRole === "orderLine") {
     return `${source.title} → ${target.title}: sipariş bağlamı kaleme aktarıldı.`;
@@ -4656,6 +4758,46 @@ const deviceOperationStatusStyle: CSSProperties = {
   color: CT.inkMuted,
   fontSize: 10,
   fontWeight: 750,
+};
+
+const deviceCustomerPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#fbfbf8",
+  padding: 10,
+};
+
+const deviceCustomerHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  color: CT.ink,
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const deviceCustomerEmptyStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 12,
+};
+
+const deviceCustomerListStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+};
+
+const deviceCustomerRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.2fr 0.7fr 0.8fr 0.9fr",
+  gap: 10,
+  alignItems: "center",
+  minHeight: 30,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 6,
+  color: CT.inkSub,
+  fontSize: 11,
 };
 
 function previewRefreshButtonStyle(disabled: boolean): CSSProperties {

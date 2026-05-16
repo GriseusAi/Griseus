@@ -436,6 +436,41 @@ router.post("/semantic/validate", async (req, res) => {
       });
     }
 
+    if (contract.relation === "customer_device") {
+      if (source.semanticRole !== "customer" || target.semanticRole !== "device") {
+        return res.status(422).json({ ok: false, error: "customer_device için source=customer ve target=device olmalı" });
+      }
+      const internalContract = contract.internal?.entity === "orderLine" ? contract.internal : null;
+      const internalLine = internalContract?.fields;
+      const customer = contract.context.customer || source.semanticLabel || source.title || "";
+      const device = contract.context.device || target.deviceSku || target.semanticLabel || target.title;
+      const quantity = String(internalLine?.quantity || contract.context.quantity || target.deviceQuantity || "");
+      if (!customer) {
+        return res.status(422).json({ ok: false, error: "customer context eksik" });
+      }
+      if (!device) {
+        return res.status(422).json({ ok: false, error: "device context eksik" });
+      }
+      return res.json({
+        ok: true,
+        relation: "customer_device",
+        validatedAt: new Date().toISOString(),
+        context: { ...contract.context, customer, device, quantity },
+        fieldMap: contract.fieldMap,
+        internal: {
+          entity: "orderLine",
+          fields: {
+            customer: String(internalLine?.customer || customer),
+            deadline: String(internalLine?.deadline || contract.context.deadline || ""),
+            deviceType: String(internalLine?.deviceType || device),
+            quantity,
+          },
+          contracts: internalContract?.contracts ?? [],
+        },
+        message: `${source.title} → ${target.title}: backend müşteri-cihaz hidden sipariş kalemi doğrulandı.`,
+      });
+    }
+
     if (contract.relation === "order_order_line") {
       if (source.semanticRole !== "order" || target.semanticRole !== "orderLine") {
         return res.status(422).json({ ok: false, error: "order_order_line için source=order ve target=orderLine olmalı" });
