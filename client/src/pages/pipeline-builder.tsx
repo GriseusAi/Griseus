@@ -391,6 +391,15 @@ export default function PipelineBuilderPage() {
   }, []);
 
   useEffect(() => {
+    if (selectedNode?.semanticRole !== "device") return;
+    const sku = resolveDeviceNodeSku(selectedNode);
+    if (!sku || sku === "Cihaz") return;
+    const operation = selectedNode.deviceOperation;
+    if (operation?.sku === sku && (operation.status === "loading" || operation.status === "ready")) return;
+    void loadDeviceOperationFromDatabase(selectedNode.id, sku);
+  }, [selectedNodeId, selectedNode?.deviceSku, selectedNode?.semanticLabel, selectedNode?.title, selectedNode?.deviceOperation?.sku, selectedNode?.deviceOperation?.status]);
+
+  useEffect(() => {
     let alive = true;
     fetch("/api/pipeline-builder/definitions")
       .then(res => res.ok ? res.json() : Promise.reject(new Error("pipeline definitions unavailable")))
@@ -1496,7 +1505,14 @@ export default function PipelineBuilderPage() {
               {selectedNode?.semanticRole === "device" && (
                 <DeviceOperationPreviewPanel
                   node={selectedNode}
+                  productOptions={productOptions}
+                  onDeviceSelect={(value) => updateDeviceSelection(selectedNode.id, value)}
+                  onQuantityChange={(value) => updateDeviceQuantity(selectedNode.id, value)}
                   onModeChange={(mode) => updateDeviceOperationMode(selectedNode.id, mode)}
+                  onRefresh={() => {
+                    const sku = resolveDeviceNodeSku(selectedNode);
+                    if (sku) void loadDeviceOperationFromDatabase(selectedNode.id, sku);
+                  }}
                 />
               )}
               {selectedNode?.semanticRole !== "device" && previewRows.length === 0 && (
@@ -1868,14 +1884,19 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
   );
 }
 
-function DeviceOperationPreviewPanel({ node, onModeChange }: {
+function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQuantityChange, onModeChange, onRefresh }: {
   node: PipelineNode;
+  productOptions: ProductOption[];
+  onDeviceSelect: (value: string) => void;
+  onQuantityChange: (value: string) => void;
   onModeChange: (mode: DeviceOperationMode) => void;
+  onRefresh: () => void;
 }) {
   const mode = node.deviceOperationMode ?? "auto";
   const plan = buildDeviceOperationPlan(node.deviceOperation, node.deviceQuantity ?? "", mode);
   const operation = node.deviceOperation;
   const selectedMode = plan.mode as DeviceOperationMode;
+  const currentSku = resolveDeviceNodeSku(node);
   const bottleneck = operation?.bottleneck?.code
     ? `${operation.bottleneck.code}${operation.bottleneck.name ? ` · ${operation.bottleneck.name}` : ""}`
     : "-";
@@ -1886,10 +1907,22 @@ function DeviceOperationPreviewPanel({ node, onModeChange }: {
         <div>
           <div style={deviceOperationTitleStyle}>Üretim · Depo · Satış</div>
           <div style={deviceOperationSubStyle}>
-            {operation?.sku ?? node.deviceSku ?? node.title} için gerçek mamul stok ve BOM kapasitesi
+            {currentSku || "Cihaz"} için gerçek mamul stok ve BOM kapasitesi
           </div>
         </div>
-        <span style={operationBadgeStyle(plan.status)}>{plan.badge}</span>
+        <button type="button" onClick={onRefresh} disabled={!currentSku} style={previewRefreshButtonStyle(!currentSku)}>
+          <RotateCcw size={13} />
+          Yenile
+        </button>
+      </div>
+
+      <div style={deviceOperationControlsStyle}>
+        <OrderDeviceField value={currentSku} products={productOptions} onChange={onDeviceSelect} />
+        <OrderField label="Sipariş adedi" value={node.deviceQuantity ?? ""} inputMode="numeric" onChange={onQuantityChange} />
+        <div style={deviceOperationStatusStyle}>
+          <span>Durum</span>
+          <strong style={operationBadgeStyle(plan.status)}>{plan.badge}</strong>
+        </div>
       </div>
 
       <div style={previewModeGridStyle}>
@@ -3628,6 +3661,11 @@ function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
   };
 }
 
+function resolveDeviceNodeSku(node: PipelineNode) {
+  const sku = node.deviceSku || (node.semanticLabel !== "Cihaz" ? node.semanticLabel : "") || node.title || "";
+  return sku.trim();
+}
+
 function withDeviceOperationRows(node: PipelineNode): PipelineNode {
   if (node.semanticRole !== "device") return node;
   const rows = deviceOperationToRows(node);
@@ -4554,6 +4592,47 @@ const deviceOperationSubStyle: CSSProperties = {
   fontSize: 12,
   marginTop: 3,
 };
+
+const deviceOperationControlsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(220px, 1.4fr) minmax(120px, 0.6fr) 110px",
+  gap: 10,
+  alignItems: "end",
+};
+
+const deviceOperationStatusStyle: CSSProperties = {
+  minWidth: 0,
+  height: 44,
+  display: "grid",
+  alignContent: "center",
+  gap: 3,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#fbfbf8",
+  padding: "0 10px",
+  color: CT.inkMuted,
+  fontSize: 10,
+  fontWeight: 750,
+};
+
+function previewRefreshButtonStyle(disabled: boolean): CSSProperties {
+  return {
+    height: 32,
+    display: "inline-flex",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    border: `1px solid ${disabled ? CT.border : CT.borderStrong}`,
+    borderRadius: 7,
+    background: disabled ? "#f2f2ef" : CT.surface,
+    color: disabled ? CT.inkFaint : CT.inkSub,
+    fontFamily: CT_FONT,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: disabled ? "not-allowed" : "pointer",
+    padding: "0 10px",
+  };
+}
 
 const previewModeGridStyle: CSSProperties = {
   display: "grid",
