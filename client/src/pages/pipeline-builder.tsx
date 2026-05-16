@@ -1159,6 +1159,69 @@ export default function PipelineBuilderPage() {
     )));
   }
 
+  function updateDeviceCustomerOrderContext(
+    deviceId: string,
+    targetConnectionKey: string,
+    field: "deadline" | "fulfillmentMode",
+    value: string,
+  ) {
+    const targetConnection = connections.find(connection => (
+      connection.to === deviceId
+      && connectionKey(connection) === targetConnectionKey
+      && (connection.contract?.relation === "customer_device" || connection.contract?.relation === "order_device")
+    ));
+    if (!targetConnection?.contract) return;
+
+    setConnections(prev => {
+      const updated = prev.map(connection => {
+        if (connection.to !== deviceId || connectionKey(connection) !== targetConnectionKey || !connection.contract) return connection;
+        if (connection.contract.relation !== "customer_device" && connection.contract.relation !== "order_device") return connection;
+        const nextContext = {
+          ...connection.contract.context,
+          [field]: value,
+        };
+        return {
+          ...connection,
+          contract: {
+            ...connection.contract,
+            context: nextContext,
+            internal: connection.contract.internal
+              ? {
+                  ...connection.contract.internal,
+                  fields: {
+                    ...connection.contract.internal.fields,
+                    ...(field === "deadline" ? { deadline: value } : {}),
+                  },
+                }
+              : connection.contract.internal,
+            status: "local" as const,
+            message: field === "deadline"
+              ? "Customer delivery date synced into device context"
+              : "Customer fulfillment mode synced into device context",
+          },
+        };
+      });
+      if (field === "deadline" && targetConnection.contract?.relation === "order_device") {
+        return updateProcurementDeadlineContexts(updated, nodes, targetConnection.from, value);
+      }
+      return updated;
+    });
+
+    if (field === "deadline" && targetConnection.contract.relation === "order_device") {
+      setNodes(prev => refreshProcurementNeedTables(prev.map(node => {
+        if (node.id !== targetConnection.from) return node;
+        return {
+          ...node,
+          orderFields: {
+            ...emptyOrderFields(),
+            ...node.orderFields,
+            deadline: value,
+          },
+        };
+      }), connections));
+    }
+  }
+
   async function loadDeviceOperationFromDatabase(nodeId: string, sku: string) {
     const cleanSku = sku.trim();
     if (!cleanSku) return;
@@ -1548,6 +1611,7 @@ export default function PipelineBuilderPage() {
                   onDeviceSelect={(value) => updateDeviceSelection(selectedNode.id, value)}
                   onQuantityChange={(value) => updateDeviceQuantity(selectedNode.id, value)}
                   onModeChange={(mode) => updateDeviceOperationMode(selectedNode.id, mode)}
+                  onCustomerOrderChange={(connectionId, field, value) => updateDeviceCustomerOrderContext(selectedNode.id, connectionId, field, value)}
                   onRefresh={() => {
                     const sku = resolveDeviceNodeSku(selectedNode);
                     if (sku) void loadDeviceOperationFromDatabase(selectedNode.id, sku);
@@ -1916,7 +1980,7 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
   );
 }
 
-function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions, onDeviceSelect, onQuantityChange, onModeChange, onRefresh }: {
+function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions, onDeviceSelect, onQuantityChange, onModeChange, onCustomerOrderChange, onRefresh }: {
   node: PipelineNode;
   nodes: PipelineNode[];
   connections: GraphConnection[];
@@ -1924,6 +1988,7 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
   onDeviceSelect: (value: string) => void;
   onQuantityChange: (value: string) => void;
   onModeChange: (mode: DeviceOperationMode) => void;
+  onCustomerOrderChange: (connectionId: string, field: "deadline" | "fulfillmentMode", value: string) => void;
   onRefresh: () => void;
 }) {
   const mode = normalizeDeviceOperationMode(node.deviceOperationMode);
@@ -1969,12 +2034,28 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
           <div style={deviceCustomerEmptyStyle}>Müşteri node'unu bu cihaza bağla; sipariş bağlamı burada görünür.</div>
         ) : (
           <div style={deviceCustomerListStyle}>
-            {customerOrders.map((item, index) => (
-              <div key={`${item.customer}-${item.deadline}-${index}`} style={deviceCustomerRowStyle}>
-                <strong>{item.customer}</strong>
+            {customerOrders.map(item => (
+              <div key={item.connectionId} style={deviceCustomerRowStyle}>
+                <strong style={deviceCustomerNameStyle}>{item.customer}</strong>
                 <span>{item.quantity ? `${item.quantity} adet` : "adet -"}</span>
-                <span>{item.deadline || "teslim -"}</span>
-                <span>{item.source}</span>
+                <input
+                  type="date"
+                  value={toDateInputValue(item.deadline)}
+                  onChange={(event) => onCustomerOrderChange(item.connectionId, "deadline", fromDateInputValue(event.target.value))}
+                  style={deviceCustomerDateInputStyle}
+                  aria-label={`${item.customer} teslim tarihi`}
+                />
+                <select
+                  value={item.fulfillmentMode}
+                  onChange={(event) => onCustomerOrderChange(item.connectionId, "fulfillmentMode", event.target.value)}
+                  style={deviceCustomerModeSelectStyle}
+                  aria-label={`${item.customer} karşılama modu`}
+                >
+                  {deviceOperationModes.map(modeItem => (
+                    <option key={modeItem.mode} value={modeItem.mode}>{modeItem.label}</option>
+                  ))}
+                </select>
+                <span style={deviceCustomerSourceStyle}>{item.source}</span>
               </div>
             ))}
           </div>
@@ -2059,22 +2140,38 @@ function collectDeviceCustomerOrders(device: PipelineNode, nodes: PipelineNode[]
     const relation = connection.contract?.relation;
     if (relation === "customer_device" && source?.semanticRole === "customer") {
       return [{
+        connectionId: connectionKey(connection),
         customer: connection.contract?.context.customer || source.semanticLabel || source.title,
         quantity: device.deviceQuantity || connection.contract?.context.quantity || "",
         deadline: connection.contract?.context.deadline || "",
+        fulfillmentMode: normalizeDeviceOperationMode(connection.contract?.context.fulfillmentMode || device.deviceOperationMode),
         source: "Müşteri → Cihaz",
       }];
     }
     if (relation === "order_device" && source?.semanticRole === "order") {
       return [{
+        connectionId: connectionKey(connection),
         customer: connection.contract?.context.customer || source.orderFields?.customer || source.semanticLabel || source.title,
         quantity: device.deviceQuantity || connection.contract?.context.quantity || "",
         deadline: connection.contract?.context.deadline || source.orderFields?.deadline || "",
+        fulfillmentMode: normalizeDeviceOperationMode(connection.contract?.context.fulfillmentMode || device.deviceOperationMode),
         source: "Sipariş → Cihaz",
       }];
     }
     return [];
   });
+}
+
+function toDateInputValue(value: string) {
+  const clean = value.trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(clean)) return clean;
+  const match = clean.match(/^(\d{2})\.(\d{2})\.(\d{4})$/);
+  return match ? `${match[3]}-${match[2]}-${match[1]}` : "";
+}
+
+function fromDateInputValue(value: string) {
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }
 
 function BomComponentMeta({ meta, childCount, onDrillDown }: {
@@ -4790,14 +4887,58 @@ const deviceCustomerListStyle: CSSProperties = {
 
 const deviceCustomerRowStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.2fr 0.7fr 0.8fr 0.9fr",
-  gap: 10,
+  gridTemplateColumns: "minmax(120px, 1.2fr) 72px 138px 112px minmax(110px, 0.8fr)",
+  gap: 8,
   alignItems: "center",
-  minHeight: 30,
+  minHeight: 34,
   borderTop: `1px solid ${CT.border}`,
   paddingTop: 6,
   color: CT.inkSub,
   fontSize: 11,
+};
+
+const deviceCustomerNameStyle: CSSProperties = {
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: CT.ink,
+};
+
+const deviceCustomerSourceStyle: CSSProperties = {
+  color: CT.inkMuted,
+  minWidth: 0,
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+};
+
+const deviceCustomerDateInputStyle: CSSProperties = {
+  width: "100%",
+  height: 28,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surface,
+  color: CT.ink,
+  fontFamily: CT_MONO,
+  fontSize: 11,
+  padding: "0 7px",
+  outline: "none",
+  boxSizing: "border-box",
+};
+
+const deviceCustomerModeSelectStyle: CSSProperties = {
+  width: "100%",
+  height: 28,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surface,
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  fontWeight: 850,
+  padding: "0 8px",
+  outline: "none",
 };
 
 function previewRefreshButtonStyle(disabled: boolean): CSSProperties {
