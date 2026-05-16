@@ -20,6 +20,7 @@ import {
   RotateCcw,
   Save,
   Search,
+  Send,
   Sparkles,
   Table2,
   Trash2,
@@ -2131,6 +2132,27 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
 
 function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: PipelineNode; nodes: PipelineNode[]; connections: GraphConnection[] }) {
   const context = collectOntologyContext(node, nodes, connections);
+  const [prompt, setPrompt] = useState("Bagli cihazlari stok, uretilebilirlik, teslim tarihi ve kritik BOM riskine gore yorumla. Bana chart onerisi ve aksiyon plani cikar.");
+  const [messages, setMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([
+    {
+      role: "assistant",
+      text: "Ben Ontology AI motoruyum. Bu kutuya baglanan cihaz, siparis ve BOM node'larini context olarak okuyup grafik dili, risk yorumu ve aksiyon onerisi uretirim.",
+    },
+  ]);
+  const [analysis, setAnalysis] = useState(() => buildOntologyAssistantAnalysis(context, "ilk analiz"));
+  const submitPrompt = () => {
+    const cleanPrompt = prompt.trim();
+    if (!cleanPrompt) return;
+    const nextAnalysis = buildOntologyAssistantAnalysis(context, cleanPrompt);
+    setMessages(current => [
+      ...current,
+      { role: "user", text: cleanPrompt },
+      { role: "assistant", text: nextAnalysis.reply },
+    ]);
+    setAnalysis(nextAnalysis);
+    setPrompt("");
+  };
+
   return (
     <div style={ontologyPreviewStyle}>
       <div style={ontologyPreviewHeaderStyle}>
@@ -2164,26 +2186,59 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
 
       <div style={ontologyAnalysisGridStyle}>
         <div style={ontologyAnalysisPanelStyle}>
-          <div style={ontologyPanelTitleStyle}>Bağlı cihazlar</div>
-          {context.devices.length === 0 ? (
-            <span style={ontologyMutedStyle}>Cihaz node'unu Ontology AI kutusuna bağla.</span>
-          ) : context.devices.map(device => (
-            <div key={device.id} style={ontologyLinkedRowStyle}>
-              <strong>{resolveDeviceNodeSku(device) || device.title}</strong>
-              <span>{device.deviceQuantity ? `${device.deviceQuantity} adet` : "adet yok"} · {device.deviceOperation?.maxProducible ?? "-"} üretilebilir</span>
-            </div>
-          ))}
+          <div style={ontologyPanelTitleStyle}>AI prompt</div>
+          <div style={ontologyChatLogStyle}>
+            {messages.slice(-4).map((message, index) => (
+              <div key={`${message.role}-${index}`} style={ontologyChatBubbleStyle(message.role)}>
+                {message.text}
+              </div>
+            ))}
+          </div>
+          <div style={ontologyPromptBoxStyle}>
+            <textarea
+              value={prompt}
+              onChange={event => setPrompt(event.currentTarget.value)}
+              placeholder="Orn: ELT-7-11 ve GSA20 icin depo mu uretim mi daha mantikli, hangi bilesen darboğaz?"
+              style={ontologyPromptInputStyle}
+              rows={3}
+            />
+            <button type="button" onClick={submitPrompt} style={ontologySendButtonStyle}>
+              <Send size={14} />
+              Run
+            </button>
+          </div>
+          <div style={ontologyProviderStripStyle}>
+            <span>Provider</span>
+            <b>Griseus orchestrator</b>
+            <span>OpenAI / Claude / Gemini takilabilir</span>
+          </div>
         </div>
         <div style={ontologyAnalysisPanelStyle}>
-          <div style={ontologyPanelTitleStyle}>AI taslak sonucu</div>
-          <div style={ontologyResultStyle(context.riskTone)}>
-            <strong>{context.headline}</strong>
-            <span>{context.note}</span>
+          <div style={ontologyPanelTitleStyle}>Context ve cikti</div>
+          <div style={ontologyMiniGridStyle}>
+            <div style={ontologyMiniPanelStyle}>
+              <strong>Bagli cihazlar</strong>
+              {context.devices.length === 0 ? (
+                <span style={ontologyMutedStyle}>Cihaz node'unu Ontology AI kutusuna bağla.</span>
+              ) : context.devices.map(device => (
+                <span key={device.id}>{resolveDeviceNodeSku(device) || device.title}: {device.deviceQuantity || "-"} adet</span>
+              ))}
+            </div>
+            <div style={ontologyMiniPanelStyle}>
+              <strong>Chart spec</strong>
+              <span>{analysis.chartSpec.type} · x: {analysis.chartSpec.x}</span>
+              <span>{analysis.chartSpec.metrics.join(", ")}</span>
+            </div>
           </div>
+          <div style={ontologyResultStyle(context.riskTone)}>
+            <strong>{analysis.title}</strong>
+            <span>{analysis.summary}</span>
+          </div>
+          <pre style={ontologyJsonPreviewStyle}>{JSON.stringify(analysis.request, null, 2)}</pre>
           <div style={ontologyActionListStyle}>
-            <span>1. Connected node context'i topla.</span>
-            <span>2. Metric engine ile stok/BOM hesaplarını doğrula.</span>
-            <span>3. Vision model'e chart spec + narrative üretimi yaptır.</span>
+            {analysis.actions.map((action, index) => (
+              <span key={action}>{index + 1}. {action}</span>
+            ))}
           </div>
         </div>
       </div>
@@ -2197,6 +2252,71 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       </div>
     </div>
   );
+}
+
+function buildOntologyAssistantAnalysis(context: ReturnType<typeof collectOntologyContext>, prompt: string) {
+  const deviceFacts = context.devices.map(device => {
+    const plan = buildDeviceOperationPlan(device.deviceOperation, device.deviceQuantity ?? "", normalizeDeviceOperationMode(device.deviceOperationMode));
+    return {
+      sku: resolveDeviceNodeSku(device) || device.title,
+      requested: Number(device.deviceQuantity || 0),
+      producible: device.deviceOperation?.maxProducible ?? null,
+      warehouse: device.deviceOperation?.inWarehouse ?? null,
+      shortage: plan.shortage,
+      mode: plan.title,
+    };
+  });
+  const metrics = prompt.toLowerCase().includes("teslim")
+    ? ["warehouse", "producible", "shortage", "deadlineRisk"]
+    : ["warehouse", "producible", "criticalComponents"];
+  const title = context.devices.length === 0
+    ? "Context bekleniyor"
+    : context.riskTone === "critical"
+      ? "Fulfillment riski var"
+      : "Bagli cihazlar analiz edilebilir";
+  const summary = context.devices.length === 0
+    ? "Ontology kutusuna cihaz, siparis veya tedarik node'u baglaninca burada AI context'i olusur."
+    : `${context.devices.length} cihaz ve ${context.orders.length} siparis baglami okundu. ${context.criticalComponents} kritik BOM sinyali, ${context.shortageDevices.length} cihaz acigi gorunuyor.`;
+  const actions = context.riskTone === "critical"
+    ? [
+      "Darbogaz bilesenleri chart'ta ayri seri olarak goster.",
+      "Depo ve uretim senaryosunu iki ayri fulfillment aksiyonu olarak karsilastir.",
+      "Siparis teslim tarihini risk skoruna agirlik olarak ekle.",
+    ]
+    : [
+      "Depo, uretilebilirlik ve satis metric'lerini ayni combo chart'ta karsilastir.",
+      "Ortak bilesenleri risk domain'ine bagla.",
+      "Ciktiyi chart workspace'e tasiyacak JSON spec uret.",
+    ];
+  const request = {
+    engine: "ontology_ai",
+    provider: "adapter-ready",
+    prompt,
+    context: {
+      upstreamNodes: context.connected.length,
+      devices: deviceFacts,
+      orders: context.orders.length,
+      bomNodes: context.components.length,
+    },
+    output: {
+      chartSpec: true,
+      narrative: true,
+      recommendedActions: true,
+    },
+  };
+  return {
+    title,
+    summary,
+    reply: `${title}: ${summary} Sonraki cikti ${metrics.join(", ")} metrikleriyle chart spec ve aksiyon plani olacak.`,
+    chartSpec: {
+      type: context.riskTone === "critical" ? "combo" : "bar",
+      x: "device",
+      metrics,
+      lineStyle: "smooth",
+    },
+    actions,
+    request,
+  };
 }
 
 function collectOntologyContext(node: PipelineNode, nodes: PipelineNode[], connections: GraphConnection[]) {
@@ -5429,6 +5549,111 @@ const ontologyLinkedRowStyle: CSSProperties = {
   padding: "8px 10px",
   fontSize: 12,
   color: CT.inkSub,
+};
+
+const ontologyChatLogStyle: CSSProperties = {
+  minHeight: 120,
+  maxHeight: 184,
+  overflow: "auto",
+  display: "grid",
+  gap: 8,
+  alignContent: "start",
+  padding: 10,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: "#f7f7f3",
+};
+
+const ontologyChatBubbleStyle = (role: "assistant" | "user"): CSSProperties => ({
+  justifySelf: role === "user" ? "end" : "start",
+  maxWidth: "82%",
+  border: `1px solid ${role === "user" ? CT.accentEdge : CT.border}`,
+  borderRadius: 8,
+  background: role === "user" ? "#2f5d50" : "#fffdf8",
+  color: role === "user" ? "#fff" : CT.ink,
+  padding: "9px 11px",
+  fontSize: 12,
+  lineHeight: 1.45,
+});
+
+const ontologyPromptBoxStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr auto",
+  gap: 8,
+  alignItems: "end",
+};
+
+const ontologyPromptInputStyle: CSSProperties = {
+  width: "100%",
+  minHeight: 74,
+  resize: "vertical",
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 8,
+  background: "#fff",
+  color: CT.ink,
+  padding: 10,
+  fontSize: 12,
+  lineHeight: 1.45,
+  outline: "none",
+  fontFamily: "inherit",
+};
+
+const ontologySendButtonStyle: CSSProperties = {
+  height: 38,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  border: "1px solid #244c41",
+  borderRadius: 8,
+  background: "#2f5d50",
+  color: "#fff",
+  padding: "0 13px",
+  fontSize: 12,
+  fontWeight: 900,
+  cursor: "pointer",
+};
+
+const ontologyProviderStripStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  flexWrap: "wrap",
+  color: CT.inkMuted,
+  fontSize: 11,
+};
+
+const ontologyMiniGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) minmax(0, 1fr)",
+  gap: 8,
+};
+
+const ontologyMiniPanelStyle: CSSProperties = {
+  minHeight: 78,
+  display: "grid",
+  gap: 5,
+  alignContent: "start",
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surfaceMuted,
+  padding: 10,
+  color: CT.inkSub,
+  fontSize: 12,
+};
+
+const ontologyJsonPreviewStyle: CSSProperties = {
+  maxHeight: 176,
+  overflow: "auto",
+  margin: 0,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: "#161616",
+  color: "#d8f0df",
+  padding: 12,
+  fontSize: 11,
+  lineHeight: 1.45,
+  fontFamily: CT_MONO,
 };
 
 const ontologyResultStyle = (tone: "critical" | "ok" | "idle"): CSSProperties => ({
