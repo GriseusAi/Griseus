@@ -1021,20 +1021,20 @@ export default function PipelineBuilderPage() {
       const label = semanticRoleLabel(semanticRole);
       const deviceLabel = semanticRole === "device" && nextDeviceSku ? nextDeviceSku : label;
       const ontologyRows = [
-        { domain: "Cihaz", fields: "depo, uretilebilir, satis, kritik", output: "Projection chart" },
-        { domain: "Bilesen", fields: "stok, BOM miktari, cihaz overlap", output: "Component comparison" },
-        { domain: "Risk", fields: "kritik, risk, bottleneck", output: "Risk projection" },
+        { mode: "vision", scope: "connected devices", output: "executive chart + risk narrative" },
+        { mode: "operations", scope: "stock / BOM / procurement", output: "recommended action plan" },
+        { mode: "data architecture", scope: "new device intake", output: "schema and metric map" },
       ];
       return {
         ...node,
-        title: deviceLabel,
+        title: semanticRole === "ontology" ? "Ontology AI" : deviceLabel,
         subtitle: semanticRole === "ontology"
-          ? "Semantic projection · Ontology workspace'e bağlanır"
+          ? "Visionary analysis engine · bağlı node'ları okur"
           : semanticRole === "device" && nextDeviceSku
             ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
             : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
         rows: semanticRole === "ontology" ? ontologyRows : node.rows,
-        columns: semanticRole === "ontology" ? ["domain", "fields", "output"] : node.columns,
+        columns: semanticRole === "ontology" ? ["mode", "scope", "output"] : node.columns,
         functionKind,
         semanticRole,
         semanticLabel: deviceLabel,
@@ -1629,7 +1629,7 @@ export default function PipelineBuilderPage() {
                 />
               )}
               {selectedNode?.semanticRole === "ontology" && (
-                <OntologyFunctionPreviewPanel />
+                <OntologyFunctionPreviewPanel node={selectedNode} nodes={nodes} connections={connections} />
               )}
               {selectedNode?.semanticRole !== "device" && selectedNode?.semanticRole !== "ontology" && previewRows.length === 0 && (
                 <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
@@ -2129,45 +2129,110 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
   );
 }
 
-function OntologyFunctionPreviewPanel() {
+function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: PipelineNode; nodes: PipelineNode[]; connections: GraphConnection[] }) {
+  const context = collectOntologyContext(node, nodes, connections);
   return (
     <div style={ontologyPreviewStyle}>
       <div style={ontologyPreviewHeaderStyle}>
         <div>
-          <div style={ontologyEyebrowStyle}>ONTOLOGY</div>
-          <h3 style={ontologyTitleStyle}>Semantic projection</h3>
+          <div style={ontologyEyebrowStyle}>ONTOLOGY AI</div>
+          <h3 style={ontologyTitleStyle}>Visionary analysis engine</h3>
           <p style={ontologyTextStyle}>
-            Pipeline içinde seçtiğin veri atomlarını Ontology workspace'te karşılaştırılabilir grafik çıktısına dönüştürür.
+            Bağlı cihazları, siparişleri ve tedarik/BOM node'larını okuyup enterprise chart + aksiyon çıktısı üretir.
           </p>
         </div>
         <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
           <Network size={15} />
-          Workspace'i aç
+          Chart workspace
         </a>
       </div>
+
       <div style={ontologyCardsStyle}>
         <div style={ontologyCardStyle}>
-          <strong>Cihaz domain</strong>
-          <span>Depo, üretilebilirlik, satış, kritik bileşen</span>
+          <strong>Connected context</strong>
+          <span>{context.connected.length} upstream node · {context.devices.length} cihaz · {context.components.length} BOM node</span>
         </div>
         <div style={ontologyCardStyle}>
-          <strong>Bileşen domain</strong>
-          <span>Stok, BOM miktarı, hangi cihazlarda kullanıldığı</span>
+          <strong>Vision parameters</strong>
+          <span>stok, üretilebilirlik, bottleneck, teslim tarihi, tedarik riski, ortak bileşen</span>
         </div>
         <div style={ontologyCardStyle}>
-          <strong>Risk domain</strong>
-          <span>Bottleneck, kritik satırlar, domain bazlı kıyas</span>
+          <strong>Output contract</strong>
+          <span>JSON chart spec, executive narrative, recommended pipeline actions</span>
         </div>
       </div>
+
+      <div style={ontologyAnalysisGridStyle}>
+        <div style={ontologyAnalysisPanelStyle}>
+          <div style={ontologyPanelTitleStyle}>Bağlı cihazlar</div>
+          {context.devices.length === 0 ? (
+            <span style={ontologyMutedStyle}>Cihaz node'unu Ontology AI kutusuna bağla.</span>
+          ) : context.devices.map(device => (
+            <div key={device.id} style={ontologyLinkedRowStyle}>
+              <strong>{resolveDeviceNodeSku(device) || device.title}</strong>
+              <span>{device.deviceQuantity ? `${device.deviceQuantity} adet` : "adet yok"} · {device.deviceOperation?.maxProducible ?? "-"} üretilebilir</span>
+            </div>
+          ))}
+        </div>
+        <div style={ontologyAnalysisPanelStyle}>
+          <div style={ontologyPanelTitleStyle}>AI taslak sonucu</div>
+          <div style={ontologyResultStyle(context.riskTone)}>
+            <strong>{context.headline}</strong>
+            <span>{context.note}</span>
+          </div>
+          <div style={ontologyActionListStyle}>
+            <span>1. Connected node context'i topla.</span>
+            <span>2. Metric engine ile stok/BOM hesaplarını doğrula.</span>
+            <span>3. Vision model'e chart spec + narrative üretimi yaptır.</span>
+          </div>
+        </div>
+      </div>
+
       <div style={ontologyFlowStyle}>
         <span>Dataset / Cihaz / Sipariş</span>
         <b>→</b>
-        <span>Ontology</span>
+        <span>Ontology AI</span>
         <b>→</b>
-        <span>Fiscal-style chart</span>
+        <span>Vision chart + action plan</span>
       </div>
     </div>
   );
+}
+
+function collectOntologyContext(node: PipelineNode, nodes: PipelineNode[], connections: GraphConnection[]) {
+  const byId = new Map(nodes.map(item => [item.id, item]));
+  const upstreamIds = new Set<string>();
+  const walk = (targetId: string) => {
+    connections
+      .filter(connection => connection.to === targetId)
+      .forEach(connection => {
+        if (upstreamIds.has(connection.from)) return;
+        upstreamIds.add(connection.from);
+        walk(connection.from);
+      });
+  };
+  walk(node.id);
+  const connected = Array.from(upstreamIds).map(id => byId.get(id)).filter((item): item is PipelineNode => Boolean(item));
+  const devices = connected.filter(item => item.semanticRole === "device");
+  const components = connected.filter(item => item.kind === "component" || item.bomComponent);
+  const orders = connected.filter(item => item.semanticRole === "order" || item.semanticRole === "orderLine");
+  const criticalComponents = components.filter(item => item.bomComponent?.status === "critical").length;
+  const shortageDevices = devices.filter(item => {
+    const plan = buildDeviceOperationPlan(item.deviceOperation, item.deviceQuantity ?? "", normalizeDeviceOperationMode(item.deviceOperationMode));
+    return plan.shortage > 0;
+  });
+  const riskTone: "critical" | "ok" | "idle" = criticalComponents > 0 || shortageDevices.length > 0 ? "critical" : devices.length > 0 ? "ok" : "idle";
+  const headline = devices.length === 0
+    ? "Henüz analiz edilecek cihaz bağlı değil."
+    : riskTone === "critical"
+      ? `${shortageDevices.length + criticalComponents} risk sinyali bulundu.`
+      : `${devices.length} cihaz için operasyon planı okunabilir.`;
+  const note = orders.length > 0
+    ? "Sipariş bağlamı da grafiğe dahil edilecek."
+    : devices.length > 0
+      ? "Sipariş bağlanırsa teslim tarihi ve fulfillment kararı da hesaba katılır."
+      : "Cihaz, sipariş veya BOM node'larını bu kutuya bağla.";
+  return { connected, devices, components, orders, criticalComponents, shortageDevices, riskTone, headline, note };
 }
 
 function DecisionCard({ title, value, detail, active, tone = "neutral" }: {
@@ -5326,6 +5391,62 @@ const ontologyFlowStyle: CSSProperties = {
   color: CT.ink,
   fontSize: 13,
   fontWeight: 850,
+};
+
+const ontologyAnalysisGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(260px, 0.9fr) minmax(360px, 1.2fr)",
+  gap: 10,
+};
+
+const ontologyAnalysisPanelStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: "#fffdf8",
+  padding: 12,
+  display: "grid",
+  gap: 9,
+  alignContent: "start",
+};
+
+const ontologyPanelTitleStyle: CSSProperties = {
+  color: CT.ink,
+  fontSize: 13,
+  fontWeight: 900,
+};
+
+const ontologyMutedStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 12,
+};
+
+const ontologyLinkedRowStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  padding: "8px 10px",
+  fontSize: 12,
+  color: CT.inkSub,
+};
+
+const ontologyResultStyle = (tone: "critical" | "ok" | "idle"): CSSProperties => ({
+  display: "grid",
+  gap: 5,
+  border: `1px solid ${tone === "critical" ? "rgba(179,64,55,0.28)" : tone === "ok" ? "rgba(63,143,91,0.26)" : CT.border}`,
+  borderRadius: 8,
+  background: tone === "critical" ? CT.errSoft : tone === "ok" ? "#eef7f3" : CT.surfaceMuted,
+  color: tone === "critical" ? CT.err : tone === "ok" ? "#2f5d50" : CT.inkSub,
+  padding: 12,
+  fontSize: 12,
+});
+
+const ontologyActionListStyle: CSSProperties = {
+  display: "grid",
+  gap: 6,
+  color: CT.inkMuted,
+  fontSize: 12,
 };
 
 const graphPortStyle: CSSProperties = {
