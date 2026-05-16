@@ -1426,7 +1426,6 @@ export default function PipelineBuilderPage() {
                   onProcurementFieldChange={(field, value) => updateProcurementField(node.id, field, value)}
                   onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                   onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
-                  onDeviceOperationModeChange={(mode) => updateDeviceOperationMode(node.id, mode)}
                   onDrillDown={() => drillDownDeviceNode(node.id)}
                   onComponentDrillDown={() => drillDownComponentNode(node.id)}
                   productOptions={productOptions}
@@ -1494,12 +1493,18 @@ export default function PipelineBuilderPage() {
             </aside>
 
             <div style={{ overflow: "auto" }}>
-              {previewRows.length === 0 && (
+              {selectedNode?.semanticRole === "device" && (
+                <DeviceOperationPreviewPanel
+                  node={selectedNode}
+                  onModeChange={(mode) => updateDeviceOperationMode(selectedNode.id, mode)}
+                />
+              )}
+              {selectedNode?.semanticRole !== "device" && previewRows.length === 0 && (
                 <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
                   Dataset kutusuna dosya yükle, sonra kutunun sağ portuna basıp Transform seç.
                 </div>
               )}
-              {previewRows.length > 0 && (
+              {selectedNode?.semanticRole !== "device" && previewRows.length > 0 && (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr>
@@ -1550,7 +1555,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDeviceOperationModeChange, onDrillDown, onComponentDrillDown, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1563,7 +1568,6 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onProcurementFieldChange: (field: keyof ProcurementFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
-  onDeviceOperationModeChange: (mode: DeviceOperationMode) => void;
   onDrillDown: () => void;
   onComponentDrillDown: () => void;
   productOptions: ProductOption[];
@@ -1659,9 +1663,6 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           onChange={onDeviceSelect}
           quantity={node.deviceQuantity ?? ""}
           onQuantityChange={onDeviceQuantityChange}
-          mode={node.deviceOperationMode ?? "auto"}
-          operation={node.deviceOperation}
-          onModeChange={onDeviceOperationModeChange}
           onDrillDown={onDrillDown}
           productOptions={productOptions}
         />
@@ -1818,18 +1819,14 @@ function OrderDeviceField({ value, products, onChange }: {
   );
 }
 
-function DeviceSelector({ value, quantity, mode, operation, onChange, onQuantityChange, onModeChange, onDrillDown, productOptions }: {
+function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDown, productOptions }: {
   value: string;
   quantity: string;
-  mode: DeviceOperationMode;
-  operation?: DeviceOperationSnapshot;
   onChange: (value: string) => void;
   onQuantityChange: (value: string) => void;
-  onModeChange: (mode: DeviceOperationMode) => void;
   onDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
-  const plan = buildDeviceOperationPlan(operation, quantity, mode);
   return (
     <div data-no-drag="true" style={deviceEditorStyle}>
       <div style={deviceFieldsGridStyle}>
@@ -1854,34 +1851,6 @@ function DeviceSelector({ value, quantity, mode, operation, onChange, onQuantity
         </label>
         <OrderField label="Adet" value={quantity} inputMode="numeric" onChange={onQuantityChange} />
       </div>
-      <div style={operationModeGridStyle}>
-        {deviceOperationModes.map(item => (
-          <button
-            key={item.mode}
-            type="button"
-            onClick={(event) => {
-              event.preventDefault();
-              event.stopPropagation();
-              onModeChange(item.mode);
-            }}
-            style={operationModeButtonStyle(mode === item.mode)}
-          >
-            {item.label}
-          </button>
-        ))}
-      </div>
-      <div style={operationPanelStyle(plan.status)}>
-        <div style={operationPanelHeaderStyle}>
-          <span>{plan.title}</span>
-          <span style={operationBadgeStyle(plan.status)}>{plan.badge}</span>
-        </div>
-        <div style={operationMetricsGridStyle}>
-          <MiniMetric label="Depo" value={plan.warehouse} />
-          <MiniMetric label="Üretim" value={plan.production} />
-          <MiniMetric label="Satış" value={plan.sales} />
-        </div>
-        <div style={operationNoteStyle}>{plan.note}</div>
-      </div>
       <button
         type="button"
         onClick={(event) => {
@@ -1899,11 +1868,96 @@ function DeviceSelector({ value, quantity, mode, operation, onChange, onQuantity
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: string }) {
+function DeviceOperationPreviewPanel({ node, onModeChange }: {
+  node: PipelineNode;
+  onModeChange: (mode: DeviceOperationMode) => void;
+}) {
+  const mode = node.deviceOperationMode ?? "auto";
+  const plan = buildDeviceOperationPlan(node.deviceOperation, node.deviceQuantity ?? "", mode);
+  const operation = node.deviceOperation;
+  const selectedMode = plan.mode as DeviceOperationMode;
+  const bottleneck = operation?.bottleneck?.code
+    ? `${operation.bottleneck.code}${operation.bottleneck.name ? ` · ${operation.bottleneck.name}` : ""}`
+    : "-";
+
   return (
-    <div style={operationMiniMetricStyle}>
-      <span>{label}</span>
-      <strong>{value}</strong>
+    <div style={deviceOperationPreviewStyle}>
+      <div style={deviceOperationPreviewHeaderStyle}>
+        <div>
+          <div style={deviceOperationTitleStyle}>Üretim · Depo · Satış</div>
+          <div style={deviceOperationSubStyle}>
+            {operation?.sku ?? node.deviceSku ?? node.title} için gerçek mamul stok ve BOM kapasitesi
+          </div>
+        </div>
+        <span style={operationBadgeStyle(plan.status)}>{plan.badge}</span>
+      </div>
+
+      <div style={previewModeGridStyle}>
+        {deviceOperationModes.map(item => (
+          <button
+            key={item.mode}
+            type="button"
+            onClick={() => onModeChange(item.mode)}
+            style={previewModeButtonStyle(mode === item.mode)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+
+      <div style={deviceDecisionGridStyle}>
+        <DecisionCard
+          title="Depo"
+          value={plan.warehouse}
+          detail={`${formatCell(operation?.inWarehouse ?? 0)} mamul depoda`}
+          active={selectedMode === "warehouse_sale" || selectedMode === "partial"}
+        />
+        <DecisionCard
+          title="Üretim"
+          value={plan.production}
+          detail={operation?.maxProducible === null ? "BOM kapasitesi yok" : `${formatCell(operation?.maxProducible ?? 0)} adet üretilebilir`}
+          active={selectedMode === "produce_sale" || selectedMode === "partial"}
+        />
+        <DecisionCard
+          title="Satış"
+          value={plan.sales}
+          detail={plan.shortage > 0 ? `${formatCell(plan.shortage)} adet açık` : "Commit karşılanıyor"}
+          active={plan.salesCommit > 0}
+          tone={plan.shortage > 0 ? "critical" : "ok"}
+        />
+      </div>
+
+      <div style={deviceOperationDetailGridStyle}>
+        <Metric label="Seçilen mod" value={plan.title} />
+        <Metric label="Sipariş adedi" value={plan.requestedQuantity ? formatCell(plan.requestedQuantity) : "-"} />
+        <Metric label="Üretimde" value={formatCell(operation?.inProduction ?? 0)} />
+        <Metric label="Toplam satılan" value={formatCell(operation?.totalSold ?? 0)} />
+        <Metric label="Darboğaz" value={bottleneck} />
+        <Metric label="Durum" value={plan.note} />
+      </div>
+    </div>
+  );
+}
+
+function DecisionCard({ title, value, detail, active, tone = "neutral" }: {
+  title: string;
+  value: string;
+  detail: string;
+  active: boolean;
+  tone?: "neutral" | "ok" | "critical";
+}) {
+  const border = tone === "critical"
+    ? "rgba(178,34,34,0.28)"
+    : tone === "ok"
+      ? "rgba(63,143,91,0.30)"
+      : active
+        ? CT.accentEdge
+        : CT.border;
+  return (
+    <div style={{ ...decisionCardStyle, borderColor: border, background: active ? "#fbfbf8" : "#f6f6f2" }}>
+      <span style={decisionCardLabelStyle}>{title}</span>
+      <strong style={decisionCardValueStyle}>{value}</strong>
+      <span style={decisionCardDetailStyle}>{detail}</span>
     </div>
   );
 }
@@ -4006,7 +4060,7 @@ function nodeHeight(kind: NodeKind) {
 
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
-  if (node.semanticRole === "device") return 302;
+  if (node.semanticRole === "device") return 212;
   if (node.semanticRole === "procurement") return 190;
   return nodeHeight(node.kind);
 }
@@ -4461,62 +4515,6 @@ const deviceFieldsGridStyle: CSSProperties = {
   gap: 7,
 };
 
-const operationModeGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  gap: 4,
-};
-
-function operationModeButtonStyle(active: boolean): CSSProperties {
-  return {
-    height: 24,
-    minWidth: 0,
-    border: `1px solid ${active ? CT.accentEdge : CT.border}`,
-    borderRadius: 5,
-    background: active ? CT.accentSoft : "#fbfbf8",
-    color: active ? CT.accent : CT.inkMuted,
-    fontFamily: CT_FONT,
-    fontSize: 9.5,
-    fontWeight: 850,
-    cursor: "pointer",
-    overflow: "hidden",
-    textOverflow: "ellipsis",
-    whiteSpace: "nowrap",
-    padding: "0 4px",
-  };
-}
-
-function operationPanelStyle(status: string): CSSProperties {
-  const border =
-    status === "critical" ? "rgba(178,34,34,0.28)" :
-    status === "warning" ? "rgba(169,111,0,0.28)" :
-    status === "ok" ? "rgba(63,143,91,0.28)" :
-    CT.border;
-  const background =
-    status === "critical" ? "#fff5f2" :
-    status === "warning" ? "#fff8e7" :
-    status === "ok" ? "#f2fbf4" :
-    "#fbfbf8";
-  return {
-    display: "grid",
-    gap: 7,
-    border: `1px solid ${border}`,
-    borderRadius: 7,
-    background,
-    padding: 8,
-  };
-}
-
-const operationPanelHeaderStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
-  color: CT.ink,
-  fontSize: 11,
-  fontWeight: 850,
-};
-
 function operationBadgeStyle(status: string): CSSProperties {
   const color =
     status === "critical" ? CT.err :
@@ -4532,29 +4530,88 @@ function operationBadgeStyle(status: string): CSSProperties {
   };
 }
 
-const operationMetricsGridStyle: CSSProperties = {
+const deviceOperationPreviewStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 5,
+  gap: 12,
+  padding: 16,
 };
 
-const operationMiniMetricStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gap: 2,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 5,
-  background: "rgba(255,255,255,0.56)",
-  padding: "5px 6px",
+const deviceOperationPreviewHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "flex-start",
+  justifyContent: "space-between",
+  gap: 16,
+};
+
+const deviceOperationTitleStyle: CSSProperties = {
+  color: CT.ink,
+  fontSize: 16,
+  fontWeight: 850,
+};
+
+const deviceOperationSubStyle: CSSProperties = {
   color: CT.inkMuted,
-  fontSize: 9,
+  fontSize: 12,
+  marginTop: 3,
+};
+
+const previewModeGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 150px))",
+  gap: 8,
+};
+
+function previewModeButtonStyle(active: boolean): CSSProperties {
+  return {
+    height: 34,
+    border: `1px solid ${active ? CT.accentEdge : CT.border}`,
+    borderRadius: 7,
+    background: active ? CT.accentSoft : CT.surface,
+    color: active ? CT.accent : CT.inkSub,
+    fontFamily: CT_FONT,
+    fontSize: 12,
+    fontWeight: 800,
+    cursor: "pointer",
+  };
+}
+
+const deviceDecisionGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
+  gap: 10,
+};
+
+const decisionCardStyle: CSSProperties = {
+  display: "grid",
+  gap: 5,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  padding: 12,
+};
+
+const decisionCardLabelStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const decisionCardValueStyle: CSSProperties = {
+  color: CT.ink,
+  fontSize: 20,
   fontFamily: CT_MONO,
 };
 
-const operationNoteStyle: CSSProperties = {
+const decisionCardDetailStyle: CSSProperties = {
   color: CT.inkSub,
-  fontSize: 10.5,
-  lineHeight: 1.35,
+  fontSize: 11,
+};
+
+const deviceOperationDetailGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(180px, 1fr))",
+  columnGap: 18,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 4,
 };
 
 function drilldownButtonStyle(disabled: boolean): CSSProperties {
