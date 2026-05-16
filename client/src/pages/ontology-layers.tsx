@@ -127,6 +127,8 @@ export default function OntologyLayersPage() {
   const [lineStyle, setLineStyle] = useState<LineStyle>("smooth");
   const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(domainMetrics.device);
   const [query, setQuery] = useState("");
+  const [deviceSearch, setDeviceSearch] = useState("");
+  const [selectorOpen, setSelectorOpen] = useState(false);
   const [riskFilter, setRiskFilter] = useState("all");
   const domain: ProjectionDomain = workspaceTab === "devices" ? "device" : groupDomain;
 
@@ -212,6 +214,12 @@ export default function OntologyLayersPage() {
   const selectedMetrics = activeMetrics.filter(metric => availableMetrics.includes(metric));
   const metrics = selectedMetrics.length > 0 ? selectedMetrics : domainMetrics[domain];
   const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(queryItem => queryItem.isLoading);
+  const filteredProducts = useMemo(() => {
+    const needle = deviceSearch.trim().toLocaleLowerCase("tr-TR");
+    return products
+      .filter(product => !needle || `${product.sku} ${product.name}`.toLocaleLowerCase("tr-TR").includes(needle))
+      .slice(0, 60);
+  }, [products, deviceSearch]);
 
   function changeWorkspace(nextTab: "devices" | "groups") {
     const nextDomain = nextTab === "devices" ? "device" : groupDomain;
@@ -232,33 +240,78 @@ export default function OntologyLayersPage() {
     <div style={pageStyle}>
       <TopNav />
       <main style={shellStyle}>
-        <aside style={deviceRailStyle}>
-          <div style={railHeaderStyle}>
-            <div>
-              <strong>Cihaz seti</strong>
-              <span>{activeSkus.length} secili</span>
+        <aside style={sideRailStyle}>
+          {workspaceTab === "devices" ? (
+            <div style={sideRailInnerStyle}>
+              <button type="button" onClick={() => setSelectorOpen(prev => !prev)} style={sideSearchButtonStyle} title="Cihaz ara">
+                <Search size={19} />
+              </button>
+              <span style={sideCountStyle}>{activeSkus.length}</span>
+              <button type="button" onClick={() => setSelectedSkus([])} style={sideClearButtonStyle} title="Seçimi sıfırla">
+                <X size={15} />
+              </button>
             </div>
-            <button type="button" onClick={() => setSelectedSkus([])} style={smallButtonStyle}>Sifirla</button>
-          </div>
-          <div style={deviceListStyle}>
-            {products.map(product => {
-              const active = activeSkus.includes(product.sku);
-              const stock = stockBySku.get(product.sku);
-              return (
-                <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, selectedSkus, setSelectedSkus, products)} style={deviceButtonStyle(active)}>
-                  <span style={checkStyle(active)}>{active ? <CheckCircle2 size={13} /> : null}</span>
-                  <span style={{ minWidth: 0 }}>
-                    <strong>{product.sku}</strong>
-                    <small>{product.name}</small>
-                  </span>
-                  <b>{fmt(stock?.inWarehouse ?? 0)}</b>
-                </button>
-              );
-            })}
-          </div>
+          ) : (
+            <div style={groupRailStyle}>
+              <span style={groupRailTitleStyle}>Ontology f(x)</span>
+              <button type="button" onClick={() => changeGroupDomain("component")} style={groupRailItemStyle(groupDomain === "component")}>
+                <Boxes size={14} />
+                <span>Bileşen</span>
+              </button>
+              <button type="button" onClick={() => changeGroupDomain("risk")} style={groupRailItemStyle(groupDomain === "risk")}>
+                <AlertTriangle size={14} />
+                <span>Risk</span>
+              </button>
+            </div>
+          )}
+          {selectorOpen && workspaceTab === "devices" && (
+            <div style={deviceSelectorPanelStyle}>
+              <div style={deviceSelectorSearchStyle}>
+                <Search size={15} />
+                <input value={deviceSearch} onChange={event => setDeviceSearch(event.currentTarget.value)} placeholder="Cihaz ara..." />
+              </div>
+              <div style={selectedSkuStripStyle}>
+                {activeSkus.slice(0, 8).map(sku => <span key={sku}>{sku}</span>)}
+              </div>
+              <div style={deviceSelectorListStyle}>
+                {filteredProducts.map(product => {
+                  const active = activeSkus.includes(product.sku);
+                  const stock = stockBySku.get(product.sku);
+                  return (
+                    <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, selectedSkus, setSelectedSkus, products)} style={deviceSelectorRowStyle(active)}>
+                      <span style={checkStyle(active)}>{active ? <CheckCircle2 size={13} /> : null}</span>
+                      <span>
+                        <strong>{product.sku}</strong>
+                        <small>{product.name}</small>
+                      </span>
+                      <b>{fmt(stock?.inWarehouse ?? 0)}</b>
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </aside>
 
         <section style={workspaceStyle}>
+          <div style={selectedBarStyle}>
+            <strong>{workspaceTab === "devices" ? "Seçili cihazlar" : "Ontology f(x) grubu"}</strong>
+            {workspaceTab === "devices" ? (
+              <div style={selectedChipWrapStyle}>
+                {activeSkus.map(sku => (
+                  <button key={sku} type="button" onClick={() => setSelectedSkus(prev => (prev.length > 0 ? prev : activeSkus).filter(item => item !== sku))} style={selectedChipStyle}>
+                    {sku}
+                    <X size={12} />
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <div style={selectedChipWrapStyle}>
+                <span style={selectedChipStaticStyle}>{groupDomain === "component" ? "Bileşen projection" : "Risk projection"}</span>
+              </div>
+            )}
+          </div>
+
           <section style={builderStyle}>
             <div style={builderTitleStyle}>
               <Network size={18} />
@@ -275,13 +328,6 @@ export default function OntologyLayersPage() {
                 </button>
               ))}
             </div>
-
-            {workspaceTab === "groups" && (
-              <div style={groupSwitchStyle}>
-                <button type="button" onClick={() => changeGroupDomain("component")} style={groupButtonStyle(groupDomain === "component")}>Bileşen</button>
-                <button type="button" onClick={() => changeGroupDomain("risk")} style={groupButtonStyle(groupDomain === "risk")}>Risk</button>
-              </div>
-            )}
 
             <div style={builderGridStyle}>
               <label style={fieldStyle}>
@@ -635,42 +681,106 @@ const pageStyle: CSSProperties = {
 const shellStyle: CSSProperties = {
   height: "calc(100vh - 49px)",
   display: "grid",
-  gridTemplateColumns: "292px minmax(0, 1fr)",
+  gridTemplateColumns: "78px minmax(0, 1fr)",
   overflow: "hidden",
   borderTop: `1px solid ${CT.border}`,
 };
 
-const deviceRailStyle: CSSProperties = {
+const sideRailStyle: CSSProperties = {
+  position: "relative",
   background: "#fffdf8",
   borderRight: `1px solid ${CT.border}`,
-  padding: 16,
-  overflow: "auto",
+  padding: 10,
+  overflow: "visible",
+  zIndex: 5,
 };
 
-const railHeaderStyle: CSSProperties = {
+const sideRailInnerStyle: CSSProperties = {
   display: "flex",
-  justifyContent: "space-between",
+  flexDirection: "column",
   alignItems: "center",
-  marginBottom: 12,
-  fontSize: 14,
+  gap: 10,
 };
 
-const smallButtonStyle: CSSProperties = {
+const sideSearchButtonStyle: CSSProperties = {
+  width: 46,
+  height: 42,
   border: `1px solid ${CT.border}`,
-  background: "#f1eee7",
-  borderRadius: 7,
-  padding: "6px 10px",
-  fontWeight: 800,
-  color: CT.inkMuted,
+  background: "#fff",
+  borderRadius: 8,
+  color: "#2f5d50",
+  display: "grid",
+  placeItems: "center",
   cursor: "pointer",
 };
 
-const deviceListStyle: CSSProperties = {
+const sideCountStyle: CSSProperties = {
+  width: 46,
+  height: 28,
   display: "grid",
-  gap: 9,
+  placeItems: "center",
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#eef7f3",
+  color: "#2f5d50",
+  fontWeight: 900,
+  fontSize: 12,
 };
 
-const deviceButtonStyle = (active: boolean): CSSProperties => ({
+const sideClearButtonStyle: CSSProperties = {
+  width: 34,
+  height: 32,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  color: CT.inkMuted,
+  display: "grid",
+  placeItems: "center",
+  cursor: "pointer",
+};
+
+const deviceSelectorPanelStyle: CSSProperties = {
+  position: "absolute",
+  top: 10,
+  left: 68,
+  width: 330,
+  maxHeight: "calc(100vh - 80px)",
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
+  gap: 9,
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 8,
+  background: "#fffdf8",
+  padding: 10,
+  boxShadow: "0 18px 42px rgba(20,20,19,0.18)",
+};
+
+const deviceSelectorSearchStyle: CSSProperties = {
+  height: 36,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#fff",
+  padding: "0 10px",
+};
+
+const selectedSkuStripStyle: CSSProperties = {
+  display: "flex",
+  gap: 6,
+  flexWrap: "wrap",
+  color: CT.inkMuted,
+  fontSize: 11,
+};
+
+const deviceSelectorListStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+  overflow: "auto",
+};
+
+const deviceSelectorRowStyle = (active: boolean): CSSProperties => ({
   display: "grid",
   gridTemplateColumns: "24px minmax(0, 1fr) auto",
   alignItems: "center",
@@ -683,6 +793,37 @@ const deviceButtonStyle = (active: boolean): CSSProperties => ({
   textAlign: "left",
   cursor: "pointer",
   boxShadow: active ? "0 1px 0 rgba(157, 90, 54, 0.16)" : "none",
+});
+
+const groupRailStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const groupRailTitleStyle: CSSProperties = {
+  writingMode: "vertical-rl",
+  transform: "rotate(180deg)",
+  justifySelf: "center",
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 0.6,
+  marginBottom: 6,
+};
+
+const groupRailItemStyle = (active: boolean): CSSProperties => ({
+  width: 56,
+  minHeight: 56,
+  display: "grid",
+  placeItems: "center",
+  gap: 4,
+  border: `1px solid ${active ? "#2f5d50" : CT.border}`,
+  borderRadius: 8,
+  background: active ? "#eef7f3" : "#fff",
+  color: active ? "#2f5d50" : CT.inkMuted,
+  fontSize: 10,
+  fontWeight: 850,
+  cursor: "pointer",
 });
 
 const checkStyle = (active: boolean): CSSProperties => ({
@@ -699,8 +840,53 @@ const checkStyle = (active: boolean): CSSProperties => ({
 const workspaceStyle: CSSProperties = {
   minWidth: 0,
   display: "grid",
-  gridTemplateRows: "auto minmax(0, 1fr)",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
   overflow: "hidden",
+};
+
+const selectedBarStyle: CSSProperties = {
+  minHeight: 42,
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  padding: "7px 16px",
+  borderBottom: `1px solid ${CT.border}`,
+  background: "#fffdf8",
+  color: CT.ink,
+  fontSize: 12,
+};
+
+const selectedChipWrapStyle: CSSProperties = {
+  display: "flex",
+  gap: 7,
+  flexWrap: "wrap",
+  minWidth: 0,
+};
+
+const selectedChipStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 6,
+  height: 26,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  color: CT.inkSub,
+  padding: "0 8px",
+  fontWeight: 800,
+  cursor: "pointer",
+};
+
+const selectedChipStaticStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  height: 26,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#eef7f3",
+  color: "#2f5d50",
+  padding: "0 9px",
+  fontWeight: 850,
 };
 
 const builderStyle: CSSProperties = {
