@@ -7,13 +7,12 @@ import {
   AlertTriangle,
   Boxes,
   CheckCircle2,
-  Clock3,
-  Database,
+  Cpu,
   Factory,
-  Filter,
   GitCompare,
-  Layers3,
+  Network,
   Search,
+  SlidersHorizontal,
   X,
 } from "lucide-react";
 
@@ -61,14 +60,21 @@ type FlatComponent = BomComponent & {
   path: string;
 };
 
-type StatusFilter = "all" | "critical" | "warning" | "ok" | "abundant" | "variable";
-type StockFilter = "all" | "zero" | "low" | "enough";
-type TimeFilter = "all" | "fresh" | "week" | "stale";
-type SortMode = "risk" | "stock" | "required" | "device";
+type ProjectionDomain = "device" | "component" | "risk";
 type ChartKind = "combo" | "bar" | "line" | "area" | "table";
-type XAxisMode = "device" | "category" | "risk";
-type LineStyle = "solid" | "smooth" | "step" | "dash";
-type MetricKey = "warehouse" | "capacity" | "production" | "sold" | "critical" | "warnings" | "componentCount";
+type XAxisMode = "name" | "category" | "risk";
+type LineStyle = "smooth" | "solid" | "step" | "dash";
+type MetricKey =
+  | "warehouse"
+  | "capacity"
+  | "production"
+  | "sold"
+  | "critical"
+  | "warnings"
+  | "componentCount"
+  | "componentStock"
+  | "requiredPerUnit"
+  | "deviceCount";
 
 type DeviceView = {
   sku: string;
@@ -79,62 +85,65 @@ type DeviceView = {
   production: number;
   sold: number;
   updatedAt: string;
-  dataAgeDays: number | null;
+  ageDays: number | null;
   critical: number;
   warnings: number;
-  capacity: number | null;
-  loading: boolean;
+  capacity: number;
 };
 
-type ChartRow = Record<MetricKey, number> & {
+type ProjectionRow = {
+  id: string;
   label: string;
-  count: number;
+  category: string;
+  risk: string;
+  domain: ProjectionDomain;
+  source: string;
+  fields: Partial<Record<MetricKey, number>>;
 };
 
-const statusLabels: Record<string, string> = {
-  critical: "Kritik",
-  warning: "Risk",
-  ok: "Yeterli",
-  abundant: "Bol",
-  variable: "Opsiyonel",
-  "N/A": "N/A",
+const metricDefs: Record<MetricKey, { label: string; color: string; domains: ProjectionDomain[]; mode: "bar" | "line" }> = {
+  warehouse: { label: "Depo", color: "#f4a340", domains: ["device"], mode: "bar" },
+  capacity: { label: "Uretilebilir", color: "#4775db", domains: ["device"], mode: "bar" },
+  production: { label: "Uretimde", color: "#9b73df", domains: ["device"], mode: "bar" },
+  sold: { label: "Satilan", color: "#22232b", domains: ["device"], mode: "bar" },
+  critical: { label: "Kritik", color: "#ef7d70", domains: ["device", "component", "risk"], mode: "line" },
+  warnings: { label: "Risk", color: "#f2a65a", domains: ["device", "component", "risk"], mode: "line" },
+  componentCount: { label: "Bilesen", color: "#4bb7ad", domains: ["device", "risk"], mode: "line" },
+  componentStock: { label: "Stok", color: "#68c75f", domains: ["component"], mode: "bar" },
+  requiredPerUnit: { label: "BOM miktari", color: "#78a6ff", domains: ["component"], mode: "line" },
+  deviceCount: { label: "Cihaz sayisi", color: "#d9b36a", domains: ["component", "risk"], mode: "bar" },
 };
 
-const metricDefs: Array<{ key: MetricKey; label: string; color: string; kind: "bar" | "line" }> = [
-  { key: "warehouse", label: "Depo", color: "#f4a340", kind: "bar" },
-  { key: "capacity", label: "Uretilebilir", color: "#4775db", kind: "bar" },
-  { key: "production", label: "Uretimde", color: "#9b73df", kind: "bar" },
-  { key: "sold", label: "Satilan", color: "#202027", kind: "bar" },
-  { key: "critical", label: "Kritik", color: "#ef7d70", kind: "line" },
-  { key: "warnings", label: "Risk", color: "#f2a65a", kind: "line" },
-  { key: "componentCount", label: "Bilesen", color: "#4bb7ad", kind: "line" },
-];
+const domainMetrics: Record<ProjectionDomain, MetricKey[]> = {
+  device: ["warehouse", "capacity", "critical"],
+  component: ["componentStock", "requiredPerUnit", "deviceCount", "critical"],
+  risk: ["deviceCount", "critical", "warnings", "componentCount"],
+};
 
 export default function OntologyLayersPage() {
   const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
-  const [componentQuery, setComponentQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
-  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
-  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
-  const [sortMode, setSortMode] = useState<SortMode>("risk");
+  const [domain, setDomain] = useState<ProjectionDomain>("device");
   const [chartKind, setChartKind] = useState<ChartKind>("combo");
-  const [xAxisMode, setXAxisMode] = useState<XAxisMode>("device");
+  const [xAxisMode, setXAxisMode] = useState<XAxisMode>("name");
   const [lineStyle, setLineStyle] = useState<LineStyle>("smooth");
-  const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(["warehouse", "capacity", "critical"]);
+  const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(domainMetrics.device);
+  const [query, setQuery] = useState("");
+  const [riskFilter, setRiskFilter] = useState("all");
 
   const productsQuery = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const stockLevelsQuery = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
   const products = productsQuery.data ?? [];
   const stockLevels = stockLevelsQuery.data ?? [];
-  const activeSkus = selectedSkus.length > 0 ? selectedSkus : products.slice(0, 4).map(product => product.sku);
+  const activeSkus = selectedSkus.length > 0 ? selectedSkus : products.slice(0, 6).map(product => product.sku);
 
   const bomQueries = useQueries({
     queries: activeSkus.map(sku => ({
       queryKey: [`/api/bom/${encodeURIComponent(sku)}/stock`],
-      queryFn: () => fetch(`/api/bom/${encodeURIComponent(sku)}/stock`).then(res => {
+      queryFn: async () => {
+        const res = await fetch(`/api/bom/${encodeURIComponent(sku)}/stock`);
         if (!res.ok) throw new Error(`${sku} BOM okunamadi`);
         return res.json() as Promise<BomResponse>;
-      }),
+      },
       enabled: Boolean(sku),
     })),
   });
@@ -148,268 +157,420 @@ export default function OntologyLayersPage() {
       if (data) map.set(sku, data);
     });
     return map;
-  }, [activeSkus.join("|"), bomQueries.map(query => query.dataUpdatedAt).join("|")]);
+  }, [activeSkus.join("|"), bomQueries.map(queryItem => queryItem.dataUpdatedAt).join("|")]);
 
-  const flatComponents = useMemo(() => {
+  const components = useMemo(() => {
     const rows: FlatComponent[] = [];
     for (const sku of activeSkus) {
       const product = productBySku.get(sku);
       const bom = bomBySku.get(sku);
-      if (!bom) continue;
-      bom.components.forEach(component => {
+      bom?.components.forEach(component => {
         rows.push(...flattenComponent(component, sku, product?.name || sku, component.code));
       });
     }
     return rows;
   }, [activeSkus.join("|"), bomBySku, productBySku]);
 
-  const filteredComponents = useMemo(() => {
-    const needle = componentQuery.trim().toLocaleLowerCase("tr-TR");
-    return flatComponents
-      .filter(row => statusFilter === "all" || row.status === statusFilter)
-      .filter(row => {
-        if (stockFilter === "zero") return Number(row.currentStock) <= 0;
-        if (stockFilter === "low") return row.maxProducts !== null && row.maxProducts > 0 && row.maxProducts < 150;
-        if (stockFilter === "enough") return row.maxProducts === null || row.maxProducts >= 150;
-        return true;
-      })
-      .filter(row => {
-        if (!needle) return true;
-        return `${row.sku} ${row.code} ${row.name} ${row.path}`.toLocaleLowerCase("tr-TR").includes(needle);
-      })
-      .sort((a, b) => compareComponents(a, b, sortMode));
-  }, [flatComponents, componentQuery, statusFilter, stockFilter, sortMode]);
-
-  const visibleDevices = useMemo(() => {
-    return activeSkus
-      .map(sku => {
-        const product = productBySku.get(sku);
-        const stock = stockBySku.get(sku);
-        const bom = bomBySku.get(sku);
-        const components = flatComponents.filter(row => row.sku === sku);
-        const critical = components.filter(row => row.status === "critical").length;
-        const warnings = components.filter(row => row.status === "warning").length;
-        const capacity = minNumber(components.map(row => row.maxProducts).filter((n): n is number => n !== null));
-        return {
-          sku,
-          name: product?.name || stock?.productName || sku,
-          category: product?.category || stock?.productCategory || "-",
-          componentCount: Number(product?.component_count ?? bom?.components.length ?? components.length ?? 0),
-          warehouse: Number(stock?.inWarehouse ?? 0),
-          production: Number(stock?.inProduction ?? 0),
-          sold: Number(stock?.totalSold ?? 0),
-          updatedAt: stock?.updatedAt || "",
-          dataAgeDays: stock?.updatedAt ? daysSince(stock.updatedAt) : null,
-          critical,
-          warnings,
-          capacity,
-          loading: activeSkus.includes(sku) && !bom,
-        };
-      })
-      .filter(device => {
-        if (timeFilter === "fresh") return device.dataAgeDays !== null && device.dataAgeDays <= 1;
-        if (timeFilter === "week") return device.dataAgeDays !== null && device.dataAgeDays <= 7;
-        if (timeFilter === "stale") return device.dataAgeDays === null || device.dataAgeDays > 7;
-        return true;
-      });
-  }, [activeSkus.join("|"), productBySku, stockBySku, bomBySku, flatComponents, timeFilter]);
-
-  const sharedComponents = useMemo(() => {
-    const byCode = new Map<string, { code: string; name: string; devices: Set<string>; minStock: number; worstStatus: string }>();
-    flatComponents.forEach(row => {
-      const current = byCode.get(row.code) ?? {
-        code: row.code,
-        name: row.name,
-        devices: new Set<string>(),
-        minStock: Number.POSITIVE_INFINITY,
-        worstStatus: "abundant",
+  const devices = useMemo<DeviceView[]>(() => {
+    return activeSkus.map(sku => {
+      const product = productBySku.get(sku);
+      const stock = stockBySku.get(sku);
+      const deviceComponents = components.filter(component => component.sku === sku);
+      const capacity = minNumber(deviceComponents.map(component => component.maxProducts).filter((value): value is number => value !== null)) ?? 0;
+      return {
+        sku,
+        name: product?.name || stock?.productName || sku,
+        category: product?.category || stock?.productCategory || "-",
+        componentCount: Number(product?.component_count ?? deviceComponents.length ?? 0),
+        warehouse: Number(stock?.inWarehouse ?? 0),
+        production: Number(stock?.inProduction ?? 0),
+        sold: Number(stock?.totalSold ?? 0),
+        updatedAt: stock?.updatedAt || "",
+        ageDays: stock?.updatedAt ? daysSince(stock.updatedAt) : null,
+        critical: deviceComponents.filter(component => component.status === "critical").length,
+        warnings: deviceComponents.filter(component => component.status === "warning").length,
+        capacity,
       };
-      current.devices.add(row.sku);
-      current.minStock = Math.min(current.minStock, Number(row.currentStock));
-      current.worstStatus = worstStatus(current.worstStatus, row.status);
-      byCode.set(row.code, current);
     });
-    return Array.from(byCode.values())
-      .filter(item => item.devices.size > 1)
-      .sort((a, b) => severityRank(b.worstStatus) - severityRank(a.worstStatus) || b.devices.size - a.devices.size)
-      .slice(0, 10);
-  }, [flatComponents]);
+  }, [activeSkus.join("|"), productBySku, stockBySku, components]);
 
-  const maxCapacity = Math.max(1, ...visibleDevices.map(device => device.capacity ?? 0), ...visibleDevices.map(device => device.warehouse));
-  const chartRows = useMemo(() => buildChartRows(visibleDevices, xAxisMode), [visibleDevices, xAxisMode]);
-  const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(query => query.isLoading);
-  const criticalComponents = filteredComponents.filter(row => row.status === "critical").slice(0, 18);
+  const projectionRows = useMemo(() => {
+    const rows = buildProjectionRows(domain, devices, components);
+    const needle = query.trim().toLocaleLowerCase("tr-TR");
+    return rows
+      .filter(row => riskFilter === "all" || row.risk === riskFilter)
+      .filter(row => !needle || `${row.label} ${row.category} ${row.source}`.toLocaleLowerCase("tr-TR").includes(needle))
+      .slice(0, 40);
+  }, [domain, devices, components, query, riskFilter]);
+
+  const availableMetrics = useMemo(() => {
+    return Object.entries(metricDefs)
+      .filter(([, def]) => def.domains.includes(domain))
+      .map(([key]) => key as MetricKey);
+  }, [domain]);
+
+  const selectedMetrics = activeMetrics.filter(metric => availableMetrics.includes(metric));
+  const metrics = selectedMetrics.length > 0 ? selectedMetrics : domainMetrics[domain];
+  const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(queryItem => queryItem.isLoading);
+
+  function changeDomain(nextDomain: ProjectionDomain) {
+    setDomain(nextDomain);
+    setActiveMetrics(domainMetrics[nextDomain]);
+    setXAxisMode("name");
+    setRiskFilter("all");
+  }
 
   return (
     <div style={pageStyle}>
       <TopNav />
       <main style={shellStyle}>
-        <section style={workbenchStyle}>
-          <aside style={sidebarStyle}>
-            <div style={panelTitleStyle}>
-              <span>Cihaz seti</span>
-              <button type="button" onClick={() => setSelectedSkus([])} style={ghostButtonStyle}>Sifirla</button>
+        <aside style={deviceRailStyle}>
+          <div style={railHeaderStyle}>
+            <div>
+              <strong>Cihaz seti</strong>
+              <span>{activeSkus.length} secili</span>
             </div>
-            <div style={deviceListStyle}>
-              {products.map(product => {
-                const active = activeSkus.includes(product.sku);
-                const stock = stockBySku.get(product.sku);
-                return (
-                  <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, selectedSkus, setSelectedSkus, products)} style={deviceButtonStyle(active)}>
-                    <span style={deviceCheckStyle(active)}>{active ? <CheckCircle2 size={14} /> : null}</span>
-                    <span style={{ minWidth: 0 }}>
-                      <strong style={deviceNameStyle}>{product.sku}</strong>
-                      <span style={deviceSubStyle}>{product.name}</span>
-                    </span>
-                    <span style={deviceStockStyle}>{fmt(stock?.inWarehouse ?? 0)}</span>
-                  </button>
-                );
-              })}
-            </div>
-          </aside>
+            <button type="button" onClick={() => setSelectedSkus([])} style={smallButtonStyle}>Sifirla</button>
+          </div>
+          <div style={deviceListStyle}>
+            {products.map(product => {
+              const active = activeSkus.includes(product.sku);
+              const stock = stockBySku.get(product.sku);
+              return (
+                <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, selectedSkus, setSelectedSkus, products)} style={deviceButtonStyle(active)}>
+                  <span style={checkStyle(active)}>{active ? <CheckCircle2 size={13} /> : null}</span>
+                  <span style={{ minWidth: 0 }}>
+                    <strong>{product.sku}</strong>
+                    <small>{product.name}</small>
+                  </span>
+                  <b>{fmt(stock?.inWarehouse ?? 0)}</b>
+                </button>
+              );
+            })}
+          </div>
+        </aside>
 
-          <section style={canvasColumnStyle}>
-            <div style={canvasToolbarStyle}>
-              <ParameterCard label="Property Value" value={statusFilter === "all" ? "all status" : statusLabels[statusFilter]} onClear={() => setStatusFilter("all")} />
-              <ParameterCard label="Property Value" value={stockFilter === "all" ? "all stock" : stockFilter} onClear={() => setStockFilter("all")} />
-              <ParameterCard label="Property Value" value={timeFilter === "all" ? "all time" : timeFilter} onClear={() => setTimeFilter("all")} />
-              <div style={toolbarFilterStackStyle}>
-                <div style={canvasSearchStyle}>
-                  <Search size={16} color={CT.inkMuted} />
-                  <input value={componentQuery} onChange={event => setComponentQuery(event.target.value)} placeholder="Search components..." style={searchInputStyle} />
-                  {componentQuery && <button type="button" onClick={() => setComponentQuery("")} style={clearButtonStyle}><X size={13} /></button>}
-                </div>
-                <div style={compactFilterGridStyle}>
-                  <Select label="Durum" value={statusFilter} onChange={value => setStatusFilter(value as StatusFilter)} options={[
-                    ["all", "Hepsi"], ["critical", "Kritik"], ["warning", "Risk"], ["ok", "Yeterli"], ["abundant", "Bol"], ["variable", "Opsiyonel"],
-                  ]} />
-                  <Select label="Stok" value={stockFilter} onChange={value => setStockFilter(value as StockFilter)} options={[
-                    ["all", "Hepsi"], ["zero", "Sifir"], ["low", "Dusuk"], ["enough", "Yeterli"],
-                  ]} />
-                  <Select label="Zaman" value={timeFilter} onChange={value => setTimeFilter(value as TimeFilter)} options={[
-                    ["all", "Hepsi"], ["fresh", "Bugun"], ["week", "7 gun"], ["stale", "Eski"],
-                  ]} />
-                  <Select label="Sirala" value={sortMode} onChange={value => setSortMode(value as SortMode)} options={[
-                    ["risk", "Risk"], ["stock", "Stok"], ["required", "BOM"], ["device", "Cihaz"],
-                  ]} />
-                </div>
+        <section style={workspaceStyle}>
+          <section style={builderStyle}>
+            <div style={builderTitleStyle}>
+              <Network size={18} />
+              <div>
+                <span>Ontology f(x)</span>
+                <strong>Secili semantic ciktiyi grafige bagla</strong>
               </div>
             </div>
 
-            <div style={visualCanvasStyle}>
-              <ChartPanel title="Financial-style device metrics chart" meta={`${chartRows.length} x-axis items`}>
-                <ChartControlDeck
-                  chartKind={chartKind}
-                  xAxisMode={xAxisMode}
-                  lineStyle={lineStyle}
-                  activeMetrics={activeMetrics}
-                  onChartKind={setChartKind}
-                  onXAxis={setXAxisMode}
-                  onLineStyle={setLineStyle}
-                  onToggleMetric={(metric) => setActiveMetrics(prev => toggleMetric(prev, metric))}
-                />
-                <FinancialMetricChart rows={chartRows} metrics={activeMetrics} chartKind={chartKind} lineStyle={lineStyle} />
-              </ChartPanel>
+            <div style={domainSwitchStyle}>
+              {(["device", "component", "risk"] as ProjectionDomain[]).map(item => (
+                <button key={item} type="button" onClick={() => changeDomain(item)} style={domainButtonStyle(domain === item)}>
+                  {item === "device" ? "Cihaz" : item === "component" ? "Bilesen" : "Risk"}
+                </button>
+              ))}
+            </div>
 
-              <ChartPanel title="Grouped component stock plots" meta={`${filteredComponents.length} matching components`}>
-                <GroupedStockPlots devices={visibleDevices} components={filteredComponents} lineStyle={lineStyle} />
-              </ChartPanel>
+            <div style={builderGridStyle}>
+              <label style={fieldStyle}>
+                <span>Projection source</span>
+                <select value={domain} onChange={event => changeDomain(event.target.value as ProjectionDomain)}>
+                  <option value="device">Cihazlar: stok / kapasite / satis</option>
+                  <option value="component">Alt bilesenler: stok / BOM / overlap</option>
+                  <option value="risk">Risk domain: kritik / risk / bottleneck</option>
+                </select>
+              </label>
+              <label style={fieldStyle}>
+                <span>Search</span>
+                <div style={searchBoxStyle}>
+                  <Search size={15} />
+                  <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Kod, cihaz veya bilesen ara" />
+                  {query && <button type="button" onClick={() => setQuery("")}><X size={13} /></button>}
+                </div>
+              </label>
+              <label style={fieldStyle}>
+                <span>Risk</span>
+                <select value={riskFilter} onChange={event => setRiskFilter(event.target.value)}>
+                  <option value="all">Hepsi</option>
+                  <option value="critical">Kritik</option>
+                  <option value="warning">Risk</option>
+                  <option value="ok">Yeterli</option>
+                </select>
+              </label>
+            </div>
 
-              <div style={bottomCanvasGridStyle}>
-                <ChartPanel title="Events timeline of stock risk" meta={`${criticalComponents.length} critical events`}>
-                  <RiskTimeline components={criticalComponents} />
-                </ChartPanel>
-                <ChartPanel title="Shared component object view" meta={`${sharedComponents.length} overlaps`}>
-                  <SharedObjectView components={sharedComponents} />
-                </ChartPanel>
-              </div>
+            <div style={metricStripStyle}>
+              {availableMetrics.map(metric => (
+                <button
+                  key={metric}
+                  type="button"
+                  onClick={() => setActiveMetrics(current => toggleMetric(current, metric))}
+                  style={metricButtonStyle(metrics.includes(metric), metricDefs[metric].color)}
+                >
+                  <span />
+                  {metricDefs[metric].label}
+                </button>
+              ))}
             </div>
           </section>
-        </section>
 
-        {loading && <div style={loadingStyle}>Gercek cihaz ve BOM verileri okunuyor.</div>}
+          <section style={chartPanelStyle}>
+            <div style={chartHeaderStyle}>
+              <div>
+                <strong>Projection chart</strong>
+                <span>{projectionRows.length} satir · {metrics.length} metric</span>
+              </div>
+              <div style={summaryStyle}>
+                <Summary icon={<Boxes size={15} />} label="Cihaz" value={activeSkus.length} />
+                <Summary icon={<Cpu size={15} />} label="Bilesen" value={components.length} />
+                <Summary icon={<AlertTriangle size={15} />} label="Kritik" value={components.filter(row => row.status === "critical").length} tone="risk" />
+              </div>
+            </div>
+
+            <div style={controlDeckStyle}>
+              <Segmented values={["combo", "bar", "line", "area", "table"] as ChartKind[]} value={chartKind} onChange={setChartKind} labels={{ combo: "Combo", bar: "Bar", line: "Line", area: "Area", table: "Table" }} />
+              <label style={compactSelectStyle}>
+                <span>X</span>
+                <select value={xAxisMode} onChange={event => setXAxisMode(event.target.value as XAxisMode)}>
+                  <option value="name">Isim</option>
+                  <option value="category">Kategori</option>
+                  <option value="risk">Risk</option>
+                </select>
+              </label>
+              <label style={compactSelectStyle}>
+                <span>Line</span>
+                <select value={lineStyle} onChange={event => setLineStyle(event.target.value as LineStyle)}>
+                  <option value="smooth">Smooth</option>
+                  <option value="solid">Solid</option>
+                  <option value="step">Step</option>
+                  <option value="dash">Dash</option>
+                </select>
+              </label>
+              <button type="button" onClick={() => setActiveMetrics(domainMetrics[domain])} style={resetChartButtonStyle}>
+                <SlidersHorizontal size={14} />
+                Reset
+              </button>
+            </div>
+
+            <FiscalChart rows={projectionRows} metrics={metrics} chartKind={chartKind} xAxisMode={xAxisMode} lineStyle={lineStyle} />
+          </section>
+        </section>
       </main>
+      {loading && <div style={loadingStyle}>Gercek cihaz, stok ve BOM verisi okunuyor.</div>}
     </div>
   );
 }
 
+function buildProjectionRows(domain: ProjectionDomain, devices: DeviceView[], components: FlatComponent[]): ProjectionRow[] {
+  if (domain === "device") {
+    return devices.map(device => ({
+      id: device.sku,
+      label: device.sku,
+      category: device.category,
+      risk: device.critical > 0 ? "critical" : device.warnings > 0 ? "warning" : "ok",
+      domain,
+      source: device.name,
+      fields: {
+        warehouse: device.warehouse,
+        capacity: device.capacity,
+        production: device.production,
+        sold: device.sold,
+        critical: device.critical,
+        warnings: device.warnings,
+        componentCount: device.componentCount,
+      },
+    }));
+  }
+
+  if (domain === "component") {
+    const byCode = new Map<string, ProjectionRow & { names: Set<string> }>();
+    components.forEach(component => {
+      const current = byCode.get(component.code) ?? {
+        id: component.code,
+        label: component.code,
+        category: component.unit || "-",
+        risk: component.status === "critical" ? "critical" : component.status === "warning" ? "warning" : "ok",
+        domain,
+        source: component.name,
+        fields: { componentStock: Number.POSITIVE_INFINITY, requiredPerUnit: 0, deviceCount: 0, critical: 0 },
+        names: new Set<string>(),
+      };
+      current.names.add(component.sku);
+      current.source = component.name;
+      current.risk = severityRank(component.status) > severityRank(current.risk) ? component.status : current.risk;
+      current.fields.componentStock = Math.min(Number(current.fields.componentStock ?? 0), Number(component.currentStock ?? 0));
+      current.fields.requiredPerUnit = Math.max(Number(current.fields.requiredPerUnit ?? 0), Number(component.requiredPerUnit ?? 0));
+      current.fields.critical = Number(current.fields.critical ?? 0) + (component.status === "critical" ? 1 : 0);
+      byCode.set(component.code, current);
+    });
+    return Array.from(byCode.values())
+      .map(row => ({ ...row, fields: { ...row.fields, deviceCount: row.names.size, componentStock: row.fields.componentStock === Number.POSITIVE_INFINITY ? 0 : row.fields.componentStock } }))
+      .sort((a, b) => severityRank(b.risk) - severityRank(a.risk) || Number(a.fields.componentStock ?? 0) - Number(b.fields.componentStock ?? 0));
+  }
+
+  const groups = new Map<string, ProjectionRow>();
+  components.forEach(component => {
+    const key = component.status === "critical" ? "Kritik" : component.status === "warning" ? "Risk" : "Yeterli";
+    const current = groups.get(key) ?? {
+      id: key,
+      label: key,
+      category: "Risk",
+      risk: component.status === "critical" ? "critical" : component.status === "warning" ? "warning" : "ok",
+      domain,
+      source: "BOM risk projection",
+      fields: { deviceCount: 0, critical: 0, warnings: 0, componentCount: 0 },
+    };
+    current.fields.componentCount = Number(current.fields.componentCount ?? 0) + 1;
+    current.fields.critical = Number(current.fields.critical ?? 0) + (component.status === "critical" ? 1 : 0);
+    current.fields.warnings = Number(current.fields.warnings ?? 0) + (component.status === "warning" ? 1 : 0);
+    current.fields.deviceCount = Math.max(Number(current.fields.deviceCount ?? 0), components.filter(row => row.status === component.status).map(row => row.sku).filter((sku, index, arr) => arr.indexOf(sku) === index).length);
+    groups.set(key, current);
+  });
+  return Array.from(groups.values()).sort((a, b) => severityRank(b.risk) - severityRank(a.risk));
+}
+
+function FiscalChart({ rows, metrics, chartKind, xAxisMode, lineStyle }: {
+  rows: ProjectionRow[];
+  metrics: MetricKey[];
+  chartKind: ChartKind;
+  xAxisMode: XAxisMode;
+  lineStyle: LineStyle;
+}) {
+  if (chartKind === "table") return <ProjectionTable rows={rows} metrics={metrics} />;
+
+  const width = 1100;
+  const height = 420;
+  const pad = { top: 34, right: 34, bottom: 58, left: 58 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const chartRows = groupRows(rows, metrics, xAxisMode).slice(0, 14);
+  const max = Math.max(1, ...chartRows.flatMap(row => metrics.map(metric => Number(row.fields[metric] ?? 0))));
+  const slot = innerW / Math.max(1, chartRows.length);
+  const barMetrics = metrics.filter(metric => chartKind === "bar" || (chartKind === "combo" && metricDefs[metric].mode === "bar"));
+  const lineMetrics = metrics.filter(metric => chartKind === "line" || chartKind === "area" || (chartKind === "combo" && metricDefs[metric].mode === "line"));
+  const barW = Math.min(30, slot / Math.max(1, barMetrics.length + 1));
+
+  return (
+    <div style={fiscalChartWrapStyle}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={fiscalSvgStyle} preserveAspectRatio="none">
+        <rect width={width} height={height} fill="#27262f" />
+        {Array.from({ length: 7 }).map((_, index) => {
+          const y = pad.top + (innerH / 6) * index;
+          return <line key={index} x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="rgba(222,226,235,0.16)" />;
+        })}
+        {chartRows.map((row, index) => {
+          const x = pad.left + slot * index + slot / 2;
+          return (
+            <g key={row.id}>
+              <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom} stroke="rgba(222,226,235,0.08)" />
+              <text x={x} y={height - 24} fill="#aeb1bd" fontSize="12" textAnchor="middle">{row.label.length > 13 ? `${row.label.slice(0, 12)}…` : row.label}</text>
+            </g>
+          );
+        })}
+        {barMetrics.map((metric, metricIndex) => {
+          const def = metricDefs[metric];
+          return chartRows.map((row, rowIndex) => {
+            const value = Number(row.fields[metric] ?? 0);
+            const h = (value / max) * innerH;
+            const x = pad.left + slot * rowIndex + slot / 2 - (barMetrics.length * barW) / 2 + metricIndex * barW;
+            const y = pad.top + innerH - h;
+            return <rect key={`${metric}-${row.id}`} x={x} y={y} width={barW * 0.76} height={Math.max(2, h)} rx="3" fill={def.color} />;
+          });
+        })}
+        {lineMetrics.map(metric => {
+          const def = metricDefs[metric];
+          const points = chartRows.map((row, index) => ({
+            x: pad.left + slot * index + slot / 2,
+            y: pad.top + innerH - (Number(row.fields[metric] ?? 0) / max) * innerH,
+          }));
+          const path = linePath(points, lineStyle);
+          const areaPath = points.length > 0 ? `M ${points[0].x} ${pad.top + innerH} L ${path.replace(/^M /, "")} L ${points[points.length - 1].x} ${pad.top + innerH} Z` : "";
+          return (
+            <g key={metric}>
+              {chartKind === "area" && areaPath && <path d={areaPath} fill={def.color} opacity="0.18" />}
+              <path d={path} fill="none" stroke={def.color} strokeWidth="2.4" strokeDasharray={lineStyle === "dash" ? "8 6" : undefined} />
+              {points.map(point => <circle key={`${metric}-${point.x}`} cx={point.x} cy={point.y} r="3.2" fill={def.color} />)}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={legendStyle}>
+        {metrics.map(metric => <span key={metric}><i style={{ background: metricDefs[metric].color }} />{metricDefs[metric].label}</span>)}
+      </div>
+    </div>
+  );
+}
+
+function ProjectionTable({ rows, metrics }: { rows: ProjectionRow[]; metrics: MetricKey[] }) {
+  return (
+    <div style={tableWrapStyle}>
+      <div style={tableRowStyle(true)}>
+        <span>Object</span>
+        <span>Domain</span>
+        <span>Risk</span>
+        {metrics.map(metric => <span key={metric}>{metricDefs[metric].label}</span>)}
+      </div>
+      {rows.slice(0, 28).map(row => (
+        <div key={row.id} style={tableRowStyle(false)}>
+          <strong>{row.label}</strong>
+          <span>{row.category}</span>
+          <span style={riskTextStyle(row.risk)}>{riskLabel(row.risk)}</span>
+          {metrics.map(metric => <span key={metric}>{fmt(row.fields[metric] ?? 0)}</span>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function groupRows(rows: ProjectionRow[], metrics: MetricKey[], mode: XAxisMode) {
+  if (mode === "name") return rows;
+  const map = new Map<string, ProjectionRow>();
+  rows.forEach(row => {
+    const label = mode === "category" ? row.category : riskLabel(row.risk);
+    const current = map.get(label) ?? { ...row, id: label, label, fields: {} };
+    metrics.forEach(metric => {
+      current.fields[metric] = Number(current.fields[metric] ?? 0) + Number(row.fields[metric] ?? 0);
+    });
+    map.set(label, current);
+  });
+  return Array.from(map.values());
+}
+
 function flattenComponent(component: BomComponent, sku: string, productName: string, path: string): FlatComponent[] {
   const row: FlatComponent = { ...component, sku, productName, path };
-  const children = component.children ?? [];
-  return [row, ...children.flatMap(child => flattenComponent(child, sku, productName, `${path}/${child.code}`))];
+  return [row, ...(component.children ?? []).flatMap(child => flattenComponent(child, sku, productName, `${path}/${child.code}`))];
 }
 
 function toggleSku(sku: string, selectedSkus: string[], setSelectedSkus: (next: string[]) => void, products: Product[]) {
-  const defaultSkus = products.slice(0, 4).map(product => product.sku);
-  const current = selectedSkus.length > 0 ? selectedSkus : defaultSkus;
-  const active = current.includes(sku);
-  const next = active ? current.filter(item => item !== sku) : [...current, sku];
-  setSelectedSkus(next.slice(0, 8));
+  const defaults = products.slice(0, 6).map(product => product.sku);
+  const current = selectedSkus.length > 0 ? selectedSkus : defaults;
+  const next = current.includes(sku) ? current.filter(item => item !== sku) : [...current, sku];
+  setSelectedSkus(next.slice(0, 10));
 }
 
-function compareComponents(a: FlatComponent, b: FlatComponent, mode: SortMode) {
-  if (mode === "stock") return Number(a.currentStock) - Number(b.currentStock);
-  if (mode === "required") return Number(b.requiredPerUnit) - Number(a.requiredPerUnit);
-  if (mode === "device") return a.sku.localeCompare(b.sku) || a.code.localeCompare(b.code);
-  return severityRank(b.status) - severityRank(a.status)
-    || Number(a.maxProducts ?? Number.MAX_SAFE_INTEGER) - Number(b.maxProducts ?? Number.MAX_SAFE_INTEGER)
-    || a.code.localeCompare(b.code);
+function toggleMetric(current: MetricKey[], metric: MetricKey) {
+  if (current.includes(metric)) return current.length === 1 ? current : current.filter(item => item !== metric);
+  return [...current, metric].slice(-6);
 }
 
-function severityRank(status: string) {
-  if (status === "critical") return 5;
-  if (status === "warning") return 4;
-  if (status === "variable") return 3;
-  if (status === "ok") return 2;
-  if (status === "abundant") return 1;
-  return 0;
-}
-
-function worstStatus(a: string, b: string) {
-  return severityRank(b) > severityRank(a) ? b : a;
+function linePath(points: Array<{ x: number; y: number }>, style: LineStyle) {
+  if (points.length === 0) return "";
+  if (style === "step") {
+    return points.slice(1).reduce((path, point, index) => {
+      const previous = points[index];
+      const mid = (previous.x + point.x) / 2;
+      return `${path} L ${mid} ${previous.y} L ${mid} ${point.y} L ${point.x} ${point.y}`;
+    }, `M ${points[0].x} ${points[0].y}`);
+  }
+  if (style === "smooth") {
+    return points.slice(1).reduce((path, point, index) => {
+      const previous = points[index];
+      const cx = (previous.x + point.x) / 2;
+      return `${path} C ${cx} ${previous.y}, ${cx} ${point.y}, ${point.x} ${point.y}`;
+    }, `M ${points[0].x} ${points[0].y}`);
+  }
+  return points.map((point, index) => `${index === 0 ? "M" : "L"} ${point.x} ${point.y}`).join(" ");
 }
 
 function minNumber(values: number[]) {
   return values.length === 0 ? null : Math.min(...values);
-}
-
-function buildChartRows(devices: DeviceView[], mode: XAxisMode): ChartRow[] {
-  const groups = new Map<string, ChartRow>();
-  devices.forEach(device => {
-    const label = mode === "category"
-      ? device.category || "-"
-      : mode === "risk"
-        ? device.critical > 0 ? "Kritik" : device.warnings > 0 ? "Risk" : "Yeterli"
-        : device.sku;
-    const current = groups.get(label) ?? {
-      label,
-      count: 0,
-      warehouse: 0,
-      capacity: 0,
-      production: 0,
-      sold: 0,
-      critical: 0,
-      warnings: 0,
-      componentCount: 0,
-    };
-    current.count += 1;
-    current.warehouse += device.warehouse;
-    current.capacity += device.capacity ?? 0;
-    current.production += device.production;
-    current.sold += device.sold;
-    current.critical += device.critical;
-    current.warnings += device.warnings;
-    current.componentCount += device.componentCount;
-    groups.set(label, current);
-  });
-  return Array.from(groups.values()).slice(0, 12);
-}
-
-function toggleMetric(current: MetricKey[], metric: MetricKey) {
-  if (current.includes(metric)) {
-    return current.length === 1 ? current : current.filter(item => item !== metric);
-  }
-  return [...current, metric].slice(-5);
 }
 
 function daysSince(value: string) {
@@ -418,13 +579,26 @@ function daysSince(value: string) {
   return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
 }
 
+function severityRank(status: string) {
+  if (status === "critical") return 4;
+  if (status === "warning") return 3;
+  if (status === "ok" || status === "abundant") return 2;
+  return 1;
+}
+
+function riskLabel(status: string) {
+  if (status === "critical") return "Kritik";
+  if (status === "warning") return "Risk";
+  return "Yeterli";
+}
+
 function fmt(value: number | string) {
   const number = Number(value);
   if (!Number.isFinite(number)) return "-";
   return number.toLocaleString("tr-TR", { maximumFractionDigits: 1 });
 }
 
-function SummaryPill({ icon, label, value, tone = "neutral" }: { icon: React.ReactNode; label: string; value: number; tone?: "neutral" | "risk" }) {
+function Summary({ icon, label, value, tone = "normal" }: { icon: React.ReactNode; label: string; value: number; tone?: "normal" | "risk" }) {
   return (
     <div style={summaryPillStyle(tone)}>
       {icon}
@@ -434,1200 +608,327 @@ function SummaryPill({ icon, label, value, tone = "neutral" }: { icon: React.Rea
   );
 }
 
-function ParameterCard({ label, value, onClear }: { label: string; value: string; onClear: () => void }) {
+function Segmented<T extends string>({ values, value, onChange, labels }: { values: T[]; value: T; onChange: (value: T) => void; labels: Record<T, string> }) {
   return (
-    <div style={parameterCardStyle}>
-      <span>{label}</span>
-      <div>
-        <strong>{value}</strong>
-        <button type="button" onClick={onClear} style={parameterClearStyle}><X size={13} /></button>
-      </div>
-    </div>
-  );
-}
-
-function ChartPanel({ title, meta, children }: { title: string; meta: string; children: React.ReactNode }) {
-  return (
-    <section style={chartPanelStyle}>
-      <div style={chartHeaderStyle}>
-        <div>
-          <span style={dragDotsStyle}>•••</span>
-          <strong>{title}</strong>
-        </div>
-        <div style={chartMetaStyle}>
-          <span>{meta}</span>
-          <span>⚙</span>
-          <span>⋯</span>
-          <span>×</span>
-        </div>
-      </div>
-      {children}
-    </section>
-  );
-}
-
-function ChartControlDeck({ chartKind, xAxisMode, lineStyle, activeMetrics, onChartKind, onXAxis, onLineStyle, onToggleMetric }: {
-  chartKind: ChartKind;
-  xAxisMode: XAxisMode;
-  lineStyle: LineStyle;
-  activeMetrics: MetricKey[];
-  onChartKind: (kind: ChartKind) => void;
-  onXAxis: (axis: XAxisMode) => void;
-  onLineStyle: (style: LineStyle) => void;
-  onToggleMetric: (metric: MetricKey) => void;
-}) {
-  return (
-    <div style={chartControlDeckStyle}>
-      <div style={segmentedStyle}>
-        {(["combo", "bar", "line", "area", "table"] as ChartKind[]).map(kind => (
-          <button key={kind} type="button" onClick={() => onChartKind(kind)} style={segmentButtonStyle(chartKind === kind)}>{kind}</button>
-        ))}
-      </div>
-      <label style={miniSelectStyle}>
-        <span>X</span>
-        <select value={xAxisMode} onChange={event => onXAxis(event.target.value as XAxisMode)}>
-          <option value="device">Cihaz</option>
-          <option value="category">Kategori</option>
-          <option value="risk">Risk</option>
-        </select>
-      </label>
-      <label style={miniSelectStyle}>
-        <span>Line</span>
-        <select value={lineStyle} onChange={event => onLineStyle(event.target.value as LineStyle)}>
-          <option value="smooth">Smooth</option>
-          <option value="solid">Solid</option>
-          <option value="step">Step</option>
-          <option value="dash">Dash</option>
-        </select>
-      </label>
-      <div style={metricToggleStripStyle}>
-        {metricDefs.map(metric => (
-          <button key={metric.key} type="button" onClick={() => onToggleMetric(metric.key)} style={metricToggleStyle(activeMetrics.includes(metric.key), metric.color)}>
-            <span />
-            {metric.label}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-function FinancialMetricChart({ rows, metrics, chartKind, lineStyle }: {
-  rows: ChartRow[];
-  metrics: MetricKey[];
-  chartKind: ChartKind;
-  lineStyle: LineStyle;
-}) {
-  if (chartKind === "table") return <MetricDataTable rows={rows} metrics={metrics} />;
-  const width = 920;
-  const height = 310;
-  const pad = { top: 26, right: 46, bottom: 42, left: 54 };
-  const innerW = width - pad.left - pad.right;
-  const innerH = height - pad.top - pad.bottom;
-  const max = Math.max(1, ...rows.flatMap(row => metrics.map(metric => Number(row[metric] ?? 0))));
-  const barMetrics = metrics.filter(metric => chartKind === "bar" || chartKind === "combo" ? metricDefs.find(def => def.key === metric)?.kind === "bar" : false);
-  const lineMetrics = metrics.filter(metric => chartKind === "line" || chartKind === "area" || chartKind === "combo" ? (chartKind !== "combo" || metricDefs.find(def => def.key === metric)?.kind === "line") : false);
-  const slot = innerW / Math.max(1, rows.length);
-  const barW = Math.min(28, slot / Math.max(1, barMetrics.length + 1));
-
-  return (
-    <div style={financialChartWrapStyle}>
-      <svg viewBox={`0 0 ${width} ${height}`} style={financialSvgStyle} preserveAspectRatio="none">
-        <rect x="0" y="0" width={width} height={height} fill="#2b2a33" />
-        {Array.from({ length: 7 }).map((_, index) => {
-          const y = pad.top + (innerH / 6) * index;
-          return <line key={`h-${index}`} x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="rgba(210,214,223,0.16)" />;
-        })}
-        {rows.map((row, index) => {
-          const x = pad.left + slot * index + slot / 2;
-          return (
-            <g key={row.label}>
-              <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom} stroke="rgba(210,214,223,0.10)" />
-              <text x={x} y={height - 14} fill="#aeb1bd" fontSize="10" textAnchor="middle">{row.label}</text>
-            </g>
-          );
-        })}
-        {barMetrics.map((metric, metricIndex) => {
-          const def = metricDefs.find(item => item.key === metric)!;
-          return rows.map((row, rowIndex) => {
-            const value = Number(row[metric] ?? 0);
-            const h = (value / max) * innerH;
-            const x = pad.left + slot * rowIndex + slot / 2 - ((barMetrics.length * barW) / 2) + metricIndex * barW;
-            const y = pad.top + innerH - h;
-            return <rect key={`${metric}-${row.label}`} x={x} y={y} width={barW * 0.78} height={Math.max(2, h)} rx="2" fill={def.color} />;
-          });
-        })}
-        {lineMetrics.map(metric => {
-          const def = metricDefs.find(item => item.key === metric)!;
-          const points = rows.map((row, index) => {
-            const x = pad.left + slot * index + slot / 2;
-            const y = pad.top + innerH - (Number(row[metric] ?? 0) / max) * innerH;
-            return { x, y, value: Number(row[metric] ?? 0) };
-          });
-          const path = linePath(points, lineStyle);
-          const areaPath = `M ${points[0]?.x ?? pad.left} ${pad.top + innerH} L ${path.replace(/^M /, "")} L ${points[points.length - 1]?.x ?? pad.left} ${pad.top + innerH} Z`;
-          return (
-            <g key={metric}>
-              {chartKind === "area" && <path d={areaPath} fill={def.color} opacity="0.18" />}
-              <path d={path} fill="none" stroke={def.color} strokeWidth="2.2" strokeDasharray={lineStyle === "dash" ? "7 5" : undefined} />
-              {points.map(point => <circle key={`${metric}-${point.x}`} cx={point.x} cy={point.y} r="3" fill={def.color} />)}
-            </g>
-          );
-        })}
-      </svg>
-      <div style={financialLegendStyle}>
-        {metrics.map(metric => {
-          const def = metricDefs.find(item => item.key === metric)!;
-          return <span key={metric}><i style={{ background: def.color }} />{def.label}</span>;
-        })}
-      </div>
-    </div>
-  );
-}
-
-function MetricDataTable({ rows, metrics }: { rows: ChartRow[]; metrics: MetricKey[] }) {
-  return (
-    <div style={metricTableStyle}>
-      <div style={{ ...metricTableRowStyle, fontWeight: 850, color: "#d8dae2" }}>
-        <span>X</span>
-        {metrics.map(metric => <span key={metric}>{metricDefs.find(def => def.key === metric)?.label}</span>)}
-      </div>
-      {rows.map(row => (
-        <div key={row.label} style={metricTableRowStyle}>
-          <span>{row.label}</span>
-          {metrics.map(metric => <span key={metric}>{fmt(row[metric])}</span>)}
-        </div>
+    <div style={segmentedStyle}>
+      {values.map(item => (
+        <button key={item} type="button" onClick={() => onChange(item)} style={segmentButtonStyle(value === item)}>{labels[item]}</button>
       ))}
     </div>
   );
-}
-
-function GroupedStockPlots({ devices, components, lineStyle }: {
-  devices: Array<{ sku: string; warehouse: number; capacity: number | null; critical: number; warnings: number }>;
-  components: FlatComponent[];
-  lineStyle: LineStyle;
-}) {
-  return (
-    <div style={plotStackStyle}>
-      {devices.slice(0, 3).map((device, index) => {
-        const rows = components.filter(component => component.sku === device.sku).slice(0, 34);
-        return (
-          <div key={device.sku} style={plotRowStyle}>
-            <div style={plotAxisStyle}>
-              <span>stock</span>
-              <span>{fmt(Math.max(device.warehouse, device.capacity ?? 0))}</span>
-              <span>0</span>
-            </div>
-            <div style={sparkPlotStyle}>
-              <svg viewBox="0 0 900 132" preserveAspectRatio="none" style={plotSvgStyle}>
-                <g>
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <line key={`v-${i}`} x1={i * 75} x2={i * 75} y1="0" y2="132" stroke="rgba(82,105,122,0.13)" />
-                  ))}
-                  {Array.from({ length: 5 }).map((_, i) => (
-                    <line key={`h-${i}`} x1="0" x2="900" y1={i * 31} y2={i * 31} stroke="rgba(82,105,122,0.13)" />
-                  ))}
-                </g>
-                <polyline
-                  points={buildPlotPoints(rows.map(row => Number(row.currentStock)), 900, 132)}
-                  fill="none"
-                  stroke="#00a99d"
-                  strokeWidth="1.8"
-                  strokeDasharray={lineStyle === "dash" ? "7 5" : undefined}
-                />
-                <polyline
-                  points={buildPlotPoints(rows.map(row => Number(row.maxProducts ?? 0)), 900, 132)}
-                  fill="none"
-                  stroke="#70c20f"
-                  strokeWidth="1.5"
-                  strokeDasharray={lineStyle === "dash" ? "7 5" : undefined}
-                />
-                {rows.filter(row => row.status === "critical").slice(0, 12).map((row, markerIndex) => (
-                  <rect key={`${row.code}-${markerIndex}`} x={markerIndex * 64 + index * 17} y={102 - (markerIndex % 4) * 14} width="4" height="22" fill="#5c84d8" opacity="0.85" />
-                ))}
-              </svg>
-              <div style={plotTitleStyle}>{device.sku}</div>
-              <div style={plotLegendStyle}>
-                <span><i style={{ background: "#00a99d" }} /> component stock</span>
-                <span><i style={{ background: "#70c20f" }} /> max producible</span>
-              </div>
-            </div>
-          </div>
-        );
-      })}
-    </div>
-  );
-}
-
-function RiskTimeline({ components }: { components: FlatComponent[] }) {
-  return (
-    <div style={timelineStyle}>
-      <svg viewBox="0 0 820 140" preserveAspectRatio="none" style={plotSvgStyle}>
-        {Array.from({ length: 18 }).map((_, i) => (
-          <line key={i} x1={i * 48} x2={i * 48} y1="0" y2="140" stroke="rgba(82,105,122,0.14)" />
-        ))}
-        <line x1="0" x2="820" y1="70" y2="70" stroke="rgba(82,105,122,0.28)" />
-        {components.map((component, index) => (
-          <rect key={`${component.sku}-${component.code}-${index}`} x={24 + index * 42} y={44 + (index % 3) * 11} width="4" height="34" fill="#5c84d8" />
-        ))}
-      </svg>
-      <div style={timelineCaptionStyle}>critical component events across selected device object set</div>
-    </div>
-  );
-}
-
-function SharedObjectView({ components }: {
-  components: Array<{ code: string; name: string; devices: Set<string>; worstStatus: string }>;
-}) {
-  return (
-    <div style={objectViewStyle}>
-      {components.slice(0, 8).map(component => (
-        <div key={component.code} style={objectViewRowStyle}>
-          <span style={objectGlyphStyle}>◇</span>
-          <div>
-            <strong>{component.code}</strong>
-            <span>{component.name}</span>
-          </div>
-          <StatusBadge status={component.worstStatus} />
-        </div>
-      ))}
-      {components.length === 0 && <EmptyState text="Secili cihazlarda ortak bilesen yok." />}
-    </div>
-  );
-}
-
-function buildPlotPoints(values: number[], width: number, height: number) {
-  const safe = values.length > 1 ? values : [0, 0];
-  const max = Math.max(1, ...safe);
-  return safe.map((value, index) => {
-    const x = (index / Math.max(1, safe.length - 1)) * width;
-    const y = height - (Number(value) / max) * (height - 12) - 6;
-    return `${x.toFixed(1)},${y.toFixed(1)}`;
-  }).join(" ");
-}
-
-function linePath(points: Array<{ x: number; y: number }>, style: LineStyle) {
-  if (points.length === 0) return "";
-  if (style === "step") {
-    return points.slice(1).reduce((path, point, index) => {
-      const prev = points[index];
-      const midX = (prev.x + point.x) / 2;
-      return `${path} H ${midX.toFixed(1)} V ${point.y.toFixed(1)} H ${point.x.toFixed(1)}`;
-    }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
-  }
-  if (style === "smooth") {
-    return points.slice(1).reduce((path, point, index) => {
-      const prev = points[index];
-      const cpX = (prev.x + point.x) / 2;
-      return `${path} C ${cpX.toFixed(1)} ${prev.y.toFixed(1)}, ${cpX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
-    }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
-  }
-  return `M ${points.map(point => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" L ")}`;
-}
-
-function Select({ label, value, options, onChange }: {
-  label: string;
-  value: string;
-  options: Array<[string, string]>;
-  onChange: (value: string) => void;
-}) {
-  return (
-    <label style={selectWrapStyle}>
-      <span>{label}</span>
-      <select value={value} onChange={event => onChange(event.target.value)} style={selectStyle}>
-        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
-      </select>
-    </label>
-  );
-}
-
-function DeviceCompareCard({ device, maxCapacity }: {
-  device: {
-    sku: string;
-    name: string;
-    category: string;
-    componentCount: number;
-    warehouse: number;
-    production: number;
-    sold: number;
-    dataAgeDays: number | null;
-    critical: number;
-    warnings: number;
-    capacity: number | null;
-  };
-  maxCapacity: number;
-}) {
-  const capacity = device.capacity ?? 0;
-  return (
-    <article style={deviceCardStyle}>
-      <div style={deviceCardHeaderStyle}>
-        <div>
-          <strong>{device.sku}</strong>
-          <span>{device.name}</span>
-        </div>
-        <StatusBadge status={device.critical > 0 ? "critical" : device.warnings > 0 ? "warning" : "ok"} />
-      </div>
-      <div style={barGroupStyle}>
-        <Bar label="Depo" value={device.warehouse} max={maxCapacity} color={CT.ok} />
-        <Bar label="Uretilebilir" value={capacity} max={maxCapacity} color={CT.info} />
-      </div>
-      <div style={deviceMetricsStyle}>
-        <Metric label="Bilesen" value={device.componentCount} />
-        <Metric label="Kritik" value={device.critical} />
-        <Metric label="Uretimde" value={device.production} />
-        <Metric label="Guncel" value={device.dataAgeDays === null ? "-" : `${device.dataAgeDays}g`} />
-      </div>
-    </article>
-  );
-}
-
-function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
-  return (
-    <div style={barRowStyle}>
-      <span>{label}</span>
-      <div style={barTrackStyle}><div style={{ ...barFillStyle, width: `${Math.min(100, Math.max(2, (value / max) * 100))}%`, background: color }} /></div>
-      <strong>{fmt(value)}</strong>
-    </div>
-  );
-}
-
-function Metric({ label, value }: { label: string; value: string | number }) {
-  return (
-    <div style={metricStyle}>
-      <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
-  );
-}
-
-function StatusBadge({ status }: { status: string }) {
-  const tone = statusTone(status);
-  return <span style={{ ...statusBadgeStyle, color: tone.color, background: tone.bg, borderColor: tone.border }}>{statusLabels[status] ?? status}</span>;
-}
-
-function EmptyState({ text }: { text: string }) {
-  return <div style={emptyStyle}>{text}</div>;
-}
-
-function statusTone(status: string) {
-  if (status === "critical") return { color: CT.err, bg: CT.errSoft, border: "rgba(179,64,55,0.25)" };
-  if (status === "warning") return { color: CT.warn, bg: CT.warnSoft, border: "rgba(184,118,28,0.25)" };
-  if (status === "variable") return { color: "#9a5a17", bg: "rgba(154,90,23,0.12)", border: "rgba(154,90,23,0.22)" };
-  if (status === "abundant") return { color: CT.ok, bg: CT.okSoft, border: "rgba(63,143,91,0.24)" };
-  return { color: CT.info, bg: CT.infoSoft, border: "rgba(61,111,176,0.22)" };
 }
 
 const pageStyle: CSSProperties = {
   minHeight: "100vh",
-  background: CT.bg,
+  background: "#f5f3ee",
   color: CT.ink,
   fontFamily: CT_FONT,
 };
 
 const shellStyle: CSSProperties = {
-  padding: "0 10px 10px",
+  height: "calc(100vh - 49px)",
   display: "grid",
-  gap: 12,
-};
-
-const workbenchStyle: CSSProperties = {
-  minHeight: "calc(100vh - 58px)",
-  display: "grid",
-  gridTemplateColumns: "282px minmax(0, 1fr)",
-  gap: 10,
-};
-
-const canvasColumnStyle: CSSProperties = {
-  minWidth: 0,
-  display: "grid",
-  gridTemplateRows: "128px minmax(0, 1fr)",
-  gap: 10,
-};
-
-const canvasToolbarStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  background: "#eaf1f5",
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(180px, 240px)) minmax(260px, 1fr)",
-  gap: 10,
-  padding: 12,
-  alignItems: "start",
-};
-
-const parameterCardStyle: CSSProperties = {
-  height: 92,
-  border: `1px solid ${CT.borderStrong}`,
-  background: CT.surface,
-  padding: 10,
-  display: "grid",
-  alignContent: "start",
-  gap: 14,
-  color: CT.inkSub,
-  fontSize: 12,
-  fontWeight: 850,
-};
-
-const parameterClearStyle: CSSProperties = {
-  width: 20,
-  height: 20,
-  border: 0,
-  background: "transparent",
-  color: CT.inkMuted,
-  cursor: "pointer",
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const canvasSearchStyle: CSSProperties = {
-  height: 36,
-  alignSelf: "start",
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  border: `1px solid ${CT.borderStrong}`,
-  background: CT.surface,
-  padding: "0 10px",
-};
-
-const toolbarFilterStackStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-};
-
-const compactFilterGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  gap: 6,
-};
-
-const visualCanvasStyle: CSSProperties = {
-  minHeight: 0,
-  overflow: "auto",
-  display: "grid",
-  gridTemplateRows: "430px minmax(420px, 1fr) 230px",
-  gap: 10,
-};
-
-const chartPanelStyle: CSSProperties = {
-  border: "1px solid rgba(255,255,255,0.10)",
-  background: "#27262f",
-  minHeight: 0,
-  display: "grid",
-  gridAutoRows: "max-content",
-  color: "#d8dae2",
-};
-
-const chartHeaderStyle: CSSProperties = {
-  height: 36,
-  borderBottom: "1px solid rgba(255,255,255,0.10)",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 12,
-  padding: "0 10px",
-  color: "#f1f1f4",
-  fontSize: 14,
-};
-
-const dragDotsStyle: CSSProperties = {
-  color: "#8f90a0",
-  letterSpacing: 1,
-  marginRight: 8,
-  fontSize: 12,
-};
-
-const chartMetaStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 12,
-  color: "#aeb1bd",
-  fontSize: 12,
-};
-
-const chartControlDeckStyle: CSSProperties = {
-  minHeight: 64,
-  display: "grid",
-  gridTemplateColumns: "minmax(320px, 1.1fr) 130px 150px minmax(360px, 1.5fr)",
-  gap: 10,
-  alignItems: "center",
-  padding: "10px 14px",
-  borderBottom: "1px solid rgba(255,255,255,0.10)",
-  background: "#30303a",
-};
-
-const segmentedStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
-  gap: 4,
-  border: "1px solid rgba(255,255,255,0.12)",
-  borderRadius: 6,
-  padding: 3,
-  background: "#202027",
-};
-
-function segmentButtonStyle(active: boolean): CSSProperties {
-  return {
-    height: 30,
-    border: "0",
-    borderRadius: 4,
-    background: active ? "#4f9d69" : "transparent",
-    color: active ? "#fff" : "#c8cad4",
-    fontFamily: CT_FONT,
-    fontSize: 12,
-    fontWeight: 850,
-    cursor: "pointer",
-    textTransform: "capitalize",
-  };
-}
-
-const miniSelectStyle: CSSProperties = {
-  display: "grid",
-  gap: 4,
-  color: "#aeb1bd",
-  fontSize: 10,
-  fontWeight: 850,
-};
-
-const metricToggleStripStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 6,
-  overflowX: "auto",
-};
-
-function metricToggleStyle(active: boolean, color: string): CSSProperties {
-  return {
-    height: 30,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 6,
-    border: `1px solid ${active ? color : "rgba(255,255,255,0.12)"}`,
-    borderRadius: 5,
-    background: active ? "rgba(255,255,255,0.08)" : "#202027",
-    color: active ? "#f4f4f6" : "#aeb1bd",
-    fontFamily: CT_FONT,
-    fontSize: 11,
-    fontWeight: 800,
-    padding: "0 8px",
-    cursor: "pointer",
-    whiteSpace: "nowrap",
-  };
-}
-
-const financialChartWrapStyle: CSSProperties = {
-  position: "relative",
-  minHeight: 330,
-  background: "#2b2a33",
-};
-
-const financialSvgStyle: CSSProperties = {
-  width: "100%",
-  height: 330,
-  display: "block",
-};
-
-const financialLegendStyle: CSSProperties = {
-  minHeight: 38,
-  display: "flex",
-  flexWrap: "wrap",
-  alignItems: "center",
-  gap: 12,
-  padding: "0 14px 10px",
-  color: "#d8dae2",
-  fontSize: 12,
-};
-
-const metricTableStyle: CSSProperties = {
-  padding: 12,
-  background: "#2b2a33",
-  display: "grid",
-  alignContent: "start",
-  gap: 1,
-};
-
-const metricTableRowStyle: CSSProperties = {
-  minHeight: 34,
-  display: "grid",
-  gridTemplateColumns: "180px repeat(5, minmax(90px, 1fr))",
-  gap: 8,
-  alignItems: "center",
-  borderBottom: "1px solid rgba(255,255,255,0.10)",
-  color: "#c8cad4",
-  fontSize: 12,
-};
-
-const barChartStyle: CSSProperties = {
-  padding: "16px 26px 20px 70px",
-  display: "grid",
-  gap: 7,
-  alignContent: "center",
-};
-
-const barChartRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "112px minmax(0, 1fr) 70px",
-  gap: 10,
-  alignItems: "center",
-  color: "#6e8799",
-  fontSize: 12,
-};
-
-const barChartTrackStyle: CSSProperties = {
-  minHeight: 15,
-  borderLeft: "1px solid rgba(82,105,122,0.22)",
-  backgroundImage: "linear-gradient(90deg, rgba(82,105,122,0.15) 1px, transparent 1px)",
-  backgroundSize: "72px 100%",
-};
-
-const barChartBarStyle: CSSProperties = {
-  height: 5,
-};
-
-const axisLabelStyle: CSSProperties = {
-  color: CT.ink,
-  fontSize: 12,
-  textAlign: "center",
-  marginTop: 4,
-};
-
-const plotStackStyle: CSSProperties = {
-  overflow: "auto",
-  display: "grid",
-  alignContent: "start",
-};
-
-const plotRowStyle: CSSProperties = {
-  minHeight: 160,
-  display: "grid",
-  gridTemplateColumns: "58px minmax(0, 1fr)",
-  borderBottom: `1px solid ${CT.border}`,
-};
-
-const plotAxisStyle: CSSProperties = {
-  borderRight: `1px solid ${CT.border}`,
-  color: "#6e8799",
-  fontSize: 11,
-  display: "grid",
-  alignContent: "space-between",
-  justifyItems: "center",
-  padding: "12px 0",
-};
-
-const sparkPlotStyle: CSSProperties = {
-  position: "relative",
-  minHeight: 160,
-};
-
-const plotSvgStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  display: "block",
-};
-
-const plotTitleStyle: CSSProperties = {
-  position: "absolute",
-  top: 8,
-  left: "45%",
-  color: CT.ink,
-  fontSize: 12,
-  fontWeight: 850,
-};
-
-const plotLegendStyle: CSSProperties = {
-  position: "absolute",
-  top: 10,
-  right: 16,
-  display: "grid",
-  gap: 6,
-  background: "rgba(255,255,255,0.78)",
-  border: `1px solid ${CT.border}`,
-  padding: "8px 10px",
-  color: CT.inkSub,
-  fontSize: 11,
-};
-
-const bottomCanvasGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1.6fr) minmax(300px, 0.8fr)",
-  gap: 10,
-  minHeight: 230,
-};
-
-const timelineStyle: CSSProperties = {
-  position: "relative",
-  minHeight: 196,
-};
-
-const timelineCaptionStyle: CSSProperties = {
-  position: "absolute",
-  left: 12,
-  bottom: 10,
-  color: CT.inkMuted,
-  fontSize: 12,
-  fontStyle: "italic",
-};
-
-const objectViewStyle: CSSProperties = {
-  padding: 10,
-  display: "grid",
-  gap: 7,
-  alignContent: "start",
-  overflow: "auto",
-};
-
-const objectViewRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "24px minmax(0, 1fr) auto",
-  gap: 8,
-  alignItems: "center",
-  minHeight: 42,
-  border: `1px solid ${CT.border}`,
-  background: CT.surfaceMuted,
-  padding: "7px 8px",
-  color: CT.ink,
-  fontSize: 12,
-};
-
-const objectGlyphStyle: CSSProperties = {
-  color: CT.accent,
-  fontSize: 14,
-};
-
-const headerStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "end",
-  justifyContent: "space-between",
-  gap: 18,
-};
-
-const eyebrowStyle: CSSProperties = {
-  fontSize: 11,
-  color: CT.accent,
-  letterSpacing: 1.3,
-  textTransform: "uppercase",
-  fontWeight: 850,
-};
-
-const titleStyle: CSSProperties = {
-  margin: "4px 0 0",
-  fontSize: 27,
-  lineHeight: 1.1,
-  fontWeight: 850,
-  letterSpacing: 0,
-};
-
-const summaryPillsStyle: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  justifyContent: "flex-end",
-};
-
-function summaryPillStyle(tone: "neutral" | "risk"): CSSProperties {
-  return {
-    height: 34,
-    display: "inline-flex",
-    alignItems: "center",
-    gap: 8,
-    border: `1px solid ${tone === "risk" ? "rgba(179,64,55,0.25)" : CT.border}`,
-    borderRadius: 7,
-    background: tone === "risk" ? CT.errSoft : CT.surface,
-    color: tone === "risk" ? CT.err : CT.inkSub,
-    padding: "0 10px",
-    fontSize: 12,
-    fontWeight: 800,
-  };
-}
-
-const layoutStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "310px minmax(0, 1fr)",
-  gap: 10,
-  minHeight: "calc(100vh - 146px)",
-};
-
-const sidebarStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 10,
-  minHeight: 0,
+  gridTemplateColumns: "292px minmax(0, 1fr)",
   overflow: "hidden",
-  display: "grid",
-  gridTemplateRows: "34px minmax(0, 1fr)",
+  borderTop: `1px solid ${CT.border}`,
 };
 
-const panelTitleStyle: CSSProperties = {
+const deviceRailStyle: CSSProperties = {
+  background: "#fffdf8",
+  borderRight: `1px solid ${CT.border}`,
+  padding: 16,
+  overflow: "auto",
+};
+
+const railHeaderStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
   justifyContent: "space-between",
-  gap: 10,
-  fontSize: 12,
-  fontWeight: 850,
-  color: CT.ink,
+  alignItems: "center",
+  marginBottom: 12,
+  fontSize: 14,
 };
 
-const ghostButtonStyle: CSSProperties = {
+const smallButtonStyle: CSSProperties = {
   border: `1px solid ${CT.border}`,
+  background: "#f1eee7",
   borderRadius: 7,
-  background: CT.surfaceMuted,
-  color: CT.inkSub,
-  fontFamily: CT_FONT,
-  fontSize: 11,
-  height: 26,
-  padding: "0 8px",
+  padding: "6px 10px",
+  fontWeight: 800,
+  color: CT.inkMuted,
   cursor: "pointer",
 };
 
 const deviceListStyle: CSSProperties = {
-  overflow: "auto",
   display: "grid",
-  alignContent: "start",
-  gap: 7,
-  paddingRight: 2,
+  gap: 9,
 };
 
-function deviceButtonStyle(active: boolean): CSSProperties {
-  return {
-    minHeight: 58,
-    display: "grid",
-    gridTemplateColumns: "24px minmax(0, 1fr) 58px",
-    alignItems: "center",
-    gap: 8,
-    border: `1px solid ${active ? CT.borderStrong : CT.border}`,
-    borderRadius: 8,
-    background: active ? "#fffaf4" : CT.surface,
-    color: CT.ink,
-    textAlign: "left",
-    fontFamily: CT_FONT,
-    padding: "8px 9px",
-    cursor: "pointer",
-  };
-}
+const deviceButtonStyle = (active: boolean): CSSProperties => ({
+  display: "grid",
+  gridTemplateColumns: "24px minmax(0, 1fr) auto",
+  alignItems: "center",
+  gap: 10,
+  border: `1px solid ${active ? "#e6b49f" : CT.border}`,
+  background: active ? "#fff8f3" : "#fff",
+  borderRadius: 8,
+  padding: 11,
+  color: CT.ink,
+  textAlign: "left",
+  cursor: "pointer",
+  boxShadow: active ? "0 1px 0 rgba(157, 90, 54, 0.16)" : "none",
+});
 
-function deviceCheckStyle(active: boolean): CSSProperties {
-  return {
-    width: 22,
-    height: 22,
-    borderRadius: 6,
-    border: `1px solid ${active ? CT.borderStrong : CT.border}`,
-    color: active ? CT.accent : CT.inkMuted,
-    display: "flex",
-    alignItems: "center",
-    justifyContent: "center",
-    background: active ? CT.accentSoft : CT.surfaceMuted,
-  };
-}
+const checkStyle = (active: boolean): CSSProperties => ({
+  width: 20,
+  height: 20,
+  borderRadius: 6,
+  border: `1px solid ${active ? "#e39d7e" : CT.border}`,
+  color: "#c56745",
+  display: "grid",
+  placeItems: "center",
+  background: active ? "#fde9df" : "#f3f0ea",
+});
 
-const deviceNameStyle: CSSProperties = {
-  display: "block",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontSize: 12,
-};
-
-const deviceSubStyle: CSSProperties = {
-  display: "block",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  color: CT.inkMuted,
-  fontSize: 10,
-  marginTop: 3,
-};
-
-const deviceStockStyle: CSSProperties = {
-  textAlign: "right",
-  fontFamily: CT_MONO,
-  fontSize: 12,
-  color: CT.inkSub,
-};
-
-const mainPanelStyle: CSSProperties = {
+const workspaceStyle: CSSProperties = {
   minWidth: 0,
   display: "grid",
-  gridTemplateRows: "auto auto minmax(0, 1fr)",
-  gap: 10,
+  gridTemplateRows: "auto minmax(0, 1fr)",
+  overflow: "hidden",
 };
 
-const filterBarStyle: CSSProperties = {
-  minHeight: 54,
+const builderStyle: CSSProperties = {
+  background: "#eef3f5",
+  borderBottom: `1px solid ${CT.border}`,
+  padding: "14px 18px",
   display: "grid",
-  gridTemplateColumns: "minmax(260px, 1fr) repeat(4, 138px)",
-  gap: 8,
+  gridTemplateColumns: "270px 260px minmax(320px, 1fr)",
+  gap: 14,
   alignItems: "center",
+};
+
+const builderTitleStyle: CSSProperties = {
+  display: "flex",
+  gap: 10,
+  alignItems: "center",
+  color: "#33554f",
+};
+
+const domainSwitchStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, 1fr)",
+  background: "#ffffff",
   border: `1px solid ${CT.border}`,
   borderRadius: 8,
-  background: CT.surface,
-  padding: 10,
+  padding: 4,
+};
+
+const domainButtonStyle = (active: boolean): CSSProperties => ({
+  border: 0,
+  borderRadius: 6,
+  background: active ? "#2f5d50" : "transparent",
+  color: active ? "#fff" : CT.inkMuted,
+  padding: "9px 10px",
+  fontWeight: 850,
+  cursor: "pointer",
+});
+
+const builderGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1.5fr 1.1fr 130px",
+  gap: 10,
+  alignItems: "end",
+};
+
+const fieldStyle: CSSProperties = {
+  display: "grid",
+  gap: 5,
+  fontSize: 11,
+  fontWeight: 850,
+  color: CT.inkMuted,
 };
 
 const searchBoxStyle: CSSProperties = {
   height: 34,
+  border: `1px solid ${CT.border}`,
+  background: "#fff",
+  borderRadius: 7,
   display: "flex",
   alignItems: "center",
   gap: 8,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surfaceMuted,
   padding: "0 9px",
 };
 
-const searchInputStyle: CSSProperties = {
-  flex: 1,
-  minWidth: 0,
-  border: 0,
-  outline: 0,
-  background: "transparent",
-  color: CT.ink,
-  fontFamily: CT_FONT,
-  fontSize: 12,
+const metricStripStyle: CSSProperties = {
+  gridColumn: "1 / -1",
+  display: "flex",
+  gap: 8,
+  flexWrap: "wrap",
 };
 
-const clearButtonStyle: CSSProperties = {
-  width: 24,
-  height: 24,
+const metricButtonStyle = (active: boolean, color: string): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  border: `1px solid ${active ? color : CT.border}`,
+  background: active ? "#fff" : "#f7f5f0",
+  color: active ? CT.ink : CT.inkMuted,
+  borderRadius: 7,
+  height: 30,
+  padding: "0 11px",
+  fontWeight: 850,
+  cursor: "pointer",
+});
+
+const chartPanelStyle: CSSProperties = {
+  minHeight: 0,
+  margin: 16,
+  background: "#27262f",
+  border: "1px solid #1e1e25",
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
+  overflow: "hidden",
+  boxShadow: "0 16px 40px rgba(27, 28, 36, 0.16)",
+};
+
+const chartHeaderStyle: CSSProperties = {
+  display: "flex",
+  justifyContent: "space-between",
+  gap: 16,
+  alignItems: "center",
+  padding: "12px 16px",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  color: "#f2f1ee",
+};
+
+const summaryStyle: CSSProperties = {
+  display: "flex",
+  gap: 8,
+};
+
+const summaryPillStyle = (tone: "normal" | "risk"): CSSProperties => ({
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  border: `1px solid ${tone === "risk" ? "rgba(239,125,112,0.55)" : "rgba(255,255,255,0.12)"}`,
+  background: tone === "risk" ? "rgba(239,125,112,0.12)" : "rgba(255,255,255,0.05)",
+  borderRadius: 7,
+  padding: "7px 10px",
+  color: tone === "risk" ? "#ffb3a8" : "#d9dae0",
+  fontSize: 12,
+  fontWeight: 800,
+});
+
+const controlDeckStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 10,
+  padding: "10px 14px",
+  background: "#302f39",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+};
+
+const segmentedStyle: CSSProperties = {
+  display: "inline-flex",
+  background: "#1d1d24",
+  border: "1px solid rgba(255,255,255,0.08)",
+  borderRadius: 7,
+  padding: 3,
+};
+
+const segmentButtonStyle = (active: boolean): CSSProperties => ({
   border: 0,
-  background: "transparent",
-  color: CT.inkMuted,
+  borderRadius: 5,
+  height: 30,
+  minWidth: 58,
+  padding: "0 12px",
+  background: active ? "#4f9a60" : "transparent",
+  color: active ? "#fff" : "#c3c4cc",
+  fontWeight: 850,
+  cursor: "pointer",
+});
+
+const compactSelectStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  color: "#c3c4cc",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const resetChartButtonStyle: CSSProperties = {
+  marginLeft: "auto",
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 7,
+  height: 32,
+  border: "1px solid rgba(255,255,255,0.12)",
+  background: "#3a3944",
+  color: "#e7e7ec",
+  borderRadius: 7,
+  padding: "0 11px",
+  fontWeight: 850,
   cursor: "pointer",
 };
 
-const selectWrapStyle: CSSProperties = {
+const fiscalChartWrapStyle: CSSProperties = {
+  minHeight: 0,
   display: "grid",
-  gap: 4,
-  color: CT.inkMuted,
-  fontSize: 10,
-  fontWeight: 800,
+  gridTemplateRows: "minmax(360px, 1fr) auto",
 };
 
-const selectStyle: CSSProperties = {
-  height: 34,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surface,
-  color: CT.ink,
-  fontFamily: CT_FONT,
-  fontSize: 12,
-  fontWeight: 750,
-  padding: "0 8px",
-  outline: "none",
-};
-
-const compareGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
-  gap: 10,
-  overflowX: "auto",
-};
-
-const deviceCardStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 12,
-  display: "grid",
-  gap: 12,
-  minWidth: 190,
-};
-
-const deviceCardHeaderStyle: CSSProperties = {
-  display: "flex",
-  justifyContent: "space-between",
-  gap: 10,
-  alignItems: "start",
-  fontSize: 13,
-};
-
-const barGroupStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-};
-
-const barRowStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "74px minmax(0, 1fr) 54px",
-  alignItems: "center",
-  gap: 8,
-  fontSize: 11,
-  color: CT.inkMuted,
-};
-
-const barTrackStyle: CSSProperties = {
-  height: 7,
-  borderRadius: 999,
-  background: CT.surfaceMuted,
-  overflow: "hidden",
-};
-
-const barFillStyle: CSSProperties = {
+const fiscalSvgStyle: CSSProperties = {
+  width: "100%",
   height: "100%",
-  borderRadius: 999,
-};
-
-const deviceMetricsStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
-  gap: 6,
-};
-
-const metricStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surfaceMuted,
-  padding: "6px 7px",
-  display: "grid",
-  gap: 4,
-  color: CT.inkMuted,
-  fontSize: 10,
-};
-
-const contentGridStyle: CSSProperties = {
-  minHeight: 0,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) 340px",
-  gap: 10,
-};
-
-const tablePanelStyle: CSSProperties = {
-  minHeight: 0,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 10,
-  display: "grid",
-  gridTemplateRows: "32px minmax(0, 1fr)",
-};
-
-const componentTableStyle: CSSProperties = {
-  overflow: "auto",
-  borderTop: `1px solid ${CT.border}`,
-};
-
-const tableHeaderStyle: CSSProperties = {
-  position: "sticky",
-  top: 0,
-  zIndex: 1,
-  height: 34,
-  display: "grid",
-  gridTemplateColumns: "90px minmax(240px, 1fr) 110px 110px 92px",
-  gap: 10,
-  alignItems: "center",
-  background: CT.surface,
-  color: CT.inkMuted,
-  fontSize: 10,
-  fontWeight: 850,
-  textTransform: "uppercase",
-  letterSpacing: 0.5,
-};
-
-const tableRowStyle: CSSProperties = {
-  minHeight: 46,
-  display: "grid",
-  gridTemplateColumns: "90px minmax(240px, 1fr) 110px 110px 92px",
-  gap: 10,
-  alignItems: "center",
-  borderTop: `1px solid ${CT.border}`,
-  color: CT.inkSub,
-  fontSize: 12,
-};
-
-const componentCodeStyle: CSSProperties = {
   display: "block",
-  color: CT.ink,
-  fontFamily: CT_MONO,
+};
+
+const legendStyle: CSSProperties = {
+  display: "flex",
+  gap: 16,
+  padding: "10px 16px 14px",
+  color: "#d9dae0",
   fontSize: 12,
+  borderTop: "1px solid rgba(255,255,255,0.08)",
 };
 
-const componentNameStyle: CSSProperties = {
-  display: "block",
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  color: CT.inkMuted,
-  fontStyle: "normal",
-  fontSize: 11,
-  marginTop: 3,
-};
-
-const statusBadgeStyle: CSSProperties = {
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  minHeight: 24,
-  border: "1px solid",
-  borderRadius: 999,
-  fontSize: 10,
-  fontWeight: 850,
-  padding: "0 8px",
-  whiteSpace: "nowrap",
-};
-
-const insightPanelStyle: CSSProperties = {
-  minHeight: 0,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 10,
-  display: "grid",
-  alignContent: "start",
-  gap: 12,
+const tableWrapStyle: CSSProperties = {
   overflow: "auto",
+  padding: 14,
 };
 
-const sharedListStyle: CSSProperties = {
+const tableRowStyle = (header: boolean): CSSProperties => ({
   display: "grid",
-  gap: 7,
-};
-
-const sharedRowStyle: CSSProperties = {
-  minHeight: 54,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surfaceMuted,
-  padding: 9,
-  display: "grid",
-  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gridTemplateColumns: "1.4fr 1fr .8fr repeat(6, minmax(88px, 1fr))",
   gap: 10,
-  alignItems: "center",
+  minWidth: 900,
+  padding: "10px 12px",
+  borderBottom: "1px solid rgba(255,255,255,0.08)",
+  color: header ? "#f2f1ee" : "#cfd0d8",
+  fontWeight: header ? 900 : 650,
   fontSize: 12,
-};
+});
 
-const sharedMetaStyle: CSSProperties = {
-  display: "grid",
-  justifyItems: "end",
-  gap: 5,
-};
-
-const ruleBoxStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surfaceMuted,
-  padding: 10,
-  color: CT.inkSub,
-  fontSize: 12,
-  lineHeight: 1.35,
-};
-
-const emptyStyle: CSSProperties = {
-  color: CT.inkMuted,
-  fontSize: 12,
-  padding: 12,
-};
+const riskTextStyle = (risk: string): CSSProperties => ({
+  color: risk === "critical" ? "#ff9b8f" : risk === "warning" ? "#f5bd72" : "#9dd69c",
+  fontWeight: 900,
+});
 
 const loadingStyle: CSSProperties = {
   position: "fixed",
   right: 18,
   bottom: 18,
-  border: `1px solid ${CT.border}`,
+  background: "#27262f",
+  color: "#f8f7f4",
   borderRadius: 8,
-  background: CT.surface,
-  color: CT.inkSub,
-  fontSize: 12,
-  padding: "10px 12px",
-  boxShadow: "0 10px 28px rgba(20,20,19,0.10)",
+  padding: "10px 13px",
+  fontWeight: 850,
+  boxShadow: "0 14px 34px rgba(20,20,19,0.18)",
 };
+
+const globalInputStyle = `
+  select, input { font: inherit; }
+  ${""}
+`;
+
+void globalInputStyle;
