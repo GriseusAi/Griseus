@@ -29,6 +29,7 @@ type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
 type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procurement";
 type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement";
 type PortSide = "left" | "right";
+type DeviceOperationMode = "auto" | "warehouse_sale" | "produce_sale" | "partial";
 
 type OrderFields = {
   customer: string;
@@ -88,6 +89,8 @@ type PipelineNode = {
   procurementOverrides?: Record<string, ProcurementOverride>;
   deviceSku?: string;
   deviceQuantity?: string;
+  deviceOperationMode?: DeviceOperationMode;
+  deviceOperation?: DeviceOperationSnapshot;
   drilldownParentId?: string;
   bomComponent?: BomComponentNodeMeta;
   bomChildren?: BomStockComponent[];
@@ -133,6 +136,24 @@ type BomStockComponent = {
 type BomStockResponse = {
   product: string;
   components: BomStockComponent[];
+};
+
+type DeviceOperationSnapshot = {
+  status: "idle" | "loading" | "ready" | "error";
+  sku: string;
+  productName?: string;
+  inProduction: number;
+  inWarehouse: number;
+  totalSold: number;
+  maxProducible: number | null;
+  bottleneck?: {
+    code?: string;
+    name?: string;
+    maxProducts?: number;
+  } | null;
+  updatedAt?: string;
+  loadedAt?: string;
+  error?: string;
 };
 
 type SemanticConnectionContract = {
@@ -1081,17 +1102,93 @@ export default function PipelineBuilderPage() {
         semanticLabel: label,
         deviceSku: value,
         dbLinkedSku: undefined,
+        deviceOperation: value ? { status: "loading", sku: value, inProduction: 0, inWarehouse: 0, totalSold: 0, maxProducible: null } : undefined,
+        rows: value ? node.rows : [],
+        columns: value ? node.columns : [],
       };
     }));
+    if (value) void loadDeviceOperationFromDatabase(nodeId, value);
     if (value) void loadDeviceBomFromDatabase(nodeId, value, { pushSnapshot: true });
   }
 
   function updateDeviceQuantity(nodeId: string, value: string) {
     setNodes(prev => refreshDeviceOrderRisk(
-      prev.map(node => node.id === nodeId ? { ...node, deviceQuantity: value } : node),
+      prev.map(node => node.id === nodeId ? withDeviceOperationRows({ ...node, deviceQuantity: value }) : node),
       nodeId,
       value,
     ));
+  }
+
+  function updateDeviceOperationMode(nodeId: string, mode: DeviceOperationMode) {
+    setNodes(prev => prev.map(node => (
+      node.id === nodeId ? withDeviceOperationRows({ ...node, deviceOperationMode: mode }) : node
+    )));
+  }
+
+  async function loadDeviceOperationFromDatabase(nodeId: string, sku: string) {
+    const cleanSku = sku.trim();
+    if (!cleanSku) return;
+
+    setNodes(prev => prev.map(node => (
+      node.id === nodeId
+        ? withDeviceOperationRows({
+            ...node,
+            deviceOperation: { status: "loading", sku: cleanSku, inProduction: 0, inWarehouse: 0, totalSold: 0, maxProducible: null },
+          })
+        : node
+    )));
+
+    try {
+      const [stockResult, capacityResult] = await Promise.allSettled([
+        fetch(`/api/stock/levels?sku=${encodeURIComponent(cleanSku)}`).then(async res => {
+          if (!res.ok) throw new Error("mamul stok okunamadı");
+          const rows = await res.json();
+          return Array.isArray(rows) ? rows[0] : null;
+        }),
+        fetch(`/api/bom/${encodeURIComponent(cleanSku)}/production-capacity`).then(async res => {
+          if (!res.ok) return null;
+          return res.json();
+        }),
+      ]);
+
+      const stock = stockResult.status === "fulfilled" ? stockResult.value : null;
+      const capacity = capacityResult.status === "fulfilled" ? capacityResult.value : null;
+      const snapshot: DeviceOperationSnapshot = {
+        status: "ready",
+        sku: cleanSku,
+        productName: stock?.productName ?? capacity?.product ?? cleanSku,
+        inProduction: toNumberOrNull(stock?.inProduction) ?? 0,
+        inWarehouse: toNumberOrNull(stock?.inWarehouse) ?? 0,
+        totalSold: toNumberOrNull(stock?.totalSold) ?? 0,
+        maxProducible: toNumberOrNull(capacity?.maxProducible),
+        bottleneck: Array.isArray(capacity?.bottlenecks) ? capacity.bottlenecks[0] ?? null : null,
+        updatedAt: stock?.updatedAt,
+        loadedAt: new Date().toISOString(),
+      };
+
+      setNodes(prev => prev.map(node => (
+        node.id === nodeId && node.deviceSku === cleanSku
+          ? withDeviceOperationRows({ ...node, deviceOperation: snapshot })
+          : node
+      )));
+    } catch (err: any) {
+      setNodes(prev => prev.map(node => (
+        node.id === nodeId
+          ? withDeviceOperationRows({
+              ...node,
+              deviceOperation: {
+                status: "error",
+                sku: cleanSku,
+                inProduction: 0,
+                inWarehouse: 0,
+                totalSold: 0,
+                maxProducible: null,
+                error: err?.message || "operasyon verisi okunamadı",
+              },
+            })
+          : node
+      )));
+    }
   }
 
   async function drillDownDeviceNode(nodeId: string) {
@@ -1329,6 +1426,7 @@ export default function PipelineBuilderPage() {
                   onProcurementFieldChange={(field, value) => updateProcurementField(node.id, field, value)}
                   onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                   onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
+                  onDeviceOperationModeChange={(mode) => updateDeviceOperationMode(node.id, mode)}
                   onDrillDown={() => drillDownDeviceNode(node.id)}
                   onComponentDrillDown={() => drillDownComponentNode(node.id)}
                   productOptions={productOptions}
@@ -1452,7 +1550,7 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
+function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDeviceOperationModeChange, onDrillDown, onComponentDrillDown, productOptions }: {
   node: PipelineNode;
   selected: boolean;
   onSelect: () => void;
@@ -1465,6 +1563,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onProcurementFieldChange: (field: keyof ProcurementFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
+  onDeviceOperationModeChange: (mode: DeviceOperationMode) => void;
   onDrillDown: () => void;
   onComponentDrillDown: () => void;
   productOptions: ProductOption[];
@@ -1560,6 +1659,9 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           onChange={onDeviceSelect}
           quantity={node.deviceQuantity ?? ""}
           onQuantityChange={onDeviceQuantityChange}
+          mode={node.deviceOperationMode ?? "auto"}
+          operation={node.deviceOperation}
+          onModeChange={onDeviceOperationModeChange}
           onDrillDown={onDrillDown}
           productOptions={productOptions}
         />
@@ -1716,14 +1818,18 @@ function OrderDeviceField({ value, products, onChange }: {
   );
 }
 
-function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDown, productOptions }: {
+function DeviceSelector({ value, quantity, mode, operation, onChange, onQuantityChange, onModeChange, onDrillDown, productOptions }: {
   value: string;
   quantity: string;
+  mode: DeviceOperationMode;
+  operation?: DeviceOperationSnapshot;
   onChange: (value: string) => void;
   onQuantityChange: (value: string) => void;
+  onModeChange: (mode: DeviceOperationMode) => void;
   onDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
+  const plan = buildDeviceOperationPlan(operation, quantity, mode);
   return (
     <div data-no-drag="true" style={deviceEditorStyle}>
       <div style={deviceFieldsGridStyle}>
@@ -1748,6 +1854,34 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
         </label>
         <OrderField label="Adet" value={quantity} inputMode="numeric" onChange={onQuantityChange} />
       </div>
+      <div style={operationModeGridStyle}>
+        {deviceOperationModes.map(item => (
+          <button
+            key={item.mode}
+            type="button"
+            onClick={(event) => {
+              event.preventDefault();
+              event.stopPropagation();
+              onModeChange(item.mode);
+            }}
+            style={operationModeButtonStyle(mode === item.mode)}
+          >
+            {item.label}
+          </button>
+        ))}
+      </div>
+      <div style={operationPanelStyle(plan.status)}>
+        <div style={operationPanelHeaderStyle}>
+          <span>{plan.title}</span>
+          <span style={operationBadgeStyle(plan.status)}>{plan.badge}</span>
+        </div>
+        <div style={operationMetricsGridStyle}>
+          <MiniMetric label="Depo" value={plan.warehouse} />
+          <MiniMetric label="Üretim" value={plan.production} />
+          <MiniMetric label="Satış" value={plan.sales} />
+        </div>
+        <div style={operationNoteStyle}>{plan.note}</div>
+      </div>
       <button
         type="button"
         onClick={(event) => {
@@ -1761,6 +1895,15 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
         <ListTree size={13} />
         Drill-down
       </button>
+    </div>
+  );
+}
+
+function MiniMetric({ label, value }: { label: string; value: string }) {
+  return (
+    <div style={operationMiniMetricStyle}>
+      <span>{label}</span>
+      <strong>{value}</strong>
     </div>
   );
 }
@@ -3396,6 +3539,13 @@ function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRol
   return functionKind;
 }
 
+const deviceOperationModes: Array<{ mode: DeviceOperationMode; label: string }> = [
+  { mode: "auto", label: "Auto" },
+  { mode: "warehouse_sale", label: "Depodan sat" },
+  { mode: "produce_sale", label: "Üret ve sat" },
+  { mode: "partial", label: "Kısmi" },
+];
+
 function emptyOrderFields(): OrderFields {
   return {
     customer: "",
@@ -3421,6 +3571,151 @@ function emptyOrderLineFields(orderFields?: OrderFields): OrderLineFields {
     deviceType: "",
     quantity: "",
     deadline: orderFields?.deadline ?? "",
+  };
+}
+
+function withDeviceOperationRows(node: PipelineNode): PipelineNode {
+  if (node.semanticRole !== "device") return node;
+  const rows = deviceOperationToRows(node);
+  return {
+    ...node,
+    rows,
+    columns: collectColumns(rows),
+  };
+}
+
+function deviceOperationToRows(node: PipelineNode) {
+  const op = node.deviceOperation;
+  if (!op) return node.rows;
+  const plan = buildDeviceOperationPlan(op, node.deviceQuantity ?? "", node.deviceOperationMode ?? "auto");
+  return [{
+    product_sku: op.sku,
+    product_name: op.productName ?? op.sku,
+    operation_mode: plan.mode,
+    requested_quantity: plan.requestedQuantity,
+    finished_in_warehouse: op.inWarehouse,
+    in_production: op.inProduction,
+    max_producible_from_components: op.maxProducible,
+    warehouse_reserved: plan.warehouseReserve,
+    production_order: plan.productionOrder,
+    sales_commit: plan.salesCommit,
+    shortage: plan.shortage,
+    bottleneck: op.bottleneck?.code ?? null,
+    status: plan.status,
+  }];
+}
+
+function buildDeviceOperationPlan(
+  operation: DeviceOperationSnapshot | undefined,
+  quantity: string,
+  requestedMode: DeviceOperationMode,
+) {
+  const requestedQuantity = parsePositiveQuantity(quantity) ?? 0;
+  if (!operation || !operation.sku) {
+    return {
+      mode: requestedMode,
+      requestedQuantity,
+      warehouseReserve: 0,
+      productionOrder: 0,
+      salesCommit: 0,
+      shortage: 0,
+      status: "idle",
+      badge: "SKU yok",
+      title: "Operasyon modu",
+      warehouse: "-",
+      production: "-",
+      sales: "-",
+      note: "Cihaz seçilince mamul depo ve üretilebilirlik canlı okunur.",
+    };
+  }
+  if (operation.status === "loading") {
+    return {
+      mode: requestedMode,
+      requestedQuantity,
+      warehouseReserve: 0,
+      productionOrder: 0,
+      salesCommit: 0,
+      shortage: 0,
+      status: "loading",
+      badge: "Canlı",
+      title: "Operasyon modu",
+      warehouse: "okunuyor",
+      production: "okunuyor",
+      sales: "beklemede",
+      note: `${operation.sku} için stock_levels ve BOM kapasitesi okunuyor.`,
+    };
+  }
+  if (operation.status === "error") {
+    return {
+      mode: requestedMode,
+      requestedQuantity,
+      warehouseReserve: 0,
+      productionOrder: 0,
+      salesCommit: 0,
+      shortage: requestedQuantity,
+      status: "critical",
+      badge: "Veri yok",
+      title: "Operasyon modu",
+      warehouse: "-",
+      production: "-",
+      sales: "-",
+      note: operation.error ?? "Operasyon verisi okunamadı.",
+    };
+  }
+
+  const warehouseAvailable = Math.max(0, operation.inWarehouse);
+  const producible = Math.max(0, operation.maxProducible ?? 0);
+  const mode = requestedMode === "auto"
+    ? warehouseAvailable >= requestedQuantity
+      ? "warehouse_sale"
+      : warehouseAvailable === 0
+        ? "produce_sale"
+        : "partial"
+    : requestedMode;
+
+  const warehouseReserve = mode === "produce_sale"
+    ? 0
+    : Math.min(requestedQuantity, warehouseAvailable);
+  const remainingAfterWarehouse = Math.max(0, requestedQuantity - warehouseReserve);
+  const productionOrder = mode === "warehouse_sale"
+    ? 0
+    : Math.min(remainingAfterWarehouse, producible);
+  const salesCommit = Math.min(requestedQuantity, warehouseReserve + productionOrder);
+  const shortage = Math.max(0, requestedQuantity - salesCommit);
+  const status = requestedQuantity === 0
+    ? "idle"
+    : shortage > 0
+      ? "critical"
+      : productionOrder > 0
+        ? "warning"
+        : "ok";
+  const modeLabel = mode === "warehouse_sale"
+    ? "Depodan sat"
+    : mode === "produce_sale"
+      ? "Üret ve sat"
+      : "Kısmi depo + üretim";
+  const bottleneck = operation.bottleneck?.code
+    ? ` Darboğaz: ${operation.bottleneck.code}.`
+    : "";
+
+  return {
+    mode,
+    requestedQuantity,
+    warehouseReserve,
+    productionOrder,
+    salesCommit,
+    shortage,
+    status,
+    badge: status === "critical" ? "Risk" : status === "warning" ? "Üretim" : status === "ok" ? "Hazır" : "Bekliyor",
+    title: modeLabel,
+    warehouse: `${formatCell(warehouseReserve)}/${formatCell(operation.inWarehouse)}`,
+    production: operation.maxProducible === null ? "BOM yok" : `${formatCell(productionOrder)}/${formatCell(operation.maxProducible)}`,
+    sales: `${formatCell(salesCommit)}/${requestedQuantity ? formatCell(requestedQuantity) : "-"}`,
+    note: shortage > 0
+      ? `${formatCell(shortage)} adet açık kalıyor.${bottleneck}`
+      : requestedQuantity > 0
+        ? "Sipariş bu cihaz kutusu içinden karşılanabilir."
+        : "Sipariş adedi girilince depo, üretim ve satış commit'i hesaplanır.",
   };
 }
 
@@ -3711,7 +4006,7 @@ function nodeHeight(kind: NodeKind) {
 
 function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
-  if (node.semanticRole === "device") return 212;
+  if (node.semanticRole === "device") return 302;
   if (node.semanticRole === "procurement") return 190;
   return nodeHeight(node.kind);
 }
@@ -4164,6 +4459,102 @@ const deviceFieldsGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 78px",
   gap: 7,
+};
+
+const operationModeGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gap: 4,
+};
+
+function operationModeButtonStyle(active: boolean): CSSProperties {
+  return {
+    height: 24,
+    minWidth: 0,
+    border: `1px solid ${active ? CT.accentEdge : CT.border}`,
+    borderRadius: 5,
+    background: active ? CT.accentSoft : "#fbfbf8",
+    color: active ? CT.accent : CT.inkMuted,
+    fontFamily: CT_FONT,
+    fontSize: 9.5,
+    fontWeight: 850,
+    cursor: "pointer",
+    overflow: "hidden",
+    textOverflow: "ellipsis",
+    whiteSpace: "nowrap",
+    padding: "0 4px",
+  };
+}
+
+function operationPanelStyle(status: string): CSSProperties {
+  const border =
+    status === "critical" ? "rgba(178,34,34,0.28)" :
+    status === "warning" ? "rgba(169,111,0,0.28)" :
+    status === "ok" ? "rgba(63,143,91,0.28)" :
+    CT.border;
+  const background =
+    status === "critical" ? "#fff5f2" :
+    status === "warning" ? "#fff8e7" :
+    status === "ok" ? "#f2fbf4" :
+    "#fbfbf8";
+  return {
+    display: "grid",
+    gap: 7,
+    border: `1px solid ${border}`,
+    borderRadius: 7,
+    background,
+    padding: 8,
+  };
+}
+
+const operationPanelHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 8,
+  color: CT.ink,
+  fontSize: 11,
+  fontWeight: 850,
+};
+
+function operationBadgeStyle(status: string): CSSProperties {
+  const color =
+    status === "critical" ? CT.err :
+    status === "warning" ? "#a96f00" :
+    status === "ok" ? CT.ok :
+    CT.inkMuted;
+  return {
+    flex: "0 0 auto",
+    color,
+    fontFamily: CT_MONO,
+    fontSize: 9.5,
+    fontWeight: 900,
+  };
+}
+
+const operationMetricsGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 5,
+};
+
+const operationMiniMetricStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gap: 2,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 5,
+  background: "rgba(255,255,255,0.56)",
+  padding: "5px 6px",
+  color: CT.inkMuted,
+  fontSize: 9,
+  fontFamily: CT_MONO,
+};
+
+const operationNoteStyle: CSSProperties = {
+  color: CT.inkSub,
+  fontSize: 10.5,
+  lineHeight: 1.35,
 };
 
 function drilldownButtonStyle(disabled: boolean): CSSProperties {
