@@ -8,8 +8,6 @@ import {
   Boxes,
   CheckCircle2,
   Cpu,
-  Factory,
-  GitCompare,
   Network,
   Search,
   SlidersHorizontal,
@@ -122,13 +120,15 @@ const domainMetrics: Record<ProjectionDomain, MetricKey[]> = {
 
 export default function OntologyLayersPage() {
   const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
-  const [domain, setDomain] = useState<ProjectionDomain>("device");
+  const [workspaceTab, setWorkspaceTab] = useState<"devices" | "groups">("devices");
+  const [groupDomain, setGroupDomain] = useState<Exclude<ProjectionDomain, "device">>("component");
   const [chartKind, setChartKind] = useState<ChartKind>("combo");
   const [xAxisMode, setXAxisMode] = useState<XAxisMode>("name");
   const [lineStyle, setLineStyle] = useState<LineStyle>("smooth");
   const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(domainMetrics.device);
   const [query, setQuery] = useState("");
   const [riskFilter, setRiskFilter] = useState("all");
+  const domain: ProjectionDomain = workspaceTab === "devices" ? "device" : groupDomain;
 
   const productsQuery = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const stockLevelsQuery = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
@@ -213,8 +213,16 @@ export default function OntologyLayersPage() {
   const metrics = selectedMetrics.length > 0 ? selectedMetrics : domainMetrics[domain];
   const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(queryItem => queryItem.isLoading);
 
-  function changeDomain(nextDomain: ProjectionDomain) {
-    setDomain(nextDomain);
+  function changeWorkspace(nextTab: "devices" | "groups") {
+    const nextDomain = nextTab === "devices" ? "device" : groupDomain;
+    setWorkspaceTab(nextTab);
+    setActiveMetrics(domainMetrics[nextDomain]);
+    setXAxisMode("name");
+    setRiskFilter("all");
+  }
+
+  function changeGroupDomain(nextDomain: Exclude<ProjectionDomain, "device">) {
+    setGroupDomain(nextDomain);
     setActiveMetrics(domainMetrics[nextDomain]);
     setXAxisMode("name");
     setRiskFilter("all");
@@ -255,28 +263,27 @@ export default function OntologyLayersPage() {
             <div style={builderTitleStyle}>
               <Network size={18} />
               <div>
-                <span>Ontology f(x)</span>
-                <strong>Secili semantic ciktiyi grafige bagla</strong>
+                <span>Ontology</span>
+                <strong>Cihazlar ve seçili f(x) grupları</strong>
               </div>
             </div>
 
-            <div style={domainSwitchStyle}>
-              {(["device", "component", "risk"] as ProjectionDomain[]).map(item => (
-                <button key={item} type="button" onClick={() => changeDomain(item)} style={domainButtonStyle(domain === item)}>
-                  {item === "device" ? "Cihaz" : item === "component" ? "Bilesen" : "Risk"}
+            <div style={workspaceSwitchStyle}>
+              {(["devices", "groups"] as const).map(item => (
+                <button key={item} type="button" onClick={() => changeWorkspace(item)} style={workspaceButtonStyle(workspaceTab === item)}>
+                  {item === "devices" ? "Cihazlar" : "Ontology grupları"}
                 </button>
               ))}
             </div>
 
+            {workspaceTab === "groups" && (
+              <div style={groupSwitchStyle}>
+                <button type="button" onClick={() => changeGroupDomain("component")} style={groupButtonStyle(groupDomain === "component")}>Bileşen</button>
+                <button type="button" onClick={() => changeGroupDomain("risk")} style={groupButtonStyle(groupDomain === "risk")}>Risk</button>
+              </div>
+            )}
+
             <div style={builderGridStyle}>
-              <label style={fieldStyle}>
-                <span>Projection source</span>
-                <select value={domain} onChange={event => changeDomain(event.target.value as ProjectionDomain)}>
-                  <option value="device">Cihazlar: stok / kapasite / satis</option>
-                  <option value="component">Alt bilesenler: stok / BOM / overlap</option>
-                  <option value="risk">Risk domain: kritik / risk / bottleneck</option>
-                </select>
-              </label>
               <label style={fieldStyle}>
                 <span>Search</span>
                 <div style={searchBoxStyle}>
@@ -314,7 +321,7 @@ export default function OntologyLayersPage() {
           <section style={chartPanelStyle}>
             <div style={chartHeaderStyle}>
               <div>
-                <strong>Projection chart</strong>
+                <strong>{workspaceTab === "devices" ? "Cihazlar" : "Ontology f(x) grupları"}</strong>
                 <span>{projectionRows.length} satir · {metrics.length} metric</span>
               </div>
               <div style={summaryStyle}>
@@ -701,8 +708,8 @@ const builderStyle: CSSProperties = {
   borderBottom: `1px solid ${CT.border}`,
   padding: "14px 18px",
   display: "grid",
-  gridTemplateColumns: "270px 260px minmax(320px, 1fr)",
-  gap: 14,
+  gridTemplateColumns: "240px 320px minmax(280px, 1fr)",
+  gap: 12,
   alignItems: "center",
 };
 
@@ -713,16 +720,16 @@ const builderTitleStyle: CSSProperties = {
   color: "#33554f",
 };
 
-const domainSwitchStyle: CSSProperties = {
+const workspaceSwitchStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(3, 1fr)",
+  gridTemplateColumns: "repeat(2, 1fr)",
   background: "#ffffff",
   border: `1px solid ${CT.border}`,
   borderRadius: 8,
   padding: 4,
 };
 
-const domainButtonStyle = (active: boolean): CSSProperties => ({
+const workspaceButtonStyle = (active: boolean): CSSProperties => ({
   border: 0,
   borderRadius: 6,
   background: active ? "#2f5d50" : "transparent",
@@ -732,9 +739,25 @@ const domainButtonStyle = (active: boolean): CSSProperties => ({
   cursor: "pointer",
 });
 
+const groupSwitchStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(2, 1fr)",
+  gap: 6,
+};
+
+const groupButtonStyle = (active: boolean): CSSProperties => ({
+  height: 34,
+  border: `1px solid ${active ? "#2f5d50" : CT.border}`,
+  borderRadius: 7,
+  background: active ? "#eef7f3" : "#fff",
+  color: active ? "#2f5d50" : CT.inkMuted,
+  fontWeight: 850,
+  cursor: "pointer",
+});
+
 const builderGridStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "1.5fr 1.1fr 130px",
+  gridTemplateColumns: "minmax(220px, 1fr) 130px",
   gap: 10,
   alignItems: "end",
 };

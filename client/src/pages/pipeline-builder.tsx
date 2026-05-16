@@ -1029,7 +1029,7 @@ export default function PipelineBuilderPage() {
         ...node,
         title: deviceLabel,
         subtitle: semanticRole === "ontology"
-          ? "Semantic projection f(x) · Ontology workspace'e bağlanır"
+          ? "Semantic projection · Ontology workspace'e bağlanır"
           : semanticRole === "device" && nextDeviceSku
             ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
             : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
@@ -1739,7 +1739,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
         ) : (
           <input
             aria-label="Node name"
-            value={draftTitle}
+            value={node.semanticRole === "ontology" ? "Ontology" : draftTitle}
             onClick={(event) => event.stopPropagation()}
             onChange={(event) => setDraftTitle(event.currentTarget.value)}
             onBlur={() => onTitleChange(draftTitle)}
@@ -1772,7 +1772,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="order">Sipariş</option>
             <option value="device">Cihaz</option>
             <option value="procurement">Tedarik</option>
-            <option value="ontology">Ontology f(x)</option>
+            <option value="ontology">Ontology</option>
           </select>
         </div>
       )}
@@ -2134,7 +2134,7 @@ function OntologyFunctionPreviewPanel() {
     <div style={ontologyPreviewStyle}>
       <div style={ontologyPreviewHeaderStyle}>
         <div>
-          <div style={ontologyEyebrowStyle}>ONTOLOGY F(X)</div>
+          <div style={ontologyEyebrowStyle}>ONTOLOGY</div>
           <h3 style={ontologyTitleStyle}>Semantic projection</h3>
           <p style={ontologyTextStyle}>
             Pipeline içinde seçtiğin veri atomlarını Ontology workspace'te karşılaştırılabilir grafik çıktısına dönüştürür.
@@ -2162,7 +2162,7 @@ function OntologyFunctionPreviewPanel() {
       <div style={ontologyFlowStyle}>
         <span>Dataset / Cihaz / Sipariş</span>
         <b>→</b>
-        <span>Ontology f(x)</span>
+        <span>Ontology</span>
         <b>→</b>
         <span>Fiscal-style chart</span>
       </div>
@@ -4050,7 +4050,7 @@ function semanticRoleLabel(role: SemanticRole) {
   if (role === "order") return "Sipariş";
   if (role === "orderLine") return "Sipariş kalemi";
   if (role === "procurement") return "Tedarik";
-  if (role === "ontology") return "Ontology f(x)";
+  if (role === "ontology") return "Ontology";
   return "Cihaz";
 }
 
