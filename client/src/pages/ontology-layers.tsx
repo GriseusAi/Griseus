@@ -1,434 +1,497 @@
 import { useMemo, useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQueries, useQuery } from "@tanstack/react-query";
+import type { CSSProperties } from "react";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 import {
-  Activity,
+  AlertTriangle,
   Boxes,
-  BrainCircuit,
-  CircleDot,
+  CheckCircle2,
+  Clock3,
   Database,
-  GitBranch,
+  Factory,
+  Filter,
+  GitCompare,
   Layers3,
-  Network,
   Search,
-  SlidersHorizontal,
-  Split,
+  X,
 } from "lucide-react";
-import type { CSSProperties, ReactNode } from "react";
 
-type OntologyObjectType = {
-  id: string;
-  displayName: string;
-  displayNameTr?: string;
-  description?: string;
-  icon?: string;
-  backingTable: string;
-  titleField?: string;
-  ontologyAxis?: "miktar" | "sure" | "bilesen" | null;
-  properties: Record<string, { type: string; displayName: string; displayNameTr?: string; required?: boolean; unit?: string }>;
+type Product = {
+  id: number;
+  sku: string;
+  name: string;
+  category?: string;
+  component_count?: number | string;
 };
 
-type OntologyLinkType = {
-  id: string;
-  displayName: string;
-  sourceObjectType: string;
-  targetObjectType: string;
-  sourceField: string;
-  targetField: string;
-  cardinality: string;
+type StockLevel = {
+  productSku: string;
+  productName?: string;
+  productCategory?: string;
+  inProduction: number;
+  inWarehouse: number;
+  totalSold: number;
+  updatedAt?: string;
 };
 
-type OntologyFunctionType = {
-  id: string;
-  displayName: string;
-  displayNameTr?: string;
-  description?: string;
-  sourceObjectType: string;
-  returnType: string;
-  implementation: string;
-  ontologyEdge?: string | null;
+type BomComponent = {
+  code: string;
+  name: string;
+  requiredPerUnit: number;
+  unit: string;
+  tier: number;
+  parentComponentCode: string | null;
+  currentStock: number;
+  rawStock?: number;
+  maxProducts: number | null;
+  status: string;
+  isSubAssembly?: boolean;
+  children?: BomComponent[];
 };
 
-type OntologyGraphResponse = {
-  objectTypes: OntologyObjectType[];
-  linkTypes: OntologyLinkType[];
-  functionTypes: OntologyFunctionType[];
-  actionTypes: Array<{ id: string; targetObjectType: string; displayName: string; enabled: boolean }>;
-  stats: { objects: number; links: number; actions: number; functions: number };
+type BomResponse = {
+  product: string;
+  components: BomComponent[];
 };
 
-type PipelineDefinitionsResponse = {
-  pipelines?: Array<{
-    id: string;
-    name: string;
-    savedAt?: string;
-    nodes?: Array<{ semanticRole?: string; kind?: string }>;
-    connections?: Array<{ contract?: { relation?: string; status?: string } }>;
-  }>;
+type FlatComponent = BomComponent & {
+  sku: string;
+  productName: string;
+  path: string;
 };
 
-type Mode = "schema" | "links" | "functions" | "scenarios";
+type StatusFilter = "all" | "critical" | "warning" | "ok" | "abundant" | "variable";
+type StockFilter = "all" | "zero" | "low" | "enough";
+type TimeFilter = "all" | "fresh" | "week" | "stale";
+type SortMode = "risk" | "stock" | "required" | "device";
 
-const axisMeta: Record<string, { label: string; color: string; bg: string }> = {
-  bilesen: { label: "Bilesen", color: "#3c6f7a", bg: "rgba(60,111,122,0.10)" },
-  miktar: { label: "Miktar", color: "#9a6a22", bg: "rgba(154,106,34,0.12)" },
-  sure: { label: "Sure", color: "#6f5ea8", bg: "rgba(111,94,168,0.12)" },
-  none: { label: "Baglam", color: CT.inkMuted, bg: CT.surfaceMuted },
+const statusLabels: Record<string, string> = {
+  critical: "Kritik",
+  warning: "Risk",
+  ok: "Yeterli",
+  abundant: "Bol",
+  variable: "Opsiyonel",
+  "N/A": "N/A",
 };
 
 export default function OntologyLayersPage() {
-  const [mode, setMode] = useState<Mode>("schema");
-  const [query, setQuery] = useState("");
-  const [selectedId, setSelectedId] = useState<string>("product");
+  const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
+  const [componentQuery, setComponentQuery] = useState("");
+  const [statusFilter, setStatusFilter] = useState<StatusFilter>("all");
+  const [stockFilter, setStockFilter] = useState<StockFilter>("all");
+  const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
+  const [sortMode, setSortMode] = useState<SortMode>("risk");
 
-  const { data: graph, isLoading } = useQuery<OntologyGraphResponse>({
-    queryKey: ["/api/ontology/graph"],
-  });
-  const { data: definitions } = useQuery<PipelineDefinitionsResponse>({
-    queryKey: ["/api/pipeline-builder/definitions"],
+  const productsQuery = useQuery<Product[]>({ queryKey: ["/api/products"] });
+  const stockLevelsQuery = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
+  const products = productsQuery.data ?? [];
+  const stockLevels = stockLevelsQuery.data ?? [];
+  const activeSkus = selectedSkus.length > 0 ? selectedSkus : products.slice(0, 4).map(product => product.sku);
+
+  const bomQueries = useQueries({
+    queries: activeSkus.map(sku => ({
+      queryKey: [`/api/bom/${encodeURIComponent(sku)}/stock`],
+      queryFn: () => fetch(`/api/bom/${encodeURIComponent(sku)}/stock`).then(res => {
+        if (!res.ok) throw new Error(`${sku} BOM okunamadi`);
+        return res.json() as Promise<BomResponse>;
+      }),
+      enabled: Boolean(sku),
+    })),
   });
 
-  const objects = graph?.objectTypes ?? [];
-  const links = graph?.linkTypes ?? [];
-  const functions = graph?.functionTypes ?? [];
-  const scenarios = definitions?.pipelines ?? [];
-  const filteredObjects = objects.filter(item => {
-    const haystack = `${item.id} ${item.displayName} ${item.displayNameTr ?? ""} ${item.backingTable}`.toLocaleLowerCase("tr-TR");
-    return haystack.includes(query.toLocaleLowerCase("tr-TR"));
-  });
-  const selected = objects.find(item => item.id === selectedId) ?? objects[0];
-
-  const linkCountByObject = useMemo(() => {
-    const counts = new Map<string, number>();
-    links.forEach(link => {
-      counts.set(link.sourceObjectType, (counts.get(link.sourceObjectType) ?? 0) + 1);
-      counts.set(link.targetObjectType, (counts.get(link.targetObjectType) ?? 0) + 1);
+  const stockBySku = useMemo(() => new Map(stockLevels.map(level => [level.productSku, level])), [stockLevels]);
+  const productBySku = useMemo(() => new Map(products.map(product => [product.sku, product])), [products]);
+  const bomBySku = useMemo(() => {
+    const map = new Map<string, BomResponse>();
+    activeSkus.forEach((sku, index) => {
+      const data = bomQueries[index]?.data as BomResponse | undefined;
+      if (data) map.set(sku, data);
     });
-    return counts;
-  }, [links]);
+    return map;
+  }, [activeSkus.join("|"), bomQueries.map(query => query.dataUpdatedAt).join("|")]);
 
-  const functionsByObject = useMemo(() => {
-    const counts = new Map<string, number>();
-    functions.forEach(fn => counts.set(fn.sourceObjectType, (counts.get(fn.sourceObjectType) ?? 0) + 1));
-    return counts;
-  }, [functions]);
+  const flatComponents = useMemo(() => {
+    const rows: FlatComponent[] = [];
+    for (const sku of activeSkus) {
+      const product = productBySku.get(sku);
+      const bom = bomBySku.get(sku);
+      if (!bom) continue;
+      bom.components.forEach(component => {
+        rows.push(...flattenComponent(component, sku, product?.name || sku, component.code));
+      });
+    }
+    return rows;
+  }, [activeSkus.join("|"), bomBySku, productBySku]);
+
+  const filteredComponents = useMemo(() => {
+    const needle = componentQuery.trim().toLocaleLowerCase("tr-TR");
+    return flatComponents
+      .filter(row => statusFilter === "all" || row.status === statusFilter)
+      .filter(row => {
+        if (stockFilter === "zero") return Number(row.currentStock) <= 0;
+        if (stockFilter === "low") return row.maxProducts !== null && row.maxProducts > 0 && row.maxProducts < 150;
+        if (stockFilter === "enough") return row.maxProducts === null || row.maxProducts >= 150;
+        return true;
+      })
+      .filter(row => {
+        if (!needle) return true;
+        return `${row.sku} ${row.code} ${row.name} ${row.path}`.toLocaleLowerCase("tr-TR").includes(needle);
+      })
+      .sort((a, b) => compareComponents(a, b, sortMode));
+  }, [flatComponents, componentQuery, statusFilter, stockFilter, sortMode]);
+
+  const visibleDevices = useMemo(() => {
+    return activeSkus
+      .map(sku => {
+        const product = productBySku.get(sku);
+        const stock = stockBySku.get(sku);
+        const bom = bomBySku.get(sku);
+        const components = flatComponents.filter(row => row.sku === sku);
+        const critical = components.filter(row => row.status === "critical").length;
+        const warnings = components.filter(row => row.status === "warning").length;
+        const capacity = minNumber(components.map(row => row.maxProducts).filter((n): n is number => n !== null));
+        return {
+          sku,
+          name: product?.name || stock?.productName || sku,
+          category: product?.category || stock?.productCategory || "-",
+          componentCount: Number(product?.component_count ?? bom?.components.length ?? components.length ?? 0),
+          warehouse: Number(stock?.inWarehouse ?? 0),
+          production: Number(stock?.inProduction ?? 0),
+          sold: Number(stock?.totalSold ?? 0),
+          updatedAt: stock?.updatedAt || "",
+          dataAgeDays: stock?.updatedAt ? daysSince(stock.updatedAt) : null,
+          critical,
+          warnings,
+          capacity,
+          loading: activeSkus.includes(sku) && !bom,
+        };
+      })
+      .filter(device => {
+        if (timeFilter === "fresh") return device.dataAgeDays !== null && device.dataAgeDays <= 1;
+        if (timeFilter === "week") return device.dataAgeDays !== null && device.dataAgeDays <= 7;
+        if (timeFilter === "stale") return device.dataAgeDays === null || device.dataAgeDays > 7;
+        return true;
+      });
+  }, [activeSkus.join("|"), productBySku, stockBySku, bomBySku, flatComponents, timeFilter]);
+
+  const sharedComponents = useMemo(() => {
+    const byCode = new Map<string, { code: string; name: string; devices: Set<string>; minStock: number; worstStatus: string }>();
+    flatComponents.forEach(row => {
+      const current = byCode.get(row.code) ?? {
+        code: row.code,
+        name: row.name,
+        devices: new Set<string>(),
+        minStock: Number.POSITIVE_INFINITY,
+        worstStatus: "abundant",
+      };
+      current.devices.add(row.sku);
+      current.minStock = Math.min(current.minStock, Number(row.currentStock));
+      current.worstStatus = worstStatus(current.worstStatus, row.status);
+      byCode.set(row.code, current);
+    });
+    return Array.from(byCode.values())
+      .filter(item => item.devices.size > 1)
+      .sort((a, b) => severityRank(b.worstStatus) - severityRank(a.worstStatus) || b.devices.size - a.devices.size)
+      .slice(0, 10);
+  }, [flatComponents]);
+
+  const maxCapacity = Math.max(1, ...visibleDevices.map(device => device.capacity ?? 0), ...visibleDevices.map(device => device.warehouse));
+  const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(query => query.isLoading);
 
   return (
     <div style={pageStyle}>
       <TopNav />
       <main style={shellStyle}>
-        <section style={toolbarStyle}>
+        <header style={headerStyle}>
           <div>
-            <div style={eyebrowStyle}>Semantic workspace</div>
-            <h1 style={titleStyle}>Ontology</h1>
+            <div style={eyebrowStyle}>Ontology workspace</div>
+            <h1 style={titleStyle}>Cihazlar ve alt bilesenler</h1>
           </div>
-          <div style={searchWrapStyle}>
-            <Search size={15} color={CT.inkMuted} />
-            <input
-              value={query}
-              onChange={(event) => setQuery(event.target.value)}
-              placeholder="Object, tablo veya semantic rol ara"
-              style={searchInputStyle}
-            />
+          <div style={summaryPillsStyle}>
+            <SummaryPill icon={<Factory size={15} />} label="Cihaz" value={products.length} />
+            <SummaryPill icon={<Boxes size={15} />} label="Bilesen satiri" value={flatComponents.length} />
+            <SummaryPill icon={<AlertTriangle size={15} />} label="Kritik" value={flatComponents.filter(row => row.status === "critical").length} tone="risk" />
           </div>
-        </section>
+        </header>
 
-        <section style={modeBarStyle}>
-          <ModeButton icon={<Boxes size={15} />} label="Objects" active={mode === "schema"} onClick={() => setMode("schema")} />
-          <ModeButton icon={<GitBranch size={15} />} label="Links" active={mode === "links"} onClick={() => setMode("links")} />
-          <ModeButton icon={<Activity size={15} />} label="Functions" active={mode === "functions"} onClick={() => setMode("functions")} />
-          <ModeButton icon={<Split size={15} />} label="Scenarios" active={mode === "scenarios"} onClick={() => setMode("scenarios")} />
-        </section>
-
-        <section style={statsGridStyle}>
-          <Stat icon={<Database size={16} />} label="Objects" value={graph?.stats.objects ?? objects.length} />
-          <Stat icon={<Network size={16} />} label="Links" value={graph?.stats.links ?? links.length} />
-          <Stat icon={<BrainCircuit size={16} />} label="Functions" value={graph?.stats.functions ?? functions.length} />
-          <Stat icon={<Layers3 size={16} />} label="Saved scenarios" value={scenarios.length} />
-        </section>
-
-        <section style={workspaceStyle}>
-          <aside style={objectRailStyle}>
-            <div style={panelHeaderStyle}>
-              <span>Object set</span>
-              <SlidersHorizontal size={14} color={CT.inkMuted} />
+        <section style={layoutStyle}>
+          <aside style={sidebarStyle}>
+            <div style={panelTitleStyle}>
+              <span>Cihaz seti</span>
+              <button type="button" onClick={() => setSelectedSkus([])} style={ghostButtonStyle}>Sifirla</button>
             </div>
-            {isLoading && <div style={emptyStyle}>Ontology yukleniyor.</div>}
-            {!isLoading && filteredObjects.map(item => (
-              <button
-                key={item.id}
-                type="button"
-                onClick={() => setSelectedId(item.id)}
-                style={objectButtonStyle(selected?.id === item.id)}
-              >
-                <span style={objectIconStyle}>{item.icon || "[]"}</span>
-                <span style={{ minWidth: 0 }}>
-                  <strong style={objectTitleStyle}>{item.displayNameTr || item.displayName}</strong>
-                  <span style={objectMetaStyle}>{item.backingTable}</span>
-                </span>
-                <AxisBadge axis={item.ontologyAxis} />
-              </button>
-            ))}
+            <div style={deviceListStyle}>
+              {products.map(product => {
+                const active = activeSkus.includes(product.sku);
+                const stock = stockBySku.get(product.sku);
+                return (
+                  <button key={product.sku} type="button" onClick={() => toggleSku(product.sku, active, selectedSkus, setSelectedSkus)} style={deviceButtonStyle(active)}>
+                    <span style={deviceCheckStyle(active)}>{active ? <CheckCircle2 size={14} /> : null}</span>
+                    <span style={{ minWidth: 0 }}>
+                      <strong style={deviceNameStyle}>{product.sku}</strong>
+                      <span style={deviceSubStyle}>{product.name}</span>
+                    </span>
+                    <span style={deviceStockStyle}>{fmt(stock?.inWarehouse ?? 0)}</span>
+                  </button>
+                );
+              })}
+            </div>
           </aside>
 
-          <div style={canvasStyle}>
-            {mode === "schema" && (
-              <SchemaCanvas
-                objects={filteredObjects}
-                links={links}
-                selectedId={selected?.id}
-                onSelect={setSelectedId}
-              />
-            )}
-            {mode === "links" && <LinkMatrix objects={objects} links={links} selectedId={selected?.id} />}
-            {mode === "functions" && <FunctionBoard functions={functions} objects={objects} selectedId={selected?.id} />}
-            {mode === "scenarios" && <ScenarioBoard scenarios={scenarios} />}
-          </div>
-
-          <aside style={detailStyle}>
-            <div style={panelHeaderStyle}>
-              <span>Inspector</span>
-              <CircleDot size={14} color={CT.accent} />
+          <section style={mainPanelStyle}>
+            <div style={filterBarStyle}>
+              <div style={searchBoxStyle}>
+                <Search size={15} color={CT.inkMuted} />
+                <input value={componentQuery} onChange={event => setComponentQuery(event.target.value)} placeholder="Bilesen kodu, ad veya cihaz ara" style={searchInputStyle} />
+                {componentQuery && (
+                  <button type="button" onClick={() => setComponentQuery("")} style={clearButtonStyle}><X size={13} /></button>
+                )}
+              </div>
+              <Select label="Durum" value={statusFilter} onChange={value => setStatusFilter(value as StatusFilter)} options={[
+                ["all", "Hepsi"], ["critical", "Kritik"], ["warning", "Risk"], ["ok", "Yeterli"], ["abundant", "Bol"], ["variable", "Opsiyonel"],
+              ]} />
+              <Select label="Stok" value={stockFilter} onChange={value => setStockFilter(value as StockFilter)} options={[
+                ["all", "Hepsi"], ["zero", "Sifir"], ["low", "Dusuk kapasite"], ["enough", "Yeterli"],
+              ]} />
+              <Select label="Zaman" value={timeFilter} onChange={value => setTimeFilter(value as TimeFilter)} options={[
+                ["all", "Hepsi"], ["fresh", "Bugun"], ["week", "7 gun"], ["stale", "Eski/veri yok"],
+              ]} />
+              <Select label="Sirala" value={sortMode} onChange={value => setSortMode(value as SortMode)} options={[
+                ["risk", "Risk"], ["stock", "Stok"], ["required", "BOM ihtiyaci"], ["device", "Cihaz"],
+              ]} />
             </div>
-            {selected ? (
-              <>
-                <div style={inspectorHeadStyle}>
-                  <span style={bigIconStyle}>{selected.icon || "[]"}</span>
-                  <div>
-                    <h2 style={inspectorTitleStyle}>{selected.displayNameTr || selected.displayName}</h2>
-                    <div style={inspectorSubStyle}>{selected.id} · {selected.backingTable}</div>
+
+            <div style={compareGridStyle}>
+              {visibleDevices.map(device => (
+                <DeviceCompareCard key={device.sku} device={device} maxCapacity={maxCapacity} />
+              ))}
+              {visibleDevices.length === 0 && <EmptyState text="Bu zaman filtresine uyan cihaz yok." />}
+            </div>
+
+            <div style={contentGridStyle}>
+              <section style={tablePanelStyle}>
+                <div style={panelTitleStyle}>
+                  <span>Alt bilesenler</span>
+                  <small>{filteredComponents.length} satir</small>
+                </div>
+                <div style={componentTableStyle}>
+                  <div style={tableHeaderStyle}>
+                    <span>Cihaz</span>
+                    <span>Bilesen</span>
+                    <span>Stok</span>
+                    <span>Uretilebilir</span>
+                    <span>Durum</span>
                   </div>
-                </div>
-                <p style={descriptionStyle}>{selected.description || "Semantic object type."}</p>
-                <div style={miniMetricGridStyle}>
-                  <MiniMetric label="Fields" value={Object.keys(selected.properties ?? {}).length} />
-                  <MiniMetric label="Links" value={linkCountByObject.get(selected.id) ?? 0} />
-                  <MiniMetric label="Functions" value={functionsByObject.get(selected.id) ?? 0} />
-                </div>
-                <div style={sectionLabelStyle}>Properties</div>
-                <div style={propertyListStyle}>
-                  {Object.entries(selected.properties ?? {}).slice(0, 8).map(([key, prop]) => (
-                    <div key={key} style={propertyRowStyle}>
-                      <span>{prop.displayNameTr || prop.displayName || key}</span>
-                      <strong>{prop.type}{prop.unit ? ` · ${prop.unit}` : ""}</strong>
+                  {filteredComponents.slice(0, 120).map(row => (
+                    <div key={`${row.sku}-${row.path}`} style={tableRowStyle}>
+                      <strong>{row.sku}</strong>
+                      <span style={{ minWidth: 0 }}>
+                        <b style={componentCodeStyle}>{row.code}</b>
+                        <em style={componentNameStyle}>{row.name}</em>
+                      </span>
+                      <span>{fmt(row.currentStock)} {row.unit}</span>
+                      <span>{row.maxProducts === null ? "-" : fmt(row.maxProducts)}</span>
+                      <StatusBadge status={row.status} />
                     </div>
                   ))}
                 </div>
-              </>
-            ) : (
-              <div style={emptyStyle}>Object sec.</div>
-            )}
-          </aside>
+              </section>
+
+              <aside style={insightPanelStyle}>
+                <div style={panelTitleStyle}>
+                  <span>Kesisen bilesenler</span>
+                  <GitCompare size={15} color={CT.inkMuted} />
+                </div>
+                <div style={sharedListStyle}>
+                  {sharedComponents.map(item => (
+                    <div key={item.code} style={sharedRowStyle}>
+                      <div>
+                        <strong>{item.code}</strong>
+                        <span>{item.name}</span>
+                      </div>
+                      <div style={sharedMetaStyle}>
+                        <StatusBadge status={item.worstStatus} />
+                        <small>{item.devices.size} cihaz</small>
+                      </div>
+                    </div>
+                  ))}
+                  {sharedComponents.length === 0 && <EmptyState text="Secili cihazlar arasinda ortak bilesen yok." />}
+                </div>
+
+                <div style={panelTitleStyle}>
+                  <span>Filtre mantigi</span>
+                  <Filter size={15} color={CT.inkMuted} />
+                </div>
+                <div style={ruleBoxStyle}>
+                  <div><Clock3 size={14} /> Zaman filtresi cihaz stok kaydinin guncellenme tarihine bakar.</div>
+                  <div><Database size={14} /> Stok filtresi BOM + component_stock birlesik verisini kullanir.</div>
+                  <div><Layers3 size={14} /> Yari mamul satirlari alt cocuklariyla birlikte listelenir.</div>
+                </div>
+              </aside>
+            </div>
+          </section>
         </section>
+
+        {loading && <div style={loadingStyle}>Gercek cihaz ve BOM verileri okunuyor.</div>}
       </main>
     </div>
   );
 }
 
-function SchemaCanvas({ objects, links, selectedId, onSelect }: {
-  objects: OntologyObjectType[];
-  links: OntologyLinkType[];
-  selectedId?: string;
-  onSelect: (id: string) => void;
-}) {
-  const positions = useMemo(() => layoutObjects(objects), [objects]);
-  return (
-    <div style={canvasInnerStyle}>
-      <svg viewBox="0 0 980 520" style={svgStyle} role="img" aria-label="Ontology semantic graph">
-        <defs>
-          <pattern id="ontology-grid" width="28" height="28" patternUnits="userSpaceOnUse">
-            <path d="M 28 0 L 0 0 0 28" fill="none" stroke="rgba(20,20,19,0.06)" strokeWidth="1" />
-          </pattern>
-        </defs>
-        <rect width="980" height="520" fill="url(#ontology-grid)" />
-        {links.map(link => {
-          const source = positions.get(link.sourceObjectType);
-          const target = positions.get(link.targetObjectType);
-          if (!source || !target) return null;
-          return (
-            <g key={link.id}>
-              <line x1={source.x} y1={source.y} x2={target.x} y2={target.y} stroke="rgba(85,100,110,0.35)" strokeWidth="1.4" />
-              <text x={(source.x + target.x) / 2} y={(source.y + target.y) / 2 - 6} fill={CT.inkMuted} fontSize="10" textAnchor="middle">{shortLinkLabel(link.displayName)}</text>
-            </g>
-          );
-        })}
-        {objects.map(item => {
-          const p = positions.get(item.id);
-          if (!p) return null;
-          const active = item.id === selectedId;
-          const axis = axisMeta[item.ontologyAxis || "none"] ?? axisMeta.none;
-          return (
-            <g key={item.id} onClick={() => onSelect(item.id)} style={{ cursor: "pointer" }}>
-              <rect x={p.x - 86} y={p.y - 30} width="172" height="60" rx="8" fill={active ? "#fffaf4" : CT.surface} stroke={active ? CT.borderStrong : CT.border} strokeWidth={active ? 2 : 1} />
-              <circle cx={p.x - 62} cy={p.y} r="13" fill={axis.bg} stroke={axis.color} />
-              <text x={p.x - 62} y={p.y + 4} fill={axis.color} fontSize="12" textAnchor="middle">{item.icon || "o"}</text>
-              <text x={p.x - 40} y={p.y - 4} fill={CT.ink} fontSize="13" fontWeight="700">{item.displayNameTr || item.displayName}</text>
-              <text x={p.x - 40} y={p.y + 14} fill={CT.inkMuted} fontSize="10">{item.backingTable}</text>
-            </g>
-          );
-        })}
-      </svg>
-    </div>
-  );
+function flattenComponent(component: BomComponent, sku: string, productName: string, path: string): FlatComponent[] {
+  const row: FlatComponent = { ...component, sku, productName, path };
+  const children = component.children ?? [];
+  return [row, ...children.flatMap(child => flattenComponent(child, sku, productName, `${path}/${child.code}`))];
 }
 
-function LinkMatrix({ objects, links, selectedId }: {
-  objects: OntologyObjectType[];
-  links: OntologyLinkType[];
-  selectedId?: string;
-}) {
-  return (
-    <div style={boardStyle}>
-      <div style={boardTitleStyle}>Semantic links</div>
-      <div style={linkListStyle}>
-        {links.map(link => {
-          const active = link.sourceObjectType === selectedId || link.targetObjectType === selectedId;
-          const source = objects.find(item => item.id === link.sourceObjectType);
-          const target = objects.find(item => item.id === link.targetObjectType);
-          return (
-            <div key={link.id} style={linkRowStyle(active)}>
-              <strong>{source?.displayNameTr || source?.displayName || link.sourceObjectType}</strong>
-              <span>{link.sourceField}</span>
-              <GitBranch size={14} color={active ? CT.accent : CT.inkMuted} />
-              <span>{link.targetField}</span>
-              <strong>{target?.displayNameTr || target?.displayName || link.targetObjectType}</strong>
-              <em>{link.cardinality.replaceAll("_", " ")}</em>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function toggleSku(sku: string, active: boolean, selectedSkus: string[], setSelectedSkus: (next: string[]) => void) {
+  if (selectedSkus.length === 0) {
+    setSelectedSkus(active ? [] : [sku]);
+    return;
+  }
+  const next = active ? selectedSkus.filter(item => item !== sku) : [...selectedSkus, sku];
+  setSelectedSkus(next.slice(0, 8));
 }
 
-function FunctionBoard({ functions, objects, selectedId }: {
-  functions: OntologyFunctionType[];
-  objects: OntologyObjectType[];
-  selectedId?: string;
-}) {
-  const visible = functions.filter(fn => !selectedId || fn.sourceObjectType === selectedId || functions.length < 6);
-  const rows = visible.length > 0 ? visible : functions;
-  return (
-    <div style={boardStyle}>
-      <div style={boardTitleStyle}>Derived intelligence</div>
-      <div style={functionGridStyle}>
-        {rows.map(fn => {
-          const source = objects.find(item => item.id === fn.sourceObjectType);
-          const active = fn.sourceObjectType === selectedId;
-          return (
-            <div key={fn.id} style={functionCardStyle(active)}>
-              <div style={functionTopStyle}>
-                <Activity size={15} color={active ? CT.accent : CT.inkMuted} />
-                <span>{fn.returnType}</span>
-              </div>
-              <strong>{fn.displayNameTr || fn.displayName}</strong>
-              <p>{fn.description || fn.implementation}</p>
-              <div style={functionFooterStyle}>
-                <span>{source?.displayNameTr || source?.displayName || fn.sourceObjectType}</span>
-                <span>{fn.ontologyEdge?.replaceAll("_", " · ") || "context"}</span>
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function compareComponents(a: FlatComponent, b: FlatComponent, mode: SortMode) {
+  if (mode === "stock") return Number(a.currentStock) - Number(b.currentStock);
+  if (mode === "required") return Number(b.requiredPerUnit) - Number(a.requiredPerUnit);
+  if (mode === "device") return a.sku.localeCompare(b.sku) || a.code.localeCompare(b.code);
+  return severityRank(b.status) - severityRank(a.status)
+    || Number(a.maxProducts ?? Number.MAX_SAFE_INTEGER) - Number(b.maxProducts ?? Number.MAX_SAFE_INTEGER)
+    || a.code.localeCompare(b.code);
 }
 
-function ScenarioBoard({ scenarios }: { scenarios: NonNullable<PipelineDefinitionsResponse["pipelines"]> }) {
-  return (
-    <div style={boardStyle}>
-      <div style={boardTitleStyle}>Saved scenario diagrams</div>
-      <div style={scenarioGridStyle}>
-        {scenarios.length === 0 && <div style={emptyStyle}>Kayitli pipeline senaryosu bulunamadi.</div>}
-        {scenarios.map(item => {
-          const semanticNodes = item.nodes?.filter(node => node.semanticRole).length ?? 0;
-          const contracts = item.connections?.filter(connection => connection.contract?.relation).length ?? 0;
-          return (
-            <div key={item.id} style={scenarioCardStyle}>
-              <div style={scenarioHeaderStyle}>
-                <strong>{item.name}</strong>
-                <span>{item.savedAt ? new Date(item.savedAt).toLocaleDateString("tr-TR") : "local"}</span>
-              </div>
-              <div style={scenarioPathStyle}>
-                <span>Input</span>
-                <span>Transform</span>
-                <span>Preview</span>
-                <span>Output</span>
-              </div>
-              <div style={miniMetricGridStyle}>
-                <MiniMetric label="Nodes" value={item.nodes?.length ?? 0} />
-                <MiniMetric label="Semantic" value={semanticNodes} />
-                <MiniMetric label="Contracts" value={contracts} />
-              </div>
-            </div>
-          );
-        })}
-      </div>
-    </div>
-  );
+function severityRank(status: string) {
+  if (status === "critical") return 5;
+  if (status === "warning") return 4;
+  if (status === "variable") return 3;
+  if (status === "ok") return 2;
+  if (status === "abundant") return 1;
+  return 0;
 }
 
-function ModeButton({ icon, label, active, onClick }: { icon: ReactNode; label: string; active: boolean; onClick: () => void }) {
+function worstStatus(a: string, b: string) {
+  return severityRank(b) > severityRank(a) ? b : a;
+}
+
+function minNumber(values: number[]) {
+  return values.length === 0 ? null : Math.min(...values);
+}
+
+function daysSince(value: string) {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return null;
+  return Math.max(0, Math.floor((Date.now() - date.getTime()) / 86400000));
+}
+
+function fmt(value: number | string) {
+  const number = Number(value);
+  if (!Number.isFinite(number)) return "-";
+  return number.toLocaleString("tr-TR", { maximumFractionDigits: 1 });
+}
+
+function SummaryPill({ icon, label, value, tone = "neutral" }: { icon: React.ReactNode; label: string; value: number; tone?: "neutral" | "risk" }) {
   return (
-    <button type="button" onClick={onClick} style={modeButtonStyle(active)}>
+    <div style={summaryPillStyle(tone)}>
       {icon}
-      {label}
-    </button>
-  );
-}
-
-function Stat({ icon, label, value }: { icon: ReactNode; label: string; value: number }) {
-  return (
-    <div style={statStyle}>
-      <span style={statIconStyle}>{icon}</span>
       <span>{label}</span>
-      <strong>{value}</strong>
+      <strong>{fmt(value)}</strong>
     </div>
   );
 }
 
-function MiniMetric({ label, value }: { label: string; value: number }) {
+function Select({ label, value, options, onChange }: {
+  label: string;
+  value: string;
+  options: Array<[string, string]>;
+  onChange: (value: string) => void;
+}) {
   return (
-    <div style={miniMetricStyle}>
+    <label style={selectWrapStyle}>
       <span>{label}</span>
-      <strong>{value}</strong>
-    </div>
+      <select value={value} onChange={event => onChange(event.target.value)} style={selectStyle}>
+        {options.map(([optionValue, optionLabel]) => <option key={optionValue} value={optionValue}>{optionLabel}</option>)}
+      </select>
+    </label>
   );
 }
 
-function AxisBadge({ axis }: { axis?: string | null }) {
-  const meta = axisMeta[axis || "none"] ?? axisMeta.none;
-  return <span style={{ ...axisBadgeStyle, color: meta.color, background: meta.bg }}>{meta.label}</span>;
-}
-
-function layoutObjects(objects: OntologyObjectType[]) {
-  const buckets = {
-    bilesen: objects.filter(item => item.ontologyAxis === "bilesen"),
-    miktar: objects.filter(item => item.ontologyAxis === "miktar"),
-    sure: objects.filter(item => item.ontologyAxis === "sure"),
-    none: objects.filter(item => !item.ontologyAxis),
+function DeviceCompareCard({ device, maxCapacity }: {
+  device: {
+    sku: string;
+    name: string;
+    category: string;
+    componentCount: number;
+    warehouse: number;
+    production: number;
+    sold: number;
+    dataAgeDays: number | null;
+    critical: number;
+    warnings: number;
+    capacity: number | null;
   };
-  const map = new Map<string, { x: number; y: number }>();
-  placeBucket(buckets.bilesen, 260, 135, 145, map);
-  placeBucket(buckets.miktar, 250, 370, 145, map);
-  placeBucket(buckets.sure, 700, 160, 145, map);
-  placeBucket(buckets.none, 700, 382, 145, map);
-  return map;
+  maxCapacity: number;
+}) {
+  const capacity = device.capacity ?? 0;
+  return (
+    <article style={deviceCardStyle}>
+      <div style={deviceCardHeaderStyle}>
+        <div>
+          <strong>{device.sku}</strong>
+          <span>{device.name}</span>
+        </div>
+        <StatusBadge status={device.critical > 0 ? "critical" : device.warnings > 0 ? "warning" : "ok"} />
+      </div>
+      <div style={barGroupStyle}>
+        <Bar label="Depo" value={device.warehouse} max={maxCapacity} color={CT.ok} />
+        <Bar label="Uretilebilir" value={capacity} max={maxCapacity} color={CT.info} />
+      </div>
+      <div style={deviceMetricsStyle}>
+        <Metric label="Bilesen" value={device.componentCount} />
+        <Metric label="Kritik" value={device.critical} />
+        <Metric label="Uretimde" value={device.production} />
+        <Metric label="Guncel" value={device.dataAgeDays === null ? "-" : `${device.dataAgeDays}g`} />
+      </div>
+    </article>
+  );
 }
 
-function placeBucket(items: OntologyObjectType[], x: number, y: number, step: number, map: Map<string, { x: number; y: number }>) {
-  items.forEach((item, index) => {
-    map.set(item.id, {
-      x: x + (index % 2) * step,
-      y: y + Math.floor(index / 2) * 78,
-    });
-  });
+function Bar({ label, value, max, color }: { label: string; value: number; max: number; color: string }) {
+  return (
+    <div style={barRowStyle}>
+      <span>{label}</span>
+      <div style={barTrackStyle}><div style={{ ...barFillStyle, width: `${Math.min(100, Math.max(2, (value / max) * 100))}%`, background: color }} /></div>
+      <strong>{fmt(value)}</strong>
+    </div>
+  );
 }
 
-function shortLinkLabel(label: string) {
-  return label.replace("Product has ", "").replace("Component has ", "").replace(" has ", " -> ");
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <div style={metricStyle}>
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+function StatusBadge({ status }: { status: string }) {
+  const tone = statusTone(status);
+  return <span style={{ ...statusBadgeStyle, color: tone.color, background: tone.bg, borderColor: tone.border }}>{statusLabels[status] ?? status}</span>;
+}
+
+function EmptyState({ text }: { text: string }) {
+  return <div style={emptyStyle}>{text}</div>;
+}
+
+function statusTone(status: string) {
+  if (status === "critical") return { color: CT.err, bg: CT.errSoft, border: "rgba(179,64,55,0.25)" };
+  if (status === "warning") return { color: CT.warn, bg: CT.warnSoft, border: "rgba(184,118,28,0.25)" };
+  if (status === "variable") return { color: "#9a5a17", bg: "rgba(154,90,23,0.12)", border: "rgba(154,90,23,0.22)" };
+  if (status === "abundant") return { color: CT.ok, bg: CT.okSoft, border: "rgba(63,143,91,0.24)" };
+  return { color: CT.info, bg: CT.infoSoft, border: "rgba(61,111,176,0.22)" };
 }
 
 const pageStyle: CSSProperties = {
@@ -439,413 +502,446 @@ const pageStyle: CSSProperties = {
 };
 
 const shellStyle: CSSProperties = {
-  padding: "18px clamp(14px, 2vw, 28px) 28px",
+  padding: "16px clamp(14px, 2vw, 28px) 26px",
   display: "grid",
   gap: 12,
 };
 
-const toolbarStyle: CSSProperties = {
+const headerStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
+  alignItems: "end",
   justifyContent: "space-between",
-  gap: 16,
+  gap: 18,
 };
 
 const eyebrowStyle: CSSProperties = {
   fontSize: 11,
   color: CT.accent,
-  letterSpacing: 1.4,
+  letterSpacing: 1.3,
   textTransform: "uppercase",
-  fontWeight: 800,
+  fontWeight: 850,
 };
 
 const titleStyle: CSSProperties = {
   margin: "4px 0 0",
-  fontSize: 28,
+  fontSize: 27,
   lineHeight: 1.1,
   fontWeight: 850,
   letterSpacing: 0,
 };
 
-const searchWrapStyle: CSSProperties = {
-  width: "min(420px, 42vw)",
-  height: 36,
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surface,
-  padding: "0 10px",
-};
-
-const searchInputStyle: CSSProperties = {
-  border: 0,
-  outline: "none",
-  background: "transparent",
-  color: CT.ink,
-  fontFamily: CT_FONT,
-  fontSize: 13,
-  width: "100%",
-};
-
-const modeBarStyle: CSSProperties = {
+const summaryPillsStyle: CSSProperties = {
   display: "flex",
   gap: 8,
-  borderBottom: `1px solid ${CT.border}`,
-  paddingBottom: 10,
+  flexWrap: "wrap",
+  justifyContent: "flex-end",
 };
 
-function modeButtonStyle(active: boolean): CSSProperties {
+function summaryPillStyle(tone: "neutral" | "risk"): CSSProperties {
   return {
-    height: 32,
+    height: 34,
     display: "inline-flex",
     alignItems: "center",
-    gap: 7,
-    border: `1px solid ${active ? CT.borderStrong : CT.border}`,
+    gap: 8,
+    border: `1px solid ${tone === "risk" ? "rgba(179,64,55,0.25)" : CT.border}`,
     borderRadius: 7,
-    background: active ? CT.accentSoft : CT.surface,
-    color: active ? CT.accent : CT.inkSub,
-    fontFamily: CT_FONT,
+    background: tone === "risk" ? CT.errSoft : CT.surface,
+    color: tone === "risk" ? CT.err : CT.inkSub,
+    padding: "0 10px",
     fontSize: 12,
-    fontWeight: 850,
-    padding: "0 12px",
-    cursor: "pointer",
+    fontWeight: 800,
   };
 }
 
-const statsGridStyle: CSSProperties = {
+const layoutStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
+  gridTemplateColumns: "310px minmax(0, 1fr)",
   gap: 10,
+  minHeight: "calc(100vh - 146px)",
 };
 
-const statStyle: CSSProperties = {
-  minHeight: 70,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 12,
-  display: "grid",
-  gridTemplateColumns: "32px 1fr auto",
-  alignItems: "center",
-  gap: 10,
-  color: CT.inkSub,
-  fontSize: 12,
-};
-
-const statIconStyle: CSSProperties = {
-  width: 32,
-  height: 32,
-  borderRadius: 7,
-  background: CT.surfaceMuted,
-  color: CT.accent,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-};
-
-const workspaceStyle: CSSProperties = {
-  minHeight: "calc(100vh - 232px)",
-  display: "grid",
-  gridTemplateColumns: "270px minmax(520px, 1fr) 310px",
-  gap: 10,
-};
-
-const objectRailStyle: CSSProperties = {
+const sidebarStyle: CSSProperties = {
   border: `1px solid ${CT.border}`,
   borderRadius: 8,
   background: CT.surface,
   padding: 10,
-  overflow: "auto",
+  minHeight: 0,
+  overflow: "hidden",
+  display: "grid",
+  gridTemplateRows: "34px minmax(0, 1fr)",
 };
 
-const panelHeaderStyle: CSSProperties = {
-  height: 30,
+const panelTitleStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
-  color: CT.ink,
+  gap: 10,
   fontSize: 12,
   fontWeight: 850,
+  color: CT.ink,
 };
 
-function objectButtonStyle(active: boolean): CSSProperties {
+const ghostButtonStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  color: CT.inkSub,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  height: 26,
+  padding: "0 8px",
+  cursor: "pointer",
+};
+
+const deviceListStyle: CSSProperties = {
+  overflow: "auto",
+  display: "grid",
+  alignContent: "start",
+  gap: 7,
+  paddingRight: 2,
+};
+
+function deviceButtonStyle(active: boolean): CSSProperties {
   return {
-    width: "100%",
+    minHeight: 58,
     display: "grid",
-    gridTemplateColumns: "32px minmax(0, 1fr) auto",
+    gridTemplateColumns: "24px minmax(0, 1fr) 58px",
     alignItems: "center",
-    gap: 9,
-    minHeight: 54,
+    gap: 8,
     border: `1px solid ${active ? CT.borderStrong : CT.border}`,
     borderRadius: 8,
     background: active ? "#fffaf4" : CT.surface,
     color: CT.ink,
-    cursor: "pointer",
-    fontFamily: CT_FONT,
     textAlign: "left",
+    fontFamily: CT_FONT,
     padding: "8px 9px",
-    marginTop: 7,
+    cursor: "pointer",
   };
 }
 
-const objectIconStyle: CSSProperties = {
-  width: 32,
-  height: 32,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  borderRadius: 7,
-  background: CT.surfaceMuted,
-  fontSize: 14,
-};
-
-const objectTitleStyle: CSSProperties = {
-  display: "block",
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontSize: 12,
-};
-
-const objectMetaStyle: CSSProperties = {
-  display: "block",
-  minWidth: 0,
-  overflow: "hidden",
-  textOverflow: "ellipsis",
-  whiteSpace: "nowrap",
-  fontSize: 10,
-  color: CT.inkMuted,
-  fontFamily: CT_MONO,
-  marginTop: 3,
-};
-
-const axisBadgeStyle: CSSProperties = {
-  borderRadius: 999,
-  fontSize: 10,
-  fontWeight: 850,
-  padding: "3px 7px",
-};
-
-const canvasStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  minWidth: 0,
-  overflow: "hidden",
-};
-
-const canvasInnerStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  minHeight: 560,
-};
-
-const svgStyle: CSSProperties = {
-  width: "100%",
-  height: "100%",
-  minHeight: 560,
-  display: "block",
-};
-
-const detailStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: CT.surface,
-  padding: 12,
-  overflow: "auto",
-};
-
-const inspectorHeadStyle: CSSProperties = {
-  display: "flex",
-  gap: 12,
-  alignItems: "center",
-  marginTop: 10,
-};
-
-const bigIconStyle: CSSProperties = {
-  width: 42,
-  height: 42,
-  borderRadius: 8,
-  background: CT.surfaceMuted,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "center",
-  fontSize: 18,
-};
-
-const inspectorTitleStyle: CSSProperties = {
-  margin: 0,
-  fontSize: 18,
-  fontWeight: 850,
-};
-
-const inspectorSubStyle: CSSProperties = {
-  marginTop: 3,
-  fontSize: 11,
-  color: CT.inkMuted,
-  fontFamily: CT_MONO,
-};
-
-const descriptionStyle: CSSProperties = {
-  fontSize: 12,
-  color: CT.inkSub,
-  lineHeight: 1.55,
-  margin: "14px 0",
-};
-
-const miniMetricGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 8,
-};
-
-const miniMetricStyle: CSSProperties = {
-  border: `1px solid ${CT.border}`,
-  borderRadius: 7,
-  background: CT.surfaceMuted,
-  padding: 8,
-  display: "grid",
-  gap: 5,
-  fontSize: 10,
-  color: CT.inkMuted,
-};
-
-const sectionLabelStyle: CSSProperties = {
-  marginTop: 18,
-  marginBottom: 8,
-  fontSize: 11,
-  fontWeight: 850,
-  color: CT.ink,
-  textTransform: "uppercase",
-  letterSpacing: 0.8,
-};
-
-const propertyListStyle: CSSProperties = {
-  display: "grid",
-  gap: 6,
-};
-
-const propertyRowStyle: CSSProperties = {
-  minHeight: 32,
-  borderTop: `1px solid ${CT.border}`,
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  fontSize: 11,
-  color: CT.inkSub,
-};
-
-const boardStyle: CSSProperties = {
-  padding: 14,
-  height: "100%",
-  overflow: "auto",
-};
-
-const boardTitleStyle: CSSProperties = {
-  fontSize: 16,
-  fontWeight: 850,
-  marginBottom: 12,
-};
-
-const linkListStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-};
-
-function linkRowStyle(active: boolean): CSSProperties {
+function deviceCheckStyle(active: boolean): CSSProperties {
   return {
-    minHeight: 44,
-    display: "grid",
-    gridTemplateColumns: "1fr 0.8fr 24px 0.8fr 1fr 110px",
-    alignItems: "center",
-    gap: 10,
+    width: 22,
+    height: 22,
+    borderRadius: 6,
     border: `1px solid ${active ? CT.borderStrong : CT.border}`,
-    borderRadius: 8,
-    background: active ? "#fffaf4" : CT.surface,
-    padding: "8px 10px",
-    color: CT.inkSub,
-    fontSize: 12,
-  };
-}
-
-const functionGridStyle: CSSProperties = {
-  display: "grid",
-  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
-  gap: 10,
-};
-
-function functionCardStyle(active: boolean): CSSProperties {
-  return {
-    minHeight: 150,
-    border: `1px solid ${active ? CT.borderStrong : CT.border}`,
-    borderRadius: 8,
-    background: active ? "#fffaf4" : CT.surface,
-    padding: 12,
+    color: active ? CT.accent : CT.inkMuted,
     display: "flex",
-    flexDirection: "column",
-    gap: 10,
+    alignItems: "center",
+    justifyContent: "center",
+    background: active ? CT.accentSoft : CT.surfaceMuted,
   };
 }
 
-const functionTopStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  color: CT.inkMuted,
-  fontSize: 10,
-  fontFamily: CT_MONO,
+const deviceNameStyle: CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  fontSize: 12,
 };
 
-const functionFooterStyle: CSSProperties = {
-  marginTop: "auto",
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 8,
+const deviceSubStyle: CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
   color: CT.inkMuted,
   fontSize: 10,
-  fontFamily: CT_MONO,
+  marginTop: 3,
 };
 
-const scenarioGridStyle: CSSProperties = {
+const deviceStockStyle: CSSProperties = {
+  textAlign: "right",
+  fontFamily: CT_MONO,
+  fontSize: 12,
+  color: CT.inkSub,
+};
+
+const mainPanelStyle: CSSProperties = {
+  minWidth: 0,
   display: "grid",
-  gridTemplateColumns: "repeat(2, minmax(0, 1fr))",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
   gap: 10,
 };
 
-const scenarioCardStyle: CSSProperties = {
+const filterBarStyle: CSSProperties = {
+  minHeight: 54,
+  display: "grid",
+  gridTemplateColumns: "minmax(260px, 1fr) repeat(4, 138px)",
+  gap: 8,
+  alignItems: "center",
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  padding: 10,
+};
+
+const searchBoxStyle: CSSProperties = {
+  height: 34,
+  display: "flex",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  padding: "0 9px",
+};
+
+const searchInputStyle: CSSProperties = {
+  flex: 1,
+  minWidth: 0,
+  border: 0,
+  outline: 0,
+  background: "transparent",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 12,
+};
+
+const clearButtonStyle: CSSProperties = {
+  width: 24,
+  height: 24,
+  border: 0,
+  background: "transparent",
+  color: CT.inkMuted,
+  cursor: "pointer",
+};
+
+const selectWrapStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  color: CT.inkMuted,
+  fontSize: 10,
+  fontWeight: 800,
+};
+
+const selectStyle: CSSProperties = {
+  height: 34,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surface,
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 12,
+  fontWeight: 750,
+  padding: "0 8px",
+  outline: "none",
+};
+
+const compareGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(180px, 1fr))",
+  gap: 10,
+  overflowX: "auto",
+};
+
+const deviceCardStyle: CSSProperties = {
   border: `1px solid ${CT.border}`,
   borderRadius: 8,
   background: CT.surface,
   padding: 12,
   display: "grid",
   gap: 12,
+  minWidth: 190,
 };
 
-const scenarioHeaderStyle: CSSProperties = {
+const deviceCardHeaderStyle: CSSProperties = {
   display: "flex",
-  alignItems: "center",
   justifyContent: "space-between",
-  gap: 12,
-  fontSize: 12,
+  gap: 10,
+  alignItems: "start",
+  fontSize: 13,
 };
 
-const scenarioPathStyle: CSSProperties = {
+const barGroupStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+};
+
+const barRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "74px minmax(0, 1fr) 54px",
+  alignItems: "center",
+  gap: 8,
+  fontSize: 11,
+  color: CT.inkMuted,
+};
+
+const barTrackStyle: CSSProperties = {
+  height: 7,
+  borderRadius: 999,
+  background: CT.surfaceMuted,
+  overflow: "hidden",
+};
+
+const barFillStyle: CSSProperties = {
+  height: "100%",
+  borderRadius: 999,
+};
+
+const deviceMetricsStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(4, minmax(0, 1fr))",
   gap: 6,
-  color: CT.accent,
-  fontSize: 11,
+};
+
+const metricStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: CT.surfaceMuted,
+  padding: "6px 7px",
+  display: "grid",
+  gap: 4,
+  color: CT.inkMuted,
+  fontSize: 10,
+};
+
+const contentGridStyle: CSSProperties = {
+  minHeight: 0,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 340px",
+  gap: 10,
+};
+
+const tablePanelStyle: CSSProperties = {
+  minHeight: 0,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  padding: 10,
+  display: "grid",
+  gridTemplateRows: "32px minmax(0, 1fr)",
+};
+
+const componentTableStyle: CSSProperties = {
+  overflow: "auto",
+  borderTop: `1px solid ${CT.border}`,
+};
+
+const tableHeaderStyle: CSSProperties = {
+  position: "sticky",
+  top: 0,
+  zIndex: 1,
+  height: 34,
+  display: "grid",
+  gridTemplateColumns: "90px minmax(240px, 1fr) 110px 110px 92px",
+  gap: 10,
+  alignItems: "center",
+  background: CT.surface,
+  color: CT.inkMuted,
+  fontSize: 10,
   fontWeight: 850,
+  textTransform: "uppercase",
+  letterSpacing: 0.5,
+};
+
+const tableRowStyle: CSSProperties = {
+  minHeight: 46,
+  display: "grid",
+  gridTemplateColumns: "90px minmax(240px, 1fr) 110px 110px 92px",
+  gap: 10,
+  alignItems: "center",
+  borderTop: `1px solid ${CT.border}`,
+  color: CT.inkSub,
+  fontSize: 12,
+};
+
+const componentCodeStyle: CSSProperties = {
+  display: "block",
+  color: CT.ink,
+  fontFamily: CT_MONO,
+  fontSize: 12,
+};
+
+const componentNameStyle: CSSProperties = {
+  display: "block",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+  whiteSpace: "nowrap",
+  color: CT.inkMuted,
+  fontStyle: "normal",
+  fontSize: 11,
+  marginTop: 3,
+};
+
+const statusBadgeStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  minHeight: 24,
+  border: "1px solid",
+  borderRadius: 999,
+  fontSize: 10,
+  fontWeight: 850,
+  padding: "0 8px",
+  whiteSpace: "nowrap",
+};
+
+const insightPanelStyle: CSSProperties = {
+  minHeight: 0,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  padding: 10,
+  display: "grid",
+  alignContent: "start",
+  gap: 12,
+  overflow: "auto",
+};
+
+const sharedListStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+};
+
+const sharedRowStyle: CSSProperties = {
+  minHeight: 54,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surfaceMuted,
+  padding: 9,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 10,
+  alignItems: "center",
+  fontSize: 12,
+};
+
+const sharedMetaStyle: CSSProperties = {
+  display: "grid",
+  justifyItems: "end",
+  gap: 5,
+};
+
+const ruleBoxStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surfaceMuted,
+  padding: 10,
+  color: CT.inkSub,
+  fontSize: 12,
+  lineHeight: 1.35,
 };
 
 const emptyStyle: CSSProperties = {
   color: CT.inkMuted,
   fontSize: 12,
   padding: 12,
+};
+
+const loadingStyle: CSSProperties = {
+  position: "fixed",
+  right: 18,
+  bottom: 18,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  color: CT.inkSub,
+  fontSize: 12,
+  padding: "10px 12px",
+  boxShadow: "0 10px 28px rgba(20,20,19,0.10)",
 };
 
