@@ -14,6 +14,7 @@ import {
   Hammer,
   ListTree,
   Minus,
+  Network,
   Pencil,
   Plus,
   RotateCcw,
@@ -26,8 +27,8 @@ import {
 } from "lucide-react";
 
 type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
-type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procurement";
-type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement";
+type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procurement" | "ontology";
+type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement" | "ontology";
 type PortSide = "left" | "right";
 type DeviceOperationMode = "warehouse_sale" | "produce_sale";
 
@@ -1019,12 +1020,21 @@ export default function PipelineBuilderPage() {
       const semanticRole = nodeFunctionToSemanticRole(functionKind);
       const label = semanticRoleLabel(semanticRole);
       const deviceLabel = semanticRole === "device" && nextDeviceSku ? nextDeviceSku : label;
+      const ontologyRows = [
+        { domain: "Cihaz", fields: "depo, uretilebilir, satis, kritik", output: "Projection chart" },
+        { domain: "Bilesen", fields: "stok, BOM miktari, cihaz overlap", output: "Component comparison" },
+        { domain: "Risk", fields: "kritik, risk, bottleneck", output: "Risk projection" },
+      ];
       return {
         ...node,
         title: deviceLabel,
-        subtitle: semanticRole === "device" && nextDeviceSku
-          ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
-          : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
+        subtitle: semanticRole === "ontology"
+          ? "Semantic projection f(x) · Ontology workspace'e bağlanır"
+          : semanticRole === "device" && nextDeviceSku
+            ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
+            : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
+        rows: semanticRole === "ontology" ? ontologyRows : node.rows,
+        columns: semanticRole === "ontology" ? ["domain", "fields", "output"] : node.columns,
         functionKind,
         semanticRole,
         semanticLabel: deviceLabel,
@@ -1618,12 +1628,15 @@ export default function PipelineBuilderPage() {
                   }}
                 />
               )}
-              {selectedNode?.semanticRole !== "device" && previewRows.length === 0 && (
+              {selectedNode?.semanticRole === "ontology" && (
+                <OntologyFunctionPreviewPanel />
+              )}
+              {selectedNode?.semanticRole !== "device" && selectedNode?.semanticRole !== "ontology" && previewRows.length === 0 && (
                 <div style={{ padding: 22, color: CT.inkMuted, fontSize: 13 }}>
                   Dataset kutusuna dosya yükle, sonra kutunun sağ portuna basıp Transform seç.
                 </div>
               )}
-              {selectedNode?.semanticRole !== "device" && previewRows.length > 0 && (
+              {selectedNode?.semanticRole !== "device" && selectedNode?.semanticRole !== "ontology" && previewRows.length > 0 && (
                 <table style={{ width: "100%", borderCollapse: "collapse", fontSize: 12 }}>
                   <thead>
                     <tr>
@@ -1759,6 +1772,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
             <option value="order">Sipariş</option>
             <option value="device">Cihaz</option>
             <option value="procurement">Tedarik</option>
+            <option value="ontology">Ontology f(x)</option>
           </select>
         </div>
       )}
@@ -1784,6 +1798,12 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
           fields={node.procurementFields ?? emptyProcurementFields()}
           onChange={onProcurementFieldChange}
         />
+      )}
+      {node.semanticRole === "ontology" && (
+        <div style={ontologyNodeHintStyle}>
+          <Network size={13} />
+          <span>projection builder</span>
+        </div>
       )}
       {!isComponent && node.columns.length > 0 && <div style={nodeCountStyle}>{node.columns.length} columns</div>}
       {isDataset && (
@@ -2104,6 +2124,47 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
         <Metric label="Toplam satılan" value={formatCell(operation?.totalSold ?? 0)} />
         <Metric label="Darboğaz" value={bottleneck} />
         <Metric label="Durum" value={plan.note} />
+      </div>
+    </div>
+  );
+}
+
+function OntologyFunctionPreviewPanel() {
+  return (
+    <div style={ontologyPreviewStyle}>
+      <div style={ontologyPreviewHeaderStyle}>
+        <div>
+          <div style={ontologyEyebrowStyle}>ONTOLOGY F(X)</div>
+          <h3 style={ontologyTitleStyle}>Semantic projection</h3>
+          <p style={ontologyTextStyle}>
+            Pipeline içinde seçtiğin veri atomlarını Ontology workspace'te karşılaştırılabilir grafik çıktısına dönüştürür.
+          </p>
+        </div>
+        <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
+          <Network size={15} />
+          Workspace'i aç
+        </a>
+      </div>
+      <div style={ontologyCardsStyle}>
+        <div style={ontologyCardStyle}>
+          <strong>Cihaz domain</strong>
+          <span>Depo, üretilebilirlik, satış, kritik bileşen</span>
+        </div>
+        <div style={ontologyCardStyle}>
+          <strong>Bileşen domain</strong>
+          <span>Stok, BOM miktarı, hangi cihazlarda kullanıldığı</span>
+        </div>
+        <div style={ontologyCardStyle}>
+          <strong>Risk domain</strong>
+          <span>Bottleneck, kritik satırlar, domain bazlı kıyas</span>
+        </div>
+      </div>
+      <div style={ontologyFlowStyle}>
+        <span>Dataset / Cihaz / Sipariş</span>
+        <b>→</b>
+        <span>Ontology f(x)</span>
+        <b>→</b>
+        <span>Fiscal-style chart</span>
       </div>
     </div>
   );
@@ -3989,6 +4050,7 @@ function semanticRoleLabel(role: SemanticRole) {
   if (role === "order") return "Sipariş";
   if (role === "orderLine") return "Sipariş kalemi";
   if (role === "procurement") return "Tedarik";
+  if (role === "ontology") return "Ontology f(x)";
   return "Cihaz";
 }
 
@@ -4323,6 +4385,7 @@ function effectiveNodeHeight(node: PipelineNode) {
   if (node.semanticRole === "order") return 164;
   if (node.semanticRole === "device") return 212;
   if (node.semanticRole === "procurement") return 190;
+  if (node.semanticRole === "ontology") return 152;
   return nodeHeight(node.kind);
 }
 
@@ -5168,6 +5231,101 @@ const nodeUploadStyle: CSSProperties = {
   color: CT.accent,
   background: CT.accentSoft,
   cursor: "pointer",
+};
+
+const ontologyNodeHintStyle: CSSProperties = {
+  margin: "8px 10px 0",
+  height: 28,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#eef3f5",
+  color: "#33554f",
+  fontSize: 11,
+  fontWeight: 850,
+};
+
+const ontologyPreviewStyle: CSSProperties = {
+  padding: 18,
+  display: "grid",
+  gap: 14,
+};
+
+const ontologyPreviewHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "start",
+  justifyContent: "space-between",
+  gap: 18,
+};
+
+const ontologyEyebrowStyle: CSSProperties = {
+  color: CT.accent,
+  fontSize: 11,
+  fontWeight: 900,
+  letterSpacing: 1,
+};
+
+const ontologyTitleStyle: CSSProperties = {
+  margin: "3px 0 6px",
+  fontSize: 24,
+  lineHeight: 1,
+};
+
+const ontologyTextStyle: CSSProperties = {
+  margin: 0,
+  color: CT.inkMuted,
+  fontSize: 13,
+  maxWidth: 620,
+};
+
+const ontologyOpenButtonStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 8,
+  height: 34,
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  background: "#2f5d50",
+  color: "#fff",
+  textDecoration: "none",
+  padding: "0 12px",
+  fontSize: 12,
+  fontWeight: 850,
+};
+
+const ontologyCardsStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 10,
+};
+
+const ontologyCardStyle: CSSProperties = {
+  minHeight: 82,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surfaceMuted,
+  padding: 12,
+  display: "grid",
+  gap: 7,
+  alignContent: "start",
+  color: CT.inkSub,
+  fontSize: 12,
+};
+
+const ontologyFlowStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 12,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: "#fffaf4",
+  padding: "12px 14px",
+  color: CT.ink,
+  fontSize: 13,
+  fontWeight: 850,
 };
 
 const graphPortStyle: CSSProperties = {
