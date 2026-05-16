@@ -29,7 +29,7 @@ type NodeKind = "dataset" | "transform" | "union" | "output" | "component";
 type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procurement";
 type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement";
 type PortSide = "left" | "right";
-type DeviceOperationMode = "auto" | "warehouse_sale" | "produce_sale" | "partial";
+type DeviceOperationMode = "warehouse_sale" | "produce_sale";
 
 type OrderFields = {
   customer: string;
@@ -1931,10 +1931,10 @@ function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQ
   onModeChange: (mode: DeviceOperationMode) => void;
   onRefresh: () => void;
 }) {
-  const mode = node.deviceOperationMode ?? "auto";
+  const mode = normalizeDeviceOperationMode(node.deviceOperationMode);
   const plan = buildDeviceOperationPlan(node.deviceOperation, node.deviceQuantity ?? "", mode);
   const operation = node.deviceOperation;
-  const selectedMode = plan.mode as DeviceOperationMode;
+  const selectedMode = plan.mode;
   const currentSku = resolveDeviceNodeSku(node);
   const bottleneck = operation?.bottleneck?.code
     ? `${operation.bottleneck.code}${operation.bottleneck.name ? ` · ${operation.bottleneck.name}` : ""}`
@@ -1982,13 +1982,13 @@ function DeviceOperationPreviewPanel({ node, productOptions, onDeviceSelect, onQ
           title="Depo"
           value={plan.warehouse}
           detail={`${formatCell(operation?.inWarehouse ?? 0)} mamul depoda`}
-          active={selectedMode === "warehouse_sale" || selectedMode === "partial"}
+          active={selectedMode === "warehouse_sale"}
         />
         <DecisionCard
           title="Üretim"
           value={plan.production}
           detail={operation?.maxProducible === null ? "BOM kapasitesi yok" : `${formatCell(operation?.maxProducible ?? 0)} adet üretilebilir`}
-          active={selectedMode === "produce_sale" || selectedMode === "partial"}
+          active={selectedMode === "produce_sale"}
         />
         <DecisionCard
           title="Satış"
@@ -3666,10 +3666,8 @@ function nodeFunctionToSemanticRole(functionKind: NodeFunctionKind): SemanticRol
 }
 
 const deviceOperationModes: Array<{ mode: DeviceOperationMode; label: string }> = [
-  { mode: "auto", label: "Auto" },
-  { mode: "warehouse_sale", label: "Depodan sat" },
-  { mode: "produce_sale", label: "Üret ve sat" },
-  { mode: "partial", label: "Kısmi" },
+  { mode: "warehouse_sale", label: "Depo" },
+  { mode: "produce_sale", label: "Üretim" },
 ];
 
 function emptyOrderFields(): OrderFields {
@@ -3705,6 +3703,10 @@ function resolveDeviceNodeSku(node: PipelineNode) {
   return sku.trim();
 }
 
+function normalizeDeviceOperationMode(mode: unknown): DeviceOperationMode {
+  return mode === "produce_sale" ? "produce_sale" : "warehouse_sale";
+}
+
 function withDeviceOperationRows(node: PipelineNode): PipelineNode {
   if (node.semanticRole !== "device") return node;
   const rows = deviceOperationToRows(node);
@@ -3718,7 +3720,7 @@ function withDeviceOperationRows(node: PipelineNode): PipelineNode {
 function deviceOperationToRows(node: PipelineNode) {
   const op = node.deviceOperation;
   if (!op) return node.rows;
-  const plan = buildDeviceOperationPlan(op, node.deviceQuantity ?? "", node.deviceOperationMode ?? "auto");
+  const plan = buildDeviceOperationPlan(op, node.deviceQuantity ?? "", normalizeDeviceOperationMode(node.deviceOperationMode));
   return [{
     product_sku: op.sku,
     product_name: op.productName ?? op.sku,
@@ -3796,13 +3798,7 @@ function buildDeviceOperationPlan(
 
   const warehouseAvailable = Math.max(0, operation.inWarehouse);
   const producible = Math.max(0, operation.maxProducible ?? 0);
-  const mode = requestedMode === "auto"
-    ? warehouseAvailable >= requestedQuantity
-      ? "warehouse_sale"
-      : warehouseAvailable === 0
-        ? "produce_sale"
-        : "partial"
-    : requestedMode;
+  const mode = normalizeDeviceOperationMode(requestedMode);
 
   const warehouseReserve = mode === "produce_sale"
     ? 0
@@ -3821,10 +3817,8 @@ function buildDeviceOperationPlan(
         ? "warning"
         : "ok";
   const modeLabel = mode === "warehouse_sale"
-    ? "Depodan sat"
-    : mode === "produce_sale"
-      ? "Üret ve sat"
-      : "Kısmi depo + üretim";
+    ? "Depo"
+    : "Üretim";
   const bottleneck = operation.bottleneck?.code
     ? ` Darboğaz: ${operation.bottleneck.code}.`
     : "";
