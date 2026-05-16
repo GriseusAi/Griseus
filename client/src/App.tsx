@@ -40,6 +40,7 @@ const OntologySimulatePage = lazy(() => import("@/pages/ontology-simulate"));
 const VeriYukle = lazy(() => import("@/pages/veri-yukle"));
 const PipelineRunsPage = lazy(() => import("@/pages/pipeline-runs"));
 const PipelineBuilderPage = lazy(() => import("@/pages/pipeline-builder"));
+const OntologyLayersPage = lazy(() => import("@/pages/ontology-layers"));
 const TwinHealthPage = lazy(() => import("@/pages/twin-health"));
 const DecisionLoopPage = lazy(() => import("@/pages/decision-loop"));
 const OperationsPage = lazy(() => import("@/pages/operations"));
@@ -122,6 +123,7 @@ function App() {
             <Route path="/ontology/strategy"><Redirect to="/ontology" /></Route>
             <Route path="/pipeline" component={PipelineRunsPage} />
             <Route path="/pipeline-builder" component={PipelineBuilderPage} />
+            <Route path="/ontology-layers" component={OntologyLayersPage} />
             <Route path="/twin-health" component={TwinHealthPage} />
             <Route path="/loop" component={DecisionLoopPage} />
             <Route path="/operations" component={OperationsPage} />
