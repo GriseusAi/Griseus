@@ -322,8 +322,6 @@ export default function PipelineBuilderPage() {
   const previewRows = selectedNode?.rows ?? [];
 
   const outputNode = getOutputNode(nodes, connections, selectedNodeId);
-  const datasetCount = nodes.filter(node => node.kind === "dataset").length;
-  const transformCount = nodes.filter(node => node.kind === "transform").length;
   const canUndo = history.length > 0;
   const canDelete = Boolean(selectedNode);
   const canZoomOut = canvasZoom > 0.55;
@@ -1591,13 +1589,6 @@ export default function PipelineBuilderPage() {
           </div>
         </section>
       </main>
-
-      <aside style={summaryPanelStyle}>
-        <Metric label="Datasets" value={datasetCount} />
-        <Metric label="Transforms" value={transformCount} />
-        <Metric label="Output rows" value={outputNode?.rows.length ?? 0} />
-        <Metric label="Import actions" value={importPlan?.actions.length ?? 0} />
-      </aside>
 
       {savedPanelOpen && (
         <SavedPipelinesPanel
@@ -5039,16 +5030,4 @@ const previewCellInputStyle: CSSProperties = {
   fontWeight: 650,
   padding: "4px 6px",
   outline: 0,
-};
-
-const summaryPanelStyle: CSSProperties = {
-  position: "fixed",
-  right: 14,
-  bottom: 324,
-  width: 210,
-  border: `1px solid ${CT.border}`,
-  borderRadius: 8,
-  background: "rgba(250,249,245,0.94)",
-  padding: "8px 12px",
-  boxShadow: "0 4px 18px rgba(20,20,19,0.08)",
 };
