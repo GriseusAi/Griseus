@@ -65,6 +65,31 @@ type StatusFilter = "all" | "critical" | "warning" | "ok" | "abundant" | "variab
 type StockFilter = "all" | "zero" | "low" | "enough";
 type TimeFilter = "all" | "fresh" | "week" | "stale";
 type SortMode = "risk" | "stock" | "required" | "device";
+type ChartKind = "combo" | "bar" | "line" | "area" | "table";
+type XAxisMode = "device" | "category" | "risk";
+type LineStyle = "solid" | "smooth" | "step" | "dash";
+type MetricKey = "warehouse" | "capacity" | "production" | "sold" | "critical" | "warnings" | "componentCount";
+
+type DeviceView = {
+  sku: string;
+  name: string;
+  category: string;
+  componentCount: number;
+  warehouse: number;
+  production: number;
+  sold: number;
+  updatedAt: string;
+  dataAgeDays: number | null;
+  critical: number;
+  warnings: number;
+  capacity: number | null;
+  loading: boolean;
+};
+
+type ChartRow = Record<MetricKey, number> & {
+  label: string;
+  count: number;
+};
 
 const statusLabels: Record<string, string> = {
   critical: "Kritik",
@@ -75,6 +100,16 @@ const statusLabels: Record<string, string> = {
   "N/A": "N/A",
 };
 
+const metricDefs: Array<{ key: MetricKey; label: string; color: string; kind: "bar" | "line" }> = [
+  { key: "warehouse", label: "Depo", color: "#f4a340", kind: "bar" },
+  { key: "capacity", label: "Uretilebilir", color: "#4775db", kind: "bar" },
+  { key: "production", label: "Uretimde", color: "#9b73df", kind: "bar" },
+  { key: "sold", label: "Satilan", color: "#202027", kind: "bar" },
+  { key: "critical", label: "Kritik", color: "#ef7d70", kind: "line" },
+  { key: "warnings", label: "Risk", color: "#f2a65a", kind: "line" },
+  { key: "componentCount", label: "Bilesen", color: "#4bb7ad", kind: "line" },
+];
+
 export default function OntologyLayersPage() {
   const [selectedSkus, setSelectedSkus] = useState<string[]>([]);
   const [componentQuery, setComponentQuery] = useState("");
@@ -82,6 +117,10 @@ export default function OntologyLayersPage() {
   const [stockFilter, setStockFilter] = useState<StockFilter>("all");
   const [timeFilter, setTimeFilter] = useState<TimeFilter>("all");
   const [sortMode, setSortMode] = useState<SortMode>("risk");
+  const [chartKind, setChartKind] = useState<ChartKind>("combo");
+  const [xAxisMode, setXAxisMode] = useState<XAxisMode>("device");
+  const [lineStyle, setLineStyle] = useState<LineStyle>("smooth");
+  const [activeMetrics, setActiveMetrics] = useState<MetricKey[]>(["warehouse", "capacity", "critical"]);
 
   const productsQuery = useQuery<Product[]>({ queryKey: ["/api/products"] });
   const stockLevelsQuery = useQuery<StockLevel[]>({ queryKey: ["/api/stock/levels"] });
@@ -197,6 +236,7 @@ export default function OntologyLayersPage() {
   }, [flatComponents]);
 
   const maxCapacity = Math.max(1, ...visibleDevices.map(device => device.capacity ?? 0), ...visibleDevices.map(device => device.warehouse));
+  const chartRows = useMemo(() => buildChartRows(visibleDevices, xAxisMode), [visibleDevices, xAxisMode]);
   const loading = productsQuery.isLoading || stockLevelsQuery.isLoading || bomQueries.some(query => query.isLoading);
   const criticalComponents = filteredComponents.filter(row => row.status === "critical").slice(0, 18);
 
@@ -257,12 +297,22 @@ export default function OntologyLayersPage() {
             </div>
 
             <div style={visualCanvasStyle}>
-              <ChartPanel title="Bar plot of devices by stock and capacity" meta={`${visibleDevices.length} selected devices`}>
-                <DeviceBarChart devices={visibleDevices} max={maxCapacity} />
+              <ChartPanel title="Financial-style device metrics chart" meta={`${chartRows.length} x-axis items`}>
+                <ChartControlDeck
+                  chartKind={chartKind}
+                  xAxisMode={xAxisMode}
+                  lineStyle={lineStyle}
+                  activeMetrics={activeMetrics}
+                  onChartKind={setChartKind}
+                  onXAxis={setXAxisMode}
+                  onLineStyle={setLineStyle}
+                  onToggleMetric={(metric) => setActiveMetrics(prev => toggleMetric(prev, metric))}
+                />
+                <FinancialMetricChart rows={chartRows} metrics={activeMetrics} chartKind={chartKind} lineStyle={lineStyle} />
               </ChartPanel>
 
               <ChartPanel title="Grouped component stock plots" meta={`${filteredComponents.length} matching components`}>
-                <GroupedStockPlots devices={visibleDevices} components={filteredComponents} />
+                <GroupedStockPlots devices={visibleDevices} components={filteredComponents} lineStyle={lineStyle} />
               </ChartPanel>
 
               <div style={bottomCanvasGridStyle}>
@@ -323,6 +373,45 @@ function minNumber(values: number[]) {
   return values.length === 0 ? null : Math.min(...values);
 }
 
+function buildChartRows(devices: DeviceView[], mode: XAxisMode): ChartRow[] {
+  const groups = new Map<string, ChartRow>();
+  devices.forEach(device => {
+    const label = mode === "category"
+      ? device.category || "-"
+      : mode === "risk"
+        ? device.critical > 0 ? "Kritik" : device.warnings > 0 ? "Risk" : "Yeterli"
+        : device.sku;
+    const current = groups.get(label) ?? {
+      label,
+      count: 0,
+      warehouse: 0,
+      capacity: 0,
+      production: 0,
+      sold: 0,
+      critical: 0,
+      warnings: 0,
+      componentCount: 0,
+    };
+    current.count += 1;
+    current.warehouse += device.warehouse;
+    current.capacity += device.capacity ?? 0;
+    current.production += device.production;
+    current.sold += device.sold;
+    current.critical += device.critical;
+    current.warnings += device.warnings;
+    current.componentCount += device.componentCount;
+    groups.set(label, current);
+  });
+  return Array.from(groups.values()).slice(0, 12);
+}
+
+function toggleMetric(current: MetricKey[], metric: MetricKey) {
+  if (current.includes(metric)) {
+    return current.length === 1 ? current : current.filter(item => item !== metric);
+  }
+  return [...current, metric].slice(-5);
+}
+
 function daysSince(value: string) {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) return null;
@@ -377,31 +466,146 @@ function ChartPanel({ title, meta, children }: { title: string; meta: string; ch
   );
 }
 
-function DeviceBarChart({ devices, max }: { devices: Array<{ sku: string; warehouse: number; capacity: number | null; critical: number }>; max: number }) {
-  const rows = devices.slice(0, 10);
+function ChartControlDeck({ chartKind, xAxisMode, lineStyle, activeMetrics, onChartKind, onXAxis, onLineStyle, onToggleMetric }: {
+  chartKind: ChartKind;
+  xAxisMode: XAxisMode;
+  lineStyle: LineStyle;
+  activeMetrics: MetricKey[];
+  onChartKind: (kind: ChartKind) => void;
+  onXAxis: (axis: XAxisMode) => void;
+  onLineStyle: (style: LineStyle) => void;
+  onToggleMetric: (metric: MetricKey) => void;
+}) {
   return (
-    <div style={barChartStyle}>
-      {rows.map(device => {
-        const capacity = device.capacity ?? 0;
-        return (
-          <div key={device.sku} style={barChartRowStyle}>
-            <span>{device.sku}</span>
-            <div style={barChartTrackStyle}>
-              <div style={{ ...barChartBarStyle, width: `${Math.max(1, (device.warehouse / max) * 100)}%`, background: "#5c84d8" }} />
-              <div style={{ ...barChartBarStyle, width: `${Math.max(1, (capacity / max) * 100)}%`, background: "rgba(87,184,72,0.72)", marginTop: 3 }} />
-            </div>
-            <strong>{fmt(device.warehouse)}</strong>
-          </div>
-        );
-      })}
-      <div style={axisLabelStyle}>object count / producible capacity</div>
+    <div style={chartControlDeckStyle}>
+      <div style={segmentedStyle}>
+        {(["combo", "bar", "line", "area", "table"] as ChartKind[]).map(kind => (
+          <button key={kind} type="button" onClick={() => onChartKind(kind)} style={segmentButtonStyle(chartKind === kind)}>{kind}</button>
+        ))}
+      </div>
+      <label style={miniSelectStyle}>
+        <span>X</span>
+        <select value={xAxisMode} onChange={event => onXAxis(event.target.value as XAxisMode)}>
+          <option value="device">Cihaz</option>
+          <option value="category">Kategori</option>
+          <option value="risk">Risk</option>
+        </select>
+      </label>
+      <label style={miniSelectStyle}>
+        <span>Line</span>
+        <select value={lineStyle} onChange={event => onLineStyle(event.target.value as LineStyle)}>
+          <option value="smooth">Smooth</option>
+          <option value="solid">Solid</option>
+          <option value="step">Step</option>
+          <option value="dash">Dash</option>
+        </select>
+      </label>
+      <div style={metricToggleStripStyle}>
+        {metricDefs.map(metric => (
+          <button key={metric.key} type="button" onClick={() => onToggleMetric(metric.key)} style={metricToggleStyle(activeMetrics.includes(metric.key), metric.color)}>
+            <span />
+            {metric.label}
+          </button>
+        ))}
+      </div>
     </div>
   );
 }
 
-function GroupedStockPlots({ devices, components }: {
+function FinancialMetricChart({ rows, metrics, chartKind, lineStyle }: {
+  rows: ChartRow[];
+  metrics: MetricKey[];
+  chartKind: ChartKind;
+  lineStyle: LineStyle;
+}) {
+  if (chartKind === "table") return <MetricDataTable rows={rows} metrics={metrics} />;
+  const width = 920;
+  const height = 310;
+  const pad = { top: 26, right: 46, bottom: 42, left: 54 };
+  const innerW = width - pad.left - pad.right;
+  const innerH = height - pad.top - pad.bottom;
+  const max = Math.max(1, ...rows.flatMap(row => metrics.map(metric => Number(row[metric] ?? 0))));
+  const barMetrics = metrics.filter(metric => chartKind === "bar" || chartKind === "combo" ? metricDefs.find(def => def.key === metric)?.kind === "bar" : false);
+  const lineMetrics = metrics.filter(metric => chartKind === "line" || chartKind === "area" || chartKind === "combo" ? (chartKind !== "combo" || metricDefs.find(def => def.key === metric)?.kind === "line") : false);
+  const slot = innerW / Math.max(1, rows.length);
+  const barW = Math.min(28, slot / Math.max(1, barMetrics.length + 1));
+
+  return (
+    <div style={financialChartWrapStyle}>
+      <svg viewBox={`0 0 ${width} ${height}`} style={financialSvgStyle} preserveAspectRatio="none">
+        <rect x="0" y="0" width={width} height={height} fill="#2b2a33" />
+        {Array.from({ length: 7 }).map((_, index) => {
+          const y = pad.top + (innerH / 6) * index;
+          return <line key={`h-${index}`} x1={pad.left} x2={width - pad.right} y1={y} y2={y} stroke="rgba(210,214,223,0.16)" />;
+        })}
+        {rows.map((row, index) => {
+          const x = pad.left + slot * index + slot / 2;
+          return (
+            <g key={row.label}>
+              <line x1={x} x2={x} y1={pad.top} y2={height - pad.bottom} stroke="rgba(210,214,223,0.10)" />
+              <text x={x} y={height - 14} fill="#aeb1bd" fontSize="10" textAnchor="middle">{row.label}</text>
+            </g>
+          );
+        })}
+        {barMetrics.map((metric, metricIndex) => {
+          const def = metricDefs.find(item => item.key === metric)!;
+          return rows.map((row, rowIndex) => {
+            const value = Number(row[metric] ?? 0);
+            const h = (value / max) * innerH;
+            const x = pad.left + slot * rowIndex + slot / 2 - ((barMetrics.length * barW) / 2) + metricIndex * barW;
+            const y = pad.top + innerH - h;
+            return <rect key={`${metric}-${row.label}`} x={x} y={y} width={barW * 0.78} height={Math.max(2, h)} rx="2" fill={def.color} />;
+          });
+        })}
+        {lineMetrics.map(metric => {
+          const def = metricDefs.find(item => item.key === metric)!;
+          const points = rows.map((row, index) => {
+            const x = pad.left + slot * index + slot / 2;
+            const y = pad.top + innerH - (Number(row[metric] ?? 0) / max) * innerH;
+            return { x, y, value: Number(row[metric] ?? 0) };
+          });
+          const path = linePath(points, lineStyle);
+          const areaPath = `M ${points[0]?.x ?? pad.left} ${pad.top + innerH} L ${path.replace(/^M /, "")} L ${points[points.length - 1]?.x ?? pad.left} ${pad.top + innerH} Z`;
+          return (
+            <g key={metric}>
+              {chartKind === "area" && <path d={areaPath} fill={def.color} opacity="0.18" />}
+              <path d={path} fill="none" stroke={def.color} strokeWidth="2.2" strokeDasharray={lineStyle === "dash" ? "7 5" : undefined} />
+              {points.map(point => <circle key={`${metric}-${point.x}`} cx={point.x} cy={point.y} r="3" fill={def.color} />)}
+            </g>
+          );
+        })}
+      </svg>
+      <div style={financialLegendStyle}>
+        {metrics.map(metric => {
+          const def = metricDefs.find(item => item.key === metric)!;
+          return <span key={metric}><i style={{ background: def.color }} />{def.label}</span>;
+        })}
+      </div>
+    </div>
+  );
+}
+
+function MetricDataTable({ rows, metrics }: { rows: ChartRow[]; metrics: MetricKey[] }) {
+  return (
+    <div style={metricTableStyle}>
+      <div style={{ ...metricTableRowStyle, fontWeight: 850, color: "#d8dae2" }}>
+        <span>X</span>
+        {metrics.map(metric => <span key={metric}>{metricDefs.find(def => def.key === metric)?.label}</span>)}
+      </div>
+      {rows.map(row => (
+        <div key={row.label} style={metricTableRowStyle}>
+          <span>{row.label}</span>
+          {metrics.map(metric => <span key={metric}>{fmt(row[metric])}</span>)}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function GroupedStockPlots({ devices, components, lineStyle }: {
   devices: Array<{ sku: string; warehouse: number; capacity: number | null; critical: number; warnings: number }>;
   components: FlatComponent[];
+  lineStyle: LineStyle;
 }) {
   return (
     <div style={plotStackStyle}>
@@ -429,12 +633,14 @@ function GroupedStockPlots({ devices, components }: {
                   fill="none"
                   stroke="#00a99d"
                   strokeWidth="1.8"
+                  strokeDasharray={lineStyle === "dash" ? "7 5" : undefined}
                 />
                 <polyline
                   points={buildPlotPoints(rows.map(row => Number(row.maxProducts ?? 0)), 900, 132)}
                   fill="none"
                   stroke="#70c20f"
                   strokeWidth="1.5"
+                  strokeDasharray={lineStyle === "dash" ? "7 5" : undefined}
                 />
                 {rows.filter(row => row.status === "critical").slice(0, 12).map((row, markerIndex) => (
                   <rect key={`${row.code}-${markerIndex}`} x={markerIndex * 64 + index * 17} y={102 - (markerIndex % 4) * 14} width="4" height="22" fill="#5c84d8" opacity="0.85" />
@@ -498,6 +704,25 @@ function buildPlotPoints(values: number[], width: number, height: number) {
     const y = height - (Number(value) / max) * (height - 12) - 6;
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
+}
+
+function linePath(points: Array<{ x: number; y: number }>, style: LineStyle) {
+  if (points.length === 0) return "";
+  if (style === "step") {
+    return points.slice(1).reduce((path, point, index) => {
+      const prev = points[index];
+      const midX = (prev.x + point.x) / 2;
+      return `${path} H ${midX.toFixed(1)} V ${point.y.toFixed(1)} H ${point.x.toFixed(1)}`;
+    }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
+  }
+  if (style === "smooth") {
+    return points.slice(1).reduce((path, point, index) => {
+      const prev = points[index];
+      const cpX = (prev.x + point.x) / 2;
+      return `${path} C ${cpX.toFixed(1)} ${prev.y.toFixed(1)}, ${cpX.toFixed(1)} ${point.y.toFixed(1)}, ${point.x.toFixed(1)} ${point.y.toFixed(1)}`;
+    }, `M ${points[0].x.toFixed(1)} ${points[0].y.toFixed(1)}`);
+  }
+  return `M ${points.map(point => `${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" L ")}`;
 }
 
 function Select({ label, value, options, onChange }: {
@@ -680,31 +905,33 @@ const visualCanvasStyle: CSSProperties = {
   minHeight: 0,
   overflow: "auto",
   display: "grid",
-  gridTemplateRows: "230px minmax(420px, 1fr) 230px",
+  gridTemplateRows: "430px minmax(420px, 1fr) 230px",
   gap: 10,
 };
 
 const chartPanelStyle: CSSProperties = {
-  border: `1px solid ${CT.borderStrong}`,
-  background: CT.surface,
+  border: "1px solid rgba(255,255,255,0.10)",
+  background: "#27262f",
   minHeight: 0,
   display: "grid",
-  gridTemplateRows: "34px minmax(0, 1fr)",
+  gridAutoRows: "max-content",
+  color: "#d8dae2",
 };
 
 const chartHeaderStyle: CSSProperties = {
-  borderBottom: `1px solid ${CT.border}`,
+  height: 36,
+  borderBottom: "1px solid rgba(255,255,255,0.10)",
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 12,
   padding: "0 10px",
-  color: CT.ink,
+  color: "#f1f1f4",
   fontSize: 14,
 };
 
 const dragDotsStyle: CSSProperties = {
-  color: CT.inkMuted,
+  color: "#8f90a0",
   letterSpacing: 1,
   marginRight: 8,
   fontSize: 12,
@@ -714,7 +941,119 @@ const chartMetaStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   gap: 12,
-  color: CT.inkSub,
+  color: "#aeb1bd",
+  fontSize: 12,
+};
+
+const chartControlDeckStyle: CSSProperties = {
+  minHeight: 64,
+  display: "grid",
+  gridTemplateColumns: "minmax(320px, 1.1fr) 130px 150px minmax(360px, 1.5fr)",
+  gap: 10,
+  alignItems: "center",
+  padding: "10px 14px",
+  borderBottom: "1px solid rgba(255,255,255,0.10)",
+  background: "#30303a",
+};
+
+const segmentedStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(5, minmax(0, 1fr))",
+  gap: 4,
+  border: "1px solid rgba(255,255,255,0.12)",
+  borderRadius: 6,
+  padding: 3,
+  background: "#202027",
+};
+
+function segmentButtonStyle(active: boolean): CSSProperties {
+  return {
+    height: 30,
+    border: "0",
+    borderRadius: 4,
+    background: active ? "#4f9d69" : "transparent",
+    color: active ? "#fff" : "#c8cad4",
+    fontFamily: CT_FONT,
+    fontSize: 12,
+    fontWeight: 850,
+    cursor: "pointer",
+    textTransform: "capitalize",
+  };
+}
+
+const miniSelectStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  color: "#aeb1bd",
+  fontSize: 10,
+  fontWeight: 850,
+};
+
+const metricToggleStripStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  overflowX: "auto",
+};
+
+function metricToggleStyle(active: boolean, color: string): CSSProperties {
+  return {
+    height: 30,
+    display: "inline-flex",
+    alignItems: "center",
+    gap: 6,
+    border: `1px solid ${active ? color : "rgba(255,255,255,0.12)"}`,
+    borderRadius: 5,
+    background: active ? "rgba(255,255,255,0.08)" : "#202027",
+    color: active ? "#f4f4f6" : "#aeb1bd",
+    fontFamily: CT_FONT,
+    fontSize: 11,
+    fontWeight: 800,
+    padding: "0 8px",
+    cursor: "pointer",
+    whiteSpace: "nowrap",
+  };
+}
+
+const financialChartWrapStyle: CSSProperties = {
+  position: "relative",
+  minHeight: 330,
+  background: "#2b2a33",
+};
+
+const financialSvgStyle: CSSProperties = {
+  width: "100%",
+  height: 330,
+  display: "block",
+};
+
+const financialLegendStyle: CSSProperties = {
+  minHeight: 38,
+  display: "flex",
+  flexWrap: "wrap",
+  alignItems: "center",
+  gap: 12,
+  padding: "0 14px 10px",
+  color: "#d8dae2",
+  fontSize: 12,
+};
+
+const metricTableStyle: CSSProperties = {
+  padding: 12,
+  background: "#2b2a33",
+  display: "grid",
+  alignContent: "start",
+  gap: 1,
+};
+
+const metricTableRowStyle: CSSProperties = {
+  minHeight: 34,
+  display: "grid",
+  gridTemplateColumns: "180px repeat(5, minmax(90px, 1fr))",
+  gap: 8,
+  alignItems: "center",
+  borderBottom: "1px solid rgba(255,255,255,0.10)",
+  color: "#c8cad4",
   fontSize: 12,
 };
 
