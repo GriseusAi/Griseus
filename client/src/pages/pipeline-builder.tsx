@@ -79,6 +79,61 @@ type OntologyAnalysisResponse = {
   analyzedAt: string;
 };
 
+type SemanticLayerDecision = {
+  id: string;
+  status: "on_track" | "at_risk" | "late" | "missing_context";
+  riskScore: number;
+  customer: string;
+  device: string;
+  requested: number;
+  deadline: string;
+  warehouse: number;
+  producible: number;
+  fulfillmentGap: number;
+  shortageCount: number;
+  linkedProcurementCount: number;
+  missingProcurementCount: number;
+  lateProcurementCount: number;
+  summary: string;
+  recommendation: string;
+  bottleneck: null | {
+    code: string;
+    name: string;
+    shortage: number;
+    readyDate: string;
+    delayDays: number | null;
+  };
+};
+
+type SemanticLayerResponse = {
+  provider: string;
+  generatedAt: string;
+  ontology: {
+    objectTypes: string[];
+    linkTypes: string[];
+    actionTypes: string[];
+  };
+  kpis: {
+    devices: number;
+    customers: number;
+    bomComponents: number;
+    procurementNodes: number;
+    decisions: number;
+    riskyDecisions: number;
+    stagedActions: number;
+  };
+  decisions: SemanticLayerDecision[];
+  actionQueue: Array<{
+    id: string;
+    actionType: string;
+    label: string;
+    ownerAgent: string;
+    requiresHumanApproval: boolean;
+    reason: string;
+  }>;
+  agentLanes: Array<{ agent: string; responsibility: string; finding: string }>;
+};
+
 type OrderFields = {
   customer: string;
   deadline: string;
@@ -2239,39 +2294,38 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
     })),
   }), [context.devices, context.customers, context.orders, context.components, context.procurements]);
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
-  const [analysis, setAnalysis] = useState<OntologyAnalysisResponse | null>(null);
-  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
+  const [semanticLayer, setSemanticLayer] = useState<SemanticLayerResponse | null>(null);
+  const [semanticStatus, setSemanticStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
   const deliveryDecision = useMemo(() => buildOntologyDeliveryDecision(context, nodes, connections), [contextSignature, nodes, connections]);
   const localChartSpec = buildOntologyChartSpec(compareRows, chartMode);
-  const activeChartSpec = analysis?.chartSpec ? normalizeOntologyRemoteChartSpec(analysis.chartSpec) : localChartSpec;
+  const activeChartSpec = localChartSpec;
   useEffect(() => {
     const controller = new AbortController();
-    setAnalysisStatus("loading");
-    fetch("/api/pipeline-builder/ontology/analyze", {
+    setSemanticStatus("loading");
+    fetch("/api/pipeline-builder/ontology/semantic-layer", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         selectedNodeId: node.id,
-        chartMode,
         nodes,
         connections,
       }),
       signal: controller.signal,
     })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology analysis unavailable")))
-      .then((payload: OntologyAnalysisResponse) => {
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology semantic layer unavailable")))
+      .then((payload: SemanticLayerResponse) => {
         if (controller.signal.aborted) return;
-        setAnalysis(payload);
-        setAnalysisStatus("ready");
+        setSemanticLayer(payload);
+        setSemanticStatus("ready");
       })
       .catch(() => {
         if (controller.signal.aborted) return;
-        setAnalysis(null);
-        setAnalysisStatus("fallback");
+        setSemanticLayer(null);
+        setSemanticStatus("fallback");
       });
     return () => controller.abort();
-  }, [node.id, chartMode, contextSignature]);
+  }, [node.id, contextSignature]);
 
   return (
     <div style={ontologyPreviewStyle}>
@@ -2285,16 +2339,19 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             <span>{context.devices.length} cihaz</span>
             <span>{context.customers.length} müşteri</span>
             <span>{context.components.length} BOM</span>
-            <span>{analysisStatus === "loading" ? "analiz ediliyor" : analysis?.provider ?? "local"}</span>
+            <span>{semanticStatus === "loading" ? "semantic layer" : semanticLayer?.provider ?? "local"}</span>
           </div>
         </div>
 
         <div style={ontologyAnalysisCenterStyle}>
           <DeliveryDecisionPanel decision={deliveryDecision} />
-          {analysis && (
+          <SemanticLayerPanel layer={semanticLayer} status={semanticStatus} />
+          {semanticLayer && (
             <div style={ontologyNarrativeStyle}>
-              <strong>{analysis.title}</strong>
-              <span>{analysis.narrative}</span>
+              <strong>Semantic layer otomatik kuruldu</strong>
+              <span>
+                {semanticLayer.ontology.objectTypes.length} object type, {semanticLayer.ontology.linkTypes.length} link type ve {semanticLayer.ontology.actionTypes.length} action type graph context'e bağlandı.
+              </span>
             </div>
           )}
           <div style={ontologyWorkspaceStyle}>
@@ -2361,15 +2418,15 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               )}
             </div>
           </div>
-          {analysis && (analysis.recommendedActions.length > 0 || analysis.missingContext.length > 0) && (
+          {semanticLayer && (semanticLayer.actionQueue.length > 0 || semanticLayer.agentLanes.length > 0) && (
             <div style={ontologyInsightGridStyle}>
               <div>
-                <strong>Aksiyon</strong>
-                {analysis.recommendedActions.slice(0, 3).map(action => <span key={action}>{action}</span>)}
+                <strong>Action queue</strong>
+                {(semanticLayer.actionQueue.length > 0 ? semanticLayer.actionQueue : [{ id: "empty", label: "Staged aksiyon yok", reason: "Tüm kararlar izleme modunda.", ownerAgent: "Action agent", actionType: "none", requiresHumanApproval: true }]).slice(0, 3).map(action => <span key={action.id}>{action.label}: {action.reason}</span>)}
               </div>
               <div>
-                <strong>Eksik bağlam</strong>
-                {(analysis.missingContext.length > 0 ? analysis.missingContext : ["Graph context yeterli"]).slice(0, 3).map(item => <span key={item}>{item}</span>)}
+                <strong>Sub-agent lane</strong>
+                {semanticLayer.agentLanes.slice(0, 3).map(item => <span key={item.agent}>{item.agent}: {item.finding}</span>)}
               </div>
             </div>
           )}
@@ -2379,7 +2436,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
           <span>Chart: {activeChartSpec.kind === "line" ? "combo" : "bar"}</span>
           <span>X: device</span>
           <span>{activeChartSpec.series.map(series => series.key).join(" · ")}</span>
-          <span>Provider: {analysis?.provider ?? (analysisStatus === "loading" ? "loading" : "local")}</span>
+          <span>Provider: {semanticLayer?.provider ?? (semanticStatus === "loading" ? "loading" : "local")}</span>
           <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
             <Network size={14} />
             Chart workspace
@@ -2424,6 +2481,62 @@ function DeliveryDecisionPanel({ decision }: { decision: DeliveryDecision }) {
             <span>{item.finding}</span>
           </div>
         ))}
+      </div>
+    </section>
+  );
+}
+
+function SemanticLayerPanel({ layer, status }: { layer: SemanticLayerResponse | null; status: "idle" | "loading" | "ready" | "fallback" }) {
+  const primary = layer?.decisions[0] ?? null;
+  const statusLabel = primary?.status === "late" ? "Geç kalır" :
+    primary?.status === "at_risk" ? "Riskli" :
+    primary?.status === "missing_context" ? "Bağlam eksik" :
+    primary ? "Kontrolde" :
+    status === "loading" ? "Kuruluyor" : "Beklemede";
+  const tone = primary?.status === "late" ? "late" :
+    primary?.status === "at_risk" || primary?.status === "missing_context" ? "risk" :
+    "ok";
+  const kpis = layer?.kpis;
+  return (
+    <section style={deliveryDecisionPanelStyle(tone)}>
+      <div style={deliveryDecisionHeaderStyle}>
+        <div>
+          <div style={ontologyEyebrowStyle}>SEMANTIC LAYER</div>
+          <h4 style={deliveryDecisionTitleStyle}>Yönetim katmanı</h4>
+        </div>
+        <span style={deliveryDecisionBadgeStyle(tone)}>{statusLabel}</span>
+      </div>
+
+      <div style={deliveryDecisionGridStyle}>
+        <Metric label="Obje tipi" value={layer ? String(layer.ontology.objectTypes.length) : "-"} />
+        <Metric label="Bağ tipi" value={layer ? String(layer.ontology.linkTypes.length) : "-"} />
+        <Metric label="Aksiyon tipi" value={layer ? String(layer.ontology.actionTypes.length) : "-"} />
+        <Metric label="Karar" value={kpis ? String(kpis.decisions) : "-"} />
+        <Metric label="Riskli karar" value={kpis ? String(kpis.riskyDecisions) : "-"} />
+        <Metric label="Stage aksiyon" value={kpis ? String(kpis.stagedActions) : "-"} />
+      </div>
+
+      <div style={semanticLayerBodyStyle}>
+        <div style={semanticLayerColumnStyle}>
+          <strong>Decision queue</strong>
+          {(layer?.decisions.length ? layer.decisions : []).slice(0, 4).map(decision => (
+            <div key={decision.id} style={semanticDecisionRowStyle(decision.status)}>
+              <span>{decision.customer || "Müşteri"} / {decision.device}</span>
+              <b>{decision.shortageCount} BOM açık · {decision.linkedProcurementCount} tedarik linki</b>
+            </div>
+          ))}
+          {!layer?.decisions.length && <span style={semanticMutedTextStyle}>Cihaz bağlanınca backend karar kuyruğu oluşur.</span>}
+        </div>
+        <div style={semanticLayerColumnStyle}>
+          <strong>Action queue</strong>
+          {(layer?.actionQueue.length ? layer.actionQueue : []).slice(0, 4).map(action => (
+            <div key={action.id} style={semanticActionRowStyle}>
+              <span>{action.ownerAgent}</span>
+              <b>{action.label}</b>
+            </div>
+          ))}
+          {!layer?.actionQueue.length && <span style={semanticMutedTextStyle}>İnsan onayına gidecek aksiyon yok.</span>}
+        </div>
       </div>
     </section>
   );
@@ -6159,6 +6272,51 @@ function deliveryAgentCardStyle(tone: "ok" | "risk" | "late"): CSSProperties {
     fontSize: 11,
   };
 }
+
+const semanticLayerBodyStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+};
+
+const semanticLayerColumnStyle: CSSProperties = {
+  display: "grid",
+  alignContent: "start",
+  gap: 7,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#fbfbf8",
+  padding: 9,
+  color: CT.inkSub,
+  fontSize: 11,
+};
+
+function semanticDecisionRowStyle(status: SemanticLayerDecision["status"]): CSSProperties {
+  const edge = status === "late"
+    ? "rgba(178,34,34,0.30)"
+    : status === "at_risk" || status === "missing_context"
+      ? "rgba(169,111,0,0.28)"
+      : "rgba(63,143,91,0.24)";
+  return {
+    display: "grid",
+    gap: 3,
+    borderLeft: `3px solid ${edge}`,
+    paddingLeft: 8,
+    minWidth: 0,
+  };
+}
+
+const semanticActionRowStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
+  borderLeft: `3px solid ${CT.accentEdge}`,
+  paddingLeft: 8,
+  minWidth: 0,
+};
+
+const semanticMutedTextStyle: CSSProperties = {
+  color: CT.inkMuted,
+};
 
 const ontologyBottomBarStyle: CSSProperties = {
   display: "flex",

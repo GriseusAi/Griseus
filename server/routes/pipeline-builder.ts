@@ -75,6 +75,12 @@ const ontologyAnalyzeSchema = z.object({
   connections: z.array(z.record(z.any())).max(500),
 });
 
+const ontologySemanticLayerSchema = z.object({
+  selectedNodeId: z.string().min(1),
+  nodes: z.array(z.record(z.any())).max(200),
+  connections: z.array(z.record(z.any())).max(500),
+});
+
 const sourceCatalog: Array<{
   id: SourceId;
   label: string;
@@ -619,14 +625,17 @@ function compactNode(node: any) {
     orderFields: node.orderFields || null,
     orderLineFields: node.orderLineFields || null,
     procurementFields: node.procurementFields || null,
+    rows: Array.isArray(node.rows) ? node.rows.slice(0, 100) : [],
     bomComponent: bom ? {
       sku: bom.sku || null,
       code: bom.code || null,
       name: bom.name || null,
       status: bom.status || null,
       tier: bom.tier ?? null,
+      requiredPerUnit: bom.requiredPerUnit ?? null,
       currentStock: bom.currentStock ?? null,
       maxProducts: bom.maxProducts ?? null,
+      orderQuantity: bom.orderQuantity ?? null,
       requiredForOrder: bom.requiredForOrder ?? null,
       stockShortage: bom.stockShortage ?? null,
       isInsufficient: Boolean(bom.isInsufficient),
@@ -754,6 +763,195 @@ function deterministicOntologyAnalysis(context: OntologyAnalyzeContext, source: 
     ],
   };
 }
+
+function parsePositiveSemanticNumber(value: unknown): number {
+  const parsed = Number(String(value ?? "").replace(",", "."));
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : 0;
+}
+
+function semanticDateDiffDays(left: string, right: string): number | null {
+  if (!left || !right) return null;
+  const leftDate = new Date(`${left}T00:00:00Z`);
+  const rightDate = new Date(`${right}T00:00:00Z`);
+  if (Number.isNaN(leftDate.getTime()) || Number.isNaN(rightDate.getTime())) return null;
+  return Math.round((leftDate.getTime() - rightDate.getTime()) / 86_400_000);
+}
+
+function findDeviceCustomerContext(context: OntologyAnalyzeContext, deviceId: string, device: ReturnType<typeof compactNode>) {
+  const incoming = context.scopedConnections.find(connection => (
+    connection.to === deviceId
+    && (connection.relation === "customer_device" || connection.relation === "order_device" || connection.relation === "order_line_device")
+  ));
+  const source = incoming ? context.connected.find(node => node.id === incoming.from) : null;
+  const internal = (incoming?.context as any) ?? {};
+  return {
+    customer: String(internal.customer || source?.semanticLabel || source?.title || ""),
+    quantity: parsePositiveSemanticNumber(device.deviceQuantity || internal.quantity),
+    deadline: String(internal.deadline || source?.orderFields?.deadline || source?.orderLineFields?.deadline || ""),
+    source: incoming?.relation || "device_only",
+  };
+}
+
+function buildSemanticProcurementIndex(context: OntologyAnalyzeContext) {
+  const procurementById = new Map(context.procurement.map(node => [node.id, node]));
+  const byComponentCode = new Map<string, any>();
+
+  for (const link of context.scopedConnections) {
+    if (link.relation !== "component_procurement") continue;
+    const component = context.bom.find(node => node.id === link.from);
+    const procurementNode = procurementById.get(link.to);
+    const code = component?.bomComponent?.code;
+    if (!code || !procurementNode) continue;
+    const row = procurementNode.rows.find(item => String(item.component_code || item.code) === String(code)) ?? procurementNode.rows[0];
+    if (row) byComponentCode.set(String(code), { ...row, procurementNodeId: procurementNode.id, procurementNodeTitle: procurementNode.title });
+  }
+
+  for (const procurementNode of context.procurement) {
+    for (const row of procurementNode.rows) {
+      const code = String(row.component_code || row.code || "");
+      if (code && !byComponentCode.has(code)) {
+        byComponentCode.set(code, { ...row, procurementNodeId: procurementNode.id, procurementNodeTitle: procurementNode.title });
+      }
+    }
+  }
+
+  return byComponentCode;
+}
+
+function buildOntologySemanticLayer(context: OntologyAnalyzeContext) {
+  const procurementByCode = buildSemanticProcurementIndex(context);
+  const decisions = context.devices.map(device => {
+    const sku = String(device.deviceSku || device.semanticLabel || device.title || "");
+    const customerContext = findDeviceCustomerContext(context, device.id, device);
+    const requested = customerContext.quantity || parsePositiveSemanticNumber(device.deviceQuantity);
+    const warehouse = toNumber(device.deviceOperation?.inWarehouse);
+    const producible = device.deviceOperation?.maxProducible === null ? 0 : toNumber(device.deviceOperation?.maxProducible);
+    const fulfillmentGap = Math.max(0, requested - warehouse - producible);
+    const bomRows = context.bom
+      .filter(node => node.bomComponent?.sku === sku)
+      .map(node => {
+        const bom = node.bomComponent!;
+        const requiredPerUnit = bom.requiredPerUnit === null ? 0 : toNumber(bom.requiredPerUnit);
+        const currentStock = bom.currentStock === null ? 0 : toNumber(bom.currentStock);
+        const requiredForOrder = bom.requiredForOrder === null || bom.requiredForOrder === undefined
+          ? requiredPerUnit * requested
+          : toNumber(bom.requiredForOrder);
+        const shortage = Math.max(0, toNumber(bom.stockShortage) || requiredForOrder - currentStock);
+        const procurement = bom.code ? procurementByCode.get(String(bom.code)) : null;
+        const readyDate = String(procurement?.ready_date || procurement?.eta || "");
+        const delayDays = semanticDateDiffDays(readyDate, customerContext.deadline);
+        return {
+          nodeId: node.id,
+          code: String(bom.code || ""),
+          name: String(bom.name || ""),
+          tier: bom.tier,
+          requiredPerUnit,
+          currentStock,
+          requiredForOrder,
+          shortage,
+          status: shortage > 0 ? "shortage" : String(bom.status || "ok"),
+          procurementLinked: Boolean(procurement),
+          supplier: String(procurement?.supplier || procurement?.tedarikci || ""),
+          readyDate,
+          delayDays,
+        };
+      });
+    const shortageRows = bomRows.filter(row => row.shortage > 0);
+    const missingProcurement = shortageRows.filter(row => !row.procurementLinked).length;
+    const lateRows = shortageRows.filter(row => row.delayDays !== null && row.delayDays > 0);
+    const riskScore = fulfillmentGap + shortageRows.length * 25 + missingProcurement * 20 + lateRows.length * 35;
+    const status = !customerContext.deadline
+      ? "missing_context"
+      : lateRows.length > 0
+        ? "late"
+        : shortageRows.length > 0 || fulfillmentGap > 0
+          ? "at_risk"
+          : "on_track";
+    const bottleneck = shortageRows
+      .slice()
+      .sort((a, b) => b.shortage - a.shortage)[0] ?? null;
+
+    return {
+      id: `decision:${device.id}`,
+      objectType: "DeliveryDecision",
+      status,
+      riskScore,
+      customer: customerContext.customer,
+      device: sku,
+      requested,
+      deadline: customerContext.deadline,
+      warehouse,
+      producible,
+      fulfillmentGap,
+      shortageCount: shortageRows.length,
+      linkedProcurementCount: shortageRows.length - missingProcurement,
+      missingProcurementCount: missingProcurement,
+      lateProcurementCount: lateRows.length,
+      bottleneck,
+      summary: `${sku}: ${requested} talep, ${warehouse} depo, ${producible} üretilebilir, ${shortageRows.length} eksik BOM.`,
+      recommendation: status === "late"
+        ? "Expedite veya kısmi sevk aksiyonu stage et."
+        : status === "at_risk"
+          ? "Eksik BOM satırlarını procurement node'una bağla ve ready date tamamla."
+          : status === "missing_context"
+            ? "Deadline ve müşteri bağlamını tamamla."
+            : "Teslim planı izleme modunda kalabilir.",
+      bomRows,
+    };
+  });
+
+  const sortedDecisions = decisions.slice().sort((a, b) => b.riskScore - a.riskScore);
+  const actions = sortedDecisions
+    .filter(decision => decision.status !== "on_track")
+    .slice(0, 6)
+    .map(decision => ({
+      id: `action:${decision.device}`,
+      actionType: decision.status === "late" ? "expedite_procurement" : decision.missingProcurementCount > 0 ? "complete_semantic_links" : "review_fulfillment_plan",
+      label: decision.status === "late" ? "Expedite stage et" : decision.missingProcurementCount > 0 ? "Tedarik linklerini tamamla" : "Fulfillment planını incele",
+      targetObject: decision.id,
+      ownerAgent: decision.status === "late" ? "Action agent" : decision.missingProcurementCount > 0 ? "Data agent" : "Fulfillment agent",
+      requiresHumanApproval: true,
+      reason: decision.recommendation,
+    }));
+
+  return {
+    provider: "backend-semantic-layer",
+    generatedAt: new Date().toISOString(),
+    ontology: {
+      objectTypes: ["Customer", "Device", "BomComponent", "ProcurementNeed", "DeliveryDecision"],
+      linkTypes: ["customer_device", "device_bom", "component_procurement", "decision_action"],
+      actionTypes: ["complete_semantic_links", "review_fulfillment_plan", "expedite_procurement"],
+    },
+    kpis: {
+      devices: context.devices.length,
+      customers: context.customers.length,
+      bomComponents: context.bom.length,
+      procurementNodes: context.procurement.length,
+      decisions: decisions.length,
+      riskyDecisions: decisions.filter(decision => decision.status !== "on_track").length,
+      stagedActions: actions.length,
+    },
+    decisions: sortedDecisions,
+    actionQueue: actions,
+    agentLanes: [
+      { agent: "Data agent", responsibility: "Object/link completeness", finding: `${context.scopedConnections.length} semantic link okundu.` },
+      { agent: "Fulfillment agent", responsibility: "Demand vs warehouse/production", finding: `${decisions.filter(item => item.fulfillmentGap > 0).length} cihazda fulfillment açığı var.` },
+      { agent: "Supply agent", responsibility: "BOM shortage vs procurement", finding: `${decisions.reduce((sum, item) => sum + item.shortageCount, 0)} eksik BOM satırı izlendi.` },
+      { agent: "Action agent", responsibility: "Human-approved writeback", finding: `${actions.length} aksiyon stage edildi; otomatik writeback yok.` },
+    ],
+  };
+}
+
+router.post("/ontology/semantic-layer", async (req, res) => {
+  try {
+    const parsed = ontologySemanticLayerSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
+    const context = collectOntologyAnalyzeContext({ ...parsed.data, chartMode: "fulfillment" });
+    res.json(buildOntologySemanticLayer(context));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 function ontologyAnalysisSchema() {
   return {
