@@ -43,6 +43,7 @@ type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procure
 type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement" | "ontology";
 type PortSide = "left" | "right";
 type DeviceOperationMode = "warehouse_sale" | "produce_sale";
+type DeviceDrilldownMode = "all" | "shortage";
 type OntologyChartMode = "fulfillment" | "capacity" | "risk";
 
 type OntologyAnalysisResponse = {
@@ -127,6 +128,7 @@ type PipelineNode = {
   bomComponent?: BomComponentNodeMeta;
   bomChildren?: BomStockComponent[];
   dbLinkedSku?: string;
+  dbLinkedDrilldownMode?: DeviceDrilldownMode;
 };
 
 type ConnectionKind = "transform" | "union" | "output" | "smart" | "drilldown";
@@ -1329,7 +1331,7 @@ export default function PipelineBuilderPage() {
     }
   }
 
-  async function drillDownDeviceNode(nodeId: string) {
+  async function drillDownDeviceNode(nodeId: string, mode: DeviceDrilldownMode) {
     const source = nodes.find(node => node.id === nodeId);
     const sku = source?.deviceSku || (source?.semanticLabel !== "Cihaz" ? source?.semanticLabel : "") || source?.title || "";
     const cleanSku = sku.trim();
@@ -1337,12 +1339,16 @@ export default function PipelineBuilderPage() {
       setError("Drill-down için önce cihaz SKU seç.");
       return;
     }
-    if (source.dbLinkedSku === cleanSku && collectDeviceDrilldownNodeIds(nodes, nodeId).size > 0) {
+    if (
+      source.dbLinkedSku === cleanSku
+      && source.dbLinkedDrilldownMode === mode
+      && collectDeviceDrilldownNodeIds(nodes, nodeId).size > 0
+    ) {
       closeDeviceDrilldown(nodeId, cleanSku);
       return;
     }
 
-    await loadDeviceBomFromDatabase(nodeId, cleanSku, { pushSnapshot: true });
+    await loadDeviceBomFromDatabase(nodeId, cleanSku, { pushSnapshot: true, mode });
   }
 
   function closeDeviceDrilldown(nodeId: string, sku?: string) {
@@ -1358,6 +1364,7 @@ export default function PipelineBuilderPage() {
             ...node,
             subtitle: `${label} cihaz entity`,
             dbLinkedSku: undefined,
+            dbLinkedDrilldownMode: undefined,
           };
         });
     });
@@ -1370,10 +1377,11 @@ export default function PipelineBuilderPage() {
     setError(sku ? `${sku}: drill-down kapatıldı.` : "Açık drill-down kapatıldı.");
   }
 
-  async function loadDeviceBomFromDatabase(nodeId: string, sku: string, opts: { pushSnapshot: boolean }) {
+  async function loadDeviceBomFromDatabase(nodeId: string, sku: string, opts: { pushSnapshot: boolean; mode?: DeviceDrilldownMode }) {
     const cleanSku = sku.trim();
     const source = nodes.find(node => node.id === nodeId);
     if (!source || !cleanSku) return;
+    const mode = opts.mode ?? "all";
 
     try {
       setError(`${cleanSku} DB semantic layer bağlanıyor...`);
@@ -1383,12 +1391,14 @@ export default function PipelineBuilderPage() {
         throw new Error((data as { error?: string }).error || "BOM okunamadı");
       }
 
-      const components = (data as BomStockResponse).components;
+      const components = filterBomComponentsForDrilldown((data as BomStockResponse).components, source.deviceQuantity, mode);
       const generatedRaw = buildBomDrilldownNodes({ ...source, deviceSku: cleanSku, semanticLabel: cleanSku, title: cleanSku }, cleanSku, components);
       const staleIds = collectDeviceDrilldownNodeIds(nodes, nodeId);
       const generated = placeBomDrilldownBelowOpenGraphs(generatedRaw, nodes.filter(node => !staleIds.has(node.id)));
       if (generated.nodes.length === 0) {
-        setError(`${cleanSku} için gösterilecek BOM bulunamadı.`);
+        setError(mode === "shortage"
+          ? `${cleanSku} için tedarik ihtiyacı olan BOM bulunamadı.`
+          : `${cleanSku} için gösterilecek BOM bulunamadı.`);
         return;
       }
 
@@ -1401,10 +1411,11 @@ export default function PipelineBuilderPage() {
             return {
               ...node,
               title: cleanSku,
-              subtitle: `${cleanSku} cihaz entity · DB bağlı · ${generated.nodes.length} direkt BOM`,
+              subtitle: `${cleanSku} cihaz entity · DB bağlı · ${mode === "shortage" ? "tedarik ihtiyacı" : "tüm BOM"} · ${generated.nodes.length} node`,
               semanticLabel: cleanSku,
               deviceSku: cleanSku,
               dbLinkedSku: cleanSku,
+              dbLinkedDrilldownMode: mode,
             };
           }
           return node;
@@ -1418,7 +1429,7 @@ export default function PipelineBuilderPage() {
       setSelectedNodeId(nodeId);
       setActionMenu(null);
       setPendingConnection(null);
-      setError(`${cleanSku}: DB'den ${generated.nodes.length} direkt BOM node'u açıldı.`);
+      setError(`${cleanSku}: DB'den ${mode === "shortage" ? "tedarik ihtiyacı olan" : "tüm"} ${generated.nodes.length} BOM node'u açıldı.`);
     } catch (err: any) {
       setError(`DB bağlantısı başarısız: ${err?.message || "BOM endpoint unavailable"}`);
     }
@@ -1564,7 +1575,7 @@ export default function PipelineBuilderPage() {
                   onProcurementFieldChange={(field, value) => updateProcurementField(node.id, field, value)}
                   onDeviceSelect={(value) => updateDeviceSelection(node.id, value)}
                   onDeviceQuantityChange={(value) => updateDeviceQuantity(node.id, value)}
-                  onDrillDown={() => drillDownDeviceNode(node.id)}
+                  onDrillDown={(mode) => drillDownDeviceNode(node.id, mode)}
                   onComponentDrillDown={() => drillDownComponentNode(node.id)}
                   productOptions={productOptions}
                 />
@@ -1724,7 +1735,7 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   onProcurementFieldChange: (field: keyof ProcurementFields, value: string) => void;
   onDeviceSelect: (value: string) => void;
   onDeviceQuantityChange: (value: string) => void;
-  onDrillDown: () => void;
+  onDrillDown: (mode: DeviceDrilldownMode) => void;
   onComponentDrillDown: () => void;
   productOptions: ProductOption[];
 }) {
@@ -1987,9 +1998,10 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
   quantity: string;
   onChange: (value: string) => void;
   onQuantityChange: (value: string) => void;
-  onDrillDown: () => void;
+  onDrillDown: (mode: DeviceDrilldownMode) => void;
   productOptions: ProductOption[];
 }) {
+  const [menuOpen, setMenuOpen] = useState(false);
   return (
     <div data-no-drag="true" style={deviceEditorStyle}>
       <div style={deviceFieldsGridStyle}>
@@ -2019,7 +2031,7 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
         onClick={(event) => {
           event.preventDefault();
           event.stopPropagation();
-          onDrillDown();
+          setMenuOpen(prev => !prev);
         }}
         disabled={!value}
         style={drilldownButtonStyle(!value)}
@@ -2027,6 +2039,34 @@ function DeviceSelector({ value, quantity, onChange, onQuantityChange, onDrillDo
         <ListTree size={13} />
         Drill-down
       </button>
+      {menuOpen && value && (
+        <div
+          data-no-drag="true"
+          onClick={(event) => event.stopPropagation()}
+          style={drilldownMenuStyle}
+        >
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              onDrillDown("all");
+            }}
+            style={drilldownMenuItemStyle}
+          >
+            Hepsi
+          </button>
+          <button
+            type="button"
+            onClick={() => {
+              setMenuOpen(false);
+              onDrillDown("shortage");
+            }}
+            style={drilldownMenuItemStyle}
+          >
+            Tedarik ihtiyacı olanlar
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -3381,6 +3421,45 @@ function splitDelimitedLine(line: string, delimiter: string) {
   }
   cells.push(current.trim());
   return cells;
+}
+
+function filterBomComponentsForDrilldown(
+  components: BomStockComponent[],
+  quantity: string | number | null | undefined,
+  mode: DeviceDrilldownMode,
+): BomStockComponent[] {
+  if (mode === "all") return components;
+  return components.flatMap(component => {
+    const filteredChildren = filterBomComponentsForDrilldown(component.children ?? [], quantity, mode);
+    const ownNeed = componentNeedsProcurement(component, quantity);
+    if (!ownNeed && filteredChildren.length === 0) return [];
+    return [{
+      ...component,
+      children: filteredChildren,
+      isSubAssembly: Boolean(component.isSubAssembly || filteredChildren.length > 0),
+    }];
+  });
+}
+
+function componentNeedsProcurement(component: BomStockComponent, quantity: string | number | null | undefined) {
+  const meta = applyOrderRiskToBomMeta({
+    sku: "",
+    code: component.code,
+    name: component.name,
+    requiredPerUnit: component.requiredPerUnit ?? null,
+    unit: component.unit,
+    tier: component.tier,
+    currentStock: component.currentStock ?? null,
+    maxProducts: component.maxProducts ?? null,
+    status: component.status,
+    isSubAssembly: Boolean(component.isSubAssembly || (component.children?.length ?? 0) > 0),
+    parentComponentCode: component.parentComponentCode ?? null,
+    orderQuantity: null,
+    requiredForOrder: null,
+    stockShortage: null,
+    isInsufficient: false,
+  }, quantity);
+  return meta.isInsufficient;
 }
 
 function buildBomDrilldownNodes(source: PipelineNode, sku: string, components: BomStockComponent[]) {
@@ -5119,6 +5198,7 @@ const procurementFieldsGridStyle: CSSProperties = {
 };
 
 const deviceEditorStyle: CSSProperties = {
+  position: "relative",
   display: "grid",
   gap: 7,
   padding: "6px 12px 0",
@@ -5371,6 +5451,35 @@ function drilldownButtonStyle(disabled: boolean): CSSProperties {
     cursor: disabled ? "not-allowed" : "pointer",
   };
 }
+
+const drilldownMenuStyle: CSSProperties = {
+  position: "absolute",
+  zIndex: 8,
+  left: 12,
+  right: 12,
+  top: 95,
+  display: "grid",
+  gap: 4,
+  padding: 5,
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  background: CT.surface,
+  boxShadow: "0 8px 18px rgba(20,20,19,0.14)",
+};
+
+const drilldownMenuItemStyle: CSSProperties = {
+  height: 27,
+  border: "none",
+  borderRadius: 5,
+  background: "transparent",
+  color: CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  fontWeight: 800,
+  textAlign: "left",
+  padding: "0 8px",
+  cursor: "pointer",
+};
 
 const orderFieldStyle: CSSProperties = {
   minWidth: 0,
