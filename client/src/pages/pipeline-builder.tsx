@@ -46,6 +46,21 @@ type DeviceOperationMode = "warehouse_sale" | "produce_sale";
 type DeviceDrilldownMode = "all" | "shortage";
 type OntologyChartMode = "fulfillment" | "capacity" | "risk";
 
+type DeliveryDecision = {
+  status: "ontime" | "risk" | "late" | "missing";
+  label: string;
+  customer: string;
+  device: string;
+  requestedQuantity: number;
+  deadline: string;
+  readyDate: string;
+  delayDays: number | null;
+  bottleneck: string;
+  recommendation: string;
+  summary: string;
+  agentFindings: Array<{ agent: string; finding: string; tone: "ok" | "risk" | "late" }>;
+};
+
 type OntologyAnalysisResponse = {
   provider: string;
   model: string | null;
@@ -2210,17 +2225,24 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       mode: device.deviceOperationMode,
       op: device.deviceOperation,
     })),
+    customers: context.customers.map(customer => customer.id),
     orders: context.orders.map(order => order.id),
     bom: context.components.map(component => ({
       id: component.id,
       sku: component.bomComponent?.sku,
       status: component.bomComponent?.status,
+      shortage: component.bomComponent?.stockShortage,
     })),
-  }), [context.devices, context.orders, context.components]);
+    procurement: context.procurements.map(procurement => ({
+      id: procurement.id,
+      rows: procurement.rows,
+    })),
+  }), [context.devices, context.customers, context.orders, context.components, context.procurements]);
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
   const [analysis, setAnalysis] = useState<OntologyAnalysisResponse | null>(null);
   const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
+  const deliveryDecision = useMemo(() => buildOntologyDeliveryDecision(context, nodes, connections), [contextSignature, nodes, connections]);
   const localChartSpec = buildOntologyChartSpec(compareRows, chartMode);
   const activeChartSpec = analysis?.chartSpec ? normalizeOntologyRemoteChartSpec(analysis.chartSpec) : localChartSpec;
   useEffect(() => {
@@ -2261,13 +2283,14 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
           </div>
           <div style={ontologyContextPillsStyle}>
             <span>{context.devices.length} cihaz</span>
-            <span>{context.orders.length} sipariş</span>
+            <span>{context.customers.length} müşteri</span>
             <span>{context.components.length} BOM</span>
             <span>{analysisStatus === "loading" ? "analiz ediliyor" : analysis?.provider ?? "local"}</span>
           </div>
         </div>
 
         <div style={ontologyAnalysisCenterStyle}>
+          <DeliveryDecisionPanel decision={deliveryDecision} />
           {analysis && (
             <div style={ontologyNarrativeStyle}>
               <strong>{analysis.title}</strong>
@@ -2367,6 +2390,45 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   );
 }
 
+function DeliveryDecisionPanel({ decision }: { decision: DeliveryDecision }) {
+  const tone =
+    decision.status === "late" ? "late" :
+    decision.status === "risk" || decision.status === "missing" ? "risk" :
+    "ok";
+  return (
+    <section style={deliveryDecisionPanelStyle(tone)}>
+      <div style={deliveryDecisionHeaderStyle}>
+        <div>
+          <div style={ontologyEyebrowStyle}>DELIVERY DECISION</div>
+          <h4 style={deliveryDecisionTitleStyle}>{decision.label}</h4>
+        </div>
+        <span style={deliveryDecisionBadgeStyle(tone)}>{decision.status === "missing" ? "Bağlam eksik" : decision.label}</span>
+      </div>
+      <div style={deliveryDecisionSummaryStyle}>{decision.summary}</div>
+      <div style={deliveryDecisionGridStyle}>
+        <Metric label="Müşteri" value={decision.customer || "-"} />
+        <Metric label="Cihaz" value={decision.device || "-"} />
+        <Metric label="Adet" value={decision.requestedQuantity ? formatCell(decision.requestedQuantity) : "-"} />
+        <Metric label="Deadline" value={formatDecisionDate(decision.deadline)} />
+        <Metric label="En erken hazır" value={formatDecisionDate(decision.readyDate)} />
+        <Metric label="Gecikme" value={decision.delayDays === null ? "-" : decision.delayDays > 0 ? `${decision.delayDays} gün` : "0 gün"} />
+      </div>
+      <div style={deliveryDecisionActionStyle}>
+        <strong>{decision.bottleneck}</strong>
+        <span>{decision.recommendation}</span>
+      </div>
+      <div style={deliveryAgentGridStyle}>
+        {decision.agentFindings.map(item => (
+          <div key={item.agent} style={deliveryAgentCardStyle(item.tone)}>
+            <strong>{item.agent}</strong>
+            <span>{item.finding}</span>
+          </div>
+        ))}
+      </div>
+    </section>
+  );
+}
+
 function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
   return context.devices.map(device => {
     const sku = resolveDeviceNodeSku(device) || device.title;
@@ -2391,6 +2453,165 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
       riskScore: Math.max(0, shortage) + criticalComponents * 25 + warningComponents * 10,
     };
   });
+}
+
+function buildOntologyDeliveryDecision(
+  context: ReturnType<typeof collectOntologyContext>,
+  nodes: PipelineNode[],
+  connections: GraphConnection[],
+): DeliveryDecision {
+  if (context.devices.length === 0) {
+    return {
+      status: "missing",
+      label: "Bağlam eksik",
+      customer: "",
+      device: "",
+      requestedQuantity: 0,
+      deadline: "",
+      readyDate: "",
+      delayDays: null,
+      bottleneck: "Cihaz bağlantısı yok",
+      recommendation: "Müşteri node'unu cihaz node'una bağla; adet ve deadline cihaz panelinde görünsün.",
+      summary: "Teslim kararı üretmek için en az bir müşteri-cihaz bağlantısı gerekli.",
+      agentFindings: [
+        { agent: "Data agent", finding: "Müşteri-cihaz ilişkisi bekleniyor.", tone: "risk" },
+        { agent: "Logic agent", finding: "Kapasite ve tedarik hesabı henüz çalışamaz.", tone: "risk" },
+        { agent: "Action agent", finding: "Aksiyon staging kapalı.", tone: "risk" },
+      ],
+    };
+  }
+
+  const deviceDecisions = context.devices.map(device => buildDeviceDeliveryDecision(device, context, nodes, connections));
+  return deviceDecisions.sort((a, b) => deliverySeverity(b) - deliverySeverity(a))[0] ?? deviceDecisions[0];
+}
+
+function buildDeviceDeliveryDecision(
+  device: PipelineNode,
+  context: ReturnType<typeof collectOntologyContext>,
+  nodes: PipelineNode[],
+  connections: GraphConnection[],
+): DeliveryDecision {
+  const sku = resolveDeviceNodeSku(device) || device.title;
+  const orders = collectDeviceCustomerOrders(device, nodes, connections);
+  const order = orders[0] ?? null;
+  const requestedQuantity = parsePositiveQuantity(device.deviceQuantity || order?.quantity || "") ?? 0;
+  const deadline = order?.deadline ?? "";
+  const plan = buildDeviceOperationPlan(device.deviceOperation, String(requestedQuantity || device.deviceQuantity || ""), normalizeDeviceOperationMode(order?.fulfillmentMode || device.deviceOperationMode));
+  const relatedComponents = context.components.filter(component => component.bomComponent?.sku === sku && component.bomComponent?.isInsufficient);
+  const procurementRows = context.procurements.flatMap(procurement => procurement.rows);
+  const shortageRows = relatedComponents.map(component => {
+    const meta = component.bomComponent!;
+    const procurement = procurementRows.find(row => String(row.component_code) === meta.code);
+    return {
+      meta,
+      procurement,
+      readyDate: String(procurement?.ready_date || ""),
+      slackDays: parseNullableNumber(procurement?.slack_days),
+    };
+  });
+  const datedShortages = shortageRows.filter(row => row.readyDate);
+  const latestReadyDate = datedShortages
+    .map(row => row.readyDate)
+    .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? "";
+  const delayDays = deadline && latestReadyDate ? diffIsoDays(latestReadyDate, deadline) : null;
+  const missingProcurement = shortageRows.filter(row => !row.readyDate).length;
+  const worstShortage = shortageRows
+    .sort((a, b) => {
+      const aDelay = a.readyDate && deadline ? diffIsoDays(a.readyDate, deadline) : (a.meta.stockShortage ?? 0);
+      const bDelay = b.readyDate && deadline ? diffIsoDays(b.readyDate, deadline) : (b.meta.stockShortage ?? 0);
+      return bDelay - aDelay;
+    })[0] ?? null;
+  const deviceShortage = plan.shortage > 0;
+  const status: DeliveryDecision["status"] =
+    !deadline ? "missing" :
+    delayDays !== null && delayDays > 0 ? "late" :
+    missingProcurement > 0 || deviceShortage || (delayDays !== null && delayDays <= 3 && shortageRows.length > 0) ? "risk" :
+    "ontime";
+  const label =
+    status === "late" ? "Geç kalır" :
+    status === "risk" ? "Riskli" :
+    status === "missing" ? "Bağlam eksik" :
+    "Zamanında";
+  const bottleneck = worstShortage
+    ? `${worstShortage.meta.code} ${worstShortage.meta.name}`
+    : device.deviceOperation?.bottleneck?.code
+      ? `${device.deviceOperation.bottleneck.code} ${device.deviceOperation.bottleneck.name ?? ""}`.trim()
+      : "Darboğaz görünmüyor";
+  const recommendation =
+    status === "late"
+      ? `${bottleneck} için expedite aç veya ${sku} sevkiyatını iki partiye böl.`
+      : status === "risk"
+        ? missingProcurement > 0
+          ? `${missingProcurement} tedarik ihtiyacı için ETA gir; karar güveni eksik.`
+          : `${sku} için tedarik tamponunu koru; kritik bileşen ready date'lerini takip et.`
+        : status === "missing"
+          ? "Deadline ve müşteri-cihaz context'ini tamamla."
+          : `${sku} mevcut graph'a göre teslim tarihine yetişiyor.`;
+  const readyDate = latestReadyDate || (status === "ontime" ? deadline : "");
+  const summary =
+    status === "late"
+      ? `${order?.customer ?? "Müşteri"} / ${sku}: en erken hazır tarih deadline'dan ${delayDays} gün sonra.`
+      : status === "risk"
+        ? `${order?.customer ?? "Müşteri"} / ${sku}: ${shortageRows.length} tedarik bağı ve ${missingProcurement} eksik ETA ile riskli.`
+        : status === "missing"
+          ? `${sku}: teslim kararı için deadline veya tedarik bağlamı eksik.`
+          : `${order?.customer ?? "Müşteri"} / ${sku}: mevcut kapasite ve tedarik tarihleriyle zamanında.`;
+  return {
+    status,
+    label,
+    customer: order?.customer ?? "",
+    device: sku,
+    requestedQuantity,
+    deadline,
+    readyDate,
+    delayDays,
+    bottleneck,
+    recommendation,
+    summary,
+    agentFindings: [
+      {
+        agent: "Fulfillment agent",
+        finding: plan.shortage > 0 ? `${formatCell(plan.shortage)} adet açık var.` : "Depo/üretim commit'i okunuyor.",
+        tone: plan.shortage > 0 ? "risk" : "ok",
+      },
+      {
+        agent: "Supply agent",
+        finding: shortageRows.length > 0 ? `${shortageRows.length} tedarik ihtiyacı izleniyor.` : "Kritik tedarik açığı görünmüyor.",
+        tone: shortageRows.length > 0 ? "risk" : "ok",
+      },
+      {
+        agent: "Action agent",
+        finding: status === "late" ? "Expedite veya kısmi sevk stage edilmeli." : "Writeback yok; öneri insan onayında.",
+        tone: status === "late" ? "late" : status === "risk" ? "risk" : "ok",
+      },
+    ],
+  };
+}
+
+function deliverySeverity(decision: DeliveryDecision) {
+  if (decision.status === "late") return 4 + Math.max(0, decision.delayDays ?? 0) / 100;
+  if (decision.status === "risk") return 3;
+  if (decision.status === "missing") return 2;
+  return 1;
+}
+
+function parseNullableNumber(value: unknown) {
+  if (value === null || value === undefined || value === "") return null;
+  const parsed = Number(String(value).replace(",", "."));
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+function diffIsoDays(left: string, right: string) {
+  const leftDate = parseIsoDate(left);
+  const rightDate = parseIsoDate(right);
+  if (!leftDate || !rightDate) return 0;
+  return diffDays(leftDate, rightDate);
+}
+
+function formatDecisionDate(value: string) {
+  if (!value) return "-";
+  const match = value.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }
 
 function buildOntologyChartSpec(rows: ReturnType<typeof buildOntologyCompareRows>, mode: OntologyChartMode) {
@@ -2460,8 +2681,10 @@ function collectOntologyContext(node: PipelineNode, nodes: PipelineNode[], conne
   };
   walk(node.id);
   const connected = Array.from(upstreamIds).map(id => byId.get(id)).filter((item): item is PipelineNode => Boolean(item));
+  const customers = connected.filter(item => item.semanticRole === "customer");
   const devices = connected.filter(item => item.semanticRole === "device");
   const components = connected.filter(item => item.kind === "component" || item.bomComponent);
+  const procurements = connected.filter(item => item.semanticRole === "procurement");
   const orders = connected.filter(item => item.semanticRole === "order" || item.semanticRole === "orderLine");
   const criticalComponents = components.filter(item => item.bomComponent?.status === "critical").length;
   const shortageDevices = devices.filter(item => {
@@ -2479,7 +2702,7 @@ function collectOntologyContext(node: PipelineNode, nodes: PipelineNode[], conne
     : devices.length > 0
       ? "Sipariş bağlanırsa teslim tarihi ve fulfillment kararı da hesaba katılır."
       : "Cihaz, sipariş veya BOM node'larını bu kutuya bağla.";
-  return { connected, devices, components, orders, criticalComponents, shortageDevices, riskTone, headline, note };
+  return { connected, customers, devices, components, procurements, orders, criticalComponents, shortageDevices, riskTone, headline, note };
 }
 
 function DecisionCard({ title, value, detail, active, tone = "neutral" }: {
@@ -5691,6 +5914,7 @@ const ontologyAnalysisCenterStyle: CSSProperties = {
   margin: "0 auto",
   padding: "4px 22px 18px",
   display: "grid",
+  gap: 10,
   alignContent: "start",
 };
 
@@ -5788,6 +6012,92 @@ const ontologyInsightGridStyle: CSSProperties = {
   color: CT.inkSub,
   fontSize: 12,
 };
+
+function deliveryDecisionPanelStyle(tone: "ok" | "risk" | "late"): CSSProperties {
+  const edge = tone === "late"
+    ? "rgba(178,34,34,0.32)"
+    : tone === "risk"
+      ? "rgba(169,111,0,0.32)"
+      : "rgba(63,143,91,0.30)";
+  return {
+    display: "grid",
+    gap: 10,
+    border: `1px solid ${edge}`,
+    borderRadius: 10,
+    background: CT.surface,
+    padding: 12,
+  };
+}
+
+const deliveryDecisionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+};
+
+const deliveryDecisionTitleStyle: CSSProperties = {
+  margin: 0,
+  color: CT.ink,
+  fontSize: 20,
+  lineHeight: 1.1,
+};
+
+function deliveryDecisionBadgeStyle(tone: "ok" | "risk" | "late"): CSSProperties {
+  return {
+    flex: "0 0 auto",
+    height: 28,
+    display: "inline-flex",
+    alignItems: "center",
+    borderRadius: 999,
+    padding: "0 10px",
+    background: tone === "late" ? "#f7e7e5" : tone === "risk" ? "#fff1d6" : "#e7f3ea",
+    color: tone === "late" ? CT.err : tone === "risk" ? "#986500" : CT.ok,
+    fontSize: 11,
+    fontWeight: 900,
+  };
+}
+
+const deliveryDecisionSummaryStyle: CSSProperties = {
+  color: CT.inkSub,
+  fontSize: 13,
+  lineHeight: 1.35,
+};
+
+const deliveryDecisionGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 8,
+};
+
+const deliveryDecisionActionStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 9,
+  color: CT.inkSub,
+  fontSize: 12,
+};
+
+const deliveryAgentGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(3, minmax(0, 1fr))",
+  gap: 8,
+};
+
+function deliveryAgentCardStyle(tone: "ok" | "risk" | "late"): CSSProperties {
+  return {
+    display: "grid",
+    gap: 4,
+    minHeight: 58,
+    border: `1px solid ${tone === "late" ? "rgba(178,34,34,0.22)" : tone === "risk" ? "rgba(169,111,0,0.22)" : CT.border}`,
+    borderRadius: 7,
+    background: "#fbfbf8",
+    padding: 9,
+    color: CT.inkSub,
+    fontSize: 11,
+  };
+}
 
 const ontologyBottomBarStyle: CSSProperties = {
   display: "flex",
