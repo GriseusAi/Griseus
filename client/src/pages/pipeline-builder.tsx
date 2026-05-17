@@ -2497,16 +2497,24 @@ function buildDeviceDeliveryDecision(
   const requestedQuantity = parsePositiveQuantity(device.deviceQuantity || order?.quantity || "") ?? 0;
   const deadline = order?.deadline ?? "";
   const plan = buildDeviceOperationPlan(device.deviceOperation, String(requestedQuantity || device.deviceQuantity || ""), normalizeDeviceOperationMode(order?.fulfillmentMode || device.deviceOperationMode));
-  const relatedComponents = context.components.filter(component => component.bomComponent?.sku === sku && component.bomComponent?.isInsufficient);
-  const procurementRows = context.procurements.flatMap(procurement => procurement.rows);
-  const shortageRows = relatedComponents.map(component => {
-    const meta = component.bomComponent!;
-    const procurement = procurementRows.find(row => String(row.component_code) === meta.code);
+  const relatedComponents = context.components
+    .filter(component => component.bomComponent?.sku === sku)
+    .map(component => ({ node: component, meta: normalizeBomDecisionMeta(component.bomComponent!, requestedQuantity) }))
+    .filter(item => item.meta.isInsufficient || (item.meta.stockShortage ?? 0) > 0);
+  const procurementByCode = buildProcurementRowsByComponent(context.procurements, relatedComponents.map(item => item.node), connections);
+  const shortageRows = relatedComponents.map(({ meta }) => {
+    const procurement = procurementByCode.get(meta.code) ?? null;
+    const readyDate = String(procurement?.ready_date || procurement?.eta || "");
+    const slackDays = parseNullableNumber(procurement?.slack_days);
+    const deadlineDate = parseIsoDate(deadline);
+    const derivedReadyDate = !readyDate && deadlineDate && slackDays !== null ? formatIsoDate(addDays(deadlineDate, -slackDays)) : readyDate;
+    const shortageQty = meta.stockShortage ?? 0;
     return {
       meta,
       procurement,
-      readyDate: String(procurement?.ready_date || ""),
-      slackDays: parseNullableNumber(procurement?.slack_days),
+      readyDate: derivedReadyDate,
+      slackDays,
+      shortageQty,
     };
   });
   const datedShortages = shortageRows.filter(row => row.readyDate);
@@ -2514,18 +2522,19 @@ function buildDeviceDeliveryDecision(
     .map(row => row.readyDate)
     .sort((a, b) => Date.parse(b) - Date.parse(a))[0] ?? "";
   const delayDays = deadline && latestReadyDate ? diffIsoDays(latestReadyDate, deadline) : null;
-  const missingProcurement = shortageRows.filter(row => !row.readyDate).length;
+  const missingProcurement = shortageRows.filter(row => !row.procurement).length;
+  const missingReadyDate = shortageRows.filter(row => row.procurement && !row.readyDate).length;
   const worstShortage = shortageRows
     .sort((a, b) => {
-      const aDelay = a.readyDate && deadline ? diffIsoDays(a.readyDate, deadline) : (a.meta.stockShortage ?? 0);
-      const bDelay = b.readyDate && deadline ? diffIsoDays(b.readyDate, deadline) : (b.meta.stockShortage ?? 0);
+      const aDelay = a.readyDate && deadline ? diffIsoDays(a.readyDate, deadline) : a.shortageQty;
+      const bDelay = b.readyDate && deadline ? diffIsoDays(b.readyDate, deadline) : b.shortageQty;
       return bDelay - aDelay;
     })[0] ?? null;
   const deviceShortage = plan.shortage > 0;
   const status: DeliveryDecision["status"] =
     !deadline ? "missing" :
     delayDays !== null && delayDays > 0 ? "late" :
-    missingProcurement > 0 || deviceShortage || (delayDays !== null && delayDays <= 3 && shortageRows.length > 0) ? "risk" :
+    missingProcurement > 0 || missingReadyDate > 0 || deviceShortage || shortageRows.length > 0 || (delayDays !== null && delayDays <= 3 && shortageRows.length > 0) ? "risk" :
     "ontime";
   const label =
     status === "late" ? "Geç kalır" :
@@ -2542,7 +2551,9 @@ function buildDeviceDeliveryDecision(
       ? `${bottleneck} için expedite aç veya ${sku} sevkiyatını iki partiye böl.`
       : status === "risk"
         ? missingProcurement > 0
-          ? `${missingProcurement} tedarik ihtiyacı için ETA gir; karar güveni eksik.`
+          ? `${missingProcurement} tedarik ihtiyacı procurement node'una bağlı değil; karar güveni eksik.`
+          : missingReadyDate > 0
+            ? `${missingReadyDate} tedarik satırı için ready date/ETA tamamla.`
           : `${sku} için tedarik tamponunu koru; kritik bileşen ready date'lerini takip et.`
         : status === "missing"
           ? "Deadline ve müşteri-cihaz context'ini tamamla."
@@ -2552,7 +2563,7 @@ function buildDeviceDeliveryDecision(
     status === "late"
       ? `${order?.customer ?? "Müşteri"} / ${sku}: en erken hazır tarih deadline'dan ${delayDays} gün sonra.`
       : status === "risk"
-        ? `${order?.customer ?? "Müşteri"} / ${sku}: ${shortageRows.length} tedarik bağı ve ${missingProcurement} eksik ETA ile riskli.`
+        ? `${order?.customer ?? "Müşteri"} / ${sku}: ${shortageRows.length} eksik bileşen, ${shortageRows.length - missingProcurement} bağlı tedarik satırı, ${missingReadyDate} eksik ready date.`
         : status === "missing"
           ? `${sku}: teslim kararı için deadline veya tedarik bağlamı eksik.`
           : `${order?.customer ?? "Müşteri"} / ${sku}: mevcut kapasite ve tedarik tarihleriyle zamanında.`;
@@ -2576,7 +2587,9 @@ function buildDeviceDeliveryDecision(
       },
       {
         agent: "Supply agent",
-        finding: shortageRows.length > 0 ? `${shortageRows.length} tedarik ihtiyacı izleniyor.` : "Kritik tedarik açığı görünmüyor.",
+        finding: shortageRows.length > 0
+          ? `${shortageRows.length} eksik bileşen, ${shortageRows.length - missingProcurement} tedarik bağlantısı.`
+          : "Kritik tedarik açığı görünmüyor.",
         tone: shortageRows.length > 0 ? "risk" : "ok",
       },
       {
@@ -2593,6 +2606,54 @@ function deliverySeverity(decision: DeliveryDecision) {
   if (decision.status === "risk") return 3;
   if (decision.status === "missing") return 2;
   return 1;
+}
+
+function normalizeBomDecisionMeta(meta: BomComponentNodeMeta, requestedQuantity: number): BomComponentNodeMeta {
+  const quantity = requestedQuantity || meta.orderQuantity;
+  const next = applyOrderRiskToBomMeta(meta, quantity);
+  const requiredForOrder = next.requiredForOrder ?? (next.requiredPerUnit !== null && quantity ? next.requiredPerUnit * quantity : null);
+  const stockShortage = requiredForOrder === null || next.currentStock === null
+    ? next.stockShortage
+    : Math.max(0, requiredForOrder - next.currentStock);
+  const capacityInsufficient = next.maxProducts !== null && quantity !== null && next.maxProducts < quantity;
+  return {
+    ...next,
+    orderQuantity: quantity,
+    requiredForOrder,
+    stockShortage,
+    isInsufficient: capacityInsufficient || (stockShortage !== null && stockShortage > 0),
+  };
+}
+
+function buildProcurementRowsByComponent(
+  procurementNodes: PipelineNode[],
+  componentNodes: PipelineNode[],
+  connections: GraphConnection[],
+) {
+  const procurementById = new Map(procurementNodes.map(node => [node.id, node]));
+  const rowsByCode = new Map<string, Record<string, any>>();
+
+  componentNodes.forEach(component => {
+    const code = component.bomComponent?.code;
+    if (!code) return;
+    const directConnection = connections.find(connection => (
+      connection.from === component.id
+      && connection.contract?.relation === "component_procurement"
+      && procurementById.has(connection.to)
+    ));
+    const directProcurement = directConnection ? procurementById.get(directConnection.to) : null;
+    const directRow = directProcurement?.rows.find(row => String(row.component_code) === code);
+    if (directRow) {
+      rowsByCode.set(code, directRow);
+      return;
+    }
+    const fallbackRow = procurementNodes
+      .flatMap(node => node.rows)
+      .find(row => String(row.component_code) === code);
+    if (fallbackRow) rowsByCode.set(code, fallbackRow);
+  });
+
+  return rowsByCode;
 }
 
 function parseNullableNumber(value: unknown) {
