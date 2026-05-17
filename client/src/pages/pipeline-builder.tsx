@@ -4,6 +4,18 @@ import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
 import {
+  Bar,
+  BarChart,
+  CartesianGrid,
+  Legend,
+  Line,
+  LineChart,
+  ResponsiveContainer,
+  Tooltip,
+  XAxis,
+  YAxis,
+} from "recharts";
+import {
   Activity,
   ArrowDownToLine,
   Box,
@@ -32,6 +44,7 @@ type NodeFunctionKind = "customer" | "order" | "orderLine" | "device" | "procure
 type SemanticRole = "customer" | "order" | "orderLine" | "device" | "procurement" | "ontology";
 type PortSide = "left" | "right";
 type DeviceOperationMode = "warehouse_sale" | "produce_sale";
+type OntologyChartMode = "fulfillment" | "capacity" | "risk";
 
 type OrderFields = {
   customer: string;
@@ -2132,6 +2145,21 @@ function DeviceOperationPreviewPanel({ node, nodes, connections, productOptions,
 
 function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: PipelineNode; nodes: PipelineNode[]; connections: GraphConnection[] }) {
   const context = collectOntologyContext(node, nodes, connections);
+  const contextSignature = useMemo(() => JSON.stringify({
+    devices: context.devices.map(device => ({
+      id: device.id,
+      sku: resolveDeviceNodeSku(device),
+      qty: device.deviceQuantity,
+      mode: device.deviceOperationMode,
+      op: device.deviceOperation,
+    })),
+    orders: context.orders.map(order => order.id),
+    bom: context.components.map(component => ({
+      id: component.id,
+      sku: component.bomComponent?.sku,
+      status: component.bomComponent?.status,
+    })),
+  }), [context.devices, context.orders, context.components]);
   const [prompt, setPrompt] = useState("Bagli cihazlari stok, uretilebilirlik, teslim tarihi ve kritik BOM riskine gore yorumla. Bana chart onerisi ve aksiyon plani cikar.");
   const [messages, setMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([
     {
@@ -2140,15 +2168,23 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
     },
   ]);
   const [analysis, setAnalysis] = useState(() => buildOntologyAssistantAnalysis(context, "ilk analiz"));
+  const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
+  const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
+  const activeChartSpec = buildOntologyChartSpec(compareRows, chartMode);
+  useEffect(() => {
+    setAnalysis(buildOntologyAssistantAnalysis(context, prompt || "context yenilendi"));
+  }, [contextSignature]);
   const submitPrompt = () => {
     const cleanPrompt = prompt.trim();
     if (!cleanPrompt) return;
+    const nextMode = inferOntologyChartMode(cleanPrompt);
     const nextAnalysis = buildOntologyAssistantAnalysis(context, cleanPrompt);
     setMessages(current => [
       ...current,
       { role: "user", text: cleanPrompt },
       { role: "assistant", text: nextAnalysis.reply },
     ]);
+    setChartMode(nextMode);
     setAnalysis(nextAnalysis);
     setPrompt("");
   };
@@ -2205,6 +2241,71 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               {analysis.actions.map(action => (
                 <span key={action}>{action}</span>
               ))}
+            </div>
+          </div>
+
+          <div style={ontologyWorkspaceStyle}>
+            <div style={ontologyWorkspaceToolbarStyle}>
+              <div>
+                <strong>Ürün karşılaştırma</strong>
+                <span>{compareRows.length > 0 ? `${compareRows.length} cihaz canlı graph context'inde` : "Cihaz node'u bağlanınca grafik oluşur"}</span>
+              </div>
+              <div style={ontologyModeToggleGroupStyle}>
+                {([
+                  ["fulfillment", "Fulfillment"],
+                  ["capacity", "Kapasite"],
+                  ["risk", "BOM risk"],
+                ] as Array<[OntologyChartMode, string]>).map(([mode, label]) => (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setChartMode(mode)}
+                    style={ontologyModeButtonStyle(chartMode === mode)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
+            <div style={ontologyChartCanvasStyle}>
+              {compareRows.length === 0 ? (
+                <div style={ontologyEmptyChartStyle}>f(x) kutusuna ürün cihazlarını bağla; depo, üretilebilirlik, sipariş ve BOM riski burada karşılaştırılır.</div>
+              ) : (
+                <ResponsiveContainer width="100%" height={260}>
+                  {activeChartSpec.kind === "line" ? (
+                    <LineChart data={activeChartSpec.rows} margin={{ top: 10, right: 18, bottom: 0, left: -16 }}>
+                      <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="device" stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={ontologyTooltipStyle} />
+                      <Legend wrapperStyle={ontologyLegendStyle} />
+                      {activeChartSpec.series.map(series => (
+                        <Line
+                          key={series.key}
+                          type="monotone"
+                          dataKey={series.key}
+                          name={series.label}
+                          stroke={series.color}
+                          strokeWidth={2.4}
+                          dot={{ r: 3, fill: series.color, strokeWidth: 0 }}
+                          activeDot={{ r: 5 }}
+                        />
+                      ))}
+                    </LineChart>
+                  ) : (
+                    <BarChart data={activeChartSpec.rows} margin={{ top: 10, right: 18, bottom: 0, left: -16 }}>
+                      <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
+                      <XAxis dataKey="device" stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <Tooltip contentStyle={ontologyTooltipStyle} />
+                      <Legend wrapperStyle={ontologyLegendStyle} />
+                      {activeChartSpec.series.map(series => (
+                        <Bar key={series.key} dataKey={series.key} name={series.label} fill={series.color} radius={[4, 4, 0, 0]} />
+                      ))}
+                    </BarChart>
+                  )}
+                </ResponsiveContainer>
+              )}
             </div>
           </div>
         </div>
@@ -2285,6 +2386,84 @@ function buildOntologyAssistantAnalysis(context: ReturnType<typeof collectOntolo
     },
     actions,
     request,
+  };
+}
+
+function inferOntologyChartMode(prompt: string): OntologyChartMode {
+  const lower = prompt.toLocaleLowerCase("tr-TR");
+  if (lower.includes("risk") || lower.includes("bom") || lower.includes("darbogaz") || lower.includes("darboğaz") || lower.includes("kritik")) return "risk";
+  if (lower.includes("kapasite") || lower.includes("üretilebilir") || lower.includes("uretilebilir") || lower.includes("stok")) return "capacity";
+  return "fulfillment";
+}
+
+function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
+  return context.devices.map(device => {
+    const sku = resolveDeviceNodeSku(device) || device.title;
+    const plan = buildDeviceOperationPlan(device.deviceOperation, device.deviceQuantity ?? "", normalizeDeviceOperationMode(device.deviceOperationMode));
+    const relatedComponents = context.components.filter(component => component.bomComponent?.sku === sku);
+    const criticalComponents = relatedComponents.filter(component => component.bomComponent?.status === "critical").length;
+    const warningComponents = relatedComponents.filter(component => component.bomComponent?.status === "warning").length;
+    const requested = Number(device.deviceQuantity || plan.requestedQuantity || 0);
+    const warehouse = device.deviceOperation?.inWarehouse ?? 0;
+    const producible = device.deviceOperation?.maxProducible ?? 0;
+    const totalSold = device.deviceOperation?.totalSold ?? 0;
+    const shortage = plan.shortage;
+    return {
+      device: sku,
+      requested,
+      warehouse,
+      producible,
+      totalSold,
+      shortage,
+      criticalComponents,
+      warningComponents,
+      riskScore: Math.max(0, shortage) + criticalComponents * 25 + warningComponents * 10,
+    };
+  });
+}
+
+function buildOntologyChartSpec(rows: ReturnType<typeof buildOntologyCompareRows>, mode: OntologyChartMode) {
+  const palette = {
+    warehouse: CT.info,
+    producible: CT.ok,
+    requested: CT.accent,
+    shortage: CT.err,
+    critical: "#8f332b",
+    warning: CT.warn,
+    sold: "#6f6258",
+  };
+  if (mode === "risk") {
+    return {
+      kind: "bar" as const,
+      rows,
+      series: [
+        { key: "criticalComponents", label: "Kritik BOM", color: palette.critical },
+        { key: "warningComponents", label: "Düşük BOM", color: palette.warning },
+        { key: "shortage", label: "Açık", color: palette.shortage },
+        { key: "riskScore", label: "Risk skoru", color: CT.accent },
+      ],
+    };
+  }
+  if (mode === "capacity") {
+    return {
+      kind: "bar" as const,
+      rows,
+      series: [
+        { key: "warehouse", label: "Depo", color: palette.warehouse },
+        { key: "producible", label: "Üretilebilir", color: palette.producible },
+        { key: "totalSold", label: "Satılan", color: palette.sold },
+      ],
+    };
+  }
+  return {
+    kind: "line" as const,
+    rows,
+    series: [
+      { key: "requested", label: "Sipariş", color: palette.requested },
+      { key: "warehouse", label: "Depo", color: palette.warehouse },
+      { key: "producible", label: "Üretilebilir", color: palette.producible },
+      { key: "shortage", label: "Açık", color: palette.shortage },
+    ],
   };
 }
 
@@ -5563,6 +5742,80 @@ const ontologyActionListStyle: CSSProperties = {
   flexWrap: "wrap",
   color: CT.inkSub,
   fontSize: 12,
+};
+
+const ontologyWorkspaceStyle: CSSProperties = {
+  border: `1px solid ${CT.border}`,
+  borderRadius: 12,
+  background: CT.surface,
+  overflow: "hidden",
+};
+
+const ontologyWorkspaceToolbarStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 12,
+  borderBottom: `1px solid ${CT.border}`,
+  padding: "10px 12px",
+  color: CT.ink,
+  fontSize: 12,
+};
+
+const ontologyModeToggleGroupStyle: CSSProperties = {
+  display: "inline-flex",
+  alignItems: "center",
+  gap: 4,
+  padding: 3,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 7,
+  background: "#f6f5ef",
+};
+
+const ontologyModeButtonStyle = (active: boolean): CSSProperties => ({
+  minWidth: 82,
+  height: 28,
+  border: `1px solid ${active ? CT.borderStrong : "transparent"}`,
+  borderRadius: 5,
+  background: active ? CT.surface : "transparent",
+  color: active ? CT.ink : CT.inkMuted,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  fontWeight: 800,
+  cursor: "pointer",
+});
+
+const ontologyChartCanvasStyle: CSSProperties = {
+  height: 282,
+  padding: "10px 10px 6px",
+};
+
+const ontologyEmptyChartStyle: CSSProperties = {
+  height: "100%",
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "center",
+  border: `1px dashed ${CT.borderStrong}`,
+  borderRadius: 8,
+  color: CT.inkMuted,
+  fontSize: 13,
+  textAlign: "center",
+  padding: 18,
+};
+
+const ontologyTooltipStyle: CSSProperties = {
+  border: `1px solid ${CT.borderStrong}`,
+  borderRadius: 7,
+  background: CT.surface,
+  color: CT.ink,
+  fontFamily: CT_MONO,
+  fontSize: 11,
+};
+
+const ontologyLegendStyle: CSSProperties = {
+  color: CT.inkSub,
+  fontFamily: CT_MONO,
+  fontSize: 11,
 };
 
 const ontologyBottomBarStyle: CSSProperties = {
