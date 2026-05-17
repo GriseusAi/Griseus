@@ -32,7 +32,6 @@ import {
   RotateCcw,
   Save,
   Search,
-  Send,
   Sparkles,
   Table2,
   Trash2,
@@ -2160,42 +2159,17 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       status: component.bomComponent?.status,
     })),
   }), [context.devices, context.orders, context.components]);
-  const [prompt, setPrompt] = useState("Bagli cihazlari stok, uretilebilirlik, teslim tarihi ve kritik BOM riskine gore yorumla. Bana chart onerisi ve aksiyon plani cikar.");
-  const [messages, setMessages] = useState<Array<{ role: "assistant" | "user"; text: string }>>([
-    {
-      role: "assistant",
-      text: "Ben Ontology AI motoruyum. Bu kutuya baglanan cihaz, siparis ve BOM node'larini context olarak okuyup grafik dili, risk yorumu ve aksiyon onerisi uretirim.",
-    },
-  ]);
-  const [analysis, setAnalysis] = useState(() => buildOntologyAssistantAnalysis(context, "ilk analiz"));
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
   const activeChartSpec = buildOntologyChartSpec(compareRows, chartMode);
-  useEffect(() => {
-    setAnalysis(buildOntologyAssistantAnalysis(context, prompt || "context yenilendi"));
-  }, [contextSignature]);
-  const submitPrompt = () => {
-    const cleanPrompt = prompt.trim();
-    if (!cleanPrompt) return;
-    const nextMode = inferOntologyChartMode(cleanPrompt);
-    const nextAnalysis = buildOntologyAssistantAnalysis(context, cleanPrompt);
-    setMessages(current => [
-      ...current,
-      { role: "user", text: cleanPrompt },
-      { role: "assistant", text: nextAnalysis.reply },
-    ]);
-    setChartMode(nextMode);
-    setAnalysis(nextAnalysis);
-    setPrompt("");
-  };
 
   return (
     <div style={ontologyPreviewStyle}>
-      <div style={ontologyChatShellStyle}>
-        <div style={ontologyChatTopStyle}>
+      <div style={ontologyAnalysisShellStyle}>
+        <div style={ontologyAnalysisTopStyle}>
           <div>
             <div style={ontologyEyebrowStyle}>ONTOLOGY AI</div>
-            <h3 style={ontologyTitleStyle}>Ne analiz edeyim?</h3>
+            <h3 style={ontologyTitleStyle}>Ürün karşılaştırma</h3>
           </div>
           <div style={ontologyContextPillsStyle}>
             <span>{context.devices.length} cihaz</span>
@@ -2204,50 +2178,11 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
           </div>
         </div>
 
-        <div style={ontologyChatCenterStyle}>
-          <div style={ontologyChatLogStyle}>
-            {messages.slice(-5).map((message, index) => (
-              <div key={`${message.role}-${index}`} style={ontologyChatBubbleStyle(message.role)}>
-                {message.text}
-              </div>
-            ))}
-          </div>
-
-          <div style={ontologyPromptBoxStyle}>
-            <textarea
-              value={prompt}
-              onChange={event => setPrompt(event.currentTarget.value)}
-              placeholder="Cihazları stok, üretilebilirlik, teslim tarihi veya kritik bileşene göre karşılaştır..."
-              style={ontologyPromptInputStyle}
-              rows={3}
-            />
-            <div style={ontologyPromptFooterStyle}>
-              <div style={ontologyProviderStripStyle}>
-                <span>Griseus orchestrator</span>
-                <b>provider-ready</b>
-              </div>
-              <button type="button" onClick={submitPrompt} style={ontologySendButtonStyle}>
-                <Send size={15} />
-              </button>
-            </div>
-          </div>
-
-          <div style={ontologyAnswerStyle(context.riskTone)}>
-            <div>
-              <strong>{analysis.title}</strong>
-              <span>{analysis.summary}</span>
-            </div>
-            <div style={ontologyActionListStyle}>
-              {analysis.actions.map(action => (
-                <span key={action}>{action}</span>
-              ))}
-            </div>
-          </div>
-
+        <div style={ontologyAnalysisCenterStyle}>
           <div style={ontologyWorkspaceStyle}>
             <div style={ontologyWorkspaceToolbarStyle}>
               <div>
-                <strong>Ürün karşılaştırma</strong>
+                <strong>Canlı graph karşılaştırması</strong>
                 <span>{compareRows.length > 0 ? `${compareRows.length} cihaz canlı graph context'inde` : "Cihaz node'u bağlanınca grafik oluşur"}</span>
               </div>
               <div style={ontologyModeToggleGroupStyle}>
@@ -2311,9 +2246,9 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         </div>
 
         <div style={ontologyBottomBarStyle}>
-          <span>Chart: {analysis.chartSpec.type}</span>
-          <span>X: {analysis.chartSpec.x}</span>
-          <span>{analysis.chartSpec.metrics.join(" · ")}</span>
+          <span>Chart: {activeChartSpec.kind === "line" ? "combo" : "bar"}</span>
+          <span>X: device</span>
+          <span>{activeChartSpec.series.map(series => series.key).join(" · ")}</span>
           <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
             <Network size={14} />
             Chart workspace
@@ -2322,78 +2257,6 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       </div>
     </div>
   );
-}
-
-function buildOntologyAssistantAnalysis(context: ReturnType<typeof collectOntologyContext>, prompt: string) {
-  const deviceFacts = context.devices.map(device => {
-    const plan = buildDeviceOperationPlan(device.deviceOperation, device.deviceQuantity ?? "", normalizeDeviceOperationMode(device.deviceOperationMode));
-    return {
-      sku: resolveDeviceNodeSku(device) || device.title,
-      requested: Number(device.deviceQuantity || 0),
-      producible: device.deviceOperation?.maxProducible ?? null,
-      warehouse: device.deviceOperation?.inWarehouse ?? null,
-      shortage: plan.shortage,
-      mode: plan.title,
-    };
-  });
-  const metrics = prompt.toLowerCase().includes("teslim")
-    ? ["warehouse", "producible", "shortage", "deadlineRisk"]
-    : ["warehouse", "producible", "criticalComponents"];
-  const title = context.devices.length === 0
-    ? "Context bekleniyor"
-    : context.riskTone === "critical"
-      ? "Fulfillment riski var"
-      : "Bagli cihazlar analiz edilebilir";
-  const summary = context.devices.length === 0
-    ? "Ontology kutusuna cihaz, siparis veya tedarik node'u baglaninca burada AI context'i olusur."
-    : `${context.devices.length} cihaz ve ${context.orders.length} siparis baglami okundu. ${context.criticalComponents} kritik BOM sinyali, ${context.shortageDevices.length} cihaz acigi gorunuyor.`;
-  const actions = context.riskTone === "critical"
-    ? [
-      "Darbogaz bilesenleri chart'ta ayri seri olarak goster.",
-      "Depo ve uretim senaryosunu iki ayri fulfillment aksiyonu olarak karsilastir.",
-      "Siparis teslim tarihini risk skoruna agirlik olarak ekle.",
-    ]
-    : [
-      "Depo, uretilebilirlik ve satis metric'lerini ayni combo chart'ta karsilastir.",
-      "Ortak bilesenleri risk domain'ine bagla.",
-      "Ciktiyi chart workspace'e tasiyacak JSON spec uret.",
-    ];
-  const request = {
-    engine: "ontology_ai",
-    provider: "adapter-ready",
-    prompt,
-    context: {
-      upstreamNodes: context.connected.length,
-      devices: deviceFacts,
-      orders: context.orders.length,
-      bomNodes: context.components.length,
-    },
-    output: {
-      chartSpec: true,
-      narrative: true,
-      recommendedActions: true,
-    },
-  };
-  return {
-    title,
-    summary,
-    reply: `${title}: ${summary} Sonraki cikti ${metrics.join(", ")} metrikleriyle chart spec ve aksiyon plani olacak.`,
-    chartSpec: {
-      type: context.riskTone === "critical" ? "combo" : "bar",
-      x: "device",
-      metrics,
-      lineStyle: "smooth",
-    },
-    actions,
-    request,
-  };
-}
-
-function inferOntologyChartMode(prompt: string): OntologyChartMode {
-  const lower = prompt.toLocaleLowerCase("tr-TR");
-  if (lower.includes("risk") || lower.includes("bom") || lower.includes("darbogaz") || lower.includes("darboğaz") || lower.includes("kritik")) return "risk";
-  if (lower.includes("kapasite") || lower.includes("üretilebilir") || lower.includes("uretilebilir") || lower.includes("stok")) return "capacity";
-  return "fulfillment";
 }
 
 function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
@@ -5585,8 +5448,8 @@ const ontologyPreviewStyle: CSSProperties = {
   padding: 14,
 };
 
-const ontologyChatShellStyle: CSSProperties = {
-  minHeight: 470,
+const ontologyAnalysisShellStyle: CSSProperties = {
+  minHeight: 390,
   border: `1px solid ${CT.border}`,
   borderRadius: 10,
   background: "#f7f6f1",
@@ -5595,12 +5458,12 @@ const ontologyChatShellStyle: CSSProperties = {
   overflow: "hidden",
 };
 
-const ontologyChatTopStyle: CSSProperties = {
+const ontologyAnalysisTopStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
   justifyContent: "space-between",
   gap: 14,
-  padding: "18px 22px 10px",
+  padding: "16px 22px 10px",
 };
 
 const ontologyEyebrowStyle: CSSProperties = {
@@ -5638,110 +5501,12 @@ const ontologyContextPillsStyle: CSSProperties = {
   flexWrap: "wrap",
 };
 
-const ontologyChatCenterStyle: CSSProperties = {
+const ontologyAnalysisCenterStyle: CSSProperties = {
   width: "min(920px, 100%)",
   margin: "0 auto",
   padding: "4px 22px 18px",
   display: "grid",
-  gap: 12,
   alignContent: "start",
-};
-
-const ontologyChatLogStyle: CSSProperties = {
-  minHeight: 108,
-  maxHeight: 150,
-  overflow: "auto",
-  display: "grid",
-  gap: 8,
-  alignContent: "start",
-  padding: "0 6px",
-};
-
-const ontologyChatBubbleStyle = (role: "assistant" | "user"): CSSProperties => ({
-  justifySelf: role === "user" ? "end" : "start",
-  maxWidth: "78%",
-  border: `1px solid ${role === "user" ? "rgba(47,93,80,0.35)" : CT.border}`,
-  borderRadius: 12,
-  background: role === "user" ? "#2f5d50" : "#fff",
-  color: role === "user" ? "#fff" : CT.ink,
-  padding: "11px 13px",
-  fontSize: 13,
-  lineHeight: 1.5,
-  boxShadow: role === "user" ? "none" : "0 8px 22px rgba(33,29,22,0.06)",
-});
-
-const ontologyPromptBoxStyle: CSSProperties = {
-  display: "grid",
-  gap: 8,
-  border: `1px solid ${CT.borderStrong}`,
-  borderRadius: 14,
-  background: "#fff",
-  padding: 10,
-  boxShadow: "0 18px 45px rgba(33,29,22,0.10)",
-};
-
-const ontologyPromptInputStyle: CSSProperties = {
-  width: "100%",
-  minHeight: 84,
-  resize: "vertical",
-  border: 0,
-  background: "transparent",
-  color: CT.ink,
-  padding: "4px 6px",
-  fontSize: 14,
-  lineHeight: 1.5,
-  outline: "none",
-  fontFamily: "inherit",
-};
-
-const ontologyPromptFooterStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  justifyContent: "space-between",
-  gap: 10,
-  borderTop: `1px solid ${CT.border}`,
-  paddingTop: 8,
-};
-
-const ontologySendButtonStyle: CSSProperties = {
-  width: 34,
-  height: 34,
-  display: "inline-flex",
-  alignItems: "center",
-  justifyContent: "center",
-  border: "1px solid #244c41",
-  borderRadius: 999,
-  background: "#2f5d50",
-  color: "#fff",
-  cursor: "pointer",
-};
-
-const ontologyProviderStripStyle: CSSProperties = {
-  display: "flex",
-  alignItems: "center",
-  gap: 8,
-  flexWrap: "wrap",
-  color: CT.inkMuted,
-  fontSize: 11,
-};
-
-const ontologyAnswerStyle = (tone: "critical" | "ok" | "idle"): CSSProperties => ({
-  display: "grid",
-  gap: 10,
-  border: `1px solid ${tone === "critical" ? "rgba(179,64,55,0.28)" : tone === "ok" ? "rgba(63,143,91,0.26)" : CT.border}`,
-  borderRadius: 12,
-  background: tone === "critical" ? "#fff1ee" : tone === "ok" ? "#eef7f3" : "#fff",
-  color: tone === "critical" ? CT.err : tone === "ok" ? "#2f5d50" : CT.inkSub,
-  padding: "13px 15px",
-  fontSize: 13,
-});
-
-const ontologyActionListStyle: CSSProperties = {
-  display: "flex",
-  gap: 8,
-  flexWrap: "wrap",
-  color: CT.inkSub,
-  fontSize: 12,
 };
 
 const ontologyWorkspaceStyle: CSSProperties = {
