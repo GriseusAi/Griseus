@@ -2,6 +2,7 @@ import { Router } from "express";
 import { z } from "zod";
 import { db } from "../db";
 import { sql } from "drizzle-orm";
+import Anthropic from "@anthropic-ai/sdk";
 
 const router = Router();
 
@@ -65,6 +66,13 @@ const pipelineDefinitionSchema = z.object({
   connections: z.array(z.record(z.any())),
   selectedNodeId: z.string().min(1),
   savedAt: z.string().optional(),
+});
+
+const ontologyAnalyzeSchema = z.object({
+  selectedNodeId: z.string().min(1),
+  chartMode: z.enum(["fulfillment", "capacity", "risk"]).default("fulfillment"),
+  nodes: z.array(z.record(z.any())).max(200),
+  connections: z.array(z.record(z.any())).max(500),
 });
 
 const sourceCatalog: Array<{
@@ -575,6 +583,360 @@ function toSavedPipeline(row: any) {
     backendStored: true,
   };
 }
+
+type OntologyAnalyzeContext = ReturnType<typeof collectOntologyAnalyzeContext>;
+
+let _anthropicClient: Anthropic | null = null;
+
+function getAnthropicClient(): Anthropic | null {
+  const apiKey = process.env.ANTHROPIC_API_KEY;
+  if (!apiKey) return null;
+  if (!_anthropicClient) _anthropicClient = new Anthropic({ apiKey });
+  return _anthropicClient;
+}
+
+function compactNode(node: any) {
+  const bom = node.bomComponent;
+  return {
+    id: String(node.id || ""),
+    kind: String(node.kind || ""),
+    title: String(node.title || ""),
+    subtitle: String(node.subtitle || ""),
+    semanticRole: node.semanticRole || null,
+    semanticLabel: node.semanticLabel || null,
+    deviceSku: node.deviceSku || null,
+    deviceQuantity: node.deviceQuantity || null,
+    deviceOperationMode: node.deviceOperationMode || null,
+    deviceOperation: node.deviceOperation ? {
+      status: node.deviceOperation.status,
+      sku: node.deviceOperation.sku,
+      inWarehouse: toNumber(node.deviceOperation.inWarehouse),
+      inProduction: toNumber(node.deviceOperation.inProduction),
+      totalSold: toNumber(node.deviceOperation.totalSold),
+      maxProducible: node.deviceOperation.maxProducible === null ? null : toNumber(node.deviceOperation.maxProducible),
+      bottleneck: node.deviceOperation.bottleneck || null,
+    } : null,
+    orderFields: node.orderFields || null,
+    orderLineFields: node.orderLineFields || null,
+    procurementFields: node.procurementFields || null,
+    bomComponent: bom ? {
+      sku: bom.sku || null,
+      code: bom.code || null,
+      name: bom.name || null,
+      status: bom.status || null,
+      tier: bom.tier ?? null,
+      currentStock: bom.currentStock ?? null,
+      maxProducts: bom.maxProducts ?? null,
+      requiredForOrder: bom.requiredForOrder ?? null,
+      stockShortage: bom.stockShortage ?? null,
+      isInsufficient: Boolean(bom.isInsufficient),
+      isSubAssembly: Boolean(bom.isSubAssembly),
+    } : null,
+  };
+}
+
+function collectOntologyAnalyzeContext(input: z.infer<typeof ontologyAnalyzeSchema>) {
+  const byId = new Map(input.nodes.map(node => [String(node.id), compactNode(node)]));
+  const upstreamIds = new Set<string>();
+  const walk = (targetId: string) => {
+    input.connections
+      .filter(connection => String(connection.to) === targetId)
+      .forEach(connection => {
+        const from = String(connection.from || "");
+        if (!from || upstreamIds.has(from)) return;
+        upstreamIds.add(from);
+        walk(from);
+      });
+  };
+  walk(input.selectedNodeId);
+
+  const connected = Array.from(upstreamIds).map(id => byId.get(id)).filter(Boolean) as ReturnType<typeof compactNode>[];
+  const scopedConnections = input.connections
+    .filter(connection => upstreamIds.has(String(connection.from)) && (upstreamIds.has(String(connection.to)) || String(connection.to) === input.selectedNodeId))
+    .map(connection => ({
+      from: String(connection.from || ""),
+      to: String(connection.to || ""),
+      kind: connection.kind || null,
+      relation: connection.contract?.relation || null,
+      context: connection.contract?.context || {},
+      fieldMap: connection.contract?.fieldMap || [],
+    }));
+  const devices = connected.filter(node => node.semanticRole === "device");
+  const orders = connected.filter(node => node.semanticRole === "order" || node.semanticRole === "orderLine");
+  const customers = connected.filter(node => node.semanticRole === "customer");
+  const procurement = connected.filter(node => node.semanticRole === "procurement");
+  const bom = connected.filter(node => node.kind === "component" || node.bomComponent);
+
+  return {
+    selectedNodeId: input.selectedNodeId,
+    chartMode: input.chartMode,
+    connected,
+    scopedConnections,
+    counts: {
+      devices: devices.length,
+      orders: orders.length,
+      customers: customers.length,
+      procurement: procurement.length,
+      bom: bom.length,
+    },
+    devices,
+    orders,
+    customers,
+    procurement,
+    bom,
+  };
+}
+
+function deterministicOntologyAnalysis(context: OntologyAnalyzeContext, source: "template" | "fallback" = "template") {
+  const rows = context.devices.map(device => {
+    const sku = String(device.deviceSku || device.semanticLabel || device.title || "Cihaz");
+    const requested = toNumber(device.deviceQuantity);
+    const warehouse = toNumber(device.deviceOperation?.inWarehouse);
+    const producible = device.deviceOperation?.maxProducible === null ? 0 : toNumber(device.deviceOperation?.maxProducible);
+    const totalSold = toNumber(device.deviceOperation?.totalSold);
+    const shortage = Math.max(0, requested - warehouse - producible);
+    const relatedBom = context.bom.filter(item => item.bomComponent?.sku === sku);
+    const criticalComponents = relatedBom.filter(item => item.bomComponent?.status === "critical").length;
+    const warningComponents = relatedBom.filter(item => item.bomComponent?.status === "warning").length;
+    return {
+      device: sku,
+      requested,
+      warehouse,
+      producible,
+      totalSold,
+      shortage,
+      criticalComponents,
+      warningComponents,
+      riskScore: shortage + criticalComponents * 25 + warningComponents * 10,
+    };
+  });
+  const seriesByMode = {
+    fulfillment: [
+      { key: "requested", label: "Sipariş", color: "#c96442" },
+      { key: "warehouse", label: "Depo", color: "#3d6fb0" },
+      { key: "producible", label: "Üretilebilir", color: "#3f8f5b" },
+      { key: "shortage", label: "Açık", color: "#b34037" },
+    ],
+    capacity: [
+      { key: "warehouse", label: "Depo", color: "#3d6fb0" },
+      { key: "producible", label: "Üretilebilir", color: "#3f8f5b" },
+      { key: "totalSold", label: "Satılan", color: "#6f6258" },
+    ],
+    risk: [
+      { key: "criticalComponents", label: "Kritik BOM", color: "#8f332b" },
+      { key: "warningComponents", label: "Düşük BOM", color: "#b8761c" },
+      { key: "shortage", label: "Açık", color: "#b34037" },
+      { key: "riskScore", label: "Risk skoru", color: "#c96442" },
+    ],
+  } as const;
+  const mode = context.chartMode;
+  return {
+    provider: source,
+    model: null,
+    intent: mode,
+    title: mode === "risk" ? "BOM ve fulfillment risk karşılaştırması" : mode === "capacity" ? "Kapasite karşılaştırması" : "Fulfillment karşılaştırması",
+    narrative: rows.length > 0
+      ? `${rows.length} cihaz, ${context.orders.length} sipariş ve ${context.bom.length} BOM node'u typed graph context olarak okundu.`
+      : "Ontology f(x) node'una cihaz bağlanınca model graph context'i yorumlayacak.",
+    chartSpec: {
+      type: mode === "fulfillment" ? "line" : "bar",
+      xKey: "device",
+      yLabel: "Adet / skor",
+      series: seriesByMode[mode],
+      data: rows,
+    },
+    recommendedActions: rows.some(row => row.shortage > 0)
+      ? ["Açık veren cihazları sipariş teslim tarihiyle önceliklendir.", "Darboğaz BOM node'larını tedarik aksiyonuna bağla.", "Depo ve üretim senaryosunu ayrı ayrı simüle et."]
+      : ["Kapasite ve depo serilerini aynı chart üzerinde izlemeye devam et.", "Sipariş node'u bağlanırsa teslim tarihi risk skoruna dahil edilir."],
+    missingContext: [
+      ...(context.orders.length === 0 ? ["Sipariş / teslim tarihi node'u yok"] : []),
+      ...(context.bom.length === 0 ? ["BOM veya tedarik node'u yok"] : []),
+    ],
+  };
+}
+
+function ontologyAnalysisSchema() {
+  return {
+    type: "object",
+    additionalProperties: false,
+    required: ["intent", "title", "narrative", "chartSpec", "recommendedActions", "missingContext"],
+    properties: {
+      intent: { type: "string" },
+      title: { type: "string" },
+      narrative: { type: "string" },
+      chartSpec: {
+        type: "object",
+        additionalProperties: false,
+        required: ["type", "xKey", "yLabel", "series", "data"],
+        properties: {
+          type: { type: "string", enum: ["line", "bar", "area", "combo"] },
+          xKey: { type: "string" },
+          yLabel: { type: "string" },
+          series: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["key", "label", "color"],
+              properties: {
+                key: { type: "string" },
+                label: { type: "string" },
+                color: { type: "string" },
+              },
+            },
+          },
+          data: {
+            type: "array",
+            items: {
+              type: "object",
+              additionalProperties: false,
+              required: ["x", "values"],
+              properties: {
+                x: { type: "string" },
+                values: {
+                  type: "array",
+                  items: {
+                    type: "object",
+                    additionalProperties: false,
+                    required: ["key", "value"],
+                    properties: {
+                      key: { type: "string" },
+                      value: { type: "number" },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      recommendedActions: { type: "array", items: { type: "string" } },
+      missingContext: { type: "array", items: { type: "string" } },
+    },
+  };
+}
+
+function validateAnalysisPayload(payload: any, context: OntologyAnalyzeContext, provider: string, model: string | null) {
+  const fallback = deterministicOntologyAnalysis(context, "fallback");
+  const chartSpec = payload?.chartSpec && Array.isArray(payload.chartSpec.series) && Array.isArray(payload.chartSpec.data)
+    ? payload.chartSpec
+    : fallback.chartSpec;
+  const normalizedData = chartSpec.data.map((row: any) => {
+    if (Array.isArray(row?.values)) {
+      return {
+        device: String(row.x || row.device || row.name || "Node"),
+        ...Object.fromEntries(row.values.filter((item: any) => item?.key).map((item: any) => [String(item.key), toNumber(item.value)])),
+      };
+    }
+    return row;
+  });
+  const allowedKeys = new Set(normalizedData.flatMap((row: any) => Object.keys(row)));
+  const safeSeries = chartSpec.series
+    .filter((series: any) => typeof series?.key === "string" && allowedKeys.has(series.key))
+    .slice(0, 8)
+    .map((series: any) => ({
+      key: series.key,
+      label: String(series.label || series.key),
+      color: /^#[0-9a-fA-F]{6}$/.test(String(series.color)) ? String(series.color) : "#c96442",
+    }));
+  return {
+    provider,
+    model,
+    intent: String(payload?.intent || fallback.intent),
+    title: String(payload?.title || fallback.title),
+    narrative: String(payload?.narrative || fallback.narrative),
+    chartSpec: {
+      type: ["line", "bar", "area", "combo"].includes(chartSpec.type) ? chartSpec.type : fallback.chartSpec.type,
+      xKey: typeof chartSpec.xKey === "string" && allowedKeys.has(chartSpec.xKey) ? chartSpec.xKey : "device",
+      yLabel: String(chartSpec.yLabel || "Adet / skor"),
+      series: safeSeries.length > 0 ? safeSeries : fallback.chartSpec.series,
+      data: normalizedData.slice(0, 50),
+    },
+    recommendedActions: Array.isArray(payload?.recommendedActions) ? payload.recommendedActions.slice(0, 6).map(String) : fallback.recommendedActions,
+    missingContext: Array.isArray(payload?.missingContext) ? payload.missingContext.slice(0, 6).map(String) : fallback.missingContext,
+    analyzedAt: new Date().toISOString(),
+  };
+}
+
+async function analyzeWithOpenAI(context: OntologyAnalyzeContext) {
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (!apiKey) return null;
+  const model = process.env.OPENAI_ONTOLOGY_MODEL || "gpt-5.4";
+  const response = await fetch("https://api.openai.com/v1/responses", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "Authorization": `Bearer ${apiKey}`,
+    },
+    body: JSON.stringify({
+      model,
+      instructions: "Sen Griseus Ontology f(x) motorusun. Palantir-style operasyon graph analisti gibi node tiplerini, edge contract'larını ve iş niyetini yorumla. Başlık, narrative, seri label'ları ve aksiyonları Türkçe üret. Sadece istenen JSON'u döndür. Verilen graph context dışına satır uydurma.",
+      input: JSON.stringify(context),
+      text: {
+        format: {
+          type: "json_schema",
+          name: "griseus_ontology_analysis",
+          strict: true,
+          schema: ontologyAnalysisSchema(),
+        },
+      },
+      store: false,
+    }),
+  });
+  const payload = await response.json().catch(() => ({}));
+  if (!response.ok) throw new Error(payload?.error?.message || "OpenAI ontology analysis failed");
+  const text = payload.output_text || payload.output?.flatMap((item: any) => item.content || []).map((part: any) => part.text || "").join("");
+  return validateAnalysisPayload(JSON.parse(text), context, "openai", model);
+}
+
+async function analyzeWithAnthropic(context: OntologyAnalyzeContext) {
+  const client = getAnthropicClient();
+  if (!client) return null;
+  const model = process.env.ANTHROPIC_ONTOLOGY_MODEL || process.env.ANTHROPIC_MODEL || "claude-sonnet-4-20250514";
+  const response = await client.messages.create({
+    model,
+    max_tokens: 3000,
+    system: "Sen Griseus Ontology f(x) motorusun. Node tiplerini, edge contract'larını ve operasyon niyetini yorumla. Başlık, narrative, seri label'ları ve aksiyonları Türkçe üret. Chart data satırlarını schema'daki x + values formatında döndür. Sadece JSON döndür; ekstra metin yazma.",
+    messages: [{
+      role: "user",
+      content: `Graph context:
+${JSON.stringify(context, null, 2)}
+
+JSON schema:
+${JSON.stringify(ontologyAnalysisSchema(), null, 2)}`,
+    }],
+  });
+  const text = response.content.filter((block: any) => block.type === "text").map((block: any) => block.text).join("\n").trim();
+  const match = text.match(/\{[\s\S]*\}/);
+  if (!match) throw new Error("Anthropic ontology analysis JSON parse failed");
+  return validateAnalysisPayload(JSON.parse(match[0]), context, "anthropic", model);
+}
+
+router.post("/ontology/analyze", async (req, res) => {
+  try {
+    const parsed = ontologyAnalyzeSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
+    const context = collectOntologyAnalyzeContext(parsed.data);
+
+    try {
+      const openai = await analyzeWithOpenAI(context);
+      if (openai) return res.json(openai);
+    } catch (err: any) {
+      console.warn("[pipeline-builder/ontology] OpenAI failed:", err.message);
+    }
+
+    try {
+      const anthropic = await analyzeWithAnthropic(context);
+      if (anthropic) return res.json(anthropic);
+    } catch (err: any) {
+      console.warn("[pipeline-builder/ontology] Anthropic failed:", err.message);
+    }
+
+    res.json(validateAnalysisPayload(deterministicOntologyAnalysis(context), context, "template", null));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 router.post("/run", async (req, res) => {
   try {

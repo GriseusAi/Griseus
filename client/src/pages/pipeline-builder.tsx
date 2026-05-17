@@ -45,6 +45,24 @@ type PortSide = "left" | "right";
 type DeviceOperationMode = "warehouse_sale" | "produce_sale";
 type OntologyChartMode = "fulfillment" | "capacity" | "risk";
 
+type OntologyAnalysisResponse = {
+  provider: string;
+  model: string | null;
+  intent: string;
+  title: string;
+  narrative: string;
+  chartSpec: {
+    type: "line" | "bar" | "area" | "combo";
+    xKey: string;
+    yLabel: string;
+    series: Array<{ key: string; label: string; color: string }>;
+    data: Array<Record<string, any>>;
+  };
+  recommendedActions: string[];
+  missingContext: string[];
+  analyzedAt: string;
+};
+
 type OrderFields = {
   customer: string;
   deadline: string;
@@ -2160,8 +2178,38 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
     })),
   }), [context.devices, context.orders, context.components]);
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
+  const [analysis, setAnalysis] = useState<OntologyAnalysisResponse | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
-  const activeChartSpec = buildOntologyChartSpec(compareRows, chartMode);
+  const localChartSpec = buildOntologyChartSpec(compareRows, chartMode);
+  const activeChartSpec = analysis?.chartSpec ? normalizeOntologyRemoteChartSpec(analysis.chartSpec) : localChartSpec;
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnalysisStatus("loading");
+    fetch("/api/pipeline-builder/ontology/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectedNodeId: node.id,
+        chartMode,
+        nodes,
+        connections,
+      }),
+      signal: controller.signal,
+    })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology analysis unavailable")))
+      .then((payload: OntologyAnalysisResponse) => {
+        if (controller.signal.aborted) return;
+        setAnalysis(payload);
+        setAnalysisStatus("ready");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setAnalysis(null);
+        setAnalysisStatus("fallback");
+      });
+    return () => controller.abort();
+  }, [node.id, chartMode, contextSignature]);
 
   return (
     <div style={ontologyPreviewStyle}>
@@ -2175,10 +2223,17 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             <span>{context.devices.length} cihaz</span>
             <span>{context.orders.length} sipariş</span>
             <span>{context.components.length} BOM</span>
+            <span>{analysisStatus === "loading" ? "analiz ediliyor" : analysis?.provider ?? "local"}</span>
           </div>
         </div>
 
         <div style={ontologyAnalysisCenterStyle}>
+          {analysis && (
+            <div style={ontologyNarrativeStyle}>
+              <strong>{analysis.title}</strong>
+              <span>{analysis.narrative}</span>
+            </div>
+          )}
           <div style={ontologyWorkspaceStyle}>
             <div style={ontologyWorkspaceToolbarStyle}>
               <div>
@@ -2203,7 +2258,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               </div>
             </div>
             <div style={ontologyChartCanvasStyle}>
-              {compareRows.length === 0 ? (
+              {activeChartSpec.rows.length === 0 ? (
                 <div style={ontologyEmptyChartStyle}>f(x) kutusuna ürün cihazlarını bağla; depo, üretilebilirlik, sipariş ve BOM riski burada karşılaştırılır.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
@@ -2243,12 +2298,25 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               )}
             </div>
           </div>
+          {analysis && (analysis.recommendedActions.length > 0 || analysis.missingContext.length > 0) && (
+            <div style={ontologyInsightGridStyle}>
+              <div>
+                <strong>Aksiyon</strong>
+                {analysis.recommendedActions.slice(0, 3).map(action => <span key={action}>{action}</span>)}
+              </div>
+              <div>
+                <strong>Eksik bağlam</strong>
+                {(analysis.missingContext.length > 0 ? analysis.missingContext : ["Graph context yeterli"]).slice(0, 3).map(item => <span key={item}>{item}</span>)}
+              </div>
+            </div>
+          )}
         </div>
 
         <div style={ontologyBottomBarStyle}>
           <span>Chart: {activeChartSpec.kind === "line" ? "combo" : "bar"}</span>
           <span>X: device</span>
           <span>{activeChartSpec.series.map(series => series.key).join(" · ")}</span>
+          <span>Provider: {analysis?.provider ?? (analysisStatus === "loading" ? "loading" : "local")}</span>
           <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
             <Network size={14} />
             Chart workspace
@@ -2327,6 +2395,14 @@ function buildOntologyChartSpec(rows: ReturnType<typeof buildOntologyCompareRows
       { key: "producible", label: "Üretilebilir", color: palette.producible },
       { key: "shortage", label: "Açık", color: palette.shortage },
     ],
+  };
+}
+
+function normalizeOntologyRemoteChartSpec(spec: OntologyAnalysisResponse["chartSpec"]) {
+  return {
+    kind: spec.type === "bar" ? "bar" as const : "line" as const,
+    rows: Array.isArray(spec.data) ? spec.data : [],
+    series: Array.isArray(spec.series) ? spec.series : [],
   };
 }
 
@@ -5516,6 +5592,18 @@ const ontologyWorkspaceStyle: CSSProperties = {
   overflow: "hidden",
 };
 
+const ontologyNarrativeStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 8,
+  background: CT.surface,
+  color: CT.inkSub,
+  padding: "10px 12px",
+  marginBottom: 10,
+  fontSize: 12,
+};
+
 const ontologyWorkspaceToolbarStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
@@ -5581,6 +5669,15 @@ const ontologyLegendStyle: CSSProperties = {
   color: CT.inkSub,
   fontFamily: CT_MONO,
   fontSize: 11,
+};
+
+const ontologyInsightGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "1fr 1fr",
+  gap: 10,
+  marginTop: 10,
+  color: CT.inkSub,
+  fontSize: 12,
 };
 
 const ontologyBottomBarStyle: CSSProperties = {
