@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { CSSProperties, PointerEvent as ReactPointerEvent } from "react";
 import * as XLSX from "xlsx";
 import TopNav from "@/components/top-nav";
@@ -332,6 +332,8 @@ type DatasetProfile = {
   productFamily?: string;
 };
 
+const CANVAS_WORKSPACE_PADDING = 1400;
+
 type ImportPlanAction = {
   id: string;
   label: string;
@@ -441,6 +443,8 @@ export default function PipelineBuilderPage() {
   const [canvasZoom, setCanvasZoom] = useState(1);
   const [twinHealthRunning, setTwinHealthRunning] = useState(false);
   const [previewHeight, setPreviewHeight] = useState(310);
+  const canvasViewportRef = useRef<HTMLDivElement | null>(null);
+  const canvasInitialScrollDone = useRef(false);
 
   const selectedNode = nodes.find(node => node.id === selectedNodeId) ?? nodes[0];
   const previewColumns = selectedNode?.columns ?? [];
@@ -452,6 +456,21 @@ export default function PipelineBuilderPage() {
   const canZoomOut = canvasZoom > 0.55;
   const canZoomIn = canvasZoom < 1.45;
 
+  const canvasMetrics = useMemo(() => {
+    const minX = Math.min(...nodes.map(node => node.x), 0);
+    const minY = Math.min(...nodes.map(node => node.y), 0);
+    const maxX = Math.max(...nodes.map(node => node.x + nodeWidth(node.kind)), 1800);
+    const maxY = Math.max(...nodes.map(node => node.y + effectiveNodeHeight(node)), 900);
+    const originX = CANVAS_WORKSPACE_PADDING - minX;
+    const originY = CANVAS_WORKSPACE_PADDING - minY;
+    return {
+      width: Math.ceil(maxX - minX + CANVAS_WORKSPACE_PADDING * 2),
+      height: Math.ceil(maxY - minY + CANVAS_WORKSPACE_PADDING * 2),
+      originX,
+      originY,
+    };
+  }, [nodes]);
+
   const renderedEdges = useMemo(() => {
     const byId = new Map(nodes.map(node => [node.id, node]));
     return connections.map(connection => {
@@ -462,23 +481,26 @@ export default function PipelineBuilderPage() {
         key: `${connection.from}-${connection.to}`,
         kind: connection.kind,
         scope: connection.scope,
-        x1: getPortPosition(from, "right").x,
-        y1: getPortPosition(from, "right").y,
-        x2: getPortPosition(to, "left").x,
-        y2: getPortPosition(to, "left").y,
+        x1: getPortPosition(from, "right").x + canvasMetrics.originX,
+        y1: getPortPosition(from, "right").y + canvasMetrics.originY,
+        x2: getPortPosition(to, "left").x + canvasMetrics.originX,
+        y2: getPortPosition(to, "left").y + canvasMetrics.originY,
       };
     }).filter((edge): edge is { key: string; kind: ConnectionKind | undefined; scope: DrilldownConnectionScope | undefined; x1: number; y1: number; x2: number; y2: number } => Boolean(edge));
-  }, [connections, nodes]);
-
-  const canvasSize = useMemo(() => {
-    const maxX = Math.max(...nodes.map(node => node.x + nodeWidth(node.kind)), 1800);
-    const maxY = Math.max(...nodes.map(node => node.y + effectiveNodeHeight(node)), 900);
-    return { width: maxX + 520, height: maxY + 320 };
-  }, [nodes]);
+  }, [canvasMetrics.originX, canvasMetrics.originY, connections, nodes]);
   const scaledCanvasSize = useMemo(() => ({
-    width: Math.ceil(canvasSize.width * canvasZoom),
-    height: Math.ceil(canvasSize.height * canvasZoom),
-  }), [canvasSize, canvasZoom]);
+    width: Math.ceil(canvasMetrics.width * canvasZoom),
+    height: Math.ceil(canvasMetrics.height * canvasZoom),
+  }), [canvasMetrics.height, canvasMetrics.width, canvasZoom]);
+
+  useEffect(() => {
+    if (canvasInitialScrollDone.current) return;
+    const viewport = canvasViewportRef.current;
+    if (!viewport) return;
+    viewport.scrollLeft = Math.max(0, canvasMetrics.originX * canvasZoom - 160);
+    viewport.scrollTop = Math.max(0, canvasMetrics.originY * canvasZoom - 80);
+    canvasInitialScrollDone.current = true;
+  }, [canvasMetrics.originX, canvasMetrics.originY, canvasZoom]);
 
   function getPortPosition(node: PipelineNode, side: PortSide) {
     const nodeW = nodeWidth(node.kind);
@@ -1679,10 +1701,10 @@ export default function PipelineBuilderPage() {
       </header>
 
       <main style={{ display: "grid", gridTemplateRows: `minmax(0, 1fr) 8px ${previewHeight}px`, height: "calc(100vh - 94px)", minHeight: 680 }}>
-        <section style={canvasViewportStyle}>
+        <section ref={canvasViewportRef} style={canvasViewportStyle}>
           <div style={{ position: "relative", width: scaledCanvasSize.width, height: scaledCanvasSize.height }}>
-            <div style={{ position: "relative", width: canvasSize.width, height: canvasSize.height, transform: `scale(${canvasZoom})`, transformOrigin: "top left" }}>
-              <svg width={canvasSize.width} height={canvasSize.height} style={{ position: "absolute", inset: 0 }}>
+            <div style={{ position: "relative", width: canvasMetrics.width, height: canvasMetrics.height, transform: `scale(${canvasZoom})`, transformOrigin: "top left" }}>
+              <svg width={canvasMetrics.width} height={canvasMetrics.height} style={{ position: "absolute", inset: 0 }}>
                 {renderedEdges.map(edge => (
                   <EdgeLine key={edge.key} kind={edge.kind} scope={edge.scope} x1={edge.x1} y1={edge.y1} x2={edge.x2} y2={edge.y2} />
                 ))}
@@ -1692,6 +1714,7 @@ export default function PipelineBuilderPage() {
                 <PipelineGraphNode
                   key={node.id}
                   node={node}
+                  canvasOffset={{ x: canvasMetrics.originX, y: canvasMetrics.originY }}
                   selected={selectedNodeId === node.id}
                   onSelect={() => selectGraphNode(node.id)}
                   onPortClick={(side) => openPortMenu(node.id, side)}
@@ -1850,8 +1873,9 @@ export default function PipelineBuilderPage() {
   );
 }
 
-function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
+function PipelineGraphNode({ node, canvasOffset, selected, onSelect, onPortClick, onFile, onFunctionSelect, onTitleChange, onDragStart, onOrderFieldChange, onProcurementFieldChange, onDeviceSelect, onDeviceQuantityChange, onDrillDown, onComponentDrillDown, productOptions }: {
   node: PipelineNode;
+  canvasOffset: { x: number; y: number };
   selected: boolean;
   onSelect: () => void;
   onPortClick: (side: PortSide) => void;
@@ -1890,8 +1914,8 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
       }}
       style={{
         ...nodeStyle,
-        left: node.x,
-        top: node.y,
+        left: node.x + canvasOffset.x,
+        top: node.y + canvasOffset.y,
         width: nodeWidth(node.kind),
         height: effectiveNodeHeight(node),
         borderColor: selected ? nodeTone(node.kind) : isSubAssembly ? "#416f6b" : CT.borderStrong,
