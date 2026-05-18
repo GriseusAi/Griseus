@@ -104,6 +104,11 @@ const ontologySemanticLayerSchema = z.object({
   connections: z.array(z.record(z.any())).max(500),
 });
 
+const graphFunctionRunSchema = ontologySemanticLayerSchema.extend({
+  functionId: z.enum(["fulfillment-risk-by-device"]).default("fulfillment-risk-by-device"),
+  filters: z.record(z.any()).default({}),
+});
+
 const sourceCatalog: Array<{
   id: SourceId;
   label: string;
@@ -984,6 +989,57 @@ router.post("/ontology/semantic-layer", async (req, res) => {
     if (!parsed.success) return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
     const context = collectOntologyAnalyzeContext(parsed.data);
     res.json(buildOntologySemanticLayer(context));
+  } catch (err: any) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+router.post("/ontology/graph-function/run", async (req, res) => {
+  try {
+    const parsed = graphFunctionRunSchema.safeParse(req.body);
+    if (!parsed.success) return res.status(400).json({ error: parsed.error.errors.map(e => e.message).join(", ") });
+    const context = collectOntologyAnalyzeContext(parsed.data);
+    const semantic = buildOntologySemanticLayer(context);
+    const decisions = semantic.decisions;
+    const series = [
+      { key: "requested", label: "Sipariş", color: "#c96442" },
+      { key: "warehouse", label: "Depo", color: "#3d6fb0" },
+      { key: "producible", label: "Üretilebilir", color: "#3f8f5b" },
+      { key: "shortage", label: "Açık", color: "#b34037" },
+      { key: "riskScore", label: "Risk skoru", color: "#8f332b" },
+    ];
+    const rows = decisions.map((decision: any) => ({
+      objectId: decision.id,
+      device: decision.device,
+      customer: decision.customer || "Müşteri yok",
+      deadline: decision.deadline || "Deadline yok",
+      riskTier: decision.status === "late" ? "Geç" : decision.status === "at_risk" ? "Riskli" : decision.status === "missing_context" ? "Eksik" : "Sağlıklı",
+      requested: toNumber(decision.requested),
+      warehouse: toNumber(decision.warehouse),
+      producible: toNumber(decision.producible),
+      shortage: toNumber(decision.fulfillmentGap),
+      riskScore: toNumber(decision.riskScore),
+    }));
+    res.json({
+      provider: "graph-function",
+      functionId: parsed.data.functionId,
+      generatedAt: new Date().toISOString(),
+      chart: {
+        type: "bar",
+        xKey: parsed.data.xDimension,
+        rows,
+        series: series.filter(item => parsed.data.yMetrics.includes(item.key as any)),
+      },
+      objects: decisions.map((decision: any) => ({
+        id: decision.id,
+        objectType: "DeliveryDecision",
+        title: decision.device,
+        subtitle: decision.customer || decision.status,
+        decision,
+      })),
+      actions: semantic.actionQueue,
+      semantic,
+    });
   } catch (err: any) {
     res.status(500).json({ error: err.message });
   }

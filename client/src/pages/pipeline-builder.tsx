@@ -127,11 +127,33 @@ type SemanticLayerResponse = {
     id: string;
     actionType: string;
     label: string;
+    targetObject?: string;
     ownerAgent: string;
     requiresHumanApproval: boolean;
     reason: string;
   }>;
   agentLanes: Array<{ agent: string; responsibility: string; finding: string }>;
+};
+
+type GraphFunctionResponse = {
+  provider: string;
+  functionId: "fulfillment-risk-by-device";
+  generatedAt: string;
+  chart: {
+    type: "bar";
+    xKey: OntologyXDimension;
+    rows: Array<Record<string, any> & { objectId: string; device: string }>;
+    series: Array<{ key: string; label: string; color: string }>;
+  };
+  objects: Array<{
+    id: string;
+    objectType: string;
+    title: string;
+    subtitle: string;
+    decision: SemanticLayerDecision & { bomRows?: Array<Record<string, any>> };
+  }>;
+  actions: SemanticLayerResponse["actionQueue"];
+  semantic: SemanticLayerResponse;
 };
 
 type OrderFields = {
@@ -2296,14 +2318,18 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
   const [xDimension, setXDimension] = useState<OntologyXDimension>("device");
   const [yMetrics, setYMetrics] = useState<OntologyYMetric[]>(["requested", "warehouse", "producible", "shortage"]);
+  const [graphFunction, setGraphFunction] = useState<GraphFunctionResponse | null>(null);
+  const [selectedGraphObjectId, setSelectedGraphObjectId] = useState<string | null>(null);
   const [semanticLayer, setSemanticLayer] = useState<SemanticLayerResponse | null>(null);
   const [semanticStatus, setSemanticStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
   const localChartSpec = buildOntologyChartSpec(compareRows, chartMode, xDimension, yMetrics);
-  const activeChartSpec = localChartSpec;
+  const activeChartSpec = graphFunction?.chart ?? localChartSpec;
+  const selectedGraphObject = graphFunction?.objects.find(item => item.id === selectedGraphObjectId) ?? null;
   function changeChartMode(mode: OntologyChartMode) {
     setChartMode(mode);
     setYMetrics(defaultOntologyYMetrics(mode));
+    setSelectedGraphObjectId(null);
   }
   function toggleYMetric(metric: OntologyYMetric) {
     setYMetrics(prev => {
@@ -2316,10 +2342,11 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   useEffect(() => {
     const controller = new AbortController();
     setSemanticStatus("loading");
-    fetch("/api/pipeline-builder/ontology/semantic-layer", {
+    fetch("/api/pipeline-builder/ontology/graph-function/run", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+        functionId: "fulfillment-risk-by-device",
         selectedNodeId: node.id,
         chartMode,
         xDimension,
@@ -2329,14 +2356,16 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       }),
       signal: controller.signal,
     })
-      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology semantic layer unavailable")))
-      .then((payload: SemanticLayerResponse) => {
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology graph function unavailable")))
+      .then((payload: GraphFunctionResponse) => {
         if (controller.signal.aborted) return;
-        setSemanticLayer(payload);
+        setGraphFunction(payload);
+        setSemanticLayer(payload.semantic);
         setSemanticStatus("ready");
       })
       .catch(() => {
         if (controller.signal.aborted) return;
+        setGraphFunction(null);
         setSemanticLayer(null);
         setSemanticStatus("fallback");
       });
@@ -2432,15 +2461,66 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                     <Tooltip contentStyle={ontologyTooltipStyle} />
                     <Legend wrapperStyle={ontologyLegendStyle} />
                     {activeChartSpec.series.map(series => (
-                      <Bar key={series.key} dataKey={series.key} name={series.label} fill={series.color} radius={[4, 4, 0, 0]} />
+                      <Bar
+                        key={series.key}
+                        dataKey={series.key}
+                        name={series.label}
+                        fill={series.color}
+                        radius={[4, 4, 0, 0]}
+                        cursor="pointer"
+                        onClick={(data: any) => setSelectedGraphObjectId(data?.objectId ?? null)}
+                      />
                     ))}
                   </BarChart>
                 </ResponsiveContainer>
               )}
             </div>
+            {selectedGraphObject && (
+              <GraphFunctionDrilldown object={selectedGraphObject} actions={graphFunction?.actions ?? []} />
+            )}
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+function GraphFunctionDrilldown({ object, actions }: { object: GraphFunctionResponse["objects"][number]; actions: GraphFunctionResponse["actions"] }) {
+  const decision = object.decision;
+  const bomRows = (decision.bomRows ?? []).filter(row => Number(row.shortage ?? 0) > 0).slice(0, 6);
+  const relatedActions = actions.filter(action => action.targetObject === object.id || action.reason?.includes(decision.device)).slice(0, 3);
+  return (
+    <div style={graphFunctionDrilldownStyle}>
+      <div style={graphFunctionDrilldownHeaderStyle}>
+        <strong>{decision.device}</strong>
+        <span>{decision.customer || "Müşteri yok"} · {decision.status}</span>
+      </div>
+      <div style={graphFunctionMetricGridStyle}>
+        <Metric label="Sipariş" value={formatCell(decision.requested)} />
+        <Metric label="Depo" value={formatCell(decision.warehouse)} />
+        <Metric label="Üretilebilir" value={formatCell(decision.producible)} />
+        <Metric label="Açık" value={formatCell(decision.fulfillmentGap)} />
+      </div>
+      {bomRows.length > 0 && (
+        <div style={graphFunctionListStyle}>
+          {bomRows.map(row => (
+            <div key={String(row.code)} style={graphFunctionListRowStyle}>
+              <span>{String(row.code)} · {String(row.name)}</span>
+              <b>{formatCell(Number(row.shortage ?? 0))}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      {relatedActions.length > 0 && (
+        <div style={graphFunctionListStyle}>
+          {relatedActions.map(action => (
+            <div key={action.id} style={graphFunctionListRowStyle}>
+              <span>{action.ownerAgent}</span>
+              <b>{action.label}</b>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -6205,6 +6285,48 @@ const ontologyEmptyChartStyle: CSSProperties = {
   fontSize: 13,
   textAlign: "center",
   padding: 18,
+};
+
+const graphFunctionDrilldownStyle: CSSProperties = {
+  display: "grid",
+  gap: 10,
+  borderTop: `1px solid ${CT.border}`,
+  padding: "12px 14px",
+  background: "#fbfaf6",
+};
+
+const graphFunctionDrilldownHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: 12,
+  color: CT.ink,
+  fontSize: 13,
+};
+
+const graphFunctionMetricGridStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "repeat(4, minmax(110px, 1fr))",
+  gap: 14,
+};
+
+const graphFunctionListStyle: CSSProperties = {
+  display: "grid",
+  gap: 5,
+};
+
+const graphFunctionListRowStyle: CSSProperties = {
+  minHeight: 28,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 6,
+  background: CT.surface,
+  color: CT.inkSub,
+  fontSize: 11,
+  padding: "5px 8px",
 };
 
 const ontologyTooltipStyle: CSSProperties = {
