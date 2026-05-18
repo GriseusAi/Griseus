@@ -1011,6 +1011,7 @@ router.post("/ontology/graph-function/run", async (req, res) => {
     ];
     const rows = decisions.map((decision: any) => ({
       objectId: decision.id,
+      rowKind: "delivery",
       device: decision.device,
       customer: decision.customer || "Müşteri yok",
       deadline: decision.deadline || "Deadline yok",
@@ -1020,7 +1021,7 @@ router.post("/ontology/graph-function/run", async (req, res) => {
       producible: toNumber(decision.producible),
       shortage: toNumber(decision.fulfillmentGap),
       riskScore: toNumber(decision.riskScore),
-    }));
+    })).concat(buildComponentGraphRows(context));
     res.json({
       provider: "graph-function",
       functionId: parsed.data.functionId,
@@ -1032,6 +1033,16 @@ router.post("/ontology/graph-function/run", async (req, res) => {
         series: series.filter(item => parsed.data.yMetrics.includes(item.key as any)),
       },
       objects: rows.map((row: any) => {
+        if (row.rowKind === "component") {
+          const decision = buildComponentDecision(row);
+          return {
+            id: row.objectId,
+            objectType: "BomComponent",
+            title: row.componentCode,
+            subtitle: row.componentName || row.customer || row.riskTier,
+            decision,
+          };
+        }
         const decision = decisionsById.get(row.objectId) as any;
         return {
           id: row.objectId,
@@ -1048,6 +1059,75 @@ router.post("/ontology/graph-function/run", async (req, res) => {
     res.status(500).json({ error: err.message });
   }
 });
+
+function buildComponentGraphRows(context: OntologyAnalyzeContext) {
+  return context.bom.map(componentNode => {
+    const component = componentNode.bomComponent;
+    const code = String(component?.code || componentNode.title || componentNode.id);
+    const name = String(component?.name || componentNode.subtitle || "");
+    const status = String(component?.status || "ok");
+    const shortage = Math.max(0, toNumber(component?.stockShortage));
+    const requested = toNumber(component?.requiredForOrder) || toNumber(component?.orderQuantity) || toNumber(component?.requiredPerUnit);
+    const warehouse = toNumber(component?.currentStock);
+    const producible = component?.maxProducts === null ? 0 : toNumber(component?.maxProducts);
+    const riskScore = shortage + (status === "critical" ? 25 : status === "warning" ? 10 : 0);
+    return {
+      objectId: componentNode.id,
+      rowKind: "component",
+      device: code,
+      componentCode: code,
+      componentName: name,
+      customer: String(component?.sku || componentNode.semanticLabel || "BOM"),
+      deadline: component?.tier === null || component?.tier === undefined ? "BOM" : `Tier ${component.tier}`,
+      riskTier: status === "critical" ? "Kritik BOM" : status === "warning" ? "Düşük BOM" : "BOM",
+      requested,
+      warehouse,
+      producible,
+      shortage,
+      criticalComponents: status === "critical" ? 1 : 0,
+      warningComponents: status === "warning" ? 1 : 0,
+      riskScore,
+      totalSold: 0,
+    };
+  });
+}
+
+function buildComponentDecision(row: any) {
+  const shortage = toNumber(row.shortage);
+  const status = shortage > 0 || row.riskTier === "Kritik BOM" ? "at_risk" : "on_track";
+  return {
+    id: String(row.objectId),
+    status,
+    riskScore: toNumber(row.riskScore),
+    customer: String(row.customer || ""),
+    device: String(row.componentCode || row.device || ""),
+    requested: toNumber(row.requested),
+    deadline: String(row.deadline || ""),
+    warehouse: toNumber(row.warehouse),
+    producible: toNumber(row.producible),
+    fulfillmentGap: shortage,
+    shortageCount: shortage > 0 ? 1 : 0,
+    linkedProcurementCount: 0,
+    missingProcurementCount: shortage > 0 ? 1 : 0,
+    lateProcurementCount: 0,
+    summary: String(row.componentName || row.componentCode || "BOM component"),
+    recommendation: shortage > 0 ? "Bileşen tedarik/procurement bağlantısına alınmalı." : "Bileşen stok/kabiliyet açısından izlenebilir.",
+    bottleneck: shortage > 0
+      ? {
+          code: String(row.componentCode || row.device || ""),
+          name: String(row.componentName || ""),
+          shortage,
+          readyDate: "",
+          delayDays: null,
+        }
+      : null,
+    bomRows: [{
+      code: String(row.componentCode || row.device || ""),
+      name: String(row.componentName || ""),
+      shortage,
+    }],
+  };
+}
 
 function ontologyAnalysisSchema() {
   return {

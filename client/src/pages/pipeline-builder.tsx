@@ -2541,8 +2541,8 @@ function GraphFunctionDrilldown({ object, actions }: { object: GraphFunctionResp
   return (
     <div style={graphFunctionDrilldownStyle}>
       <div style={graphFunctionDrilldownHeaderStyle}>
-        <strong>{decision.device}</strong>
-        <span>{decision.customer || "Müşteri yok"} · {decision.status}</span>
+        <strong>{object.title || decision.device}</strong>
+        <span>{object.subtitle || decision.customer || "Müşteri yok"} · {decision.status}</span>
       </div>
       <div style={graphFunctionMetricGridStyle}>
         <Metric label="Sipariş" value={formatCell(decision.requested)} />
@@ -2670,7 +2670,7 @@ function SemanticLayerPanel({ layer, status }: { layer: SemanticLayerResponse | 
 }
 
 function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
-  return context.devices.map(device => {
+  const deviceRows = context.devices.map(device => {
     const sku = resolveDeviceNodeSku(device) || device.title;
     const relatedOrders = context.orders.filter(order => {
       const fields: any = order.orderLineFields || order.orderFields;
@@ -2703,6 +2703,29 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
       riskScore,
     };
   });
+  const componentRows = context.components.map(componentNode => {
+    const component = componentNode.bomComponent;
+    const code = String(component?.code || componentNode.title || componentNode.id);
+    const status = String(component?.status || "ok");
+    const shortage = Math.max(0, Number(component?.stockShortage ?? 0));
+    return {
+      objectId: componentNode.id,
+      rowKind: "component",
+      device: code,
+      customer: String(component?.sku || componentNode.semanticLabel || "BOM"),
+      deadline: component?.tier === null || component?.tier === undefined ? "BOM" : `Tier ${component.tier}`,
+      riskTier: status === "critical" ? "Kritik BOM" : status === "warning" ? "Düşük BOM" : "BOM",
+      requested: Number(component?.requiredForOrder ?? component?.orderQuantity ?? component?.requiredPerUnit ?? 0),
+      warehouse: Number(component?.currentStock ?? 0),
+      producible: component?.maxProducts === null ? 0 : Number(component?.maxProducts ?? 0),
+      totalSold: 0,
+      shortage,
+      criticalComponents: status === "critical" ? 1 : 0,
+      warningComponents: status === "warning" ? 1 : 0,
+      riskScore: shortage + (status === "critical" ? 25 : status === "warning" ? 10 : 0),
+    };
+  });
+  return deviceRows.concat(componentRows);
 }
 
 function defaultOntologyYMetrics(mode: OntologyChartMode): OntologyYMetric[] {
