@@ -2520,25 +2520,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             </div>
             <div style={ontologyDimensionPanelStyle}>
               <div style={ontologyDimensionGroupStyle}>
-                <strong>X</strong>
-                {([
-                  ["device", "Cihaz"],
-                  ["customer", "Müşteri"],
-                  ["deadline", "Deadline"],
-                  ["riskTier", "Risk"],
-                ] as Array<[OntologyXDimension, string]>).map(([dimension, label]) => (
-                  <button
-                    key={dimension}
-                    type="button"
-                    onClick={() => setXDimension(dimension)}
-                    style={ontologyDimensionButtonStyle(xDimension === dimension)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-              <div style={ontologyDimensionGroupStyle}>
-                <strong>Y</strong>
+                <strong>Metrik</strong>
                 {([
                   ["requested", "Sipariş"],
                   ["warehouse", "Depo"],
@@ -2562,7 +2544,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             </div>
             <div style={ontologyChartCanvasStyle}>
               {activeChartSpec.rows.length === 0 ? (
-                <div style={ontologyEmptyChartStyle}>f(x) kutusuna ürün cihazlarını bağla; depo, üretilebilirlik, sipariş ve BOM riski burada karşılaştırılır.</div>
+                <div style={ontologyEmptyChartStyle}>Listeden satırların yanındaki kutuları seç; seçilen birimler grafiğe eklenir.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
                   <BarChart
@@ -2615,29 +2597,35 @@ function OntologyScopePicker({ items, selectedIds, onToggle, onClear }: {
   return (
     <div style={ontologyScopePanelStyle}>
       <div style={ontologyScopeHeaderStyle}>
-        <strong>Kapsam</strong>
+        <strong>Birimler</strong>
+        <span>{selectedIds.length ? `${selectedIds.length} seçili` : "Grafik için satır seç"}</span>
         <button type="button" onClick={onClear} disabled={selectedIds.length === 0} style={ontologyScopeClearStyle(selectedIds.length === 0)}>
-          Hepsi
+          Temizle
         </button>
       </div>
       <div style={ontologyScopeGroupsStyle}>
         {groups.map(([type, label]) => {
-          const groupItems = items.filter(item => item.type === type).slice(0, 18);
+          const groupItems = items.filter(item => item.type === type);
           if (groupItems.length === 0) return null;
           return (
             <div key={type} style={ontologyScopeGroupStyle}>
               <span>{label}</span>
-              <div style={ontologyScopeChipWrapStyle}>
+              <div style={ontologyScopeRowsStyle}>
                 {groupItems.map(item => (
-                  <button
+                  <label
                     key={item.id}
-                    type="button"
-                    onClick={() => onToggle(item.id)}
                     title={item.detail}
-                    style={ontologyScopeChipStyle(selected.has(item.id), item.tone)}
+                    style={ontologyScopeRowStyle(selected.has(item.id), item.tone)}
                   >
-                    {item.label}
-                  </button>
+                    <input
+                      type="checkbox"
+                      checked={selected.has(item.id)}
+                      onChange={() => onToggle(item.id)}
+                      style={ontologyScopeCheckboxStyle}
+                    />
+                    <span style={ontologyScopeRowLabelStyle}>{item.label}</span>
+                    <span style={ontologyScopeRowDetailStyle}>{item.detail}</span>
+                  </label>
                 ))}
               </div>
             </div>
@@ -2825,7 +2813,7 @@ function buildOntologyScopeItems(context: ReturnType<typeof collectOntologyConte
 
 function filterOntologyRowsByScope<T extends Record<string, any>>(rows: T[], selectedScopeIds: string[], scopeItems: OntologyScopeItem[]) {
   if (selectedScopeIds.length === 0) {
-    return rows.filter(row => row.rowKind !== "component" && row.rowKind !== "procurement");
+    return [];
   }
   const selected = new Set(selectedScopeIds);
   const selectedLabels = new Set(scopeItems.filter(item => selected.has(item.id)).map(item => item.label));
@@ -6608,7 +6596,7 @@ const ontologyScopePanelStyle: CSSProperties = {
 const ontologyScopeHeaderStyle: CSSProperties = {
   display: "flex",
   alignItems: "center",
-  justifyContent: "space-between",
+  justifyContent: "flex-start",
   gap: 10,
   color: CT.ink,
   fontSize: 12,
@@ -6616,12 +6604,14 @@ const ontologyScopeHeaderStyle: CSSProperties = {
 
 const ontologyScopeGroupsStyle: CSSProperties = {
   display: "grid",
-  gap: 7,
+  gap: 9,
+  maxHeight: 260,
+  overflowY: "auto",
 };
 
 const ontologyScopeGroupStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "70px 1fr",
+  gridTemplateColumns: "76px 1fr",
   gap: 8,
   alignItems: "start",
   color: CT.inkMuted,
@@ -6629,10 +6619,9 @@ const ontologyScopeGroupStyle: CSSProperties = {
   fontWeight: 800,
 };
 
-const ontologyScopeChipWrapStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 6,
+const ontologyScopeRowsStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
 };
 
 const ontologyScopeClearStyle = (disabled: boolean): CSSProperties => ({
@@ -6648,18 +6637,47 @@ const ontologyScopeClearStyle = (disabled: boolean): CSSProperties => ({
   cursor: disabled ? "default" : "pointer",
 });
 
-const ontologyScopeChipStyle = (active: boolean, tone: OntologyScopeItem["tone"]): CSSProperties => ({
-  minHeight: 25,
-  border: `1px solid ${active ? CT.accentEdge : tone === "risk" ? "rgba(179,64,55,0.35)" : CT.border}`,
-  borderRadius: 6,
-  background: active ? CT.accentSoft : tone === "risk" ? "#fff3ef" : CT.surface,
+const ontologyScopeRowStyle = (active: boolean, tone: OntologyScopeItem["tone"]): CSSProperties => ({
+  minHeight: 29,
+  display: "grid",
+  gridTemplateColumns: "18px minmax(86px, 160px) 1fr",
+  alignItems: "center",
+  gap: 8,
+  border: `1px solid ${active ? CT.accentEdge : tone === "risk" ? "rgba(179,64,55,0.35)" : "transparent"}`,
+  borderRadius: 4,
+  background: active ? CT.accentSoft : tone === "risk" ? "#fff3ef" : "transparent",
   color: active ? CT.accent : tone === "risk" ? CT.err : CT.ink,
   fontFamily: CT_FONT,
-  fontSize: 10.5,
+  fontSize: 11,
   fontWeight: 850,
-  padding: "0 8px",
+  padding: "2px 7px",
   cursor: "pointer",
 });
+
+const ontologyScopeCheckboxStyle: CSSProperties = {
+  width: 13,
+  height: 13,
+  margin: 0,
+  accentColor: CT.accent,
+  cursor: "pointer",
+};
+
+const ontologyScopeRowLabelStyle: CSSProperties = {
+  minWidth: 0,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
+
+const ontologyScopeRowDetailStyle: CSSProperties = {
+  minWidth: 0,
+  color: CT.inkMuted,
+  fontSize: 10.5,
+  fontWeight: 700,
+  whiteSpace: "nowrap",
+  overflow: "hidden",
+  textOverflow: "ellipsis",
+};
 
 const ontologyNarrativeStyle: CSSProperties = {
   display: "grid",
