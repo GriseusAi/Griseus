@@ -581,13 +581,21 @@ export default function PipelineBuilderPage() {
           .map(normalizeSavedPipeline)
           .filter((item): item is SavedPipelineGraph => Boolean(item));
         setSavedPipelines(prev => mergeSavedPipelines(normalized, prev));
-        if (!initialGraph && normalized[0]) {
-          const repaired = repairGraphSnapshot(normalized[0]);
+        const latestCloudGraph = normalized[0];
+        if (latestCloudGraph && shouldOpenCloudGraph(initialGraph, latestCloudGraph)) {
+          const repaired = repairGraphSnapshot(latestCloudGraph);
           setNodes(repaired.nodes);
           setConnections(repaired.connections);
           setSelectedNodeId(repaired.selectedNodeId);
-          setActiveSavedId(normalized[0].id);
-          setLastSavedAt(normalized[0].savedAt);
+          setActiveSavedId(latestCloudGraph.id);
+          setLastSavedAt(latestCloudGraph.savedAt);
+          try {
+            localStorage.setItem(pipelineBuilderStorageKey, JSON.stringify(latestCloudGraph));
+            localStorage.setItem(pipelineBuilderHistoryStorageKey, JSON.stringify(mergeSavedPipelines(normalized, initialSavedPipelines)));
+          } catch {
+            // Cloud remains the source of truth when browser storage is unavailable.
+          }
+          if (initialGraph) setError(`Cloud'daki güncel pipeline açıldı · ${formatSavedAt(latestCloudGraph.savedAt)}`);
         }
       })
       .catch(() => {
@@ -1014,7 +1022,7 @@ export default function PipelineBuilderPage() {
     setSelectedNodeId(fromId);
     setActionMenu(null);
     setPendingConnection({ kind: "smart", sourceId: fromId });
-    setError("Connect için hedef node'u seç. Müşteri → Cihaz veya Sipariş → Cihaz semantic olarak bağlanır.");
+    setError("Connect için hedef node'u seç. Müşteri → Cihaz semantic olarak bağlanır.");
   }
 
   function connectToOntologyFunction(fromId: string) {
@@ -1963,7 +1971,6 @@ function PipelineGraphNode({ node, canvasOffset, selected, onSelect, onPortClick
           >
             <option value="">Fonksiyon seç</option>
             <option value="customer">Müşteri</option>
-            <option value="order">Sipariş</option>
             <option value="device">Cihaz</option>
             <option value="procurement">Tedarik</option>
             <option value="ontology">Ontology</option>
@@ -4669,19 +4676,92 @@ function collectAllDrilldownNodeIds(nodes: PipelineNode[]) {
 }
 
 function repairGraphSnapshot<T extends GraphSnapshot>(snapshot: T): T {
-  const nodeIds = new Set(snapshot.nodes.map(node => node.id));
-  const connections = dedupeConnections(snapshot.connections.filter(connection => (
+  const cleaned = removeVisibleOrderNodes(snapshot);
+  const nodeIds = new Set(cleaned.nodes.map(node => node.id));
+  const connections = dedupeConnections(cleaned.connections.filter(connection => (
     nodeIds.has(connection.from) && nodeIds.has(connection.to)
   )));
-  const nodes = refreshProcurementNeedTables(refreshAllDeviceOrderRisks(snapshot.nodes), connections);
-  const selectedNodeId = nodeIds.has(snapshot.selectedNodeId)
-    ? snapshot.selectedNodeId
+  const nodes = refreshProcurementNeedTables(refreshAllDeviceOrderRisks(cleaned.nodes), connections);
+  const selectedNodeId = nodeIds.has(cleaned.selectedNodeId)
+    ? cleaned.selectedNodeId
     : nodes[0]?.id ?? initialDatasetId;
   return {
     ...snapshot,
     nodes,
     connections,
     selectedNodeId,
+  };
+}
+
+function removeVisibleOrderNodes<T extends GraphSnapshot>(snapshot: T): T {
+  const orderNodeIds = new Set(
+    snapshot.nodes
+      .filter(node => node.semanticRole === "order" || node.semanticRole === "orderLine" || node.functionKind === "order" || node.functionKind === "orderLine")
+      .map(node => node.id),
+  );
+  if (orderNodeIds.size === 0) return snapshot;
+
+  const byId = new Map(snapshot.nodes.map(node => [node.id, node]));
+  const bridgedConnections = snapshot.connections.flatMap(connection => {
+    if (connection.contract?.relation !== "order_device" || !orderNodeIds.has(connection.from)) return [];
+    const orderNode = byId.get(connection.from);
+    const incomingCustomer = snapshot.connections.find(item => (
+      item.to === connection.from
+      && item.contract?.relation === "customer_order"
+      && !orderNodeIds.has(item.from)
+    ));
+    if (!incomingCustomer) return [];
+    const customerNode = byId.get(incomingCustomer.from);
+    if (!customerNode) return [];
+
+    const context = {
+      ...(incomingCustomer.contract?.context ?? {}),
+      ...(connection.contract.context ?? {}),
+      customer: connection.contract.context.customer
+        || orderNode?.orderFields?.customer
+        || incomingCustomer.contract?.context.customer
+        || customerNode.semanticLabel
+        || customerNode.title,
+      deadline: connection.contract.context.deadline || orderNode?.orderFields?.deadline || "",
+    };
+
+    return [{
+      ...connection,
+      from: customerNode.id,
+      contract: {
+        ...connection.contract,
+        relation: "customer_device" as const,
+        fromRole: "customer" as const,
+        fieldMap: [
+          { from: "semanticLabel", to: "internal.orderLine.customer" },
+          { from: "deviceSku", to: "internal.orderLine.deviceType" },
+          { from: "deviceQuantity", to: "internal.orderLine.quantity" },
+        ],
+        context,
+        message: "Customer linked directly to device through visible order context",
+      },
+    }];
+  });
+
+  const nodes = snapshot.nodes.filter(node => !orderNodeIds.has(node.id));
+  const nodeIds = new Set(nodes.map(node => node.id));
+  const connections = dedupeConnections([
+    ...snapshot.connections.filter(connection => (
+      !orderNodeIds.has(connection.from)
+      && !orderNodeIds.has(connection.to)
+      && nodeIds.has(connection.from)
+      && nodeIds.has(connection.to)
+    )),
+    ...bridgedConnections,
+  ]);
+
+  return {
+    ...snapshot,
+    nodes,
+    connections,
+    selectedNodeId: nodeIds.has(snapshot.selectedNodeId)
+      ? snapshot.selectedNodeId
+      : nodes[0]?.id ?? initialDatasetId,
   };
 }
 
@@ -4768,7 +4848,19 @@ function normalizeSavedPipeline(raw: any): SavedPipelineGraph | null {
     connections: raw.connections.filter((connection: GraphConnection) => nodeIds.has(connection.from) && nodeIds.has(connection.to)),
     selectedNodeId,
     savedAt: raw.savedAt,
+    backendStored: raw.backendStored === true,
   };
+}
+
+function shouldOpenCloudGraph(localGraph: SavedPipelineGraph | null, cloudGraph: SavedPipelineGraph) {
+  if (!localGraph) return true;
+  if (cloudGraph.id === localGraph.id) {
+    return Date.parse(cloudGraph.savedAt) > Date.parse(localGraph.savedAt);
+  }
+  if (!localGraph.backendStored && Date.parse(localGraph.savedAt) > Date.parse(cloudGraph.savedAt)) {
+    return false;
+  }
+  return Date.parse(cloudGraph.savedAt) > Date.parse(localGraph.savedAt);
 }
 
 function upsertSavedPipeline(items: SavedPipelineGraph[], snapshot: SavedPipelineGraph) {
