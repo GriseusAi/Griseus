@@ -155,6 +155,14 @@ type GraphFunctionResponse = {
   semantic: SemanticLayerResponse;
 };
 
+type OntologyScopeItem = {
+  id: string;
+  type: "device" | "customer" | "component" | "procurement";
+  label: string;
+  detail: string;
+  tone: "neutral" | "risk" | "ok";
+};
+
 type OrderFields = {
   customer: string;
   deadline: string;
@@ -2389,11 +2397,30 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   const [selectedGraphObjectId, setSelectedGraphObjectId] = useState<string | null>(null);
   const [semanticLayer, setSemanticLayer] = useState<SemanticLayerResponse | null>(null);
   const [semanticStatus, setSemanticStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
+  const [selectedScopeIds, setSelectedScopeIds] = useState<string[]>([]);
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
-  const localChartSpec = buildOntologyChartSpec(compareRows, chartMode, xDimension, yMetrics);
-  const activeChartSpec = graphFunction?.chart ?? localChartSpec;
+  const scopeItems = useMemo(() => buildOntologyScopeItems(context), [contextSignature]);
+  const scopeSignature = selectedScopeIds.join("|");
+  const scopedCompareRows = useMemo(() => filterOntologyRowsByScope(compareRows, selectedScopeIds, scopeItems), [compareRows, scopeSignature, scopeItems]);
+  const localChartSpec = buildOntologyChartSpec(scopedCompareRows, chartMode, xDimension, yMetrics);
+  const scopedGraphRows = graphFunction ? filterOntologyRowsByScope(graphFunction.chart.rows, selectedScopeIds, scopeItems) : [];
+  const activeChartSpec = graphFunction?.chart
+    && scopedGraphRows.length > 0
+    ? {
+        ...graphFunction.chart,
+        rows: scopedGraphRows,
+      }
+    : localChartSpec;
   const graphObjectsByDevice = useMemo(() => new Map((graphFunction?.objects ?? []).map(item => [item.decision.device, item])), [graphFunction]);
   const selectedGraphObject = graphFunction?.objects.find(item => item.id === selectedGraphObjectId) ?? null;
+  function toggleScopeItem(id: string) {
+    setSelectedGraphObjectId(null);
+    setSelectedScopeIds(prev => prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]);
+  }
+  function clearScope() {
+    setSelectedGraphObjectId(null);
+    setSelectedScopeIds([]);
+  }
   function selectGraphRow(row: any) {
     const objectId = String(row?.objectId || "");
     if (objectId) {
@@ -2430,6 +2457,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         yMetrics,
         nodes,
         connections,
+        filters: { scopeIds: selectedScopeIds },
       }),
       signal: controller.signal,
     })
@@ -2447,7 +2475,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         setSemanticStatus("fallback");
       });
     return () => controller.abort();
-  }, [node.id, chartMode, xDimension, yMetrics.join("|"), contextSignature]);
+  }, [node.id, chartMode, xDimension, yMetrics.join("|"), contextSignature, scopeSignature]);
 
   return (
     <div style={ontologyPreviewStyle}>
@@ -2466,6 +2494,12 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
 
         <div style={ontologyAnalysisCenterStyle}>
           <div style={ontologyWorkspaceStyle}>
+            <OntologyScopePicker
+              items={scopeItems}
+              selectedIds={selectedScopeIds}
+              onToggle={toggleScopeItem}
+              onClear={clearScope}
+            />
             <div style={ontologyWorkspaceToolbarStyle}>
               <div style={ontologyModeToggleGroupStyle}>
                 {([
@@ -2560,6 +2594,55 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             )}
           </div>
         </div>
+      </div>
+    </div>
+  );
+}
+
+function OntologyScopePicker({ items, selectedIds, onToggle, onClear }: {
+  items: OntologyScopeItem[];
+  selectedIds: string[];
+  onToggle: (id: string) => void;
+  onClear: () => void;
+}) {
+  const selected = new Set(selectedIds);
+  const groups: Array<[OntologyScopeItem["type"], string]> = [
+    ["device", "Cihaz"],
+    ["customer", "Müşteri"],
+    ["component", "Bileşen"],
+    ["procurement", "Tedarik"],
+  ];
+  return (
+    <div style={ontologyScopePanelStyle}>
+      <div style={ontologyScopeHeaderStyle}>
+        <strong>Kapsam</strong>
+        <button type="button" onClick={onClear} disabled={selectedIds.length === 0} style={ontologyScopeClearStyle(selectedIds.length === 0)}>
+          Hepsi
+        </button>
+      </div>
+      <div style={ontologyScopeGroupsStyle}>
+        {groups.map(([type, label]) => {
+          const groupItems = items.filter(item => item.type === type).slice(0, 18);
+          if (groupItems.length === 0) return null;
+          return (
+            <div key={type} style={ontologyScopeGroupStyle}>
+              <span>{label}</span>
+              <div style={ontologyScopeChipWrapStyle}>
+                {groupItems.map(item => (
+                  <button
+                    key={item.id}
+                    type="button"
+                    onClick={() => onToggle(item.id)}
+                    title={item.detail}
+                    style={ontologyScopeChipStyle(selected.has(item.id), item.tone)}
+                  >
+                    {item.label}
+                  </button>
+                ))}
+              </div>
+            </div>
+          );
+        })}
       </div>
     </div>
   );
@@ -2700,6 +2783,62 @@ function SemanticLayerPanel({ layer, status }: { layer: SemanticLayerResponse | 
   );
 }
 
+function buildOntologyScopeItems(context: ReturnType<typeof collectOntologyContext>): OntologyScopeItem[] {
+  const deviceItems = context.devices.map(device => {
+    const plan = buildDeviceOperationPlan(device.deviceOperation, device.deviceQuantity ?? "", normalizeDeviceOperationMode(device.deviceOperationMode));
+    const sku = resolveDeviceNodeSku(device) || device.title;
+    return {
+      id: device.id,
+      type: "device" as const,
+      label: sku,
+      detail: plan.shortage > 0 ? `${formatCell(plan.shortage)} açık` : "Cihaz kapsamı",
+      tone: plan.shortage > 0 ? "risk" as const : "ok" as const,
+    };
+  });
+  const customerItems = context.customers.map(customer => ({
+    id: customer.id,
+    type: "customer" as const,
+    label: customer.semanticLabel || customer.title,
+    detail: "Müşteri kapsamı",
+    tone: "neutral" as const,
+  }));
+  const componentItems = context.components.map(component => {
+    const meta = component.bomComponent;
+    const shortage = Number(meta?.stockShortage ?? 0);
+    return {
+      id: component.id,
+      type: "component" as const,
+      label: String(meta?.code || component.title),
+      detail: String(meta?.name || component.subtitle || "BOM bileşeni"),
+      tone: shortage > 0 || meta?.status === "critical" ? "risk" as const : "neutral" as const,
+    };
+  });
+  const procurementItems = context.procurements.map(procurement => ({
+    id: procurement.id,
+    type: "procurement" as const,
+    label: procurement.title,
+    detail: `${procurement.rows.length} tedarik satırı`,
+    tone: "neutral" as const,
+  }));
+  return [...deviceItems, ...customerItems, ...componentItems, ...procurementItems];
+}
+
+function filterOntologyRowsByScope<T extends Record<string, any>>(rows: T[], selectedScopeIds: string[], scopeItems: OntologyScopeItem[]) {
+  if (selectedScopeIds.length === 0) {
+    return rows.filter(row => row.rowKind !== "component" && row.rowKind !== "procurement");
+  }
+  const selected = new Set(selectedScopeIds);
+  const selectedLabels = new Set(scopeItems.filter(item => selected.has(item.id)).map(item => item.label));
+  return rows.filter(row => {
+    const objectId = String(row.objectId || "");
+    if (selected.has(objectId)) return true;
+    if (objectId.startsWith("decision:") && selected.has(objectId.replace(/^decision:/, ""))) return true;
+    if (selectedLabels.has(String(row.customer || ""))) return true;
+    if (selectedLabels.has(String(row.device || ""))) return true;
+    return false;
+  });
+}
+
 function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
   const deviceRows = context.devices.map(device => {
     const sku = resolveDeviceNodeSku(device) || device.title;
@@ -2720,6 +2859,8 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
     const shortage = plan.shortage;
     const riskScore = Math.max(0, shortage) + criticalComponents * 25 + warningComponents * 10;
     return {
+      objectId: device.id,
+      rowKind: "device",
       device: sku,
       customer: firstOrder?.customer || "Müşteri yok",
       deadline: firstOrder?.deadline || "Deadline yok",
@@ -2756,7 +2897,28 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
       riskScore: shortage + (status === "critical" ? 25 : status === "warning" ? 10 : 0),
     };
   });
-  return deviceRows.concat(componentRows);
+  const procurementRows = context.procurements.map(procurement => {
+    const planned = procurement.rows.reduce((sum, row) => sum + Number(row.planned_quantity ?? row.quantity ?? row.miktar ?? 0), 0);
+    const shortage = procurement.rows.reduce((sum, row) => sum + Number(row.shortage ?? row.eksik ?? 0), 0);
+    const supplier = String(procurement.procurementFields?.supplier || procurement.rows[0]?.supplier || procurement.rows[0]?.tedarikci || "Tedarik");
+    return {
+      objectId: procurement.id,
+      rowKind: "procurement",
+      device: procurement.title,
+      customer: supplier,
+      deadline: procurement.procurementFields?.eta || procurement.rows[0]?.eta || "ETA yok",
+      riskTier: shortage > 0 ? "Tedarik açığı" : "Tedarik",
+      requested: planned,
+      warehouse: 0,
+      producible: planned,
+      totalSold: 0,
+      shortage,
+      criticalComponents: shortage > 0 ? 1 : 0,
+      warningComponents: 0,
+      riskScore: shortage,
+    };
+  });
+  return deviceRows.concat(componentRows, procurementRows);
 }
 
 function defaultOntologyYMetrics(mode: OntologyChartMode): OntologyYMetric[] {
@@ -6434,6 +6596,70 @@ const ontologyWorkspaceStyle: CSSProperties = {
   background: CT.surface,
   overflow: "hidden",
 };
+
+const ontologyScopePanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  borderBottom: `1px solid ${CT.border}`,
+  padding: "10px 12px",
+  background: "#fbfaf6",
+};
+
+const ontologyScopeHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 10,
+  color: CT.ink,
+  fontSize: 12,
+};
+
+const ontologyScopeGroupsStyle: CSSProperties = {
+  display: "grid",
+  gap: 7,
+};
+
+const ontologyScopeGroupStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "70px 1fr",
+  gap: 8,
+  alignItems: "start",
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const ontologyScopeChipWrapStyle: CSSProperties = {
+  display: "flex",
+  flexWrap: "wrap",
+  gap: 6,
+};
+
+const ontologyScopeClearStyle = (disabled: boolean): CSSProperties => ({
+  height: 24,
+  border: `1px solid ${CT.border}`,
+  borderRadius: 6,
+  background: disabled ? "#f0efeb" : CT.surface,
+  color: disabled ? CT.inkMuted : CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 11,
+  fontWeight: 850,
+  padding: "0 9px",
+  cursor: disabled ? "default" : "pointer",
+});
+
+const ontologyScopeChipStyle = (active: boolean, tone: OntologyScopeItem["tone"]): CSSProperties => ({
+  minHeight: 25,
+  border: `1px solid ${active ? CT.accentEdge : tone === "risk" ? "rgba(179,64,55,0.35)" : CT.border}`,
+  borderRadius: 6,
+  background: active ? CT.accentSoft : tone === "risk" ? "#fff3ef" : CT.surface,
+  color: active ? CT.accent : tone === "risk" ? CT.err : CT.ink,
+  fontFamily: CT_FONT,
+  fontSize: 10.5,
+  fontWeight: 850,
+  padding: "0 8px",
+  cursor: "pointer",
+});
 
 const ontologyNarrativeStyle: CSSProperties = {
   display: "grid",
