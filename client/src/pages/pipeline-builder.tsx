@@ -2299,7 +2299,6 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   const [semanticLayer, setSemanticLayer] = useState<SemanticLayerResponse | null>(null);
   const [semanticStatus, setSemanticStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
-  const deliveryDecision = useMemo(() => buildOntologyDeliveryDecision(context, nodes, connections), [contextSignature, nodes, connections]);
   const localChartSpec = buildOntologyChartSpec(compareRows, chartMode, xDimension, yMetrics);
   const activeChartSpec = localChartSpec;
   function changeChartMode(mode: OntologyChartMode) {
@@ -2356,27 +2355,12 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             <span>{context.devices.length} cihaz</span>
             <span>{context.customers.length} müşteri</span>
             <span>{context.components.length} BOM</span>
-            <span>{semanticStatus === "loading" ? "semantic layer" : semanticLayer?.provider ?? "local"}</span>
           </div>
         </div>
 
         <div style={ontologyAnalysisCenterStyle}>
-          <DeliveryDecisionPanel decision={deliveryDecision} />
-          <SemanticLayerPanel layer={semanticLayer} status={semanticStatus} />
-          {semanticLayer && (
-            <div style={ontologyNarrativeStyle}>
-              <strong>Semantic layer otomatik kuruldu</strong>
-              <span>
-                {semanticLayer.ontology.objectTypes.length} object type, {semanticLayer.ontology.linkTypes.length} link type ve {semanticLayer.ontology.actionTypes.length} action type graph context'e bağlandı.
-              </span>
-            </div>
-          )}
-            <div style={ontologyWorkspaceStyle}>
-              <div style={ontologyWorkspaceToolbarStyle}>
-                <div>
-                  <strong>Canlı graph karşılaştırması</strong>
-                  <span>{compareRows.length > 0 ? `${compareRows.length} cihaz canlı graph context'inde` : "Cihaz node'u bağlanınca grafik oluşur"}</span>
-              </div>
+          <div style={ontologyWorkspaceStyle}>
+            <div style={ontologyWorkspaceToolbarStyle}>
               <div style={ontologyModeToggleGroupStyle}>
                 {([
                   ["fulfillment", "Fulfillment"],
@@ -2455,29 +2439,6 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               )}
             </div>
           </div>
-          {semanticLayer && (semanticLayer.actionQueue.length > 0 || semanticLayer.agentLanes.length > 0) && (
-            <div style={ontologyInsightGridStyle}>
-              <div>
-                <strong>Action queue</strong>
-                {(semanticLayer.actionQueue.length > 0 ? semanticLayer.actionQueue : [{ id: "empty", label: "Staged aksiyon yok", reason: "Tüm kararlar izleme modunda.", ownerAgent: "Action agent", actionType: "none", requiresHumanApproval: true }]).slice(0, 3).map(action => <span key={action.id} style={ontologyInsightLineStyle}>{action.label}: {action.reason}</span>)}
-              </div>
-              <div>
-                <strong>Sub-agent lane</strong>
-                {semanticLayer.agentLanes.slice(0, 3).map(item => <span key={item.agent} style={ontologyInsightLineStyle}>{item.agent}: {item.finding}</span>)}
-              </div>
-            </div>
-          )}
-        </div>
-
-        <div style={ontologyBottomBarStyle}>
-          <span>Chart: bar</span>
-          <span>X: {activeChartSpec.xKey}</span>
-          <span>{activeChartSpec.series.map(series => series.key).join(" · ")}</span>
-          <span>Provider: {semanticLayer?.provider ?? (semanticStatus === "loading" ? "loading" : "local")}</span>
-          <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
-            <Network size={14} />
-            Chart workspace
-          </a>
         </div>
       </div>
     </div>
