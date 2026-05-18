@@ -30,7 +30,6 @@ import {
   RotateCcw,
   Save,
   Search,
-  Sparkles,
   Table2,
   Trash2,
   UploadCloud,
@@ -283,7 +282,7 @@ type DeviceOperationSnapshot = {
 };
 
 type SemanticConnectionContract = {
-  relation: "customer_order" | "customer_device" | "order_order_line" | "order_line_device" | "order_device" | "component_procurement" | "generic";
+  relation: "customer_order" | "customer_device" | "order_order_line" | "order_line_device" | "order_device" | "component_procurement" | "ontology_input" | "generic";
   fromRole?: SemanticRole;
   toRole?: SemanticRole;
   fieldMap: Array<{ from: string; to: string }>;
@@ -996,6 +995,48 @@ export default function PipelineBuilderPage() {
     setError("Connect için hedef node'u seç. Müşteri → Cihaz veya Sipariş → Cihaz semantic olarak bağlanır.");
   }
 
+  function connectToOntologyFunction(fromId: string) {
+    const source = nodes.find(node => node.id === fromId);
+    if (!source || source.kind === "output") return;
+    if (source.semanticRole === "ontology") {
+      setSelectedNodeId(source.id);
+      setActionMenu(null);
+      setError("Bu kutu zaten Ontology f(x) olarak çalışıyor.");
+      return;
+    }
+
+    const existingOntology = nodes.find(node => node.semanticRole === "ontology");
+    const ontologyId = existingOntology?.id ?? `ontology-${Date.now()}`;
+    const position = findFreePosition(nodes, "transform", nextNodeX(source, "transform"), alignNodeY(source, "transform"));
+    const ontologyNode: PipelineNode | null = existingOntology ?? {
+      id: ontologyId,
+      kind: "transform",
+      title: "Ontology AI",
+      subtitle: "Visionary analysis engine · bağlı node'ları okur",
+      x: position.x,
+      y: position.y,
+      rows: createOntologyRows(),
+      columns: ["mode", "scope", "output"],
+      functionKind: "ontology",
+      semanticRole: "ontology",
+      semanticLabel: "Ontology",
+      backendKey: "ontology",
+    };
+    const connection = buildSmartConnection(source, ontologyNode, nodes, connections);
+
+    pushHistory();
+    setNodes(prev => existingOntology ? prev : prev.concat(ontologyNode));
+    setConnections(prev => dedupeConnections([
+      ...prev,
+      connection,
+    ]));
+    setSelectedNodeId(ontologyId);
+    setActionMenu(null);
+    setPendingConnection(null);
+    setError(`${source.title} → Ontology f(x): graph function girdisi olarak bağlandı.`);
+    validateSemanticConnection(connection, source, ontologyNode);
+  }
+
   function completeSmartConnection(fromId: string, toId: string) {
     const source = nodes.find(node => node.id === fromId);
     const target = nodes.find(node => node.id === toId);
@@ -1145,11 +1186,6 @@ export default function PipelineBuilderPage() {
       const semanticRole = nodeFunctionToSemanticRole(functionKind);
       const label = semanticRoleLabel(semanticRole);
       const deviceLabel = semanticRole === "device" && nextDeviceSku ? nextDeviceSku : label;
-      const ontologyRows = [
-        { mode: "vision", scope: "connected devices", output: "executive chart + risk narrative" },
-        { mode: "operations", scope: "stock / BOM / procurement", output: "recommended action plan" },
-        { mode: "data architecture", scope: "new device intake", output: "schema and metric map" },
-      ];
       return {
         ...node,
         title: semanticRole === "ontology" ? "Ontology AI" : deviceLabel,
@@ -1158,7 +1194,7 @@ export default function PipelineBuilderPage() {
           : semanticRole === "device" && nextDeviceSku
             ? `${nextDeviceSku} cihaz entity · DB bağlanıyor`
             : node.rows.length > 0 ? `${node.rows.length} rows · ${label.toLocaleLowerCase("tr-TR")} entity` : `${label} entity node`,
-        rows: semanticRole === "ontology" ? ontologyRows : node.rows,
+        rows: semanticRole === "ontology" ? createOntologyRows() : node.rows,
         columns: semanticRole === "ontology" ? ["mode", "scope", "output"] : node.columns,
         functionKind,
         semanticRole,
@@ -1676,7 +1712,7 @@ export default function PipelineBuilderPage() {
               {actionMenu && (
                 <NodeActionMenu
                   state={actionMenu}
-                  onTransform={() => createTransform(actionMenu.nodeId)}
+                  onOntology={() => connectToOntologyFunction(actionMenu.nodeId)}
                   onUnion={() => createUnion(actionMenu.nodeId)}
                   onConnect={() => createSmartConnection(actionMenu.nodeId)}
                   onOutput={() => createOutputFrom(actionMenu.nodeId)}
@@ -1982,9 +2018,9 @@ function PipelineGraphNode({ node, selected, onSelect, onPortClick, onFile, onFu
   );
 }
 
-function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onNewDataset, onEdit }: {
+function NodeActionMenu({ state, onOntology, onUnion, onConnect, onOutput, onNewDataset, onEdit }: {
   state: NonNullable<ActionMenuState>;
-  onTransform: () => void;
+  onOntology: () => void;
   onUnion: () => void;
   onConnect: () => void;
   onOutput: () => void;
@@ -1995,7 +2031,7 @@ function NodeActionMenu({ state, onTransform, onUnion, onConnect, onOutput, onNe
     <div style={{ ...actionMenuStyle, left: state.x, top: state.y }}>
       <ActionItem icon={<GitBranch size={18} />} label="Connect" tone={CT.accent} onClick={onConnect} />
       <div style={actionDividerStyle} />
-      <ActionItem icon={<Sparkles size={18} />} label="Transform" tone={CT.info} onClick={onTransform} />
+      <ActionItem icon={<Network size={18} />} label="Ontology" tone={CT.info} onClick={onOntology} />
       <ActionItem icon={<Box size={18} />} label="Union" tone="#d92f7d" onClick={onUnion} />
       <ActionItem icon={<Database size={18} />} label="Output" tone={CT.ok} onClick={onOutput} />
       <div style={actionDividerStyle} />
@@ -4909,6 +4945,14 @@ function semanticRoleLabel(role: SemanticRole) {
   return "Cihaz";
 }
 
+function createOntologyRows() {
+  return [
+    { mode: "graph-function", scope: "pipeline", output: "fulfillment-risk-by-device" },
+    { mode: "semantic-layer", scope: "connected nodes", output: "object/action context" },
+    { mode: "decision-layer", scope: "stock / BOM / procurement", output: "recommended action plan" },
+  ];
+}
+
 function buildSmartConnection(
   source: PipelineNode,
   target: PipelineNode,
@@ -4916,7 +4960,9 @@ function buildSmartConnection(
   graphConnections: GraphConnection[] = [],
 ): GraphConnection {
   const relation =
-    source.bomComponent && target.semanticRole === "procurement"
+    target.semanticRole === "ontology"
+      ? "ontology_input"
+      : source.bomComponent && target.semanticRole === "procurement"
       ? "component_procurement"
       : source.semanticRole === "customer" && target.semanticRole === "device"
       ? "customer_device"
@@ -4951,6 +4997,14 @@ function buildSmartConnection(
     context.status = target.procurementFields?.status ?? "planned";
   }
   if (relation === "customer_order") context.customer = source.semanticLabel || source.title;
+  if (relation === "ontology_input") {
+    context.sourceNode = source.title;
+    context.sourceRole = source.semanticRole ?? source.kind;
+    if (source.semanticLabel) context.semanticLabel = source.semanticLabel;
+    if (source.deviceSku) context.device = source.deviceSku;
+    if (source.deviceQuantity) context.quantity = source.deviceQuantity;
+    if (source.bomComponent?.code) context.componentCode = source.bomComponent.code;
+  }
   if (relation === "customer_device") {
     context.customer = source.semanticLabel || source.title;
     context.device = target.deviceSku || target.semanticLabel || target.title;
@@ -4972,6 +5026,12 @@ function buildSmartConnection(
         { from: "bomComponent.code", to: "procurementFields.componentCode" },
         { from: "bomComponent.stockShortage", to: "procurementFields.quantity" },
       ]
+    : relation === "ontology_input"
+      ? [
+          { from: "id", to: "ontology.input.objectId" },
+          { from: "semanticRole", to: "ontology.input.role" },
+          { from: "rows", to: "ontology.input.rows" },
+        ]
     : relation === "customer_order"
     ? [{ from: "semanticLabel", to: "orderFields.customer" }]
     : relation === "customer_device"
@@ -5003,6 +5063,8 @@ function buildSmartConnection(
       status: "local",
       message: relation === "component_procurement"
         ? "Shortage component mapped into procurement need"
+        : relation === "ontology_input"
+        ? "Node projected into ontology graph function"
         : relation === "customer_device"
         ? "Customer linked directly to device through visible order context"
         : relation === "customer_order"
@@ -5160,6 +5222,9 @@ function applySmartNodeContext(source: PipelineNode, target: PipelineNode, node:
 }
 
 function describeSmartConnection(source: PipelineNode, target: PipelineNode) {
+  if (target.semanticRole === "ontology") {
+    return `${source.title} → Ontology f(x): graph function girdisi olarak bağlandı.`;
+  }
   if (source.semanticRole === "customer" && target.semanticRole === "order") {
     return `${source.title} → ${target.title}: müşteri alanı siparişe aktarıldı.`;
   }
