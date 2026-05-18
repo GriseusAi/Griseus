@@ -45,6 +45,8 @@ type PortSide = "left" | "right";
 type DeviceOperationMode = "warehouse_sale" | "produce_sale";
 type DeviceDrilldownMode = "all" | "shortage";
 type OntologyChartMode = "fulfillment" | "capacity" | "risk";
+type OntologyXDimension = "device" | "customer" | "deadline" | "riskTier";
+type OntologyYMetric = "requested" | "warehouse" | "producible" | "shortage" | "criticalComponents" | "warningComponents" | "riskScore" | "totalSold";
 
 type DeliveryDecision = {
   status: "ontime" | "risk" | "late" | "missing";
@@ -2294,12 +2296,24 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
     })),
   }), [context.devices, context.customers, context.orders, context.components, context.procurements]);
   const [chartMode, setChartMode] = useState<OntologyChartMode>("fulfillment");
+  const [xDimension, setXDimension] = useState<OntologyXDimension>("device");
+  const [yMetrics, setYMetrics] = useState<OntologyYMetric[]>(["requested", "warehouse", "producible", "shortage"]);
+  const [analysis, setAnalysis] = useState<OntologyAnalysisResponse | null>(null);
+  const [analysisStatus, setAnalysisStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const [semanticLayer, setSemanticLayer] = useState<SemanticLayerResponse | null>(null);
   const [semanticStatus, setSemanticStatus] = useState<"idle" | "loading" | "ready" | "fallback">("idle");
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
   const deliveryDecision = useMemo(() => buildOntologyDeliveryDecision(context, nodes, connections), [contextSignature, nodes, connections]);
-  const localChartSpec = buildOntologyChartSpec(compareRows, chartMode);
-  const activeChartSpec = localChartSpec;
+  const localChartSpec = buildOntologyChartSpec(compareRows, chartMode, xDimension, yMetrics);
+  const activeChartSpec = analysis?.chartSpec ? normalizeOntologyRemoteChartSpec(analysis.chartSpec) : localChartSpec;
+  function toggleYMetric(metric: OntologyYMetric) {
+    setYMetrics(prev => {
+      if (prev.includes(metric)) {
+        return prev.length === 1 ? prev : prev.filter(item => item !== metric);
+      }
+      return [...prev, metric].slice(-6);
+    });
+  }
   useEffect(() => {
     const controller = new AbortController();
     setSemanticStatus("loading");
@@ -2308,6 +2322,9 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         selectedNodeId: node.id,
+        chartMode,
+        xDimension,
+        yMetrics,
         nodes,
         connections,
       }),
@@ -2325,7 +2342,37 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         setSemanticStatus("fallback");
       });
     return () => controller.abort();
-  }, [node.id, contextSignature]);
+  }, [node.id, chartMode, xDimension, yMetrics.join("|"), contextSignature]);
+
+  useEffect(() => {
+    const controller = new AbortController();
+    setAnalysisStatus("loading");
+    fetch("/api/pipeline-builder/ontology/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        selectedNodeId: node.id,
+        chartMode,
+        xDimension,
+        yMetrics,
+        nodes,
+        connections,
+      }),
+      signal: controller.signal,
+    })
+      .then(res => res.ok ? res.json() : Promise.reject(new Error("ontology analysis unavailable")))
+      .then((payload: OntologyAnalysisResponse) => {
+        if (controller.signal.aborted) return;
+        setAnalysis(payload);
+        setAnalysisStatus("ready");
+      })
+      .catch(() => {
+        if (controller.signal.aborted) return;
+        setAnalysis(null);
+        setAnalysisStatus("fallback");
+      });
+    return () => controller.abort();
+  }, [node.id, chartMode, xDimension, yMetrics.join("|"), contextSignature]);
 
   return (
     <div style={ontologyPreviewStyle}>
@@ -2339,13 +2386,19 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
             <span>{context.devices.length} cihaz</span>
             <span>{context.customers.length} müşteri</span>
             <span>{context.components.length} BOM</span>
-            <span>{semanticStatus === "loading" ? "semantic layer" : semanticLayer?.provider ?? "local"}</span>
+            <span>{analysisStatus === "loading" ? "claude analiz" : analysis?.provider ?? semanticLayer?.provider ?? "local"}</span>
           </div>
         </div>
 
         <div style={ontologyAnalysisCenterStyle}>
           <DeliveryDecisionPanel decision={deliveryDecision} />
           <SemanticLayerPanel layer={semanticLayer} status={semanticStatus} />
+          {analysis && (
+            <div style={ontologyNarrativeStyle}>
+              <strong>{analysis.title}</strong>
+              <span>{analysis.narrative}</span>
+            </div>
+          )}
           {semanticLayer && (
             <div style={ontologyNarrativeStyle}>
               <strong>Semantic layer otomatik kuruldu</strong>
@@ -2354,11 +2407,11 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
               </span>
             </div>
           )}
-          <div style={ontologyWorkspaceStyle}>
-            <div style={ontologyWorkspaceToolbarStyle}>
-              <div>
-                <strong>Canlı graph karşılaştırması</strong>
-                <span>{compareRows.length > 0 ? `${compareRows.length} cihaz canlı graph context'inde` : "Cihaz node'u bağlanınca grafik oluşur"}</span>
+            <div style={ontologyWorkspaceStyle}>
+              <div style={ontologyWorkspaceToolbarStyle}>
+                <div>
+                  <strong>Canlı graph karşılaştırması</strong>
+                  <span>{compareRows.length > 0 ? `${compareRows.length} cihaz canlı graph context'inde` : "Cihaz node'u bağlanınca grafik oluşur"}</span>
               </div>
               <div style={ontologyModeToggleGroupStyle}>
                 {([
@@ -2377,6 +2430,48 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                 ))}
               </div>
             </div>
+            <div style={ontologyDimensionPanelStyle}>
+              <div style={ontologyDimensionGroupStyle}>
+                <strong>X</strong>
+                {([
+                  ["device", "Cihaz"],
+                  ["customer", "Müşteri"],
+                  ["deadline", "Deadline"],
+                  ["riskTier", "Risk"],
+                ] as Array<[OntologyXDimension, string]>).map(([dimension, label]) => (
+                  <button
+                    key={dimension}
+                    type="button"
+                    onClick={() => setXDimension(dimension)}
+                    style={ontologyDimensionButtonStyle(xDimension === dimension)}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+              <div style={ontologyDimensionGroupStyle}>
+                <strong>Y</strong>
+                {([
+                  ["requested", "Sipariş"],
+                  ["warehouse", "Depo"],
+                  ["producible", "Üretilebilir"],
+                  ["shortage", "Açık"],
+                  ["criticalComponents", "Kritik BOM"],
+                  ["warningComponents", "Düşük BOM"],
+                  ["riskScore", "Risk skoru"],
+                  ["totalSold", "Satılan"],
+                ] as Array<[OntologyYMetric, string]>).map(([metric, label]) => (
+                  <button
+                    key={metric}
+                    type="button"
+                    onClick={() => toggleYMetric(metric)}
+                    style={ontologyDimensionButtonStyle(yMetrics.includes(metric))}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            </div>
             <div style={ontologyChartCanvasStyle}>
               {activeChartSpec.rows.length === 0 ? (
                 <div style={ontologyEmptyChartStyle}>f(x) kutusuna ürün cihazlarını bağla; depo, üretilebilirlik, sipariş ve BOM riski burada karşılaştırılır.</div>
@@ -2385,7 +2480,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                   {activeChartSpec.kind === "line" ? (
                     <LineChart data={activeChartSpec.rows} margin={{ top: 10, right: 18, bottom: 0, left: -16 }}>
                       <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="device" stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <XAxis dataKey={activeChartSpec.xKey} stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
                       <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={ontologyTooltipStyle} />
                       <Legend wrapperStyle={ontologyLegendStyle} />
@@ -2405,7 +2500,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                   ) : (
                     <BarChart data={activeChartSpec.rows} margin={{ top: 10, right: 18, bottom: 0, left: -16 }}>
                       <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
-                      <XAxis dataKey="device" stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                      <XAxis dataKey={activeChartSpec.xKey} stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
                       <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
                       <Tooltip contentStyle={ontologyTooltipStyle} />
                       <Legend wrapperStyle={ontologyLegendStyle} />
@@ -2434,9 +2529,9 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
 
         <div style={ontologyBottomBarStyle}>
           <span>Chart: {activeChartSpec.kind === "line" ? "combo" : "bar"}</span>
-          <span>X: device</span>
+          <span>X: {activeChartSpec.xKey}</span>
           <span>{activeChartSpec.series.map(series => series.key).join(" · ")}</span>
-          <span>Provider: {semanticLayer?.provider ?? (semanticStatus === "loading" ? "loading" : "local")}</span>
+          <span>Provider: {analysis?.provider ?? semanticLayer?.provider ?? (analysisStatus === "loading" || semanticStatus === "loading" ? "loading" : "local")}</span>
           <a href="/ontology-layers" style={ontologyOpenButtonStyle}>
             <Network size={14} />
             Chart workspace
@@ -2545,6 +2640,12 @@ function SemanticLayerPanel({ layer, status }: { layer: SemanticLayerResponse | 
 function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyContext>) {
   return context.devices.map(device => {
     const sku = resolveDeviceNodeSku(device) || device.title;
+    const relatedOrders = context.orders.filter(order => {
+      const fields: any = order.orderLineFields || order.orderFields;
+      const orderDevice = String(fields?.deviceType || "");
+      return !orderDevice || orderDevice === sku || context.orders.length === 1;
+    });
+    const firstOrder: any = relatedOrders[0]?.orderLineFields || relatedOrders[0]?.orderFields;
     const plan = buildDeviceOperationPlan(device.deviceOperation, device.deviceQuantity ?? "", normalizeDeviceOperationMode(device.deviceOperationMode));
     const relatedComponents = context.components.filter(component => component.bomComponent?.sku === sku);
     const criticalComponents = relatedComponents.filter(component => component.bomComponent?.status === "critical").length;
@@ -2554,8 +2655,12 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
     const producible = device.deviceOperation?.maxProducible ?? 0;
     const totalSold = device.deviceOperation?.totalSold ?? 0;
     const shortage = plan.shortage;
+    const riskScore = Math.max(0, shortage) + criticalComponents * 25 + warningComponents * 10;
     return {
       device: sku,
+      customer: firstOrder?.customer || "Müşteri yok",
+      deadline: firstOrder?.deadline || "Deadline yok",
+      riskTier: riskScore > 75 ? "Kritik" : riskScore > 0 ? "Riskli" : "Sağlıklı",
       requested,
       warehouse,
       producible,
@@ -2563,7 +2668,7 @@ function buildOntologyCompareRows(context: ReturnType<typeof collectOntologyCont
       shortage,
       criticalComponents,
       warningComponents,
-      riskScore: Math.max(0, shortage) + criticalComponents * 25 + warningComponents * 10,
+      riskScore,
     };
   });
 }
@@ -2788,7 +2893,12 @@ function formatDecisionDate(value: string) {
   return match ? `${match[3]}.${match[2]}.${match[1]}` : value;
 }
 
-function buildOntologyChartSpec(rows: ReturnType<typeof buildOntologyCompareRows>, mode: OntologyChartMode) {
+function buildOntologyChartSpec(
+  rows: ReturnType<typeof buildOntologyCompareRows>,
+  mode: OntologyChartMode,
+  xDimension: OntologyXDimension,
+  yMetrics: OntologyYMetric[],
+) {
   const palette = {
     warehouse: CT.info,
     producible: CT.ok,
@@ -2798,44 +2908,34 @@ function buildOntologyChartSpec(rows: ReturnType<typeof buildOntologyCompareRows
     warning: CT.warn,
     sold: "#6f6258",
   };
-  if (mode === "risk") {
-    return {
-      kind: "bar" as const,
-      rows,
-      series: [
-        { key: "criticalComponents", label: "Kritik BOM", color: palette.critical },
-        { key: "warningComponents", label: "Düşük BOM", color: palette.warning },
-        { key: "shortage", label: "Açık", color: palette.shortage },
-        { key: "riskScore", label: "Risk skoru", color: CT.accent },
-      ],
-    };
-  }
-  if (mode === "capacity") {
-    return {
-      kind: "bar" as const,
-      rows,
-      series: [
-        { key: "warehouse", label: "Depo", color: palette.warehouse },
-        { key: "producible", label: "Üretilebilir", color: palette.producible },
-        { key: "totalSold", label: "Satılan", color: palette.sold },
-      ],
-    };
-  }
+  const catalog: Record<OntologyYMetric, { key: OntologyYMetric; label: string; color: string }> = {
+    requested: { key: "requested", label: "Sipariş", color: palette.requested },
+    warehouse: { key: "warehouse", label: "Depo", color: palette.warehouse },
+    producible: { key: "producible", label: "Üretilebilir", color: palette.producible },
+    shortage: { key: "shortage", label: "Açık", color: palette.shortage },
+    criticalComponents: { key: "criticalComponents", label: "Kritik BOM", color: palette.critical },
+    warningComponents: { key: "warningComponents", label: "Düşük BOM", color: palette.warning },
+    riskScore: { key: "riskScore", label: "Risk skoru", color: CT.accent },
+    totalSold: { key: "totalSold", label: "Satılan", color: palette.sold },
+  };
+  const modeDefaults: Record<OntologyChartMode, OntologyYMetric[]> = {
+    fulfillment: ["requested", "warehouse", "producible", "shortage"],
+    capacity: ["warehouse", "producible", "totalSold"],
+    risk: ["criticalComponents", "warningComponents", "shortage", "riskScore"],
+  };
+  const series = (yMetrics.length > 0 ? yMetrics : modeDefaults[mode]).map(metric => catalog[metric]).filter(Boolean);
   return {
-    kind: "line" as const,
+    kind: mode === "fulfillment" ? "line" as const : "bar" as const,
+    xKey: xDimension,
     rows,
-    series: [
-      { key: "requested", label: "Sipariş", color: palette.requested },
-      { key: "warehouse", label: "Depo", color: palette.warehouse },
-      { key: "producible", label: "Üretilebilir", color: palette.producible },
-      { key: "shortage", label: "Açık", color: palette.shortage },
-    ],
+    series,
   };
 }
 
 function normalizeOntologyRemoteChartSpec(spec: OntologyAnalysisResponse["chartSpec"]) {
   return {
     kind: spec.type === "bar" ? "bar" as const : "line" as const,
+    xKey: spec.xKey || "device",
     rows: Array.isArray(spec.data) ? spec.data : [],
     series: Array.isArray(spec.series) ? spec.series : [],
   };
@@ -6142,6 +6242,36 @@ const ontologyModeButtonStyle = (active: boolean): CSSProperties => ({
   fontFamily: CT_FONT,
   fontSize: 11,
   fontWeight: 800,
+  cursor: "pointer",
+});
+
+const ontologyDimensionPanelStyle: CSSProperties = {
+  display: "grid",
+  gap: 8,
+  borderBottom: `1px solid ${CT.border}`,
+  padding: "9px 12px 10px",
+  background: "#fbfaf6",
+};
+
+const ontologyDimensionGroupStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "center",
+  gap: 6,
+  flexWrap: "wrap",
+  color: CT.inkMuted,
+  fontSize: 11,
+};
+
+const ontologyDimensionButtonStyle = (active: boolean): CSSProperties => ({
+  height: 24,
+  border: `1px solid ${active ? "rgba(201,100,66,0.45)" : CT.border}`,
+  borderRadius: 5,
+  background: active ? "#f6e7de" : CT.surface,
+  color: active ? CT.accent : CT.inkMuted,
+  fontFamily: CT_FONT,
+  fontSize: 10,
+  fontWeight: 850,
+  padding: "0 8px",
   cursor: "pointer",
 });
 
