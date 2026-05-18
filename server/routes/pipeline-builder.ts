@@ -1001,6 +1001,7 @@ router.post("/ontology/graph-function/run", async (req, res) => {
     const context = collectOntologyAnalyzeContext(parsed.data);
     const semantic = buildOntologySemanticLayer(context);
     const decisions = semantic.decisions;
+    const decisionsById = new Map(decisions.map((decision: any) => [decision.id, decision]));
     const series = [
       { key: "requested", label: "Sipariş", color: "#c96442" },
       { key: "warehouse", label: "Depo", color: "#3d6fb0" },
@@ -1030,13 +1031,16 @@ router.post("/ontology/graph-function/run", async (req, res) => {
         rows,
         series: series.filter(item => parsed.data.yMetrics.includes(item.key as any)),
       },
-      objects: decisions.map((decision: any) => ({
-        id: decision.id,
-        objectType: "DeliveryDecision",
-        title: decision.device,
-        subtitle: decision.customer || decision.status,
-        decision,
-      })),
+      objects: rows.map((row: any) => {
+        const decision = decisionsById.get(row.objectId) as any;
+        return {
+          id: row.objectId,
+          objectType: "DeliveryDecision",
+          title: row.device,
+          subtitle: row.customer || row.riskTier,
+          decision,
+        };
+      }),
       actions: semantic.actionQueue,
       semantic,
     });

@@ -2325,7 +2325,17 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
   const compareRows = useMemo(() => buildOntologyCompareRows(context), [contextSignature]);
   const localChartSpec = buildOntologyChartSpec(compareRows, chartMode, xDimension, yMetrics);
   const activeChartSpec = graphFunction?.chart ?? localChartSpec;
+  const graphObjectsByDevice = useMemo(() => new Map((graphFunction?.objects ?? []).map(item => [item.decision.device, item])), [graphFunction]);
   const selectedGraphObject = graphFunction?.objects.find(item => item.id === selectedGraphObjectId) ?? null;
+  function selectGraphRow(row: any) {
+    const objectId = String(row?.objectId || "");
+    if (objectId) {
+      setSelectedGraphObjectId(objectId);
+      return;
+    }
+    const object = graphObjectsByDevice.get(String(row?.device || ""));
+    setSelectedGraphObjectId(object?.id ?? null);
+  }
   function changeChartMode(mode: OntologyChartMode) {
     setChartMode(mode);
     setYMetrics(defaultOntologyYMetrics(mode));
@@ -2454,7 +2464,11 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                 <div style={ontologyEmptyChartStyle}>f(x) kutusuna ürün cihazlarını bağla; depo, üretilebilirlik, sipariş ve BOM riski burada karşılaştırılır.</div>
               ) : (
                 <ResponsiveContainer width="100%" height={260}>
-                  <BarChart data={activeChartSpec.rows} margin={{ top: 10, right: 18, bottom: 0, left: -16 }}>
+                  <BarChart
+                    data={activeChartSpec.rows}
+                    margin={{ top: 10, right: 18, bottom: 0, left: -16 }}
+                    onClick={(event: any) => selectGraphRow(event?.activePayload?.[0]?.payload)}
+                  >
                     <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
                     <XAxis dataKey={activeChartSpec.xKey} stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
                     <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
@@ -2468,7 +2482,6 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
                         fill={series.color}
                         radius={[4, 4, 0, 0]}
                         cursor="pointer"
-                        onClick={(data: any) => setSelectedGraphObjectId(data?.objectId ?? null)}
                       />
                     ))}
                   </BarChart>
