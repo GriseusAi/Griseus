@@ -930,11 +930,7 @@ export default function PipelineBuilderPage() {
       setActionMenu(null);
       return;
     }
-    setActionMenu({
-      nodeId,
-      x: node.x + nodeWidth(node.kind) + 18,
-      y: node.y - 26,
-    });
+    setActionMenu(actionMenuPosition(node));
   }
 
   function selectGraphNode(nodeId: string) {
@@ -949,7 +945,15 @@ export default function PipelineBuilderPage() {
     }
 
     setSelectedNodeId(nodeId);
-    setActionMenu(null);
+    setActionMenu(node && node.kind !== "output" && node.kind !== "component" ? actionMenuPosition(node) : null);
+  }
+
+  function actionMenuPosition(node: PipelineNode): NonNullable<ActionMenuState> {
+    return {
+      nodeId: node.id,
+      x: node.x + canvasMetrics.originX + nodeWidth(node.kind) + 18,
+      y: node.y + canvasMetrics.originY - 26,
+    };
   }
 
   function startNodeDrag(nodeId: string, event: ReactPointerEvent<HTMLDivElement>) {
