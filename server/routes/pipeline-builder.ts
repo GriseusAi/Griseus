@@ -696,10 +696,38 @@ function collectOntologyAnalyzeContext(input: z.infer<typeof ontologyAnalyzeSche
       kind: connection.kind || null,
       relation: connection.contract?.relation || null,
       context: connection.contract?.context || {},
+      internal: connection.contract?.internal || null,
       fieldMap: connection.contract?.fieldMap || [],
     }));
   const devices = connected.filter(node => node.semanticRole === "device");
-  const orders = connected.filter(node => node.semanticRole === "order" || node.semanticRole === "orderLine");
+  const explicitOrders = connected.filter(node => node.semanticRole === "order" || node.semanticRole === "orderLine");
+  const implicitOrders: ReturnType<typeof compactNode>[] = scopedConnections.flatMap(connection => {
+    if (connection.relation !== "customer_device" || connection.internal?.entity !== "orderLine") return [];
+    const fields = connection.internal.fields ?? {};
+    return [{
+      id: `${connection.from}->${connection.to}:orderLine`,
+      kind: "semantic",
+      title: "Sipariş",
+      subtitle: "Müşteri → Cihaz hidden orderLine",
+      semanticRole: "orderLine",
+      semanticLabel: fields.deviceType || connection.context.device || null,
+      deviceSku: fields.deviceType || connection.context.device || null,
+      deviceQuantity: fields.quantity || connection.context.quantity || null,
+      deviceOperationMode: null,
+      deviceOperation: null,
+      orderFields: null,
+      orderLineFields: {
+        customer: fields.customer || connection.context.customer || "",
+        deviceType: fields.deviceType || connection.context.device || "",
+        quantity: fields.quantity || connection.context.quantity || "",
+        deadline: fields.deadline || connection.context.deadline || "",
+      },
+      procurementFields: null,
+      rows: [],
+      bomComponent: null,
+    }];
+  });
+  const orders = [...explicitOrders, ...implicitOrders];
   const customers = connected.filter(node => node.semanticRole === "customer");
   const procurement = connected.filter(node => node.semanticRole === "procurement");
   const bom = connected.filter(node => node.kind === "component" || node.bomComponent);

@@ -3056,7 +3056,32 @@ function collectOntologyContext(node: PipelineNode, nodes: PipelineNode[], conne
   const devices = connected.filter(item => item.semanticRole === "device");
   const components = connected.filter(item => item.kind === "component" || item.bomComponent);
   const procurements = connected.filter(item => item.semanticRole === "procurement");
-  const orders = connected.filter(item => item.semanticRole === "order" || item.semanticRole === "orderLine");
+  const visibleOrders = connected.filter(item => item.semanticRole === "order" || item.semanticRole === "orderLine");
+  const implicitOrders: PipelineNode[] = connections.filter(connection => (
+    connection.contract?.relation === "customer_device"
+    && upstreamIds.has(connection.from)
+    && upstreamIds.has(connection.to)
+  )).map((connection, index) => ({
+    id: `implicit-order-${index}`,
+    kind: "dataset" as const,
+    title: "Sipariş",
+    subtitle: "Müşteri → Cihaz hidden orderLine",
+    x: 0,
+    y: 0,
+    rows: [],
+    columns: [],
+    semanticRole: "orderLine" as const,
+    orderLineFields: {
+      customer: connection.contract?.internal?.fields.customer || connection.contract?.context.customer || "",
+      deviceType: connection.contract?.internal?.fields.deviceType || connection.contract?.context.device || "",
+      quantity: connection.contract?.internal?.fields.quantity || connection.contract?.context.quantity || "",
+      deadline: connection.contract?.internal?.fields.deadline || connection.contract?.context.deadline || "",
+    },
+  }));
+  const orders: PipelineNode[] = [
+    ...visibleOrders,
+    ...implicitOrders,
+  ];
   const criticalComponents = components.filter(item => item.bomComponent?.status === "critical").length;
   const shortageDevices = devices.filter(item => {
     const plan = buildDeviceOperationPlan(item.deviceOperation, item.deviceQuantity ?? "", normalizeDeviceOperationMode(item.deviceOperationMode));
