@@ -2,191 +2,182 @@ import { useMemo, useState } from "react";
 import type { CSSProperties } from "react";
 import TopNav from "@/components/top-nav";
 import { CT, CT_FONT, CT_MONO } from "@/lib/claude-theme";
-import { Building2, Layers, MapPin, Route, Search, Warehouse } from "lucide-react";
+import { Building2, ExternalLink, Layers, MapPin, Navigation, Search } from "lucide-react";
 
 type Province = {
   plate: number;
   city: string;
-  lat: number;
-  lon: number;
   region: string;
   dealers: number;
+  slug: string;
 };
 
-type DealerMarker = Province & {
+type Dealer = Province & {
   id: string;
   name: string;
-  offsetX: number;
-  offsetY: number;
+  index: number;
 };
 
-const TURKEY_PROVINCES: Province[] = [
-  { plate: 1, city: "Adana", lat: 37.0, lon: 35.3213, region: "Akdeniz", dealers: 1 },
-  { plate: 2, city: "Adiyaman", lat: 37.7648, lon: 38.2786, region: "Guneydogu", dealers: 1 },
-  { plate: 3, city: "Afyonkarahisar", lat: 38.7569, lon: 30.5387, region: "Ege", dealers: 1 },
-  { plate: 4, city: "Agri", lat: 39.7191, lon: 43.0503, region: "Dogu", dealers: 1 },
-  { plate: 5, city: "Amasya", lat: 40.6533, lon: 35.8331, region: "Karadeniz", dealers: 1 },
-  { plate: 6, city: "Ankara", lat: 39.9334, lon: 32.8597, region: "Ic Anadolu", dealers: 2 },
-  { plate: 7, city: "Antalya", lat: 36.8969, lon: 30.7133, region: "Akdeniz", dealers: 1 },
-  { plate: 8, city: "Artvin", lat: 41.1828, lon: 41.8183, region: "Karadeniz", dealers: 1 },
-  { plate: 9, city: "Aydin", lat: 37.856, lon: 27.8416, region: "Ege", dealers: 1 },
-  { plate: 10, city: "Balikesir", lat: 39.6533, lon: 27.8903, region: "Marmara", dealers: 1 },
-  { plate: 11, city: "Bilecik", lat: 40.1426, lon: 29.9793, region: "Marmara", dealers: 1 },
-  { plate: 12, city: "Bingol", lat: 38.8854, lon: 40.4983, region: "Dogu", dealers: 1 },
-  { plate: 13, city: "Bitlis", lat: 38.3938, lon: 42.1232, region: "Dogu", dealers: 1 },
-  { plate: 14, city: "Bolu", lat: 40.7395, lon: 31.6116, region: "Karadeniz", dealers: 1 },
-  { plate: 15, city: "Burdur", lat: 37.7203, lon: 30.2908, region: "Akdeniz", dealers: 1 },
-  { plate: 16, city: "Bursa", lat: 40.1885, lon: 29.061, region: "Marmara", dealers: 1 },
-  { plate: 17, city: "Canakkale", lat: 40.1553, lon: 26.4142, region: "Marmara", dealers: 1 },
-  { plate: 18, city: "Cankiri", lat: 40.6013, lon: 33.6134, region: "Ic Anadolu", dealers: 1 },
-  { plate: 19, city: "Corum", lat: 40.5506, lon: 34.9556, region: "Karadeniz", dealers: 1 },
-  { plate: 20, city: "Denizli", lat: 37.7765, lon: 29.0864, region: "Ege", dealers: 1 },
-  { plate: 21, city: "Diyarbakir", lat: 37.9144, lon: 40.2306, region: "Guneydogu", dealers: 1 },
-  { plate: 22, city: "Edirne", lat: 41.6771, lon: 26.5557, region: "Marmara", dealers: 1 },
-  { plate: 23, city: "Elazig", lat: 38.6748, lon: 39.2225, region: "Dogu", dealers: 1 },
-  { plate: 24, city: "Erzincan", lat: 39.75, lon: 39.5, region: "Dogu", dealers: 1 },
-  { plate: 25, city: "Erzurum", lat: 39.9055, lon: 41.2658, region: "Dogu", dealers: 1 },
-  { plate: 26, city: "Eskisehir", lat: 39.7667, lon: 30.5256, region: "Ic Anadolu", dealers: 1 },
-  { plate: 27, city: "Gaziantep", lat: 37.0662, lon: 37.3833, region: "Guneydogu", dealers: 1 },
-  { plate: 28, city: "Giresun", lat: 40.9128, lon: 38.3895, region: "Karadeniz", dealers: 1 },
-  { plate: 29, city: "Gumushane", lat: 40.4603, lon: 39.4814, region: "Karadeniz", dealers: 1 },
-  { plate: 30, city: "Hakkari", lat: 37.5744, lon: 43.7408, region: "Dogu", dealers: 1 },
-  { plate: 31, city: "Hatay", lat: 36.2023, lon: 36.1613, region: "Akdeniz", dealers: 1 },
-  { plate: 32, city: "Isparta", lat: 37.7648, lon: 30.5566, region: "Akdeniz", dealers: 1 },
-  { plate: 33, city: "Mersin", lat: 36.8121, lon: 34.6415, region: "Akdeniz", dealers: 1 },
-  { plate: 34, city: "Istanbul", lat: 41.0082, lon: 28.9784, region: "Marmara", dealers: 4 },
-  { plate: 35, city: "Izmir", lat: 38.4237, lon: 27.1428, region: "Ege", dealers: 1 },
-  { plate: 36, city: "Kars", lat: 40.6013, lon: 43.0975, region: "Dogu", dealers: 1 },
-  { plate: 37, city: "Kastamonu", lat: 41.3887, lon: 33.7827, region: "Karadeniz", dealers: 1 },
-  { plate: 38, city: "Kayseri", lat: 38.7205, lon: 35.4826, region: "Ic Anadolu", dealers: 1 },
-  { plate: 39, city: "Kirklareli", lat: 41.7351, lon: 27.2255, region: "Marmara", dealers: 1 },
-  { plate: 40, city: "Kirsehir", lat: 39.1425, lon: 34.1709, region: "Ic Anadolu", dealers: 1 },
-  { plate: 41, city: "Kocaeli", lat: 40.8533, lon: 29.8815, region: "Marmara", dealers: 1 },
-  { plate: 42, city: "Konya", lat: 37.8746, lon: 32.4932, region: "Ic Anadolu", dealers: 1 },
-  { plate: 43, city: "Kutahya", lat: 39.4167, lon: 29.9833, region: "Ege", dealers: 1 },
-  { plate: 44, city: "Malatya", lat: 38.3552, lon: 38.3095, region: "Dogu", dealers: 1 },
-  { plate: 45, city: "Manisa", lat: 38.6191, lon: 27.4289, region: "Ege", dealers: 1 },
-  { plate: 46, city: "Kahramanmaras", lat: 37.5753, lon: 36.9228, region: "Akdeniz", dealers: 1 },
-  { plate: 47, city: "Mardin", lat: 37.3122, lon: 40.735, region: "Guneydogu", dealers: 1 },
-  { plate: 48, city: "Mugla", lat: 37.2153, lon: 28.3636, region: "Ege", dealers: 1 },
-  { plate: 49, city: "Mus", lat: 38.9462, lon: 41.7539, region: "Dogu", dealers: 1 },
-  { plate: 50, city: "Nevsehir", lat: 38.6244, lon: 34.724, region: "Ic Anadolu", dealers: 1 },
-  { plate: 51, city: "Nigde", lat: 37.9667, lon: 34.6833, region: "Ic Anadolu", dealers: 1 },
-  { plate: 52, city: "Ordu", lat: 40.9839, lon: 37.8764, region: "Karadeniz", dealers: 1 },
-  { plate: 53, city: "Rize", lat: 41.0255, lon: 40.5177, region: "Karadeniz", dealers: 1 },
-  { plate: 54, city: "Sakarya", lat: 40.7569, lon: 30.3781, region: "Marmara", dealers: 1 },
-  { plate: 55, city: "Samsun", lat: 41.2867, lon: 36.33, region: "Karadeniz", dealers: 1 },
-  { plate: 56, city: "Siirt", lat: 37.9333, lon: 41.95, region: "Guneydogu", dealers: 1 },
-  { plate: 57, city: "Sinop", lat: 42.0264, lon: 35.1551, region: "Karadeniz", dealers: 1 },
-  { plate: 58, city: "Sivas", lat: 39.7477, lon: 37.0179, region: "Ic Anadolu", dealers: 1 },
-  { plate: 59, city: "Tekirdag", lat: 40.978, lon: 27.511, region: "Marmara", dealers: 1 },
-  { plate: 60, city: "Tokat", lat: 40.3167, lon: 36.55, region: "Karadeniz", dealers: 1 },
-  { plate: 61, city: "Trabzon", lat: 41.0015, lon: 39.7178, region: "Karadeniz", dealers: 1 },
-  { plate: 62, city: "Tunceli", lat: 39.1081, lon: 39.5483, region: "Dogu", dealers: 1 },
-  { plate: 63, city: "Sanliurfa", lat: 37.1674, lon: 38.7955, region: "Guneydogu", dealers: 1 },
-  { plate: 64, city: "Usak", lat: 38.6823, lon: 29.4082, region: "Ege", dealers: 1 },
-  { plate: 65, city: "Van", lat: 38.4891, lon: 43.4089, region: "Dogu", dealers: 1 },
-  { plate: 66, city: "Yozgat", lat: 39.8181, lon: 34.8147, region: "Ic Anadolu", dealers: 1 },
-  { plate: 67, city: "Zonguldak", lat: 41.4564, lon: 31.7987, region: "Karadeniz", dealers: 1 },
-  { plate: 68, city: "Aksaray", lat: 38.3687, lon: 34.037, region: "Ic Anadolu", dealers: 1 },
-  { plate: 69, city: "Bayburt", lat: 40.2552, lon: 40.2249, region: "Karadeniz", dealers: 1 },
-  { plate: 70, city: "Karaman", lat: 37.1811, lon: 33.215, region: "Ic Anadolu", dealers: 1 },
-  { plate: 71, city: "Kirikkale", lat: 39.8468, lon: 33.5153, region: "Ic Anadolu", dealers: 1 },
-  { plate: 72, city: "Batman", lat: 37.8812, lon: 41.1351, region: "Guneydogu", dealers: 1 },
-  { plate: 73, city: "Sirnak", lat: 37.5164, lon: 42.4611, region: "Guneydogu", dealers: 1 },
-  { plate: 74, city: "Bartin", lat: 41.5811, lon: 32.461, region: "Karadeniz", dealers: 1 },
-  { plate: 75, city: "Ardahan", lat: 41.1105, lon: 42.7022, region: "Dogu", dealers: 1 },
-  { plate: 76, city: "Igdir", lat: 39.9237, lon: 44.045, region: "Dogu", dealers: 1 },
-  { plate: 77, city: "Yalova", lat: 40.65, lon: 29.2667, region: "Marmara", dealers: 1 },
-  { plate: 78, city: "Karabuk", lat: 41.2061, lon: 32.6204, region: "Karadeniz", dealers: 1 },
-  { plate: 79, city: "Kilis", lat: 36.7184, lon: 37.1212, region: "Guneydogu", dealers: 1 },
-  { plate: 80, city: "Osmaniye", lat: 37.0742, lon: 36.2478, region: "Akdeniz", dealers: 1 },
-  { plate: 81, city: "Duzce", lat: 40.8438, lon: 31.1565, region: "Karadeniz", dealers: 1 },
-];
+const PROVINCES: Province[] = [
+  [1, "Adana", "Akdeniz", 1, "adana-01"],
+  [2, "Adiyaman", "Guneydogu", 1, "adiyaman-02"],
+  [3, "Afyonkarahisar", "Ege", 1, "afyon-03"],
+  [4, "Agri", "Dogu", 1, "agri-04"],
+  [5, "Amasya", "Karadeniz", 1, "amasya-05"],
+  [6, "Ankara", "Ic Anadolu", 2, "ankara-06"],
+  [7, "Antalya", "Akdeniz", 1, "antalya-07"],
+  [8, "Artvin", "Karadeniz", 1, "artvin-08"],
+  [9, "Aydin", "Ege", 1, "aydin-09"],
+  [10, "Balikesir", "Marmara", 1, "balikesir-10"],
+  [11, "Bilecik", "Marmara", 1, "bilecik-11"],
+  [12, "Bingol", "Dogu", 1, "bingol-12"],
+  [13, "Bitlis", "Dogu", 1, "bitlis-13"],
+  [14, "Bolu", "Karadeniz", 1, "bolu-14"],
+  [15, "Burdur", "Akdeniz", 1, "burdur-15"],
+  [16, "Bursa", "Marmara", 1, "bursa-16"],
+  [17, "Canakkale", "Marmara", 1, "canakkale-17"],
+  [18, "Cankiri", "Ic Anadolu", 1, "cankiri-18"],
+  [19, "Corum", "Karadeniz", 1, "corum-19"],
+  [20, "Denizli", "Ege", 1, "denizli-20"],
+  [21, "Diyarbakir", "Guneydogu", 1, "diyarbakir-21"],
+  [22, "Edirne", "Marmara", 1, "edirne-22"],
+  [23, "Elazig", "Dogu", 1, "elazig-23"],
+  [24, "Erzincan", "Dogu", 1, "erzincan-24"],
+  [25, "Erzurum", "Dogu", 1, "erzurum-25"],
+  [26, "Eskisehir", "Ic Anadolu", 1, "eskisehir-26"],
+  [27, "Gaziantep", "Guneydogu", 1, "gaziantep-27"],
+  [28, "Giresun", "Karadeniz", 1, "giresun-28"],
+  [29, "Gumushane", "Karadeniz", 1, "gumushane-29"],
+  [30, "Hakkari", "Dogu", 1, "hakkari-30"],
+  [31, "Hatay", "Akdeniz", 1, "hatay-31"],
+  [32, "Isparta", "Akdeniz", 1, "isparta-32"],
+  [33, "Mersin", "Akdeniz", 1, "icel-33"],
+  [34, "Istanbul", "Marmara", 4, "istanbul-34"],
+  [35, "Izmir", "Ege", 1, "izmir-35"],
+  [36, "Kars", "Dogu", 1, "kars-36"],
+  [37, "Kastamonu", "Karadeniz", 1, "kastamonu-37"],
+  [38, "Kayseri", "Ic Anadolu", 1, "kayseri-38"],
+  [39, "Kirklareli", "Marmara", 1, "kirklareli-39"],
+  [40, "Kirsehir", "Ic Anadolu", 1, "kirsehir-40"],
+  [41, "Kocaeli", "Marmara", 1, "kocaeli-41"],
+  [42, "Konya", "Ic Anadolu", 1, "konya-42"],
+  [43, "Kutahya", "Ege", 1, "kutahya-43"],
+  [44, "Malatya", "Dogu", 1, "malatya-44"],
+  [45, "Manisa", "Ege", 1, "manisa-45"],
+  [46, "Kahramanmaras", "Akdeniz", 1, "kahramanmaras-46"],
+  [47, "Mardin", "Guneydogu", 1, "mardin-47"],
+  [48, "Mugla", "Ege", 1, "mugla-48"],
+  [49, "Mus", "Dogu", 1, "mus-49"],
+  [50, "Nevsehir", "Ic Anadolu", 1, "nevsehir-50"],
+  [51, "Nigde", "Ic Anadolu", 1, "nigde-51"],
+  [52, "Ordu", "Karadeniz", 1, "ordu-52"],
+  [53, "Rize", "Karadeniz", 1, "rize-53"],
+  [54, "Sakarya", "Marmara", 1, "sakarya-54"],
+  [55, "Samsun", "Karadeniz", 1, "samsun-55"],
+  [56, "Siirt", "Guneydogu", 1, "siirt-56"],
+  [57, "Sinop", "Karadeniz", 1, "sinop-57"],
+  [58, "Sivas", "Ic Anadolu", 1, "sivas-58"],
+  [59, "Tekirdag", "Marmara", 1, "tekirdag-59"],
+  [60, "Tokat", "Karadeniz", 1, "tokat-60"],
+  [61, "Trabzon", "Karadeniz", 1, "trabzon-61"],
+  [62, "Tunceli", "Dogu", 1, "tunceli-62"],
+  [63, "Sanliurfa", "Guneydogu", 1, "sanliurfa-63"],
+  [64, "Usak", "Ege", 1, "usak-64"],
+  [65, "Van", "Dogu", 1, "van-65"],
+  [66, "Yozgat", "Ic Anadolu", 1, "yozgat-66"],
+  [67, "Zonguldak", "Karadeniz", 1, "zonguldak-67"],
+  [68, "Aksaray", "Ic Anadolu", 1, "aksaray-68"],
+  [69, "Bayburt", "Karadeniz", 1, "bayburt-69"],
+  [70, "Karaman", "Ic Anadolu", 1, "karaman-70"],
+  [71, "Kirikkale", "Ic Anadolu", 1, "kirikkale-71"],
+  [72, "Batman", "Guneydogu", 1, "batman-72"],
+  [73, "Sirnak", "Guneydogu", 1, "sirnak-73"],
+  [74, "Bartin", "Karadeniz", 1, "bartin-74"],
+  [75, "Ardahan", "Dogu", 1, "ardahan-75"],
+  [76, "Igdir", "Dogu", 1, "igdir-76"],
+  [77, "Yalova", "Marmara", 1, "yalova-77"],
+  [78, "Karabuk", "Karadeniz", 1, "karabuk-78"],
+  [79, "Kilis", "Guneydogu", 1, "kilis-79"],
+  [80, "Osmaniye", "Akdeniz", 1, "osmaniye-80"],
+  [81, "Duzce", "Karadeniz", 1, "duzce-81"],
+].map(([plate, city, region, dealers, slug]) => ({ plate, city, region, dealers, slug })) as Province[];
 
-const HUB = { city: "Adana Operasyon Merkezi", lat: 37.0, lon: 35.3213 };
-const W = 1000;
-const H = 520;
-const LON_MIN = 25.2;
-const LON_MAX = 45.1;
-const LAT_MIN = 35.7;
-const LAT_MAX = 42.3;
-const TURKEY_OUTLINE = "M80 151 L126 119 L199 112 L264 134 L319 119 L381 145 L447 138 L514 169 L590 155 L661 179 L743 168 L835 204 L925 224 L960 270 L914 311 L828 303 L752 332 L665 318 L587 348 L499 326 L410 354 L321 325 L235 342 L163 299 L92 279 L50 220 Z";
+const OFFICIAL_BASE = "https://www.cukurovaisi.com/yetkili-saticilar";
 
 export default function OntologyLayersPage() {
   const [query, setQuery] = useState("");
-  const [selectedRegion, setSelectedRegion] = useState("Hepsi");
-  const [selectedDealerId, setSelectedDealerId] = useState("34-1");
-  const [showRoutes, setShowRoutes] = useState(true);
-  const [mapTheme, setMapTheme] = useState<"light" | "dark">("light");
+  const [region, setRegion] = useState("Hepsi");
+  const [selectedId, setSelectedId] = useState("34-1");
+  const [mapMode, setMapMode] = useState<"dealer" | "network">("dealer");
 
-  const dealers = useMemo(() => expandDealers(TURKEY_PROVINCES), []);
+  const dealers = useMemo(() => expandDealers(PROVINCES), []);
+  const selectedDealer = dealers.find(dealer => dealer.id === selectedId) ?? dealers[0];
   const filteredDealers = useMemo(() => {
     const needle = normalize(query);
     return dealers.filter(dealer => {
-      const regionOk = selectedRegion === "Hepsi" || dealer.region === selectedRegion;
-      const textOk = !needle || normalize(`${dealer.city} ${dealer.name} ${dealer.region} ${dealer.plate}`).includes(needle);
-      return regionOk && textOk;
+      const regionMatch = region === "Hepsi" || dealer.region === region;
+      const queryMatch = !needle || normalize(`${dealer.city} ${dealer.name} ${dealer.region} ${dealer.plate}`).includes(needle);
+      return regionMatch && queryMatch;
     });
-  }, [dealers, query, selectedRegion]);
-  const selectedDealer = dealers.find(dealer => dealer.id === selectedDealerId) ?? filteredDealers[0] ?? dealers[0];
-  const totalDealers = dealers.length;
-  const multiDealerCities = TURKEY_PROVINCES.filter(city => city.dealers > 1);
+  }, [dealers, query, region]);
+
+  const mapQuery = mapMode === "network"
+    ? "Çukurova Isı yetkili satıcılar Türkiye"
+    : `${selectedDealer.city} Çukurova Isı yetkili satıcı`;
+  const mapsEmbedUrl = `https://maps.google.com/maps?q=${encodeURIComponent(mapQuery)}&z=${mapMode === "network" ? 6 : 12}&output=embed`;
+  const mapsOpenUrl = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(mapQuery)}`;
+  const officialUrl = `${OFFICIAL_BASE}/${selectedDealer.slug}`;
 
   return (
-    <div style={pageStyle(mapTheme)}>
+    <div style={pageStyle}>
       <TopNav />
       <main style={shellStyle}>
-        <section style={mapShellStyle(mapTheme)}>
-          <div style={mapToolbarStyle(mapTheme)}>
+        <section style={workspaceStyle}>
+          <header style={toolbarStyle}>
             <div style={titleBlockStyle}>
-              <span style={eyebrowStyle}>CUKUROVA ISI</span>
-              <h1 style={titleStyle}>Bayi Operasyon Haritası</h1>
+              <span>CUKUROVA ISI</span>
+              <h1>Bayi Operasyon Haritası</h1>
             </div>
-            <div style={searchWrapStyle}>
+            <label style={searchStyle}>
               <Search size={16} />
-              <input
-                value={query}
-                onChange={event => setQuery(event.target.value)}
-                placeholder="Il, bayi veya bolge ara"
-                style={searchInputStyle}
-              />
-            </div>
-            <select value={selectedRegion} onChange={event => setSelectedRegion(event.target.value)} style={selectStyle}>
-              {["Hepsi", ...Array.from(new Set(TURKEY_PROVINCES.map(item => item.region)))].map(region => (
-                <option key={region} value={region}>{region}</option>
+              <input value={query} onChange={event => setQuery(event.target.value)} placeholder="Il, bayi veya bolge ara" />
+            </label>
+            <select value={region} onChange={event => setRegion(event.target.value)} style={selectStyle}>
+              {["Hepsi", ...Array.from(new Set(PROVINCES.map(item => item.region)))].map(item => (
+                <option key={item} value={item}>{item}</option>
               ))}
             </select>
-            <button type="button" onClick={() => setShowRoutes(prev => !prev)} style={toolButtonStyle(showRoutes)}>
-              <Route size={15} />
-              Rota
+            <button type="button" onClick={() => setMapMode(mode => mode === "dealer" ? "network" : "dealer")} style={modeButtonStyle}>
+              <Layers size={16} />
+              {mapMode === "dealer" ? "Tek bayi" : "Ağ"}
             </button>
-            <button type="button" onClick={() => setMapTheme(theme => theme === "light" ? "dark" : "light")} style={toolButtonStyle(mapTheme === "dark")}>
-              <Layers size={15} />
-              Tema
-            </button>
-          </div>
+          </header>
 
-          <div style={mapBodyStyle}>
-            <aside style={controlPanelStyle(mapTheme)}>
-              <div style={statGridStyle}>
-                <Metric icon={<Building2 size={15} />} label="Bayi" value={String(totalDealers)} />
+          <div style={contentStyle}>
+            <aside style={leftPanelStyle}>
+              <div style={metricGridStyle}>
+                <Metric icon={<Building2 size={15} />} label="Bayi" value={String(dealers.length)} />
                 <Metric icon={<MapPin size={15} />} label="Il" value="81" />
-                <Metric icon={<Warehouse size={15} />} label="Coklu il" value={String(multiDealerCities.length)} />
+                <Metric icon={<Navigation size={15} />} label="Coklu il" value="2" />
               </div>
-              <div style={sourceBoxStyle(mapTheme)}>
-                <strong>Yetkili satıcı ağı</strong>
-                <span>81 il kapsamı; Ankara 2, Istanbul 4 bayi.</span>
+              <div style={sourceStyle}>
+                <b>Kaynak</b>
+                <a href="https://www.cukurovaisi.com/tr/kurumsal/yetkili-saticilarimiz/" target="_blank" rel="noreferrer">
+                  Çukurova Isı yetkili satıcıları <ExternalLink size={13} />
+                </a>
               </div>
               <div style={dealerListStyle}>
-                {filteredDealers.slice(0, 22).map(dealer => (
+                {filteredDealers.map(dealer => (
                   <button
                     key={dealer.id}
                     type="button"
-                    onClick={() => setSelectedDealerId(dealer.id)}
-                    style={dealerRowStyle(dealer.id === selectedDealer.id, mapTheme)}
+                    onClick={() => {
+                      setSelectedId(dealer.id);
+                      setMapMode("dealer");
+                    }}
+                    style={dealerRowStyle(dealer.id === selectedDealer.id)}
                   >
-                    <span>{dealer.plate.toString().padStart(2, "0")}</span>
+                    <span>{String(dealer.plate).padStart(2, "0")}</span>
                     <b>{dealer.name}</b>
                     <small>{dealer.region}</small>
                   </button>
@@ -194,70 +185,59 @@ export default function OntologyLayersPage() {
               </div>
             </aside>
 
-            <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label="Çukurova Isı bayi haritası" style={mapSvgStyle}>
-              <defs>
-                <filter id="routeGlow" x="-20%" y="-20%" width="140%" height="140%">
-                  <feGaussianBlur stdDeviation="2.2" result="blur" />
-                  <feMerge>
-                    <feMergeNode in="blur" />
-                    <feMergeNode in="SourceGraphic" />
-                  </feMerge>
-                </filter>
-              </defs>
-              <rect width={W} height={H} fill={mapTheme === "dark" ? "#202229" : "#dfe8ea"} />
-              <path d={TURKEY_OUTLINE} fill={mapTheme === "dark" ? "#30323b" : "#f7f7f3"} stroke={mapTheme === "dark" ? "#535765" : "#bcc7c7"} strokeWidth="2" />
-              <g opacity="0.28">
-                {[150, 250, 350, 450, 550, 650, 750, 850].map(x => <line key={x} x1={x} y1="46" x2={x} y2="472" stroke={mapTheme === "dark" ? "#5c6070" : "#b7c2c2"} />)}
-                {[130, 220, 310, 400].map(y => <line key={y} x1="42" y1={y} x2="958" y2={y} stroke={mapTheme === "dark" ? "#5c6070" : "#b7c2c2"} />)}
-              </g>
-              {showRoutes && filteredDealers.map(dealer => (
-                <path
-                  key={`route-${dealer.id}`}
-                  d={routePath(HUB, dealer)}
-                  fill="none"
-                  stroke={dealer.id === selectedDealer.id ? "#ff6f35" : mapTheme === "dark" ? "rgba(118,151,221,0.4)" : "rgba(47,75,135,0.28)"}
-                  strokeWidth={dealer.id === selectedDealer.id ? 2.4 : 1}
-                  filter={dealer.id === selectedDealer.id ? "url(#routeGlow)" : undefined}
-                />
-              ))}
-              <MapLabel x={project(HUB).x} y={project(HUB).y} active label="HQ" />
-              {filteredDealers.map(dealer => {
-                const point = project(dealer);
-                const active = dealer.id === selectedDealer.id;
-                return (
-                  <g key={dealer.id} transform={`translate(${point.x + dealer.offsetX} ${point.y + dealer.offsetY})`} onClick={() => setSelectedDealerId(dealer.id)} style={{ cursor: "pointer" }}>
-                    <circle r={active ? 13 : 9} fill={active ? "#ff6f35" : "#1e63b6"} stroke="#fff" strokeWidth="2" />
-                    <text x="0" y="4" textAnchor="middle" fill="#fff" fontFamily={CT_MONO} fontSize={active ? 8 : 7} fontWeight="900">
-                      {dealer.plate.toString().padStart(2, "0")}
-                    </text>
-                    {active && <MapLabel x={18} y={-18} label={dealer.name} />}
-                  </g>
-                );
-              })}
-            </svg>
+            <section style={mapPanelStyle}>
+              <iframe
+                key={mapsEmbedUrl}
+                title="Google Maps bayi haritası"
+                src={mapsEmbedUrl}
+                loading="lazy"
+                referrerPolicy="no-referrer-when-downgrade"
+                style={googleMapStyle}
+              />
+              <div style={mapOverlayStyle}>
+                <div>
+                  <span>{String(selectedDealer.plate).padStart(2, "0")}</span>
+                  <strong>{mapMode === "network" ? "Türkiye bayi ağı" : selectedDealer.name}</strong>
+                </div>
+                <a href={mapsOpenUrl} target="_blank" rel="noreferrer">Google Maps'te aç</a>
+              </div>
+            </section>
 
-            <aside style={detailPanelStyle(mapTheme)}>
+            <aside style={detailPanelStyle}>
               <div style={detailHeaderStyle}>
-                <span>{selectedDealer.plate.toString().padStart(2, "0")}</span>
+                <span>{String(selectedDealer.plate).padStart(2, "0")}</span>
                 <strong>{selectedDealer.name}</strong>
               </div>
-              <div style={detailRowsStyle}>
+              <div style={detailGridStyle}>
                 <Metric label="Il" value={selectedDealer.city} />
                 <Metric label="Bolge" value={selectedDealer.region} />
-                <Metric label="Koordinat" value={`${selectedDealer.lat.toFixed(3)}, ${selectedDealer.lon.toFixed(3)}`} />
+                <Metric label="Bayi no" value={String(selectedDealer.index)} />
                 <Metric label="Durum" value="Aktif" />
               </div>
-              <div style={legendStyle}>
-                <span><i style={{ background: "#1e63b6" }} /> Bayi</span>
-                <span><i style={{ background: "#ff6f35" }} /> Seçili</span>
-                <span><i style={{ background: "#3b6b5b" }} /> Merkez</span>
-              </div>
+              <a href={officialUrl} target="_blank" rel="noreferrer" style={primaryLinkStyle}>
+                Resmi bayi sayfası <ExternalLink size={14} />
+              </a>
             </aside>
           </div>
         </section>
       </main>
     </div>
   );
+}
+
+function expandDealers(provinces: Province[]): Dealer[] {
+  return provinces.flatMap(province =>
+    Array.from({ length: province.dealers }, (_, index) => ({
+      ...province,
+      id: `${province.plate}-${index + 1}`,
+      index: index + 1,
+      name: `${province.city} Bayi${province.dealers > 1 ? ` ${index + 1}` : ""}`,
+    })),
+  );
+}
+
+function normalize(value: string) {
+  return value.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
 }
 
 function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string; value: string }) {
@@ -269,84 +249,44 @@ function Metric({ icon, label, value }: { icon?: React.ReactNode; label: string;
   );
 }
 
-function MapLabel({ x, y, label, active = false }: { x: number; y: number; label: string; active?: boolean }) {
-  return (
-    <g transform={`translate(${x} ${y})`}>
-      <rect x="-15" y="-14" width={Math.max(34, label.length * 7.2 + 18)} height="24" rx="5" fill={active ? "#3b6b5b" : "#fff"} stroke="rgba(24,29,36,0.24)" />
-      <text x="-4" y="2" fill={active ? "#fff" : "#20242b"} fontFamily={CT_FONT} fontSize="11" fontWeight="900">{label}</text>
-    </g>
-  );
-}
-
-function expandDealers(provinces: Province[]): DealerMarker[] {
-  const offsets = [[0, 0], [16, -12], [-15, 11], [19, 12]];
-  return provinces.flatMap(province => Array.from({ length: province.dealers }, (_, index) => ({
-    ...province,
-    id: `${province.plate}-${index + 1}`,
-    name: `${province.city} Bayi ${province.dealers > 1 ? index + 1 : ""}`.trim(),
-    offsetX: offsets[index]?.[0] ?? 0,
-    offsetY: offsets[index]?.[1] ?? 0,
-  })));
-}
-
-function normalize(value: string) {
-  return value.toLocaleLowerCase("tr-TR").normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-}
-
-function project(point: { lat: number; lon: number }) {
-  return {
-    x: ((point.lon - LON_MIN) / (LON_MAX - LON_MIN)) * 900 + 50,
-    y: (1 - (point.lat - LAT_MIN) / (LAT_MAX - LAT_MIN)) * 420 + 50,
-  };
-}
-
-function routePath(from: { lat: number; lon: number }, to: { lat: number; lon: number }) {
-  const a = project(from);
-  const b = project(to);
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const curve = Math.max(28, Math.hypot(dx, dy) * 0.18);
-  const cx = a.x + dx * 0.5;
-  const cy = a.y + dy * 0.5 - curve;
-  return `M${a.x.toFixed(1)} ${a.y.toFixed(1)} Q${cx.toFixed(1)} ${cy.toFixed(1)} ${b.x.toFixed(1)} ${b.y.toFixed(1)}`;
-}
-
-const pageStyle = (theme: "light" | "dark"): CSSProperties => ({
+const pageStyle: CSSProperties = {
   minHeight: "100vh",
-  background: theme === "dark" ? "#17191f" : "#f4f6f6",
-  color: theme === "dark" ? "#f4f2ea" : CT.ink,
+  background: "#eef2f3",
+  color: CT.ink,
   fontFamily: CT_FONT,
-});
-
-const shellStyle: CSSProperties = {
-  padding: "58px 16px 16px",
 };
 
-const mapShellStyle = (theme: "light" | "dark"): CSSProperties => ({
-  minHeight: "calc(100vh - 76px)",
-  border: `1px solid ${theme === "dark" ? "#3b3f4d" : CT.border}`,
+const shellStyle: CSSProperties = {
+  padding: "58px 14px 14px",
+};
+
+const workspaceStyle: CSSProperties = {
+  height: "calc(100vh - 76px)",
+  display: "grid",
+  gridTemplateRows: "62px minmax(0, 1fr)",
+  border: `1px solid ${CT.border}`,
   borderRadius: 10,
   overflow: "hidden",
-  background: theme === "dark" ? "#202229" : "#ffffff",
-});
+  background: "#fff",
+};
 
-const mapToolbarStyle = (theme: "light" | "dark"): CSSProperties => ({
-  height: 66,
+const toolbarStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "270px minmax(220px, 1fr) 170px auto auto",
+  gridTemplateColumns: "248px minmax(260px, 1fr) 160px 118px",
   gap: 10,
   alignItems: "center",
   padding: "10px 14px",
-  borderBottom: `1px solid ${theme === "dark" ? "#3b3f4d" : CT.border}`,
-  background: theme === "dark" ? "#242731" : "#fbfaf6",
-});
+  borderBottom: `1px solid ${CT.border}`,
+  background: "#fbfaf6",
+};
 
-const titleBlockStyle: CSSProperties = { display: "grid", gap: 2 };
-const eyebrowStyle: CSSProperties = { color: "#c96442", fontSize: 11, fontWeight: 900, letterSpacing: 0 };
-const titleStyle: CSSProperties = { margin: 0, fontSize: 20, lineHeight: 1.1, fontWeight: 900 };
+const titleBlockStyle: CSSProperties = {
+  display: "grid",
+  gap: 2,
+};
 
-const searchWrapStyle: CSSProperties = {
-  height: 36,
+const searchStyle: CSSProperties = {
+  height: 38,
   display: "flex",
   alignItems: "center",
   gap: 8,
@@ -357,113 +297,94 @@ const searchWrapStyle: CSSProperties = {
   padding: "0 10px",
 };
 
-const searchInputStyle: CSSProperties = {
-  width: "100%",
-  border: 0,
-  outline: 0,
-  color: CT.ink,
-  fontFamily: CT_FONT,
-  fontSize: 13,
-  background: "transparent",
-};
-
 const selectStyle: CSSProperties = {
-  height: 36,
+  height: 38,
   border: `1px solid ${CT.border}`,
   borderRadius: 7,
   background: "#fff",
   color: CT.ink,
   fontFamily: CT_FONT,
-  fontWeight: 800,
+  fontWeight: 850,
   padding: "0 10px",
 };
 
-const toolButtonStyle = (active: boolean): CSSProperties => ({
-  height: 36,
+const modeButtonStyle: CSSProperties = {
+  height: 38,
   display: "inline-flex",
   alignItems: "center",
-  gap: 6,
-  border: `1px solid ${active ? "#c96442" : CT.border}`,
+  justifyContent: "center",
+  gap: 7,
+  border: "1px solid rgba(201,100,66,0.52)",
   borderRadius: 7,
-  background: active ? "#f7e7df" : "#fff",
-  color: active ? "#b34037" : CT.ink,
+  background: "#f7e7df",
+  color: CT.accent,
   fontFamily: CT_FONT,
-  fontWeight: 850,
-  padding: "0 12px",
+  fontWeight: 900,
   cursor: "pointer",
-});
-
-const mapBodyStyle: CSSProperties = {
-  position: "relative",
-  minHeight: "calc(100vh - 144px)",
 };
 
-const mapSvgStyle: CSSProperties = {
-  width: "100%",
-  height: "calc(100vh - 144px)",
-  display: "block",
-};
-
-const controlPanelStyle = (theme: "light" | "dark"): CSSProperties => ({
-  position: "absolute",
-  top: 16,
-  left: 16,
-  zIndex: 3,
-  width: 318,
-  maxHeight: "calc(100vh - 182px)",
+const contentStyle: CSSProperties = {
+  minHeight: 0,
   display: "grid",
+  gridTemplateColumns: "324px minmax(0, 1fr) 286px",
+};
+
+const leftPanelStyle: CSSProperties = {
+  minHeight: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
   gap: 10,
   padding: 12,
-  border: `1px solid ${theme === "dark" ? "#444858" : CT.border}`,
-  borderRadius: 8,
-  background: theme === "dark" ? "rgba(31,34,42,0.94)" : "rgba(255,255,255,0.94)",
-  boxShadow: "0 16px 40px rgba(28,31,36,0.16)",
-});
+  borderRight: `1px solid ${CT.border}`,
+  background: "rgba(255,255,255,0.96)",
+};
 
-const statGridStyle: CSSProperties = {
+const metricGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "repeat(3, 1fr)",
   gap: 7,
 };
 
 const metricStyle: CSSProperties = {
-  minHeight: 56,
+  minHeight: 58,
   display: "grid",
-  gap: 5,
   alignContent: "center",
+  gap: 5,
   border: `1px solid ${CT.border}`,
   borderRadius: 7,
-  background: "rgba(255,255,255,0.78)",
+  background: "#fff",
   padding: "8px 9px",
 };
 
-const sourceBoxStyle = (theme: "light" | "dark"): CSSProperties => ({
+const sourceStyle: CSSProperties = {
   display: "grid",
-  gap: 4,
-  border: `1px solid ${theme === "dark" ? "#444858" : CT.border}`,
+  gap: 5,
+  border: `1px solid ${CT.border}`,
   borderRadius: 7,
+  background: "#fbfaf6",
   padding: 10,
-  background: theme === "dark" ? "#242731" : "#fbfaf6",
   fontSize: 12,
-});
+};
 
 const dealerListStyle: CSSProperties = {
+  minHeight: 0,
   display: "grid",
+  alignContent: "start",
   gap: 5,
   overflowY: "auto",
   paddingRight: 2,
 };
 
-const dealerRowStyle = (active: boolean, theme: "light" | "dark"): CSSProperties => ({
-  minHeight: 34,
+const dealerRowStyle = (active: boolean): CSSProperties => ({
+  minHeight: 35,
   display: "grid",
-  gridTemplateColumns: "34px minmax(0, 1fr) 82px",
+  gridTemplateColumns: "34px minmax(0, 1fr) 84px",
   alignItems: "center",
   gap: 8,
-  border: `1px solid ${active ? "#c96442" : theme === "dark" ? "#414552" : CT.border}`,
+  border: `1px solid ${active ? CT.accentEdge : CT.border}`,
   borderRadius: 6,
-  background: active ? "#f7e7df" : theme === "dark" ? "#20232c" : "#fff",
-  color: active ? "#b34037" : "inherit",
+  background: active ? CT.accentSoft : "#fff",
+  color: active ? CT.accent : CT.ink,
   fontFamily: CT_FONT,
   fontSize: 11,
   textAlign: "left",
@@ -471,39 +392,70 @@ const dealerRowStyle = (active: boolean, theme: "light" | "dark"): CSSProperties
   cursor: "pointer",
 });
 
-const detailPanelStyle = (theme: "light" | "dark"): CSSProperties => ({
+const mapPanelStyle: CSSProperties = {
+  position: "relative",
+  minWidth: 0,
+  minHeight: 0,
+  background: "#dfe8ea",
+};
+
+const googleMapStyle: CSSProperties = {
+  width: "100%",
+  height: "100%",
+  minHeight: 520,
+  border: 0,
+  display: "block",
+};
+
+const mapOverlayStyle: CSSProperties = {
   position: "absolute",
-  right: 16,
+  left: 16,
   bottom: 16,
-  zIndex: 3,
-  width: 286,
-  display: "grid",
-  gap: 12,
-  border: `1px solid ${theme === "dark" ? "#444858" : CT.border}`,
+  display: "flex",
+  alignItems: "center",
+  justifyContent: "space-between",
+  gap: 18,
+  minWidth: 330,
+  border: `1px solid ${CT.border}`,
   borderRadius: 8,
-  background: theme === "dark" ? "rgba(31,34,42,0.94)" : "rgba(255,255,255,0.95)",
-  boxShadow: "0 16px 40px rgba(28,31,36,0.16)",
+  background: "rgba(255,255,255,0.94)",
+  boxShadow: "0 14px 34px rgba(26,28,34,0.18)",
+  padding: "10px 12px",
+};
+
+const detailPanelStyle: CSSProperties = {
+  display: "grid",
+  alignContent: "start",
+  gap: 12,
+  borderLeft: `1px solid ${CT.border}`,
+  background: "#fbfaf6",
   padding: 12,
-});
+};
 
 const detailHeaderStyle: CSSProperties = {
   display: "grid",
-  gridTemplateColumns: "38px minmax(0, 1fr)",
+  gridTemplateColumns: "42px minmax(0, 1fr)",
   alignItems: "center",
   gap: 9,
-  fontSize: 14,
+  fontSize: 15,
 };
 
-const detailRowsStyle: CSSProperties = {
+const detailGridStyle: CSSProperties = {
   display: "grid",
   gridTemplateColumns: "1fr 1fr",
   gap: 8,
 };
 
-const legendStyle: CSSProperties = {
-  display: "flex",
-  flexWrap: "wrap",
-  gap: 10,
-  color: CT.inkMuted,
-  fontSize: 11,
+const primaryLinkStyle: CSSProperties = {
+  height: 38,
+  display: "inline-flex",
+  alignItems: "center",
+  justifyContent: "center",
+  gap: 7,
+  border: `1px solid ${CT.accentEdge}`,
+  borderRadius: 7,
+  background: CT.accentSoft,
+  color: CT.accent,
+  textDecoration: "none",
+  fontWeight: 900,
 };
