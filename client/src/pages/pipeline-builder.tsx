@@ -2411,6 +2411,7 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         rows: scopedGraphRows,
       }
     : localChartSpec;
+  const selectedScopeItems = useMemo(() => scopeItems.filter(item => selectedScopeIds.includes(item.id)), [scopeItems, scopeSignature]);
   const graphObjectsByDevice = useMemo(() => new Map((graphFunction?.objects ?? []).map(item => [item.decision.device, item])), [graphFunction]);
   const selectedGraphObject = graphFunction?.objects.find(item => item.id === selectedGraphObjectId) ?? null;
   function toggleScopeItem(id: string) {
@@ -2494,82 +2495,90 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
 
         <div style={ontologyAnalysisCenterStyle}>
           <div style={ontologyWorkspaceStyle}>
-            <OntologyScopePicker
-              items={scopeItems}
-              selectedIds={selectedScopeIds}
-              onToggle={toggleScopeItem}
-              onClear={clearScope}
-            />
-            <div style={ontologyWorkspaceToolbarStyle}>
-              <div style={ontologyModeToggleGroupStyle}>
-                {([
-                  ["fulfillment", "Fulfillment"],
-                  ["capacity", "Kapasite"],
-                  ["risk", "BOM risk"],
-                ] as Array<[OntologyChartMode, string]>).map(([mode, label]) => (
-                  <button
-                    key={mode}
-                    type="button"
-                    onClick={() => changeChartMode(mode)}
-                    style={ontologyModeButtonStyle(chartMode === mode)}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={ontologyDimensionPanelStyle}>
-              <div style={ontologyDimensionGroupStyle}>
-                <strong>Metrik</strong>
-                {([
-                  ["requested", "Sipariş"],
-                  ["warehouse", "Depo"],
-                  ["producible", "Üretilebilir"],
-                  ["shortage", "Açık"],
-                  ["criticalComponents", "Kritik BOM"],
-                  ["warningComponents", "Düşük BOM"],
-                  ["riskScore", "Risk skoru"],
-                  ["totalSold", "Satılan"],
-                ] as Array<[OntologyYMetric, string]>).map(([metric, label]) => (
-                  <button
-                    key={metric}
-                    type="button"
-                    onClick={() => toggleYMetric(metric)}
-                    style={ontologyDimensionButtonStyle(yMetrics.includes(metric))}
-                  >
-                    {label}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div style={ontologyChartCanvasStyle}>
-              {activeChartSpec.rows.length === 0 ? (
-                <div style={ontologyEmptyChartStyle}>Listeden satırların yanındaki kutuları seç; seçilen birimler grafiğe eklenir.</div>
-              ) : (
-                <ResponsiveContainer width="100%" height={260}>
-                  <BarChart
-                    data={activeChartSpec.rows}
-                    margin={{ top: 10, right: 18, bottom: 0, left: -16 }}
-                    onClick={(event: any) => selectGraphRow(event?.activePayload?.[0]?.payload)}
-                  >
-                    <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
-                    <XAxis dataKey={activeChartSpec.xKey} stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
-                    <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
-                    <Tooltip contentStyle={ontologyTooltipStyle} />
-                    <Legend wrapperStyle={ontologyLegendStyle} />
-                    {activeChartSpec.series.map(series => (
-                      <Bar
-                        key={series.key}
-                        dataKey={series.key}
-                        name={series.label}
-                        fill={series.color}
-                        radius={[4, 4, 0, 0]}
-                        cursor="pointer"
-                      />
+            <div style={ontologyExploreLayoutStyle}>
+              <OntologyScopePicker
+                items={scopeItems}
+                selectedIds={selectedScopeIds}
+                onToggle={toggleScopeItem}
+                onClear={clearScope}
+              />
+              <div style={ontologyExploreMainStyle}>
+                <div style={ontologyWorkspaceToolbarStyle}>
+                  <div style={ontologyModeToggleGroupStyle}>
+                    {([
+                      ["fulfillment", "Fulfillment"],
+                      ["capacity", "Kapasite"],
+                      ["risk", "BOM risk"],
+                    ] as Array<[OntologyChartMode, string]>).map(([mode, label]) => (
+                      <button
+                        key={mode}
+                        type="button"
+                        onClick={() => changeChartMode(mode)}
+                        style={ontologyModeButtonStyle(chartMode === mode)}
+                      >
+                        {label}
+                      </button>
                     ))}
-                  </BarChart>
-                </ResponsiveContainer>
-              )}
+                  </div>
+                  <span style={ontologyWorkspaceStatusStyle}>{activeChartSpec.rows.length} satır</span>
+                </div>
+                <div style={ontologyDimensionPanelStyle}>
+                  <div style={ontologyDimensionGroupStyle}>
+                    <strong>Metrik</strong>
+                    {([
+                      ["requested", "Sipariş"],
+                      ["warehouse", "Depo"],
+                      ["producible", "Üretilebilir"],
+                      ["shortage", "Açık"],
+                      ["criticalComponents", "Kritik BOM"],
+                      ["warningComponents", "Düşük BOM"],
+                      ["riskScore", "Risk skoru"],
+                      ["totalSold", "Satılan"],
+                    ] as Array<[OntologyYMetric, string]>).map(([metric, label]) => (
+                      <button
+                        key={metric}
+                        type="button"
+                        onClick={() => toggleYMetric(metric)}
+                        style={ontologyDimensionButtonStyle(yMetrics.includes(metric))}
+                      >
+                        {label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+                <div style={ontologyChartResultsGridStyle}>
+                  <div style={ontologyChartCanvasStyle}>
+                    {activeChartSpec.rows.length === 0 ? (
+                      <div style={ontologyEmptyChartStyle}>Grafiğe eklemek için soldaki satırlardan seçim yap.</div>
+                    ) : (
+                      <ResponsiveContainer width="100%" height={260}>
+                        <BarChart
+                          data={activeChartSpec.rows}
+                          margin={{ top: 10, right: 18, bottom: 0, left: -16 }}
+                          onClick={(event: any) => selectGraphRow(event?.activePayload?.[0]?.payload)}
+                        >
+                          <CartesianGrid stroke={CT.border} strokeDasharray="3 3" vertical={false} />
+                          <XAxis dataKey={activeChartSpec.xKey} stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                          <YAxis stroke={CT.inkMuted} fontSize={11} tickLine={false} axisLine={false} />
+                          <Tooltip contentStyle={ontologyTooltipStyle} />
+                          <Legend wrapperStyle={ontologyLegendStyle} />
+                          {activeChartSpec.series.map(series => (
+                            <Bar
+                              key={series.key}
+                              dataKey={series.key}
+                              name={series.label}
+                              fill={series.color}
+                              radius={[4, 4, 0, 0]}
+                              cursor="pointer"
+                            />
+                          ))}
+                        </BarChart>
+                      </ResponsiveContainer>
+                    )}
+                  </div>
+                  <OntologySelectionPanel items={selectedScopeItems} rows={activeChartSpec.rows} selectedObject={selectedGraphObject} />
+                </div>
+              </div>
             </div>
             {selectedGraphObject && (
               <GraphFunctionDrilldown object={selectedGraphObject} actions={graphFunction?.actions ?? []} />
@@ -2578,6 +2587,50 @@ function OntologyFunctionPreviewPanel({ node, nodes, connections }: { node: Pipe
         </div>
       </div>
     </div>
+  );
+}
+
+function OntologySelectionPanel({ items, rows, selectedObject }: {
+  items: OntologyScopeItem[];
+  rows: any[];
+  selectedObject: GraphFunctionResponse["objects"][number] | null;
+}) {
+  const visibleRows = rows.slice(0, 7);
+  return (
+    <aside style={ontologySelectionPanelStyle}>
+      <div style={ontologySelectionHeaderStyle}>
+        <strong>Sonuçlar</strong>
+        <span>{rows.length ? `${rows.length} grafik satırı` : "Boş"}</span>
+      </div>
+      <div style={ontologySelectionListStyle}>
+        {items.length === 0 ? (
+          <div style={ontologySelectionEmptyStyle}>Seçim yok</div>
+        ) : (
+          items.slice(0, 8).map(item => (
+            <div key={item.id} style={ontologySelectionItemStyle(item.tone)}>
+              <b>{item.label}</b>
+              <span>{item.detail}</span>
+            </div>
+          ))
+        )}
+      </div>
+      {visibleRows.length > 0 && (
+        <div style={ontologySelectionMetricListStyle}>
+          {visibleRows.map((row, index) => (
+            <div key={`${String(row.device || row.component || row.customer || row.procurement || index)}-${index}`} style={ontologySelectionMetricRowStyle}>
+              <span>{String(row.device || row.component || row.customer || row.procurement || row.bucket || "-")}</span>
+              <b>{formatCell(Number(row.shortage ?? row.requested ?? row.riskScore ?? 0))}</b>
+            </div>
+          ))}
+        </div>
+      )}
+      {selectedObject && (
+        <div style={ontologySelectionFocusStyle}>
+          <strong>{selectedObject.title || selectedObject.decision.device}</strong>
+          <span>{selectedObject.decision.status}</span>
+        </div>
+      )}
+    </aside>
   );
 }
 
@@ -6585,12 +6638,25 @@ const ontologyWorkspaceStyle: CSSProperties = {
   overflow: "hidden",
 };
 
+const ontologyExploreLayoutStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(280px, 38%) minmax(0, 1fr)",
+  minHeight: 390,
+};
+
+const ontologyExploreMainStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateRows: "auto auto minmax(0, 1fr)",
+  borderLeft: `1px solid ${CT.border}`,
+};
+
 const ontologyScopePanelStyle: CSSProperties = {
   display: "grid",
   gap: 8,
-  borderBottom: `1px solid ${CT.border}`,
   padding: "10px 12px",
   background: "#fbfaf6",
+  alignContent: "start",
 };
 
 const ontologyScopeHeaderStyle: CSSProperties = {
@@ -6702,6 +6768,12 @@ const ontologyWorkspaceToolbarStyle: CSSProperties = {
   fontSize: 12,
 };
 
+const ontologyWorkspaceStatusStyle: CSSProperties = {
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontWeight: 850,
+};
+
 const ontologyModeToggleGroupStyle: CSSProperties = {
   display: "inline-flex",
   alignItems: "center",
@@ -6758,6 +6830,14 @@ const ontologyDimensionButtonStyle = (active: boolean): CSSProperties => ({
 const ontologyChartCanvasStyle: CSSProperties = {
   height: 282,
   padding: "10px 10px 6px",
+  minWidth: 0,
+};
+
+const ontologyChartResultsGridStyle: CSSProperties = {
+  minWidth: 0,
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) 230px",
+  gap: 0,
 };
 
 const ontologyEmptyChartStyle: CSSProperties = {
@@ -6771,6 +6851,77 @@ const ontologyEmptyChartStyle: CSSProperties = {
   fontSize: 13,
   textAlign: "center",
   padding: 18,
+};
+
+const ontologySelectionPanelStyle: CSSProperties = {
+  display: "grid",
+  alignContent: "start",
+  gap: 8,
+  borderLeft: `1px solid ${CT.border}`,
+  padding: "10px",
+  background: "#fbfaf6",
+  minHeight: 282,
+};
+
+const ontologySelectionHeaderStyle: CSSProperties = {
+  display: "flex",
+  alignItems: "baseline",
+  justifyContent: "space-between",
+  gap: 8,
+  color: CT.ink,
+  fontSize: 12,
+};
+
+const ontologySelectionListStyle: CSSProperties = {
+  display: "grid",
+  gap: 4,
+  maxHeight: 120,
+  overflowY: "auto",
+};
+
+const ontologySelectionEmptyStyle: CSSProperties = {
+  minHeight: 36,
+  display: "flex",
+  alignItems: "center",
+  color: CT.inkMuted,
+  fontSize: 11,
+  fontWeight: 800,
+};
+
+const ontologySelectionItemStyle = (tone: OntologyScopeItem["tone"]): CSSProperties => ({
+  display: "grid",
+  gap: 2,
+  border: `1px solid ${tone === "risk" ? "rgba(179,64,55,0.28)" : CT.border}`,
+  borderRadius: 5,
+  background: tone === "risk" ? "#fff3ef" : CT.surface,
+  color: tone === "risk" ? CT.err : CT.ink,
+  padding: "6px 7px",
+  fontSize: 11,
+});
+
+const ontologySelectionMetricListStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 8,
+};
+
+const ontologySelectionMetricRowStyle: CSSProperties = {
+  display: "grid",
+  gridTemplateColumns: "minmax(0, 1fr) auto",
+  gap: 8,
+  alignItems: "center",
+  color: CT.inkSub,
+  fontSize: 11,
+};
+
+const ontologySelectionFocusStyle: CSSProperties = {
+  display: "grid",
+  gap: 3,
+  borderTop: `1px solid ${CT.border}`,
+  paddingTop: 8,
+  color: CT.ink,
+  fontSize: 11,
 };
 
 const graphFunctionDrilldownStyle: CSSProperties = {
