@@ -34,6 +34,7 @@ import workshopRouter from "./routes/workshop";
 import chartRouter from "./routes/chart";
 import strategyRouter from "./routes/strategy";
 import pipelineBuilderRouter from "./routes/pipeline-builder";
+import dealerNetworkRouter from "./routes/dealer-network";
 import { seedOntology } from "./routes/ontology";
 import { db } from "./db";
 import { products, bomItems } from "@shared/schema";
@@ -66,6 +67,7 @@ export async function registerRoutes(
   app.use("/api/orchestrator", orchestratorRouter);
   app.use("/api/pipeline", simulationPipelineRouter);
   app.use("/api/pipeline-builder", pipelineBuilderRouter);
+  app.use("/api/dealer-network", dealerNetworkRouter);
   app.use("/api/twin-health", twinHealthRouter);
   app.use("/api/loop", decisionLoopRouter);
   app.use("/api/ops", opsMonitoringRouter);
